@@ -27,17 +27,19 @@ complete; do not request another generic approval stamp.
 | Real graph check | Known FSIS/Tyson case returns 38 distinct neighbors; bounded hosted API acceptance passed, not a complete graph crawl |
 | Contributions | Five record-contribution forms and separate bug-report intake implemented; final operating/retention handoff remains part of cutover |
 | Frontend repair | Requested navigation, concise copy, About counter, control alignment, full-record links and empty Connections state deployed |
-| Languages and themes | English and dark interface only; multilingual UI and light mode are not implemented |
+| Languages and themes | English/Spanish primary UI and persistent light/dark preferences implemented; some secondary community/operator and generated API text remains English |
 | Cluster persistence | Point-feed caching exists; persistent reuse of the built cluster index is not implemented |
 
-Hosted UI revision: `0e047be8`, Render deployment `dep-dbeoe7vavr4c73bj6fig`.
-Its [CI run passed all seven jobs](https://github.com/eliperez-dev/UntilEveryCage/actions/runs/40161908418).
-Later source-runner/test integration `4b165262` also
-[passed all seven jobs](https://github.com/eliperez-dev/UntilEveryCage/actions/runs/40164801905);
-it did not change the served UI or public dataset.
+The table describes integrated product behavior. Hosting uses the existing
+Render service and manual deployment from `eli/v2` after CI. The language,
+theme and APHIS sprint does not change dataset membership, the serving
+database or the domain. Exact CI/deployment identifiers and hosted acceptance
+are recorded with the aggregate acceptance receipt below.
 
 Aggregate acceptance is retained locally in ignored
 `data/staging/launch-fidelity-20261024/acceptance.json`.
+The current language/theme/APHIS acceptance is retained in ignored
+`data/staging/launch-aphis-language-theme-20261025/acceptance.json`.
 The source inventory owns graph package/runtime details and source-specific evidence.
 
 ## Launch gates
@@ -47,11 +49,11 @@ All items below remain required before replacing the original website.
 | Work | State | Done when |
 | --- | --- | --- |
 | Documentation consolidation | Complete | 46 obsolete/duplicate documents removed; one current roadmap/source inventory/frontend guide; local links and 28 documentation-contract checks passed; no application code changed |
-| Persistent cluster index | Not started | Reload reuses the built index, with release/profile/manifest/restriction invalidation; cached point bytes alone do not qualify |
-| Languages | Not started | Spanish first, then German, French, Italian, Dutch and Danish through the same system; routes, filters and selection survive switching; source evidence stays in its original language |
-| Light/dark interface | Not started | Readable controls, panels, text and focus states in both themes, independent of basemap and category semantics |
+| Persistent cluster index | Deferred from the current sprint | Reload reuses the built index, with release/profile/manifest/restriction invalidation; cached point bytes alone do not qualify |
+| Languages | Spanish primary UI implemented and locally tested | Remaining German, French, Italian, Dutch and Danish use the same system; complete remaining English fallbacks; routes, filters and selection survive switching; source evidence stays in its original language |
+| Light/dark interface | Implemented; local visual acceptance passed after mobile spacing correction | Persistent preferences, readable controls/panels and unchanged basemap/category semantics; retain browser regression coverage |
 | France, broader Spain, Germany, Mexico | Incomplete | Actual missing coverage acquired, normalized, enriched where needed and verified on the map; an adapter or an existing Catalonia refresh is not new national coverage |
-| APHIS history | Incomplete | Bounded FY2024 annual-report recovery reconciled against source documents; FY2025 controls do not establish a complete archive |
+| APHIS history | Reliability and on-demand historical recovery implemented | Six real endpoint cases passed locally: two eligible facilities return pre-2025 annual and inspection links, sampled PDFs open, and the original no-report case returns an empty page; sample history reaches 2014, not a complete archive audit |
 | New default dated dataset | Not started | Fresh acquisition and required location enrichment for included cohorts, measured map membership/counts, retained history and current restrictions |
 | Final cutover | Not started | Maintainer frontend/data acceptance; verified monitoring, recovery and contribution operations; domain/canonical/redirect checks and rollback |
 
@@ -75,11 +77,13 @@ sources; do not silently count legacy rows as newly acquired data.
 
 ## Roadmap
 
-1. Finish the documentation cleanup.
-2. Implement persistent cluster reuse, languages and themes without redesigning
-   approved frontend behavior.
-3. In parallel, deliver missing country coverage through the existing shared
-   source runner and separate enrichment jobs.
+1. Documentation cleanup is complete.
+2. Ship and retain APHIS report recovery, Spanish, and light/dark mode without
+   redesigning approved frontend behavior. Persistent cluster reuse is deferred
+   from this sprint; the remaining launch languages still need translation.
+3. Next, deliver missing country coverage through source-specific lanes using
+   the existing shared runner and separate enrichment jobs; extend languages
+   through the same translation system.
 4. Build the new dated launch dataset; preserve current and historical releases.
 5. Complete the maintainer pass and production handoff, then switch the domain.
 

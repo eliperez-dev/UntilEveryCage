@@ -119,8 +119,12 @@ API schemas own supported fields. They are not additional roadmaps.
   summary does not gain a fabricated facility page. A canvas limit or API page
   bound is not a graph storage cap.
 - APHIS controls appear only for relevant APHIS records, fetch on request and
-  retain error/retry states. Search-page metadata references are not full
-  inspection/annual/exception report files; do not claim missing years exist.
+  retain error/retry states. The release-scoped lookup combines released
+  evidence references with additional official historical document links for
+  that same source identifier. Keep those origins structured and distinct.
+  Successful empty searches are not errors; source pages are not report files.
+  Verified sample history includes pre-2025 annual and inspection PDFs, not a
+  claim that every facility has a complete archive.
 
 ## Contribution behavior
 
@@ -175,7 +179,17 @@ and usable narrow/zoomed layouts. Test the actual public built route and real
 approved data where available; synthetic unit/negative tests supplement, not
 replace, real-data acceptance.
 
-English-only dark UI is the current state. Languages, light/dark mode and
-persistent cluster-index reuse remain launch requirements in the roadmap,
-not features this guide claims implemented. Do not reopen map-engine selection
-or rewrite approved visual behavior while implementing them.
+English and Spanish are available in Tools. English is the default and missing
+translations fall back to English. Language switching preserves map camera,
+release, filters and selection. Source names, identifiers and evidence retain
+their original language; some secondary community/operator and generated API
+reference strings remain English. Extend the existing dictionary rather than
+creating another localization path or rewriting approved English copy.
+
+Tools also offers Light and Dark. Dark is the default; explicit language and
+theme choices persist as nonsensitive browser preferences. Initialize the theme
+before rendering, tolerate unavailable storage, and keep maps, category pins
+and cluster colors independent of interface theme. Verify translated controls
+at narrow widths in both themes. Persistent cluster-index reuse is deferred;
+cached point data is not a persisted cluster index. Do not reopen map-engine
+selection or redesign approved visual behavior.
