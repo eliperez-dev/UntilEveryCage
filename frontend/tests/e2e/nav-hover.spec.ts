@@ -31,7 +31,7 @@ test('the masthead exposes six direct destinations and Tools', async ({ page }) 
   await expect(page.getByRole('heading', { name: 'Frequently asked questions' })).toBeVisible();
 });
 
-test('direct links retain native keyboard and browser navigation', async ({ page, context }) => {
+test('direct links retain native keyboard and browser navigation', async ({ page, context }, testInfo) => {
   const mapContext = '#/map?lat=44.5&lon=8.1&z=5&basemap=satellite&release_id=synthetic-release';
   await page.goto(`./#/about/faq?map=${encodeURIComponent(mapContext)}`);
   const database = page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Database', exact: true });
@@ -47,10 +47,44 @@ test('direct links retain native keyboard and browser navigation', async ({ page
   // Exercise a different native destination; opening the already-active href varies across browsers.
   await about.click({ button: 'middle' });
   const popup = await popupPromise;
-  await expect(popup).toHaveURL(/#\/about(?:$|[/?])/);
-  await expect(popup.getByRole('heading', { name: 'About Until Every Cage is Empty', exact: true })).toBeVisible();
-  expect(new URL(popup.url()).hash).toContain(`map=${encodeURIComponent(mapContext)}`);
-  await popup.close();
+  const pageErrors: string[] = [];
+  const failedResources: string[] = [];
+  popup.on('pageerror', error => pageErrors.push(error.message));
+  popup.on('requestfailed', request => {
+    const url = new URL(request.url());
+    failedResources.push(`${request.method()} ${url.origin}${url.pathname}: ${request.failure()?.errorText ?? 'request failed'}`);
+  });
+  popup.on('response', response => {
+    if (response.status() >= 400) {
+      const url = new URL(response.url());
+      failedResources.push(`${response.status()} ${url.origin}${url.pathname}`);
+    }
+  });
+  try {
+    // Native middle-click tabs may be backgrounded and some engines defer their app load.
+    await popup.bringToFront();
+    await expect(popup).toHaveURL(/#\/about(?:$|[/?])/);
+    await popup.waitForLoadState('domcontentloaded', { timeout: 10_000 });
+    await expect(popup.getByRole('heading', { name: 'About Until Every Cage is Empty', exact: true })).toBeVisible();
+    expect(new URL(popup.url()).hash).toContain(`map=${encodeURIComponent(mapContext)}`);
+  } catch (error) {
+    const diagnostics = {
+      url: popup.url(),
+      title: await popup.title().catch(() => '[unavailable]'),
+      readyState: await popup.evaluate(() => document.readyState).catch(() => '[unavailable]'),
+      bodyText: await popup.locator('body').innerText({ timeout: 1_000 }).catch(() => '[body unavailable]'),
+      pageErrors,
+      failedResources,
+      assertion: error instanceof Error ? error.message : String(error),
+    };
+    await testInfo.attach('middle-click-popup-diagnostics.json', {
+      body: JSON.stringify(diagnostics, null, 2),
+      contentType: 'application/json',
+    });
+    throw error;
+  } finally {
+    await popup.close().catch(() => {});
+  }
 });
 
 test('compact direct navigation remains usable on a narrow touch screen', async ({ browser, baseURL }) => {
