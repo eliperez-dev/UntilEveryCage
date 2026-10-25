@@ -1,5 +1,6 @@
 import importlib.util
 import datetime
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -82,6 +83,93 @@ class LocalEnrichmentTests(unittest.TestCase):
         self.assertNotIn("lower(city_name)", sql)
         self.assertNotIn("geocode_jobs", sql)
         self.assertEqual(result["external_provider_calls"], 0)
+
+    def test_catalonia_reference_conflicts_are_counted_separately(self):
+        connection = MagicMock()
+        connection.__enter__.return_value = connection
+        candidate = ("candidate", "a" * 64, "es.cat.feed-sandach", "opaque-key", "city_postal", "ES", "Town", "08000", None, None, "coarse_eligible")
+        references = [
+            ("Town", "080193", 41.2, 1.8, "icgc-ref-a", "https://example.test/a", datetime.date(2024, 11, 27), "a" * 64),
+            ("Town", "080193", 41.3, 1.9, "icgc-ref-b", "https://example.test/b", datetime.date(2024, 11, 27), "b" * 64),
+        ]
+
+        def execute(sql, params=()):
+            result = MagicMock()
+            if "SELECT admin_name,admin_code" in sql:
+                result.fetchall.return_value = references
+            elif "SELECT municipality_code" in sql:
+                result.fetchone.return_value = ("080193",)
+            elif "SELECT candidate.candidate_id" in sql:
+                result.fetchall.return_value = [candidate]
+            else:
+                result.fetchall.return_value = []
+            return result
+
+        connection.execute.side_effect = execute
+        with patch.object(__import__("psycopg"), "connect", return_value=connection):
+            result = PREVIEW.enrich_locations("es.cat.feed-sandach", 10, "postgresql://localhost/test")
+        self.assertEqual(result["resolved"], 0)
+        self.assertEqual(result["conflicts"], 1)
+        self.assertEqual(result["examined"], 1)
+
+    def test_catalonia_private_viewport_walks_all_coarse_pages(self):
+        pages = [
+            (200, {"data": [{"candidate_id": "one", "source_id": "es.cat.feed-sandach",
+                             "display_precision": "locality_reference_coarse"}],
+                   "meta": {"private_preview": True, "next_cursor": "next"}}),
+            (200, {"data": [{"candidate_id": "two", "source_id": "es.cat.feed-sandach",
+                             "display_precision": "locality_reference_coarse"}],
+                   "meta": {"private_preview": True, "next_cursor": None}}),
+        ]
+        with patch.object(PREVIEW, "_http", side_effect=pages) as http:
+            result = PREVIEW._catalonia_private_viewport_acceptance("secret-token", 2, "http://127.0.0.1:38001")
+        self.assertEqual(result["features"], 2)
+        self.assertEqual(result["pages"], 2)
+        self.assertEqual(result["display_precision"], "locality_reference_coarse")
+        self.assertEqual(http.call_count, 2)
+
+    def test_catalonia_private_viewport_rejects_exact_or_unlabeled_points(self):
+        page = (200, {"data": [{"candidate_id": "one", "source_id": "es.cat.feed-sandach",
+                                "display_precision": "source_provided_exact"}],
+                      "meta": {"private_preview": True, "next_cursor": None}})
+        with patch.object(PREVIEW, "_http", return_value=page):
+            with self.assertRaises(PREVIEW.PreviewError):
+                PREVIEW._catalonia_private_viewport_acceptance("secret-token", 1, "http://127.0.0.1:38001")
+
+    def test_catalonia_certificate_is_written_only_after_enrichment_acceptance(self):
+        source = SCRIPT.read_text(encoding="utf-8")
+        start = source.index("def strict_live_private_e2e")
+        end = source.index("def _catalonia_private_viewport_acceptance", start)
+        body = source[start:end]
+        self.assertLess(body.index("_catalonia_private_viewport_acceptance("),
+                        body.index("temporary.replace(certificate_path)"))
+        self.assertIn('certificate["location_enrichment"] = catalonia_location_acceptance', body)
+        self.assertIn('"counts": certificate["counts"]', body)
+
+    def test_catalonia_reference_capture_is_bounded_and_terms_pinned(self):
+        metadata = MagicMock()
+        metadata.__enter__.return_value = metadata
+        metadata.status = 200
+        metadata.geturl.return_value = "https://analisi.transparenciacatalunya.cat/api/views/wpyq-we8x.json"
+        metadata.headers = {"Content-Type": "application/json; charset=utf-8"}
+        metadata.read.return_value = json.dumps({
+            "rowsUpdatedAt": int(datetime.datetime(2024, 11, 27, 11, 22, 54, tzinfo=datetime.timezone.utc).timestamp())
+        }).encode()
+        response = MagicMock()
+        response.__enter__.return_value = response
+        response.status = 200
+        response.geturl.return_value = "https://analisi.transparenciacatalunya.cat/api/v3/views/wpyq-we8x/export.csv?accessType=DOWNLOAD"
+        response.headers = {"Content-Type": "text/csv; charset=utf-8"}
+        response.read.return_value = b"reviewed-test-header\n"
+        with tempfile.TemporaryDirectory() as directory:
+            artifact = Path(directory) / "private" / "reference.csv"
+            with patch.object(PREVIEW.urllib.request, "urlopen", side_effect=[metadata, response]):
+                result = PREVIEW.acquire_catalonia_locality_reference(
+                    artifact, Path(__file__).parents[2] / "data" / "terms-reviews" / "es.cat.icgc.municipality-capital-localities.json")
+            self.assertEqual(result["dataset_date"], "2024-11-27")
+            self.assertEqual(result["byte_size"], len(b"reviewed-test-header\n"))
+            self.assertEqual(len(result["catalog_metadata_sha256"]), 64)
+            self.assertEqual(artifact.read_bytes(), b"reviewed-test-header\n")
 
     def test_enrichment_cli_requires_one_scope(self):
         with patch.object(PREVIEW, "enrich_locations") as enrich:
