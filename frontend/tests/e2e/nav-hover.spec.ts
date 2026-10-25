@@ -1,5 +1,11 @@
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 
+// Native tab shortcuts need the full browser, not Chromium's separate headless
+// shell. The pinned CI image already includes it; other engines stay unchanged.
+test.use({ channel: async ({ browserName }, use) => {
+  await use(browserName === 'chromium' ? 'chromium' : undefined);
+} });
+
 async function isolate(context: BrowserContext) {
   await context.route('**/*', async route => {
     const url = new URL(route.request().url());
@@ -31,7 +37,7 @@ test('the masthead exposes six direct destinations and Tools', async ({ page }) 
   await expect(page.getByRole('heading', { name: 'Frequently asked questions' })).toBeVisible();
 });
 
-test('direct links retain native keyboard and browser navigation', async ({ page, context }, testInfo) => {
+test('direct links retain native keyboard and browser navigation', async ({ page, context, browserName, channel }, testInfo) => {
   const mapContext = '#/map?lat=44.5&lon=8.1&z=5&basemap=satellite&release_id=synthetic-release';
   await page.goto(`./#/about/faq?map=${encodeURIComponent(mapContext)}`);
   const database = page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Database', exact: true });
@@ -43,25 +49,26 @@ test('direct links retain native keyboard and browser navigation', async ({ page
   await page.goForward();
   await expect(page.getByRole('heading', { name: 'Browse records', exact: true })).toBeVisible();
   const about = page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'About', exact: true });
-  const popupPromise = context.waitForEvent('page');
-  // Use the native new-tab modifier: headless Linux middle-click handling is
-  // inconsistent. Do not replace this with window.open or a scripted goto.
-  await about.click({ modifiers: ['ControlOrMeta'] });
-  const popup = await popupPromise;
+  let popup: Page | undefined;
   const pageErrors: string[] = [];
   const failedResources: string[] = [];
-  popup.on('pageerror', error => pageErrors.push(error.message));
-  popup.on('requestfailed', request => {
-    const url = new URL(request.url());
-    failedResources.push(`${request.method()} ${url.origin}${url.pathname}: ${request.failure()?.errorText ?? 'request failed'}`);
-  });
-  popup.on('response', response => {
-    if (response.status() >= 400) {
-      const url = new URL(response.url());
-      failedResources.push(`${response.status()} ${url.origin}${url.pathname}`);
-    }
-  });
   try {
+    // Preserve a real native new-tab interaction, not window.open or goto.
+    [popup] = await Promise.all([
+      context.waitForEvent('page', { timeout: 10_000 }),
+      about.click({ modifiers: ['ControlOrMeta'] }),
+    ]);
+    popup.on('pageerror', error => pageErrors.push(error.message));
+    popup.on('requestfailed', request => {
+      const url = new URL(request.url());
+      failedResources.push(`${request.method()} ${url.origin}${url.pathname}: ${request.failure()?.errorText ?? 'request failed'}`);
+    });
+    popup.on('response', response => {
+      if (response.status() >= 400) {
+        const url = new URL(response.url());
+        failedResources.push(`${response.status()} ${url.origin}${url.pathname}`);
+      }
+    });
     // Native new tabs may be backgrounded and some engines defer their app load.
     await popup.bringToFront();
     await expect(popup).toHaveURL(/#\/about(?:$|[/?])/);
@@ -70,10 +77,13 @@ test('direct links retain native keyboard and browser navigation', async ({ page
     expect(new URL(popup.url()).hash).toContain(`map=${encodeURIComponent(mapContext)}`);
   } catch (error) {
     const diagnostics = {
-      url: popup.url(),
-      title: await popup.title().catch(() => '[unavailable]'),
-      readyState: await popup.evaluate(() => document.readyState).catch(() => '[unavailable]'),
-      bodyText: await popup.locator('body').innerText({ timeout: 1_000 }).catch(() => '[body unavailable]'),
+      browserName, channel,
+      sourceUrl: page.url(),
+      destination: await about.getAttribute('href').catch(() => '[unavailable]'),
+      url: popup?.url() ?? '[no native tab created]',
+      title: await popup?.title().catch(() => '[unavailable]'),
+      readyState: await popup?.evaluate(() => document.readyState).catch(() => '[unavailable]'),
+      bodyText: await popup?.locator('body').innerText({ timeout: 1_000 }).catch(() => '[body unavailable]'),
       pageErrors,
       failedResources,
       assertion: error instanceof Error ? error.message : String(error),
@@ -84,7 +94,7 @@ test('direct links retain native keyboard and browser navigation', async ({ page
     });
     throw error;
   } finally {
-    await popup.close().catch(() => {});
+    await popup?.close().catch(() => {});
   }
 });
 
