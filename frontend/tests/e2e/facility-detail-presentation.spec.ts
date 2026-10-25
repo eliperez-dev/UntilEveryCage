@@ -208,7 +208,7 @@ test('APHIS source records load report links only after a report type is selecte
   await expect(page.getByRole('heading', { name: 'APHIS reports' })).toBeVisible();
   expect(reportRequests).toBe(0);
   await page.getByRole('button', { name: 'Annual reports' }).click();
-  await expect(page.getByRole('alert')).toContainText('Report references could not be loaded.');
+  await expect(page.getByRole('alert')).toContainText('Reports could not be loaded.');
   await page.getByRole('button', { name: 'Retry' }).click();
   await expect(page.getByText('Annual report · FY2025', { exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Open report', exact: true })).toBeVisible();
