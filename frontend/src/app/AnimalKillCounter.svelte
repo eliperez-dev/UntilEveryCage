@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { ANIMAL_KILL_GROUPS, estimateGroupSinceOpen } from '../features/counter/animalKillCounterModel';
+  import { language, tr } from './language';
 
   let elapsedMilliseconds = $state(0);
   onMount(() => {
@@ -26,10 +27,10 @@
 </script>
 
 <section class="estimate" aria-labelledby="estimate-title">
-  <h2 id="estimate-title">Animals Killed Since You Opened This Page</h2>
+  <h2 id="estimate-title">{tr('Animals Killed Since You Opened This Page', $language)}</h2>
   <ul class="estimate-list">
     {#each ANIMAL_KILL_GROUPS as group (group.id)}
-      <li><span class="estimate-number">{estimateGroupSinceOpen(group.annualEstimate, elapsedMilliseconds).toLocaleString('en-US')}</span><span>{group.label}</span></li>
+      <li><span class="estimate-number">{estimateGroupSinceOpen(group.annualEstimate, elapsedMilliseconds).toLocaleString($language === 'es' ? 'es' : 'en-US')}</span><span>{tr(group.label, $language)}</span></li>
     {/each}
   </ul>
 </section>
