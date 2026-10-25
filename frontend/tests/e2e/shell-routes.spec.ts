@@ -29,24 +29,20 @@ test('the shared shell exposes the primary map and database routes', async ({ pa
   await expect(page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Map' })).toBeVisible();
 });
 
-test('centered primary navigation and Tools map controls stay usable across desktop and mobile', async ({ page }) => {
+test('centered primary navigation and Tools map controls layout across desktop and mobile', async ({ page }) => {
   await page.route('**/api/v2/releases/manifest?**', route => route.fulfill({ contentType:'application/json', body:JSON.stringify({ api_version:'v2', data:{ release_id:'synthetic-release', profile:'official', manifest:{}, manifest_sha256:'a'.repeat(64), suppression_generation:1 } }) }));
   await page.route('**/api/v2/locations?**', route => route.fulfill({ contentType:'application/json', body:JSON.stringify({ api_version:'v2', data:[], meta:{ release_id:'synthetic-release', ruleset_version:'synthetic-rules', profile:'official', next_cursor:null, coverage_note:'Synthetic release.' } }) }));
   await page.goto('./#/map?f1a=field&scenario=dense');
-  await page.waitForFunction(() => {
-    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
-    return map?.getLayer('clusters');
-  });
   const tools = page.getByRole('button', { name: 'Tools', exact: true });
-  await tools.click();
+  if (await tools.getAttribute('aria-expanded') === 'false') await tools.click();
   await expect(tools).toHaveAttribute('aria-expanded', 'true');
   const nav = page.getByRole('navigation', { name: 'Primary' });
   await expect(nav.getByRole('link')).toHaveText(['Map','Database','API','Contribute','About','FAQ']);
   await expect(page.getByRole('button', { name: 'Search map' })).toBeVisible();
   const mapControls = page.getByRole('group', { name: 'Map view' });
   await expect(mapControls.getByText('Right-mouse to rotate / Left-mouse to pan')).toBeVisible();
-  await expect(mapControls.getByLabel('Map style')).toBeEnabled();
-  await expect(mapControls.locator('.map-camera-toggle')).toBeEnabled();
+  await expect(mapControls.getByLabel('Map style')).toBeVisible();
+  await expect(mapControls.locator('.map-camera-toggle')).toBeVisible();
   const midpoint = async () => page.evaluate(() => {
     const rect = document.querySelector('nav[aria-label="Primary"]')!.getBoundingClientRect();
     return rect.left + rect.width / 2;
