@@ -1,5 +1,10 @@
 import unittest
+import hashlib
+import os
 from pathlib import Path
+
+import psycopg
+from psycopg.types.json import Jsonb
 
 from pipeline.geocoding.geoapify import GeoapifyAdapter
 
@@ -37,6 +42,96 @@ class SpainGeocodingProfileTests(unittest.TestCase):
                             GeoapifyAdapter._normalize("11 Calle de la Constitución"))
         self.assertNotEqual(GeoapifyAdapter._normalize("10 Calle de la Constitución"),
                             GeoapifyAdapter._normalize("10 Avenida de la Constitución"))
+
+    @unittest.skipUnless(os.environ.get("UEC_DATABASE_URL"), "private DB acceptance requires UEC_DATABASE_URL")
+    def test_database_display_bridge_positive_and_negative_cases_rollback(self):
+        with psycopg.connect(os.environ["UEC_DATABASE_URL"]) as connection:
+            database = connection.execute("SELECT current_database()").fetchone()[0]
+            self.assertEqual(database, "uec_launch_sources_test_20261025")
+            applied = connection.execute(
+                "SELECT count(*) FROM uec.schema_migrations WHERE version='091_spain_private_geocoding_address_expression'"
+            ).fetchone()[0]
+            self.assertEqual(applied, 1)
+            profile_count = connection.execute(
+                "SELECT count(*) FROM real_preview.private_geocoding_source_profiles WHERE profile_id='geoapify-es-aesan-rgseaa' AND source_id='es.locations' AND country_code='ES' AND enabled"
+            ).fetchone()[0]
+            self.assertEqual(profile_count, 1)
+            retained_countries = connection.execute(
+                "SELECT array_agg(country_code::text ORDER BY country_code::text) FROM real_preview.private_geocoding_source_profiles WHERE source_id <> 'es.locations'"
+            ).fetchone()[0]
+            self.assertEqual(retained_countries, ["DK", "GB", "GB", "NL", "US"])
+            shared_function = connection.execute(
+                "SELECT pg_get_functiondef('real_preview.capture_geoapify_private_display()'::regprocedure)"
+            ).fetchone()[0]
+            self.assertEqual(hashlib.md5(shared_function.encode("utf-8"), usedforsecurity=False).hexdigest(),
+                             "3a11e2f75ee9bd2adefae58c0f50aebf")
+            shared_trigger = connection.execute(
+                "SELECT count(*) FROM pg_trigger WHERE tgrelid='uec.geocode_results'::regclass AND tgname='geocode_results_geoapify_preview_display' AND NOT tgisinternal"
+            ).fetchone()[0]
+            self.assertEqual(shared_trigger, 1)
+
+            source_record_id, query, candidate_id, source_address = connection.execute("""
+                SELECT job.source_record_id,job.query,target.candidate_id,
+                       coalesce(location.location_evidence->>'address',location.location_evidence->'address_lines'->>0)
+                  FROM uec.geocode_job_current job
+                  JOIN uec.source_records source USING(source_record_id)
+                  JOIN real_preview.geocode_targets target ON target.job_id=job.job_id
+                  JOIN real_preview.candidates candidate ON candidate.candidate_id=target.candidate_id
+                  JOIN real_preview.candidate_private_location_evidence location ON location.candidate_id=candidate.candidate_id
+                 WHERE source.source_id='es.locations' AND job.provider_id='geoapify' AND job.event_type='queued'
+                   AND job.details->>'processing_mode'='private_geoapify_source_profile'
+                   AND job.details->>'profile_id'='geoapify-es-aesan-rgseaa'
+                   AND candidate.source_id='es.locations' AND candidate.country_code='ES'
+                   AND location.location_evidence->>'country_code'='ES'
+                   AND coalesce(location.location_evidence->>'address',location.location_evidence->'address_lines'->>0) IS NOT NULL
+                   AND NOT EXISTS(SELECT 1 FROM uec.public_access_restricted restricted WHERE restricted.source_record_id=job.source_record_id)
+                 LIMIT 1
+            """).fetchone()
+            self.assertTrue(source_address)
+
+            def feature(address=source_address, country="ES", confidence=0.96):
+                return {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-3.7, 40.4]},
+                        "properties": {"place_id": "rollback-acceptance", "result_type": "building",
+                                       "country_code": country, "address_line1": address,
+                                       "rank": {"confidence": confidence}}}
+
+            cases = (
+                ("positive", [feature()], 1),
+                ("wrong_country", [feature(country="PT")], 0),
+                ("wrong_address_number_and_street", [feature(address="Diagnostic Different Street 998")], 0),
+                ("ambiguous", [feature(), feature()], 0),
+                ("low_confidence", [feature(confidence=0.89)], 0),
+            )
+            observed = []
+            try:
+                for label, features, expected in cases:
+                    connection.execute("SAVEPOINT spain_bridge_case")
+                    response = {"type": "FeatureCollection", "features": features,
+                                "_uec_selected_feature_index": 0}
+                    result_id = connection.execute("""
+                        INSERT INTO uec.geocode_results
+                            (source_record_id,provider_id,provider_version,query,provider_address_id,result,
+                             precision,match_method,status,attempt_number,retryable,response,queried_at)
+                        VALUES (%s,'geoapify','spain-rollback-acceptance',%s,'rollback-address',
+                                ST_GeogFromText('SRID=4326;POINT(-3.7 40.4)'), 'building','geoapify_forward',
+                                'accepted',1,false,%s,now())
+                        RETURNING geocode_result_id
+                    """, (source_record_id, query, Jsonb(response))).fetchone()[0]
+                    actual = connection.execute(
+                        "SELECT count(*) FROM real_preview.geocode_display_evidence WHERE candidate_id=%s AND geocode_result_id=%s",
+                        (candidate_id, result_id),
+                    ).fetchone()[0]
+                    observed.append((label, actual, expected))
+                    connection.execute("ROLLBACK TO SAVEPOINT spain_bridge_case")
+                    connection.execute("RELEASE SAVEPOINT spain_bridge_case")
+                self.assertEqual(observed, [(label, expected, expected) for label, _, expected in cases])
+            finally:
+                connection.rollback()
+
+            persisted = connection.execute(
+                "SELECT count(*) FROM uec.geocode_results WHERE provider_version='spain-rollback-acceptance'"
+            ).fetchone()[0]
+            self.assertEqual(persisted, 0)
 
 
 if __name__ == "__main__":
