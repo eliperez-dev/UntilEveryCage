@@ -68,7 +68,7 @@ class TaxonomyCrosswalkTests(unittest.TestCase):
         self.assertEqual(mapped["taxonomy_mapping_status"], "mapped")
         self.assertEqual(mapped["crosswalk_version"], "de-bltu-source-crosswalk-v1")
         self.assertEqual(mapped["taxonomy_primaries"], ["slaughter", "processing_and_preparation"])
-        self.assertEqual({row["source_code"] for row in mapped["taxonomy_assignments"]}, {"CP; GHE; SH"})
+        self.assertEqual({row["source_code"] for row in mapped["taxonomy_assignments"]}, {"CP", "GHE", "SH"})
 
         partial = project_observation({"source_id": "de.locations", "normalized": {
             "activity_codes": ["SH", "UNRECOGNIZED-DE-CODE"]}})

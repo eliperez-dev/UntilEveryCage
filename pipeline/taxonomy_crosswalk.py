@@ -123,10 +123,18 @@ def _decision(source: str, normalized: dict[str, Any], original: dict[str, Any])
                 assignments.append({"leaf_activity": leaf, "primary": _primary_for_leaf(leaf) or "unclassified", "method": method})
     elif source == "de.locations":
         unknown = False
+        seen_codes: set[str] = set()
         for code in codes:
             rule = _DE.get(code.upper())
             if rule:
-                assignments.append({"leaf_activity": rule[0], "primary": rule[1], "method": "direct"})
+                normalized_code = code.upper()
+                if normalized_code not in seen_codes:
+                    assignments.append({"leaf_activity": rule[0], "primary": rule[1], "method": "direct",
+                                        "source_code_reference": "normalized.activity_codes",
+                                        "source_code": normalized_code,
+                                        "source_label_reference": "crosswalk.annex_v_activity_code",
+                                        "source_label": _DE_SOURCE["rules"][normalized_code]["source_label"]})
+                    seen_codes.add(normalized_code)
             else:
                 unknown = True
         return assignments, ("partial" if assignments and unknown else
