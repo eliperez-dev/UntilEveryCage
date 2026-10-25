@@ -44,6 +44,8 @@ The product principle is **quiet on first contact, powerful when investigated**.
 The maintainer's latest 2026-10-24 navigation revision uses six direct destinations:
 `Map, Database, API | Contribute, About, FAQ`. Keep all six links in one compact
 group with a fixed separator; do not spread the two groups across the header.
+Center the six-link group in the masthead, with brand/logo left and Tools right;
+do not push the navigation to the left. Preserve usable responsive navigation.
 Tools retains release selection and map diagnostics.
 Contribute opens Add a facility by default, with visible task links to switch
 the form, plus submission tracking, community browsing and project/support links.
@@ -82,8 +84,10 @@ the selected preview context. Private submission forms use ordinary language;
 publication warnings belong on public unreviewed community results. Contribute
 is a direct header link. Keep the primary links compact on desktop and touch
 screens without duplicating the consolidated pages in hover menus.
-The main map has no white MapLibre compass/pitch control and no visible drag
-instruction banner. Search map and Map View share viewport-edge insets,
+The main map has no white MapLibre compass/pitch control or separate drag
+instruction banner. Inside Map View, small text directly beneath the options
+says "Right-mouse to rotate / Left-mouse to pan".
+Search map and Map View share viewport-edge insets,
 colors, border treatment and typography on desktop and mobile.
 Keep the compact map-view selector and 2D/3D toggle, native
 gestures, accessible button names and provider attribution. Closing
