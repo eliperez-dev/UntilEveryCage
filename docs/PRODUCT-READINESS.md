@@ -75,7 +75,7 @@ checkpoint alone is not proof of a successful hosted rollout.
 | Persistent cluster index | Not started | Reuse the built index across reloads with release/profile/manifest/restriction invalidation; caching the point feed alone does not qualify. |
 | Languages | Not started | Spanish first, then German, French, Italian, Dutch and Danish through the same complete language system; source evidence is not rewritten. |
 | France, Spain, Germany and Mexico map coverage | In progress at source-specific stages | Verified acquisition-to-database pipeline, usable source/geocoded locations and actual map membership. The source inventory owns each source's facts, counts and blockers. |
-| New default dated dataset | Not started | Prepare and verify a new release including the added eligible country cohorts; retain existing historical releases and current restrictions. The maintainer permits a new dataset to become the launch default; no date or new membership is invented here. |
+| New default dated dataset | Not started | Fresh source acquisition and required geocoding, including the added eligible country cohorts; verify counts and actual map membership, retaining historical releases and current restrictions. The maintainer permits this dated dataset to become the launch default; no date or membership is invented here. |
 | Final public cutover | Not started | Maintainer UI/data acceptance, verified production recovery/monitoring and contribution/moderation operation, domain/canonical/redirect checks and a tested rollback route. |
 
 FY2024 APHIS annual-report recovery is a bounded follow-up in the data-coverage
