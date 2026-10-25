@@ -4,7 +4,7 @@
   const logo = `${import.meta.env.BASE_URL}assets/icon.png`;
 </script>
 <svelte:head><title>About · Until Every Cage</title><meta name="description" content="About the project Until Every Cage and its mission." /></svelte:head>
-<article class="about-page" aria-label={tr('About Until Every Cage is Empty', $language)}>
+<article class="about-page" aria-label={tr('About Until Every Cage', $language)}>
   <div class="identity-layout">
     <section id="overview" class="manifesto" aria-labelledby="about-title">
       <h1 id="about-title">{tr('About Until Every Cage is Empty', $language)}</h1>

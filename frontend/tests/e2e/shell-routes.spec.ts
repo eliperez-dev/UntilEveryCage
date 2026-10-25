@@ -46,11 +46,15 @@ test('centered primary navigation and map controls stay aligned across desktop a
   const mapControlGeometry = async () => page.evaluate(() => {
     const search = document.querySelector('.search-toggle')!.getBoundingClientRect();
     const view = document.querySelector('.map-controls-wrap')!.getBoundingClientRect();
-    return { left: search.left, right: innerWidth - view.right, overlap: search.right - view.left };
+    return {
+      left: search.left,
+      right: innerWidth - view.right,
+      overlaps: search.left < view.right && view.left < search.right && search.top < view.bottom && view.top < search.bottom,
+    };
   });
   let inset = await mapControlGeometry();
   expect(Math.abs(inset.left - inset.right)).toBeLessThan(1);
-  expect(inset.overlap).toBeLessThanOrEqual(0);
+  expect(inset.overlaps).toBe(false);
   const alignedStyles = await page.evaluate(() => {
     const search = getComputedStyle(document.querySelector('.search-toggle')!);
     const view = getComputedStyle(document.querySelector('.map-controls')!);
@@ -61,18 +65,14 @@ test('centered primary navigation and map controls stay aligned across desktop a
   await expect(nav.getByRole('link', { name: 'FAQ', exact: true })).toBeVisible();
   await expect.poll(midpoint).toBeCloseTo(195, 0);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  inset = await page.evaluate(() => {
-    const search = document.querySelector('.search-toggle')!.getBoundingClientRect();
-    const view = document.querySelector('.map-controls-wrap')!.getBoundingClientRect();
-    return { left: search.left, right: innerWidth - view.right, overlap: search.right - view.left };
-  });
+  inset = await mapControlGeometry();
   expect(Math.abs(inset.left - inset.right)).toBeLessThan(1);
-  expect(inset.overlap).toBeLessThanOrEqual(0);
+  expect(inset.overlaps).toBe(false);
   await page.setViewportSize({ width: 375, height: 812 });
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   inset = await mapControlGeometry();
   expect(Math.abs(inset.left - inset.right)).toBeLessThan(1);
-  expect(inset.overlap).toBeLessThanOrEqual(0);
+  expect(inset.overlaps).toBe(false);
 });
 
 test('a record URL is directly addressable and has a route-specific heading', async ({ page }) => {
