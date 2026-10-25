@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { language, tr } from './language';
   import { onMount } from 'svelte';
   import { communityCapabilities } from '../api/CommunityRepository';
   import { PublicReleaseRepository } from '../api/PublicReleaseRepository';
@@ -29,14 +30,14 @@
 <svelte:head><title>{labels[formKind]} · Until Every Cage</title></svelte:head>
 <section class="contribute-page" aria-labelledby="contribute-title">
   {#if !communityEnabled && formKind !== 'bug'}
-    <h1 id="contribute-title">Contribute to the project</h1>
+    <h1 id="contribute-title">{tr('Contribute to the project', $language)}</h1>
     <p>To share a correction, privacy concern, or source, email <a href="mailto:untileverycageproject@protonmail.com">untileverycageproject@protonmail.com</a>. For code contributions, use <a href="https://github.com/eliperez-dev/UntilEveryCage" target="_blank" rel="noreferrer">GitHub</a>.</p>
     <p><a href={taskHref('bug')}>Report a bug</a></p>
   {:else}
-    <h1 id="contribute-title">{labels[formKind]}</h1>
-    <p id="contribution-choice" class="choice-label">Choose a contribution type</p>
+    <h1 id="contribute-title">{tr(labels[formKind], $language)}</h1>
+    <p id="contribution-choice" class="choice-label">{tr('Choose a contribution type', $language)}</p>
     <nav class="task-nav" aria-label="Contribution tasks" aria-describedby="contribution-choice">
-      {#each Object.entries(taskNames) as [type, label]}<a href={taskHref(type as ContributionType)} aria-current={formKind === type ? 'page' : undefined}>{label}</a>{/each}
+      {#each Object.entries(taskNames) as [type, label]}<a href={taskHref(type as ContributionType)} aria-current={formKind === type ? 'page' : undefined}>{tr(label, $language)}</a>{/each}
     </nav>
     {#key `${formKind}:${targetRecordId}`}
       {#if formKind === 'bug'}<BugReportPage embedded {returnMapHref} />
@@ -46,9 +47,9 @@
     {/key}
   {/if}
   <footer class="contribute-footer">
-    <p class="code-invitation">The code is open source. Help with code, design, tests, or data adapters: <a href="https://github.com/eliperez-dev/UntilEveryCage" target="_blank" rel="noreferrer">Contribute code on GitHub</a>.</p>
+    <p class="code-invitation">{tr('The code is open source. Help with code, design, tests, or data adapters:', $language)} <a href="https://github.com/eliperez-dev/UntilEveryCage" target="_blank" rel="noreferrer">{tr('Contribute code on GitHub', $language)}</a>.</p>
     {#if communityEnabled || communityReleasePublished}<div class="project-links" aria-label="Project links">
-      <a href={utilityHref('contribution-status')}>Check status</a>
+      <a href={utilityHref('contribution-status')}>{tr('Check status', $language)}</a>
       {#if communityReleasePublished}<a href={utilityHref('community')}>Community submissions</a>{/if}
     </div>{/if}
   </footer>

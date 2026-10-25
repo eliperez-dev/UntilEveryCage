@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { language, tr } from './language';
   import { createCommunityRepository, type Receipt } from '../api/CommunityRepository';
   let { returnMapHref = '#/map', embedded = false }: { returnMapHref?: string; embedded?: boolean } = $props();
   const repository = createCommunityRepository();
@@ -27,19 +28,19 @@
 
 <svelte:head><title>Report a bug · Until Every Cage</title></svelte:head>
 <section class="bug-page" class:embedded aria-label="Report a bug">
-  {#if !embedded}<p><a href={`#/contribute${returnMapHref !== '#/map' ? `?map=${encodeURIComponent(returnMapHref)}` : ''}`}>Contribute</a></p>
-  <h1>Report a bug</h1>{/if}
-  <p class="intro">Send a bug report to the project.</p>
+  {#if !embedded}<p><a href={`#/contribute${returnMapHref !== '#/map' ? `?map=${encodeURIComponent(returnMapHref)}` : ''}`}>{tr('Contribute', $language)}</a></p>
+  <h1>{tr('Report a bug', $language)}</h1>{/if}
+  <p class="intro">{tr('Send a bug report to the project.', $language)}</p>
   <form class="bug-form" onsubmit={submitReport}>
-    <label>What happened?<textarea name="happened" required maxlength="2000" rows="2"></textarea></label>
-    <label>What did you expect?<textarea name="expected" maxlength="1000" rows="2"></textarea></label>
-    <label>Steps to reproduce<textarea name="steps" required maxlength="2000" rows="2"></textarea></label>
-    <label>Page link (optional)<input name="page_url" type="url" maxlength="1000" placeholder="https://…" /></label>
-    <button type="submit" disabled={busy || receipt !== null}>{busy ? 'Sending…' : receipt ? 'Sent' : 'Send report'}</button>
+    <label>{tr('What happened?', $language)}<textarea name="happened" required maxlength="2000" rows="2"></textarea></label>
+    <label>{tr('What did you expect?', $language)}<textarea name="expected" maxlength="1000" rows="2"></textarea></label>
+    <label>{tr('Steps to reproduce', $language)}<textarea name="steps" required maxlength="2000" rows="2"></textarea></label>
+    <label>{tr('Page link (optional)', $language)}<input name="page_url" type="url" maxlength="1000" placeholder="https://…" /></label>
+    <button type="submit" disabled={busy || receipt !== null}>{tr(busy ? 'Sending…' : receipt ? 'Sent' : 'Send report', $language)}</button>
   </form>
   {#if error}<p role="alert">{error}</p>{/if}
-  {#if receipt}<p class="draft-link" role="status">Report saved. <a href={trackingHref}>Track report</a></p>{/if}
-  <p class="issue-link"><a href="https://github.com/eliperez-dev/UntilEveryCage/issues/new" target="_blank" rel="noreferrer">Report a public issue on GitHub ↗</a></p>
+  {#if receipt}<p class="draft-link" role="status">{tr('Report saved.', $language)} <a href={trackingHref}>{tr('Track report', $language)}</a></p>{/if}
+  <p class="issue-link"><a href="https://github.com/eliperez-dev/UntilEveryCage/issues/new" target="_blank" rel="noreferrer">{tr('Report a public issue on GitHub ↗', $language)}</a></p>
 </section>
 
 <style>

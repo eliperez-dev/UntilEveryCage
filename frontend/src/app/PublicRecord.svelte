@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { language, tr } from './language';
   import { LocalLocationRepository, type LocalProfile } from '../api/LocalLocationRepository';
   import type { DerivedSourceVolumeRange, Location } from '../domain/location';
   import { mapHrefFromParams, safeMapHref, serializeRoute } from './routeState';
@@ -76,27 +77,27 @@
   {#if profile === 'community'}<p class="warning"><strong>Unreviewed community claim: not verified by Until Every Cage.</strong> Privacy screening is not factual review or project approval. Community counts are separate.</p>{/if}
   {#if busy}<p role="status">Loading record…</p>{:else if error}<h1>Record unavailable</h1><p role="alert">{error}</p><button type="button" onclick={() => retry += 1}>Retry</button><p><a href="#/database">Browse records</a></p>{:else if record}<h1>{record.name} <button class="share" type="button" aria-label="Copy facility link" title="Copy facility link" onclick={copyRecordLink}><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.1 0l3-3A5 5 0 0 0 13 2.9l-1.7 1.7m2.7 6.4a5 5 0 0 0-7.1 0l-3 3A5 5 0 0 0 11 21.1l1.7-1.7"/></svg></button><span class="sr-only" role="status" aria-live="polite">{copyFeedback}</span></h1>
     <section aria-labelledby="location-heading">
-      <h2 id="location-heading">Location</h2>
+      <h2 id="location-heading">{tr('Location', $language)}</h2>
       <dl>
-        <div><dt>Locality</dt><dd>{[record.region, record.countryCode].filter(Boolean).join(', ')}</dd></div>
-        {#if record.lat !== null && record.lon !== null}<div><dt>Coordinates</dt><dd>{coordinate(record.lat)}, {coordinate(record.lon)}</dd></div>{/if}
-        <div><dt>Precision</dt><dd>{precision}</dd></div>
-        {#if locationMethod(record)}<div><dt>Location method</dt><dd>{locationMethod(record)}</dd></div>{/if}
-        {#if record.evidence?.geometryProvenance?.provider}<div><dt>Geocoding provider</dt><dd>{record.evidence.geometryProvenance.provider}</dd></div>{/if}
+        <div><dt>{tr('Locality', $language)}</dt><dd>{[record.region, record.countryCode].filter(Boolean).join(', ')}</dd></div>
+        {#if record.lat !== null && record.lon !== null}<div><dt>{tr('Coordinates', $language)}</dt><dd>{coordinate(record.lat)}, {coordinate(record.lon)}</dd></div>{/if}
+        <div><dt>{tr('Precision', $language)}</dt><dd>{precision}</dd></div>
+        {#if locationMethod(record)}<div><dt>{tr('Location method', $language)}</dt><dd>{locationMethod(record)}</dd></div>{/if}
+        {#if record.evidence?.geometryProvenance?.provider}<div><dt>{tr('Geocoding provider', $language)}</dt><dd>{record.evidence.geometryProvenance.provider}</dd></div>{/if}
         {#if geocodingConfidence(record) !== null || record.evidence?.geometryProvenance?.confidence_band}<div><dt>Geocoding confidence</dt><dd>{#if geocodingConfidence(record) !== null}{geocodingConfidence(record)} (provider score){/if}{#if record.evidence?.geometryProvenance?.confidence_band}{geocodingConfidence(record) !== null ? ' · ' : ''}{humanLabel(record.evidence.geometryProvenance.confidence_band)}{/if}</dd></div>{/if}
       </dl>
-      {#if openMapHref}<p class="map-action"><a href={openMapHref}>Open in Map</a></p>{/if}
+      {#if openMapHref}<p class="map-action"><a href={openMapHref}>{tr('Open in Map', $language)}</a></p>{/if}
     </section>
     {#if record.lat !== null && record.lon !== null}<LocationPreview latitude={record.lat} longitude={record.lon} precision={record.evidence?.displayPrecision ?? 'unmapped'} category={record.taxonomy?.primaryCategories[0] ?? record.category} />{/if}
     <section aria-labelledby="activities-heading">
-      <h2 id="activities-heading">Activities and classification</h2>
+      <h2 id="activities-heading">{tr('Activities and classification', $language)}</h2>
       <p class="activity">{category(record)}</p>
-      {#if detailActivity(record)}<dl><div><dt>Activities</dt><dd>{detailActivity(record)}</dd></div></dl>{/if}
+      {#if detailActivity(record)}<dl><div><dt>{tr('Activities', $language)}</dt><dd>{detailActivity(record)}</dd></div></dl>{/if}
       {#if sourceClassifications(record).length}<p class="classification">{sourceClassifications(record).join(' · ')}</p>{/if}
     </section>
     {#if record.sourceFacts}
       <section class="source-facts" aria-labelledby="source-facts-heading">
-        <h2 id="source-facts-heading">Source facts</h2>
+        <h2 id="source-facts-heading">{tr('Source facts', $language)}</h2>
         <dl>
           {#if record.sourceFacts.alternateNames?.length}<div><dt>Also known as</dt><dd>{record.sourceFacts.alternateNames.join(' · ')}</dd></div>{/if}
           {#if record.sourceFacts.establishmentId}<div><dt>Establishment ID</dt><dd>{record.sourceFacts.establishmentId}</dd></div>{/if}
