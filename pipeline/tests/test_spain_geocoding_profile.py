@@ -43,7 +43,11 @@ class SpainGeocodingProfileTests(unittest.TestCase):
         self.assertNotEqual(GeoapifyAdapter._normalize("10 Calle de la Constitución"),
                             GeoapifyAdapter._normalize("10 Avenida de la Constitución"))
 
-    @unittest.skipUnless(os.environ.get("UEC_DATABASE_URL"), "private DB acceptance requires UEC_DATABASE_URL")
+    @unittest.skipUnless(
+        os.environ.get("UEC_SPAIN_REAL_DATA_ACCEPTANCE") == "true"
+        and os.environ.get("UEC_DATABASE_URL"),
+        "set UEC_SPAIN_REAL_DATA_ACCEPTANCE=true with the assigned private DB URL",
+    )
     def test_database_display_bridge_positive_and_negative_cases_rollback(self):
         with psycopg.connect(os.environ["UEC_DATABASE_URL"]) as connection:
             database = connection.execute("SELECT current_database()").fetchone()[0]
