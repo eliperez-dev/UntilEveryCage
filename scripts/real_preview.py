@@ -265,6 +265,17 @@ def _http(url: str, token: str | None = None) -> tuple[int | None, dict[str, obj
         with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=3) as response:
             data = json.loads(response.read()) if "json" in response.headers.get("Content-Type", "") else None
             return response.status, data if isinstance(data, dict) else None
+    except urllib.error.HTTPError as error:
+        # Preserve only aggregate API error contracts for diagnostics; never
+        # surface raw response bodies, which could contain private details.
+        try:
+            payload = json.loads(error.read())
+        except (OSError, json.JSONDecodeError):
+            payload = None
+        safe_error = payload.get("error") if isinstance(payload, dict) else None
+        safe_code = safe_error.get("code") if isinstance(safe_error, dict) else None
+        sanitized = {"error": {"code": safe_code}} if isinstance(safe_code, str) and safe_code.replace("_", "").isalnum() else None
+        return error.code, sanitized
     except (OSError, urllib.error.URLError, json.JSONDecodeError):
         return None, None
 
@@ -462,7 +473,10 @@ def up(*, offline_handoff: bool = False) -> dict[str, object]:
         auth_status, payload = _http(counts_url, token)
         api_counts = payload.get("data") if payload else None
         if auth_status != 200 or not isinstance(api_counts, dict):
-            raise PreviewError("authenticated real-preview API count probe failed")
+            error = payload.get("error") if isinstance(payload, dict) else None
+            error_code = error.get("code") if isinstance(error, dict) else None
+            suffix = f" (http_status={auth_status}, error_code={error_code})" if error_code else f" (http_status={auth_status})"
+            raise PreviewError("authenticated real-preview API count probe failed" + suffix)
         expected_api_counts = {
             "facility_candidate_count": summary.get("source_scoped_candidate_count", summary.get("counts", {}).get("candidates")),
             "numeric_coordinate_count": summary.get("numeric_coordinate_count", summary.get("counts", {}).get("source_provided_unverified")),
@@ -1894,6 +1908,7 @@ def strict_live_private_e2e(source_id: str, existing_runner_run_id: str | None =
     os.environ["UEC_REAL_PREVIEW_EMPTY_BOOTSTRAP"] = "1"
     started = False
     primary_error: BaseException | None = None
+    catalonia_reference_path: Path | None = None
     try:
         if _docker_json(["docker", "volume", "ls", "--filter", f"name={VOLUME}", "--format", "{{json .}}"]):
             raise PreviewError("unique disposable database volume already exists; refusing to reuse it")
@@ -1971,12 +1986,55 @@ def strict_live_private_e2e(source_id: str, existing_runner_run_id: str | None =
         certificate = certificate_module.certify(
             source_id, ledger_path, _local_database_url(), f"http://127.0.0.1:{API_PORT}", token)
         certificate_path = ledger_path.with_name("source-preview-certificate.json")
+        catalonia_location_acceptance = None
+        if source_id == "es.cat.feed-sandach":
+            # Keep location enrichment as a separate post-import operation on
+            # this disposable database. Only the approved ICGC municipality
+            # capital locality reference is used, matched by exact source code.
+            terms_path = ROOT / "data" / "terms-reviews" / "es.cat.icgc.municipality-capital-localities.json"
+            catalonia_reference_path = private_root / "location-reference" / "icgc-municipality-capital-localities.csv"
+            reference = acquire_catalonia_locality_reference(catalonia_reference_path, terms_path)
+            imported_reference = import_location_references(
+                str(catalonia_reference_path), reference["source_id"], reference["source_url"],
+                reference["dataset_date"], _local_database_url())
+            if imported_reference.get("status") != "ok":
+                raise PreviewError("Catalonia locality reference import did not complete")
+            enrichment = enrich_locations(source_id, 10000, _local_database_url())
+            if (enrichment.get("status") != "ok"
+                    or enrichment.get("examined") != certificate["counts"]["candidates"]
+                    or enrichment.get("resolved", 0) < 1
+                    or enrichment.get("external_provider_calls") != 0
+                    or enrichment.get("conflicts", 0) != 0
+                    or enrichment.get("resolved", 0) + enrichment.get("unresolved", 0)
+                    + enrichment.get("provider_blocked", 0) + enrichment.get("conflicts", 0)
+                    != enrichment.get("examined")):
+                raise PreviewError("Catalonia locality enrichment counts did not reconcile")
+            viewport = _catalonia_private_viewport_acceptance(
+                token, enrichment["resolved"], f"http://127.0.0.1:{API_PORT}")
+            catalonia_location_acceptance = {
+                "reference": {key: reference[key] for key in (
+                    "source_id", "dataset_date", "retrieved_at_utc", "byte_size", "source_artifact_sha256",
+                    "catalog_metadata_sha256")},
+                "reference_imported_or_existing": imported_reference["imported_or_existing"],
+                "enrichment": {key: enrichment[key] for key in (
+                    "examined", "resolved", "unresolved", "provider_blocked", "conflicts",
+                    "external_provider_calls", "publication")},
+                "private_viewport": viewport,
+                "location_precision": "locality_reference_coarse; municipality capital locality, not facility coordinates",
+                "publication": "not_authorized",
+            }
+            # Keep the original importer counts intact and record post-import
+            # locality/map acceptance separately; only publish a certificate
+            # after all source-specific checks have passed.
+            certificate["location_enrichment"] = catalonia_location_acceptance
         temporary = certificate_path.with_suffix(".tmp")
         temporary.write_text(json.dumps(certificate, sort_keys=True, indent=2) + "\n", encoding="utf-8")
         temporary.replace(certificate_path)
         return {"status": "certified", "source_id": source_id, "run_id": certificate["run_id"],
                 "certificate": str(certificate_path), "counts": certificate["counts"],
                 "checks": certificate["checks"],
+                **({"location_enrichment": catalonia_location_acceptance}
+                   if catalonia_location_acceptance is not None else {}),
                 "refreshes": 1, "idempotent_replay": source_id in {
                     "be.locations", "ca.ontario.meat-plants", "au.npi.facilities", "fsa_approved_establishments",
                     "fss_approved_establishments", "es.cat.feed-sandach", "br.sif.registered",
@@ -1992,6 +2050,13 @@ def strict_live_private_e2e(source_id: str, existing_runner_run_id: str | None =
                 reset()
             except BaseException as error:
                 cleanup_error = error
+        if catalonia_reference_path is not None:
+            try:
+                catalonia_reference_path.unlink(missing_ok=True)
+                catalonia_reference_path.parent.rmdir()
+            except OSError as error:
+                if cleanup_error is None and primary_error is None:
+                    cleanup_error = error
         PROJECT, VOLUME, DB_PORT, API_PORT, WEB_PORT, PRIVATE_ROOT = old[:6]
         if old[6] is None:
             os.environ.pop("UEC_DATABASE_URL", None)
@@ -2004,6 +2069,112 @@ def strict_live_private_e2e(source_id: str, existing_runner_run_id: str | None =
         ACTIVE_PREVIEW_TOKEN = None
         if cleanup_error is not None and primary_error is None:
             raise PreviewError("strict preview succeeded but its disposable database could not be removed") from cleanup_error
+
+
+def acquire_catalonia_locality_reference(output_path: Path, terms_review_path: Path) -> dict[str, str | int]:
+    """Capture the reviewed public ICGC reference for a private Catalonia E2E."""
+    source_id = "es.cat.icgc.municipality-capital-localities"
+    metadata_url = "https://analisi.transparenciacatalunya.cat/api/views/wpyq-we8x.json"
+    source_url = "https://analisi.transparenciacatalunya.cat/api/v3/views/wpyq-we8x/export.csv?accessType=DOWNLOAD"
+    dataset_date = "2024-11-27"
+    try:
+        terms = json.loads(terms_review_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        raise PreviewError("Catalonia locality reference terms review is unavailable") from None
+    if (terms.get("decision") != "approved_for_private_coarse_locality_enrichment_only"
+            or terms.get("download") != source_url or terms.get("last_updated") != dataset_date):
+        raise PreviewError("Catalonia locality reference terms or dataset identity changed")
+    metadata_request = urllib.request.Request(
+        metadata_url,
+        headers={"User-Agent": "UntilEveryCage-private-preview/1.0", "Accept": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(metadata_request, timeout=30) as response:
+            final = urllib.parse.urlsplit(response.geturl())
+            content_type = next((value for key, value in response.headers.items()
+                                 if key.lower() == "content-type"), "").lower()
+            metadata_bytes = response.read(4 * 1024 * 1024 + 1)
+            if (response.status != 200 or final.scheme != "https"
+                    or final.hostname != "analisi.transparenciacatalunya.cat"
+                    or final.path != "/api/views/wpyq-we8x.json"
+                    or final.query or "json" not in content_type
+                    or len(metadata_bytes) > 4 * 1024 * 1024):
+                raise PreviewError("Catalonia locality catalog response failed its source bounds")
+        metadata = json.loads(metadata_bytes)
+        updated_at = metadata.get("rowsUpdatedAt") if isinstance(metadata, dict) else None
+        if not isinstance(updated_at, int) or isinstance(updated_at, bool):
+            raise PreviewError("Catalonia locality catalog omitted its data update date")
+        import datetime
+        observed_date = datetime.datetime.fromtimestamp(updated_at, datetime.timezone.utc).date().isoformat()
+        if observed_date != dataset_date:
+            raise PreviewError("Catalonia locality catalog update date differs from reviewed terms evidence")
+        request = urllib.request.Request(
+            source_url,
+            headers={"User-Agent": "UntilEveryCage-private-preview/1.0", "Accept": "text/csv"},
+        )
+        with urllib.request.urlopen(request, timeout=30) as response:
+            final = urllib.parse.urlsplit(response.geturl())
+            content_type = next((value for key, value in response.headers.items()
+                                 if key.lower() == "content-type"), "").lower()
+            body = response.read(4 * 1024 * 1024 + 1)
+            if (response.status != 200 or final.scheme != "https"
+                    or final.hostname != "analisi.transparenciacatalunya.cat"
+                    or final.path != "/api/v3/views/wpyq-we8x/export.csv"
+                    or urllib.parse.parse_qs(final.query, strict_parsing=True) != {"accessType": ["DOWNLOAD"]}
+                    or "csv" not in content_type or len(body) > 4 * 1024 * 1024):
+                raise PreviewError("Catalonia locality reference response failed its source bounds")
+    except (OSError, urllib.error.URLError, ValueError):
+        raise PreviewError("Catalonia locality reference could not be acquired from its approved endpoint") from None
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_bytes(body)
+    return {"source_id": source_id, "source_url": source_url, "dataset_date": dataset_date,
+            "retrieved_at_utc": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
+            "byte_size": len(body), "source_artifact_sha256": hashlib.sha256(body).hexdigest(),
+            "catalog_metadata_sha256": hashlib.sha256(metadata_bytes).hexdigest()}
+
+
+def _catalonia_private_viewport_acceptance(token: str, expected_count: int, base_url: str) -> dict[str, object]:
+    """Walk the bounded private map viewport and require coarse locality points."""
+    if expected_count < 1:
+        raise PreviewError("Catalonia locality enrichment produced no map-eligible candidates")
+    candidates: list[dict[str, object]] = []
+    seen_ids: set[str] = set()
+    cursor: str | None = None
+    page_count = 0
+    while True:
+        params: dict[str, str | int] = {
+            "source_id": "es.cat.feed-sandach", "west": -180, "south": -90,
+            "east": 180, "north": 90, "limit": 500,
+        }
+        if cursor is not None:
+            params["cursor"] = cursor
+        url = f"{base_url}/dev/real-preview/viewport?{urllib.parse.urlencode(params)}"
+        status, payload = _http(url, token)
+        data = payload.get("data") if payload else None
+        meta = payload.get("meta") if payload else None
+        if (status != 200 or not isinstance(data, list) or not isinstance(meta, dict)
+                or meta.get("private_preview") is not True or len(data) > 500):
+            raise PreviewError("Catalonia private viewport response failed validation")
+        for candidate in data:
+            candidate_id = candidate.get("candidate_id") if isinstance(candidate, dict) else None
+            if (not isinstance(candidate, dict) or candidate.get("source_id") != "es.cat.feed-sandach"
+                    or candidate.get("display_precision") != "locality_reference_coarse"
+                    or not isinstance(candidate_id, str) or candidate_id in seen_ids):
+                raise PreviewError("Catalonia viewport contains an invalid or non-coarse candidate")
+            seen_ids.add(candidate_id)
+            candidates.append(candidate)
+        page_count += 1
+        next_cursor = meta.get("next_cursor")
+        if next_cursor is None:
+            break
+        if not isinstance(next_cursor, str) or not next_cursor or page_count >= 20:
+            raise PreviewError("Catalonia private viewport pagination did not terminate within its bound")
+        cursor = next_cursor
+    if len(candidates) != expected_count:
+        raise PreviewError("Catalonia private viewport count differs from resolved locality candidates")
+    return {"status": "passed", "features": len(candidates), "pages": page_count,
+            "display_precision": "locality_reference_coarse", "private_preview": True}
+
 
 def strict_refresh(source_id: str) -> dict[str, object]:
     """Run one live source refresh and certificate inside a fresh local session."""
@@ -2069,7 +2240,7 @@ def enrich_locations(source_id: str | None, limit: int, database_url: str | None
     if selected_source is not None and selected_source not in allowed:
         raise PreviewError("source has no local-only enrichment adapter")
     db_url = _operator_database_url(database_url)
-    resolved = blocked = unresolved = examined = 0
+    resolved = blocked = unresolved = conflicts = examined = 0
     with psycopg.connect(db_url) as connection:
         rows = connection.execute("""
             SELECT candidate.candidate_id, candidate.snapshot_sha256, candidate.source_id,
@@ -2182,9 +2353,10 @@ def enrich_locations(source_id: str | None, limit: int, database_url: str | None
             resolved += state == "resolved"
             blocked += state == "provider_blocked"
             unresolved += state == "unresolved"
+            conflicts += state == "conflict"
     return {"status": "ok", "scope": "all_sources" if source_id is None else "one_source",
             "source_id": source_id, "examined": examined, "resolved": resolved,
-            "provider_blocked": blocked, "unresolved": unresolved,
+            "provider_blocked": blocked, "unresolved": unresolved, "conflicts": conflicts,
             "mode": "local_reference_only", "external_provider_calls": 0,
             "publication": "none", "privacy": "private_approximate"}
 
