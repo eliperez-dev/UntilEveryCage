@@ -35,7 +35,7 @@ test('centered primary navigation and Tools map controls stay usable across desk
   await page.goto('./#/map?f1a=field&scenario=dense');
   await page.waitForFunction(() => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
-    return map?.isStyleLoaded() && map.getLayer('clusters');
+    return map?.getLayer('clusters');
   });
   const tools = page.getByRole('button', { name: 'Tools', exact: true });
   await tools.click();
@@ -43,7 +43,10 @@ test('centered primary navigation and Tools map controls stay usable across desk
   const nav = page.getByRole('navigation', { name: 'Primary' });
   await expect(nav.getByRole('link')).toHaveText(['Map','Database','API','Contribute','About','FAQ']);
   await expect(page.getByRole('button', { name: 'Search map' })).toBeVisible();
-  await expect(page.getByRole('group', { name: 'Map view' }).getByText('Right-mouse to rotate / Left-mouse to pan')).toBeVisible();
+  const mapControls = page.getByRole('group', { name: 'Map view' });
+  await expect(mapControls.getByText('Right-mouse to rotate / Left-mouse to pan')).toBeVisible();
+  await expect(mapControls.getByLabel('Map style')).toBeEnabled();
+  await expect(mapControls.locator('.map-camera-toggle')).toBeEnabled();
   const midpoint = async () => page.evaluate(() => {
     const rect = document.querySelector('nav[aria-label="Primary"]')!.getBoundingClientRect();
     return rect.left + rect.width / 2;
