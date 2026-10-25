@@ -146,11 +146,17 @@ test('Spanish processing summary is deduplicated in map detail and the full reco
   await page.goto(`./#/map?selected=${id}&release_id=${release}`);
   const panel = page.locator('.reading-sheet[aria-label="Record evidence"]');
   await expect(panel.getByText('Procesamiento y preparación', { exact: true })).toHaveCount(1);
-  await expect(panel.locator('[aria-label="Actividades detalladas"]')).not.toContainText('Procesamiento');
+  const mapActivities = panel.locator('[aria-label="Actividades detalladas"]');
+  await expect(mapActivities).toContainText('Procesamiento de pollo (NRTE)');
+  await expect(mapActivities).toContainText('Meat cutting');
+  await expect(mapActivities).not.toHaveText(/(?:^|,\s*)Procesamiento(?:,\s*|$)/);
   await panel.getByRole('link', { name: 'Abrir página de la instalación', exact: true }).click();
   const full = page.locator('.public-record');
   await expect(full.getByText('Procesamiento y preparación', { exact: true })).toHaveCount(1);
-  await expect(full.locator('[aria-label="Actividades detalladas"]')).not.toContainText('Procesamiento');
+  const fullActivities = full.locator('[aria-label="Actividades detalladas"]');
+  await expect(fullActivities).toContainText('Procesamiento de pollo (NRTE)');
+  await expect(fullActivities).toContainText('Meat cutting');
+  await expect(fullActivities).not.toHaveText(/(?:^|,\s*)Procesamiento(?:,\s*|$)/);
 });
 
 test('city-level geocoding keeps its approximation and actual provider score in one Location section', async ({ page }) => {
