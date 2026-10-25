@@ -83,8 +83,8 @@
     </div>
     {#if selected}
       <h4>{title(selected)}</h4>
-      {#if error}<p role="alert">Report references could not be loaded. <button type="button" onclick={() => void load(selected!, retryCursor ?? undefined)}>Retry</button></p>{/if}
-      {#if loading}<p role="status">Loading report references…</p>
+      {#if error}<p role="alert">Reports could not be loaded. <button type="button" onclick={() => void load(selected!, retryCursor ?? undefined)}>Retry</button></p>{/if}
+      {#if loading}<p role="status">Loading reports…</p>
       {:else if rows.length}
         <ul>
           {#each rows as reference (reference.reference_id)}
@@ -98,7 +98,7 @@
         </ul>
         {#if cursor}<button type="button" disabled={loading} onclick={() => void load(selected!, cursor!)}>Load more {title(selected).toLocaleLowerCase()}</button>{/if}
       {:else if !error && cursor}<p>No matching references on this page.</p><button type="button" disabled={loading} onclick={() => void load(selected!, cursor!)}>Load more {title(selected).toLocaleLowerCase()}</button>
-      {:else if !error}<p>No {title(selected).toLocaleLowerCase()} references are available in this release.</p>{/if}
+      {:else if !error}<p>{selected === 'annual_reports' ? 'No annual reports found.' : 'No inspection reports found.'}</p>{/if}
     {/if}
   </section>
 {/if}

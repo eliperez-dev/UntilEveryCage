@@ -31,6 +31,20 @@ data downloadable. No public bulk-package route is implemented.
 
 Researchers may request `GET /api/v2/locations.csv?profile=official` (or another explicit supported profile). Without `limit`, the export returns every eligible row in the selected release/profile. Supplying `limit=1..1000` explicitly opts into the first deterministic UUID-ordered page; `X-UEC-Export-Total-Count`, `X-UEC-Export-Returned-Count`, and `X-UEC-Export-Truncated` disclose the current eligible total and whether the explicit bound omitted rows. It uses deterministic CSV columns and escaping, contains only the selected public projection, and includes `release_profile`, `release_id`, and `manifest_sha256` on every row plus matching response headers. Community exports retain their unreviewed/not-approved warning. It is unavailable when no eligible release with a manifest exists; it never exposes raw evidence or restricted records. `release_id` pins the export to an eligible promoted or retained historical release in the selected profile. CSV does not apply discovery filters or cursor pagination; use paginated location JSON for filtered queries.
 
+`GET /api/v2/locations/{facility_id}/aphis-report-links` rechecks the selected
+release's current public APHIS facility eligibility and suppression before
+resolving links. Existing report references remain gated by their release
+approval and are identified as `release_approved_evidence` with exact event
+matching. Additional dated links may be recovered from the public APHIS search
+by exact match to that released facility's APHIS registration identifier;
+these are labeled `source_history_recovery` and do not change facility release
+membership or expose report contents or source identifiers. Recovered rows
+contain an actual allowlisted report/download URL, not the source landing page.
+The bounded APHIS page cursor is opaque and shares the UUID wire shape with
+release-reference cursors. Database failures return service-unavailable errors;
+an eligible facility with no matching public APHIS reports returns an empty
+successful page.
+
 `GET /api/v2/map/feed?profile=official&release_id=...` returns a compact GeoJSON FeatureCollection for one currently eligible promoted release. It reads the live-gated public discovery projection in a repeatable-read snapshot and fails with `413` if the mapped point count exceeds 75,000. Features contain only facility ID, source ID, taxonomy display/category keys, precision, weight, and point coordinates; names, addresses, and raw source fields are excluded. Exact, source-reported, approximate, and city precision remain distinct. Metadata carries the immutable manifest's dataset version/label, its digest, the current suppression generation, and current public/mapped/unmapped counts. The endpoint supports ETag revalidation; clients must discard stale map data when the release or suppression generation changes.
 
 For reproducible bulk snapshots, use `pipeline/scripts/stages/export-release.py` with an explicit release ID and profile. It emits deterministic CSV and GeoJSON, a schema/data dictionary, `manifest.json`, and `SHA256SUMS.json`; it fails closed on test-only, unapproved, privacy-failed, suppressed, profile-mismatched, or unclear-rights rows. See [the data-product contract](../data-product.md) and [the machine-readable dictionary](../data-dictionary.json). The package is the citation artifact; the API export is a convenience view of the same public projection.

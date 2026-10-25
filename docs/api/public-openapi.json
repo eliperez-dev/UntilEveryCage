@@ -202,21 +202,21 @@
     "/api/v2/locations/{facility_id}/aphis-report-links": {
       "get": {
         "operationId": "getAphisReportLinks",
-        "summary": "Resolve report links for existing approved APHIS references",
-        "description": "Requires a facility UUID and selected public release. The server derives the APHIS identifier from that release's public detail and calls APHIS only when a matching annual-report or inspection reference already passes current release, facility, privacy, rights, approval, and suppression gates. Results are matched by the already released year/date. Only allowlisted APHIS report and Column E URLs plus those released year/date fields are returned; no counts, exception assertions, raw response fields, report contents, or source identifiers are returned. APHIS Salesforce attachments are restricted to `aphis.file.force.com/sfc/dist/version/download/` and the exact `asPdf,d,ids,oid` query-key set with validated values. Responses are no-store; bounded server cache entries are consulted only after current eligibility is rechecked.",
+        "summary": "Resolve release-approved and recovered APHIS report links",
+        "description": "Requires an eligible APHIS facility UUID and selected public release. The server derives the APHIS registration identifier from that release's public detail; client-supplied identifiers are never accepted. Existing event references retain their release, facility, privacy, rights, approval and suppression gates and are matched by exact released year/date. The endpoint also recovers additional dated report links from the APHIS public search by exact match to the selected release's APHIS identifier. Recovered rows are labeled `source_history_recovery` with `exact_release_source_identifier` lineage and do not change facility release membership or assert report contents. They include only dated metadata and allowlisted actual report/download URLs; source landing pages, counts, exception assertions, raw fields, report contents and source identifiers are excluded. APHIS Salesforce attachments are restricted to `aphis.file.force.com/sfc/dist/version/download/` and the exact `asPdf,d,ids,oid` query-key set with validated values. Responses are no-store; bounded server cache entries are consulted only after current eligibility is rechecked.",
         "tags": ["Locations"],
         "parameters": [
           { "$ref": "#/components/parameters/facility_idPath" },
           { "$ref": "#/components/parameters/profile" },
           { "$ref": "#/components/parameters/release_id" },
           { "name": "kind", "in": "query", "required": true, "schema": { "type": "string", "enum": ["annual_reports", "inspections"] } },
-          { "name": "cursor", "in": "query", "required": false, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "cursor", "in": "query", "required": false, "description": "Release evidence reference UUID, or opaque APHIS history-page cursor returned by this endpoint.", "schema": { "type": "string", "format": "uuid" } },
           { "name": "limit", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 } }
         ],
         "responses": {
-          "200": { "description": "Release-qualified report links. Direct document URLs may be absent; the existing APHIS source page remains available from evidence references.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AphisReportLinks" } } }, "headers": { "Cache-Control": { "schema": { "type": "string", "const": "no-store" } } } },
+          "200": { "description": "Release-qualified APHIS report links. Recovered history rows include only actual allowlisted document URLs.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AphisReportLinks" } } }, "headers": { "Cache-Control": { "schema": { "type": "string", "const": "no-store" } } } },
           "400": { "$ref": "#/components/responses/Invalid" },
-          "404": { "description": "Facility, release, or qualifying APHIS references unavailable.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Facility, release, or APHIS registration reference unavailable.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
           "429": { "$ref": "#/components/responses/Limited" },
           "502": { "description": "APHIS source is temporarily unavailable.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
           "503": { "$ref": "#/components/responses/Unavailable" }
@@ -1864,24 +1864,28 @@
         "oneOf": [
           {
             "type": "object",
-            "required": ["reference_id", "source_id", "evidence_type", "event_date", "event_period", "source_url", "report_url", "column_e_url"],
+            "required": ["reference_id", "source_id", "evidence_type", "event_date", "event_period", "source_url", "report_url", "column_e_url", "reference_origin", "match_method"],
             "properties": {
               "reference_id": { "type": "string", "format": "uuid" }, "source_id": { "const": "us.aphis.annual-reports" },
               "evidence_type": { "const": "annual_reports" }, "event_date": { "type": "null" }, "event_period": { "type": "string", "pattern": "^[0-9]{4}$" },
               "source_url": { "const": "https://direct.aphis.usda.gov/awa/research-facility-report/annual-summary" },
               "report_url": { "type": ["string", "null"], "format": "uri", "description": "HTTPS URL on a named APHIS host and approved report/download path, including the strict APHIS Salesforce distribution URL shape." },
-              "column_e_url": { "type": ["string", "null"], "format": "uri", "description": "HTTPS URL on a named APHIS host and approved report/download path, including the strict APHIS Salesforce distribution URL shape." }
+              "column_e_url": { "type": ["string", "null"], "format": "uri", "description": "HTTPS URL on a named APHIS host and approved report/download path, including the strict APHIS Salesforce distribution URL shape." },
+              "reference_origin": { "type": "string", "enum": ["release_approved_evidence", "source_history_recovery"] },
+              "match_method": { "type": "string", "enum": ["exact_source_identifier", "exact_release_source_identifier"] }
             }, "additionalProperties": false
           },
           {
             "type": "object",
-            "required": ["reference_id", "source_id", "evidence_type", "event_date", "event_period", "source_url", "report_url", "column_e_url"],
+            "required": ["reference_id", "source_id", "evidence_type", "event_date", "event_period", "source_url", "report_url", "column_e_url", "reference_origin", "match_method"],
             "properties": {
               "reference_id": { "type": "string", "format": "uuid" }, "source_id": { "const": "us.inspections" },
               "evidence_type": { "const": "inspections" }, "event_date": { "type": "string", "format": "date" }, "event_period": { "type": "null" },
               "source_url": { "const": "https://direct.aphis.usda.gov/awa/search/inspection-reports" },
               "report_url": { "type": ["string", "null"], "format": "uri", "description": "HTTPS URL on a named APHIS host and approved report/download path, including the strict APHIS Salesforce distribution URL shape." },
-              "column_e_url": { "type": "null" }
+              "column_e_url": { "type": "null" },
+              "reference_origin": { "type": "string", "enum": ["release_approved_evidence", "source_history_recovery"] },
+              "match_method": { "type": "string", "enum": ["exact_source_identifier", "exact_release_source_identifier"] }
             }, "additionalProperties": false
           }
         ]

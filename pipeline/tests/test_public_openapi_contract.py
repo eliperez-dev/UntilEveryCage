@@ -166,16 +166,18 @@ class PublicOpenApiContractTests(unittest.TestCase):
         self.assertEqual(set(re.findall(r"params\s*\.\s*(\w+)", handler)), {"kind", "profile", "limit", "release_id", "cursor"})
         self.assertIn("provenance_source_id", handler)
         self.assertIn("graph_public_evidence_references_current", handler)
-        self.assertLess(handler.index("graph_public_evidence_references_current"), handler.index("aphis_public_report_links(&certificate, kind)"))
+        self.assertLess(handler.index("graph_public_evidence_references_current"), handler.index("aphis_public_report_links(&certificate, kind"))
         self.assertIn("no_store_response", handler)
         self.assertIn("APHIS_PUBLIC_REPORT_PAGE_MAX", self.rust)
-        report_fields = {"reference_id", "source_id", "evidence_type", "event_date", "event_period", "source_url", "report_url", "column_e_url"}
+        self.assertIn("source_history_recovery", operation["description"])
+        self.assertIn("exact_release_source_identifier", operation["description"])
+        report_fields = {"reference_id", "source_id", "evidence_type", "event_date", "event_period", "source_url", "report_url", "column_e_url", "reference_origin", "match_method"}
         variants = self.spec["components"]["schemas"]["AphisReportLink"]["oneOf"]
         for variant in variants:
             self.assertEqual(set(variant["properties"]), report_fields)
             self.assertEqual(set(variant["required"]), report_fields)
             self.assertNotIn("observed_at", variant["properties"])
-            self.assertNotIn("match_method", variant["properties"])
+            self.assertIn("source_history_recovery", str(variant["properties"]["reference_origin"]))
 
     def test_graph_query_surface_follows_used_fields_without_fake_traversal(self):
         fields = self.fields(self.graph, "PublicGraphQuery")

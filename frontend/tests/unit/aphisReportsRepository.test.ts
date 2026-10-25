@@ -6,6 +6,7 @@ const annual = {
   evidence_type: 'annual_reports', event_date: null, event_period: '2025',
   source_url: 'https://direct.aphis.usda.gov/awa/research-facility-report/annual-summary',
   report_url: 'https://aphis.my.site.com/PublicSearchTool/s/annual-report?id=public-report', column_e_url: null,
+  reference_origin: 'release_approved_evidence', match_method: 'exact_source_identifier',
 };
 const inspection = {
   ...annual, reference_id: '550e8400-e29b-41d4-a716-446655440002', source_id: 'us.inspections',
@@ -29,7 +30,7 @@ describe('APHIS report link repository', () => {
     });
     expect(String(fetcher.mock.calls[0]?.[0])).toContain('/api/v2/locations/' + entity + '/aphis-report-links?profile=official&release_id=release-1&kind=annual_reports&limit=20');
     expect(Object.keys(annual).sort()).toEqual([
-      'column_e_url', 'event_date', 'event_period', 'evidence_type', 'reference_id', 'report_url', 'source_id', 'source_url',
+      'column_e_url', 'event_date', 'event_period', 'evidence_type', 'match_method', 'reference_id', 'reference_origin', 'report_url', 'source_id', 'source_url',
     ]);
   });
 
@@ -40,6 +41,18 @@ describe('APHIS report link repository', () => {
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify(envelope([withUnreturnedMetadata])), { status: 200 }));
     await expect(new AphisReportsRepository(fetcher).page(entity, 'official', 'annual_reports', 'release-1'))
       .rejects.toThrow('APHIS report response did not match the selected release');
+  });
+
+  it('accepts explicitly labeled historical recovery while rejecting a source homepage as a report', async () => {
+    const recovered = { ...annual, event_period: '2024', reference_origin: 'source_history_recovery', match_method: 'exact_release_source_identifier' };
+    const accepted = vi.fn().mockResolvedValue(new Response(JSON.stringify(envelope([recovered])), { status: 200 }));
+    await expect(new AphisReportsRepository(accepted).page(entity, 'official', 'annual_reports', 'release-1'))
+      .resolves.toMatchObject({ data: [recovered] });
+    const homepage = vi.fn().mockResolvedValue(new Response(JSON.stringify(envelope([{
+      ...recovered, report_url: 'https://aphis.my.site.com/PublicSearchTool/s/annual-reports',
+    }])), { status: 200 }));
+    await expect(new AphisReportsRepository(homepage).page(entity, 'official', 'annual_reports', 'release-1'))
+      .rejects.toThrow('APHIS report response did not match');
   });
 
   it('invokes fetch with the global receiver required by native browser fetch', async () => {
