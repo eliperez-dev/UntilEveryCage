@@ -21,11 +21,14 @@ class SpainGeocodingProfileTests(unittest.TestCase):
             "confidence_score < .90",
             "result_type NOT IN ('building','amenity')",
             "public_access_restricted",
+            "capture_spain_geoapify_private_display",
+            "geocode_results_spain_geoapify_private_display",
         ):
             with self.subTest(required=required):
                 self.assertIn(required, sql)
         self.assertNotIn("DROP TABLE", sql.upper())
-        self.assertNotIn("DROP TRIGGER", sql.upper())
+        self.assertNotIn("CREATE OR REPLACE FUNCTION REAL_PREVIEW.CAPTURE_GEOAPIFY_PRIVATE_DISPLAY", sql.upper())
+        self.assertNotIn("DROP TRIGGER GEOCODE_RESULTS_GEOAPIFY_PREVIEW_DISPLAY", sql.upper())
 
     def test_accent_normalization_preserves_numeric_and_street_tokens(self):
         self.assertEqual(GeoapifyAdapter._normalize("10 Calle de la Constitución"),

@@ -33,7 +33,9 @@ BEGIN
             '[^[:alnum:]]+', ' ', 'g'))
     $function$;
 
-    CREATE OR REPLACE FUNCTION real_preview.capture_geoapify_private_display()
+    -- Keep the shared historical trigger untouched. Spain gets a separate
+    -- source-scoped bridge so its normalization cannot change other countries.
+    CREATE OR REPLACE FUNCTION real_preview.capture_spain_geoapify_private_display()
     RETURNS trigger LANGUAGE plpgsql AS $function$
     DECLARE
         matched_candidate UUID;
@@ -92,6 +94,8 @@ BEGIN
          ORDER BY target.created_at DESC
          LIMIT 1;
 
+        IF matched_candidate IS NULL OR properties IS NULL THEN RETURN NEW; END IF;
+
         result_type := properties->>'result_type';
         result_country := upper(properties->>'country_code');
         confidence_text := properties#>>'{rank,confidence}';
@@ -136,5 +140,10 @@ BEGIN
         RETURN NEW;
     END
     $function$;
+
+    DROP TRIGGER IF EXISTS geocode_results_spain_geoapify_private_display ON uec.geocode_results;
+    CREATE TRIGGER geocode_results_spain_geoapify_private_display
+        AFTER INSERT ON uec.geocode_results
+        FOR EACH ROW EXECUTE FUNCTION real_preview.capture_spain_geoapify_private_display();
 END
 $migration$;

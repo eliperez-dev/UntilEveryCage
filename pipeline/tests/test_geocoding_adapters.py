@@ -173,6 +173,32 @@ class GeoapifyAdapterTests(unittest.TestCase):
         self.assertEqual(mismatch.status, "review_required")
         self.assertIsNone(mismatch.latitude)
 
+    def test_spain_private_profile_rejects_wrong_country_wrong_address_ambiguity_and_low_confidence(self):
+        def feature(country="es", address="10 Calle de la Constitución", confidence=0.96):
+            return {"geometry": {"coordinates": [-3.7, 40.4]}, "properties": {
+                "place_id": "synthetic", "result_type": "building", "country_code": country,
+                "address_line1": address, "rank": {"confidence": confidence},
+            }}
+
+        query = "10 Calle de la Constitucion, Madrid, España"
+        cases = (
+            ([feature(country="pt")], "wrong country"),
+            ([feature(address="11 Calle de la Constitución")], "different number"),
+            ([feature(), feature()], "ambiguous viable results"),
+            ([feature(confidence=0.89)], "low confidence"),
+        )
+        for features, reason in cases:
+            with self.subTest(reason=reason):
+                adapter = geoapify.GeoapifyAdapter(
+                    api_key="test-secret", country_code="es", private_source_profile=True,
+                    allow_locality_match=False,
+                    opener=unittest.mock.Mock(return_value=FakeResponse({"features": features})),
+                )
+                result = adapter.geocode(query)
+                self.assertEqual(result.status, "review_required")
+                self.assertIsNone(result.latitude)
+                self.assertIsNone(result.longitude)
+
     def test_private_source_profile_rejects_multiple_viable_or_wrong_country(self):
         base = {"geometry": {"type": "Point", "coordinates": [-2.5, 55.9]},
                 "properties": {"result_type": "building", "country_code": "gb",
