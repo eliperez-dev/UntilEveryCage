@@ -27,12 +27,13 @@ describe('public record connections', () => {
     expect(component).toContain('edge.provenance.source_ids');
     expect(component).toContain('Object.keys(edge.signals)');
     expect(component).not.toContain('edge.disclaimer');
-    expect(component).toContain('<p class="empty">None</p>');
+    expect(component).toContain('<p class="empty">{tr(\'None\', $language)}</p>');
   });
 
   it('shows None without filters for an empty record, while keeping active filters available', () => {
     expect(component).toContain("kind !== 'all' || confidence !== 'all' || (!loading && !error && rows.length > 0)");
-    expect(component).toContain('<p class="empty">None</p>');
+    expect(component).toContain('<p class="empty">{tr(\'None\', $language)}</p>');
+    expect(component).toContain("tr('Loading connections…', $language)");
   });
 
   it('delegates relevance-gated APHIS reports to the on-demand report component without generic copy', () => {
@@ -40,15 +41,16 @@ describe('public record connections', () => {
     expect(component).toContain('<AphisReports {facilityId} {releaseId} {profile} {sourceId} {sourceFacts} />');
     expect(aphisReports).toContain('isAphisRelevant(sourceId, sourceFacts)');
     expect(aphisReports).toContain('onclick={() => void load(kind)}');
-    expect(aphisReports).toContain('Loading report references…');
-    expect(aphisReports).toContain('Report references could not be loaded.');
+    expect(aphisReports).toContain("tr('Loading reports…', $language)");
+    expect(aphisReports).toContain("tr('Reports could not be loaded.', $language)");
     expect(aphisReports).toContain('Open APHIS source page');
     expect(aphisReports).not.toContain('publication gates');
     expect(aphisReports).not.toContain('No APHIS evidence references are approved');
   });
 
   it('offers explicit annual and inspection fetches and prevents duplicate or stale requests', () => {
-    expect(aphisReports).toContain("'Fetch annual reports' : 'Fetch inspection reports'");
+    expect(aphisReports).toContain("kind === 'annual_reports' ? 'Fetch annual reports' : 'Fetch inspection reports'");
+    expect(aphisReports).toContain("tr(selected === 'annual_reports' ? 'No annual reports found.' : 'No inspection reports found.', $language)");
     expect(aphisReports).toContain('if (loading) return;');
     expect(aphisReports).toContain('if (selected === kind && !next && !error && fetched) return;');
     expect(aphisReports).toContain('const queryKey = $derived(`${facilityId}\\u0000${releaseId}\\u0000${profile}`)');

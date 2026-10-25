@@ -23,7 +23,7 @@ describe('search UI repair contract', () => {
 
   it('keeps filters keyboard-operable and gives each control an accessible reading target', () => {
     expect(field).toContain('<details class="filters">');
-    expect(field).toMatch(/<summary>Filters/);
+    expect(field).toMatch(/<summary>\{tr\('Filters', \$language\)\}/);
     expect(field).toMatch(/<fieldset><legend>Country<\/legend>/);
     expect(field).toMatch(/<fieldset><legend>Source<\/legend>/);
     expect(field).toMatch(/<fieldset><legend>Activity category<\/legend>/);
