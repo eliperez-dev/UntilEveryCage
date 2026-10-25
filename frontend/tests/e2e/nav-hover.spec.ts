@@ -44,8 +44,9 @@ test('direct links retain native keyboard and browser navigation', async ({ page
   await expect(page.getByRole('heading', { name: 'Browse records', exact: true })).toBeVisible();
   const about = page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'About', exact: true });
   const popupPromise = context.waitForEvent('page');
-  // Exercise a different native destination; opening the already-active href varies across browsers.
-  await about.click({ button: 'middle' });
+  // Use the native new-tab modifier: headless Linux middle-click handling is
+  // inconsistent. Do not replace this with window.open or a scripted goto.
+  await about.click({ modifiers: ['ControlOrMeta'] });
   const popup = await popupPromise;
   const pageErrors: string[] = [];
   const failedResources: string[] = [];
@@ -61,7 +62,7 @@ test('direct links retain native keyboard and browser navigation', async ({ page
     }
   });
   try {
-    // Native middle-click tabs may be backgrounded and some engines defer their app load.
+    // Native new tabs may be backgrounded and some engines defer their app load.
     await popup.bringToFront();
     await expect(popup).toHaveURL(/#\/about(?:$|[/?])/);
     await popup.waitForLoadState('domcontentloaded', { timeout: 10_000 });
@@ -77,7 +78,7 @@ test('direct links retain native keyboard and browser navigation', async ({ page
       failedResources,
       assertion: error instanceof Error ? error.message : String(error),
     };
-    await testInfo.attach('middle-click-popup-diagnostics.json', {
+    await testInfo.attach('native-new-tab-diagnostics.json', {
       body: JSON.stringify(diagnostics, null, 2),
       contentType: 'application/json',
     });
