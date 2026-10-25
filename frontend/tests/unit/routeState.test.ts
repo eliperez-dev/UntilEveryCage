@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseRoute, serializeRoute } from '../../src/app/routeState';
+import { mapHrefFromHash, mapHrefFromParams, parseRoute, safeMapHref, serializeRoute } from '../../src/app/routeState';
 
 describe('routeState', () => {
   it('defaults the root and empty hash to the map', () => {
@@ -14,17 +14,30 @@ describe('routeState', () => {
     expect(parseRoute('#/database')).toEqual({ kind: 'database' });
   });
 
-  it('keeps the requested About hierarchy and the old methodology alias', () => {
+  it('keeps the manifesto route and opens legacy FAQ and methodology URLs in the matching FAQ section', () => {
     expect(parseRoute('#/about')).toEqual({ kind: 'about', section: 'overview' });
     expect(parseRoute('#/about/manifesto')).toEqual({ kind: 'about', section: 'overview' });
     expect(serializeRoute(parseRoute('#/about/manifesto') as { kind: 'about'; section: 'overview' })).toBe('#/about');
-    expect(parseRoute('#/about/sources')).toEqual({ kind: 'about', section: 'sources' });
-    expect(parseRoute('#/methodology?map=%23%2Fmap%3Ff1a%3Dfield')).toEqual({ kind: 'about', section: 'sources', returnMapHref: '#/map?f1a=field' });
+    expect(parseRoute('#/about?section=sources')).toEqual({ kind: 'about', section: 'sources' });
+    expect(parseRoute('#/about/sources')).toEqual({ kind: 'faq', section: 'technology' });
+    expect(parseRoute('#/methodology')).toEqual({ kind: 'faq', section: 'technology' });
+    expect(parseRoute('#/about/faq')).toEqual({ kind: 'faq', section: 'records' });
+    expect(parseRoute('#/about/help')).toEqual({ kind: 'faq', section: 'help' });
+    expect(parseRoute('#/faq?section=contributions')).toEqual({ kind: 'faq', section: 'contributions' });
+  });
+
+  it('preserves only validated map context when returning from Database or other routes', () => {
+    const context = new URLSearchParams('lat=44.5&lon=8.1&z=5&pitch=32&bearing=-12&basemap=satellite&list=open&release_id=release-2026-10&q=private%20search&scenario=default&f1a=field&extra=unsafe');
+    expect(mapHrefFromParams(context)).toBe('#/map?lat=44.5&lon=8.1&z=5&pitch=32&bearing=-12&basemap=satellite&list=open&release_id=release-2026-10');
+    expect(mapHrefFromHash('#/database?lat=44.5&lon=8.1&z=5&pitch=32&bearing=-12&basemap=satellite&list=open&release_id=release-2026-10&q=private&extra=unsafe')).toBe('#/map?lat=44.5&lon=8.1&z=5&pitch=32&bearing=-12&basemap=satellite&list=open&release_id=release-2026-10');
+    expect(mapHrefFromHash('#/database?lat=100&lon=181&z=99&pitch=90&bearing=181&list=closed&release_id=bad/value')).toBe('#/map');
+    expect(safeMapHref('#/map?lat=44.5&lon=8.1&q=private&f1a=field')).toBe('#/map?lat=44.5&lon=8.1');
+    expect(safeMapHref('#/database?lat=44.5')).toBeUndefined();
   });
 
   it('keeps API and downloads aliases with map context', () => {
     for (const kind of ['api', 'downloads'] as const) {
-      const route = { kind, returnMapHref: '#/map?f1a=field' };
+      const route = { kind, returnMapHref: '#/map?lat=44.5&lon=8.1' };
       expect(parseRoute(serializeRoute(route))).toEqual(route);
     }
   });
@@ -34,14 +47,14 @@ describe('routeState', () => {
     expect(parseRoute('#/database/api')).toEqual({ kind: 'api' });
     expect(serializeRoute({ kind: 'api' })).toBe('#/database/api');
     expect(parseRoute('#/database/downloads')).toEqual({ kind: 'downloads' });
-    expect(parseRoute('#/about/faq')).toEqual({ kind: 'about', section: 'faq' });
-    expect(parseRoute('#/about/help')).toEqual({ kind: 'about', section: 'help' });
+    expect(parseRoute('#/about/faq')).toEqual({ kind: 'faq', section: 'records' });
+    expect(parseRoute('#/about/help')).toEqual({ kind: 'faq', section: 'help' });
   });
 
   it('parses the contribution hub, form subroutes, and bug route', () => {
     expect(parseRoute('#/contribute?target=synthetic-record')).toEqual({ kind: 'contribute', targetRecordId: 'synthetic-record' });
     expect(parseRoute('#/contribute/facility')).toEqual({ kind: 'community', page: 'form', formKind: 'facility' });
-    expect(parseRoute('#/contribute/evidence?target=synthetic-record&map=%23%2Fmap%3Ff1a%3Dfield')).toEqual({ kind: 'community', page: 'form', formKind: 'evidence', targetRecordId: 'synthetic-record', returnMapHref: '#/map?f1a=field' });
+    expect(parseRoute('#/contribute/evidence?target=synthetic-record&map=%23%2Fmap%3Flat%3D44.5%26lon%3D8.1%26q%3Dprivate')).toEqual({ kind: 'community', page: 'form', formKind: 'evidence', targetRecordId: 'synthetic-record', returnMapHref: '#/map?lat=44.5&lon=8.1' });
     expect(parseRoute('#/contribute/evidence?target=4c4708fa-cdde-51dd-b7b9-30c907f7acce')).toMatchObject({ kind: 'community', page: 'form', formKind: 'evidence', targetRecordId: '4c4708fa-cdde-51dd-b7b9-30c907f7acce' });
     expect(parseRoute('#/contribute/privacy-removal')).toEqual({ kind: 'community', page: 'form', formKind: 'privacy_removal' });
     expect(parseRoute('#/contribute/bug')).toEqual({ kind: 'bug-report' });
@@ -62,7 +75,7 @@ describe('routeState', () => {
 
   it('round-trips all selector types with record and map context, retaining old aliases', () => {
     for (const formKind of ['facility', 'evidence', 'correction', 'duplicate', 'privacy_removal', 'bug'] as const) {
-      const route = { kind: 'contribute' as const, formKind, targetRecordId: 'synthetic-record', returnMapHref: '#/map?f1a=field' };
+      const route = { kind: 'contribute' as const, formKind, targetRecordId: 'synthetic-record', returnMapHref: '#/map?lat=44.5&lon=8.1' };
       expect(parseRoute(serializeRoute(route))).toEqual(route);
     }
     expect(parseRoute('#/contribute?type=unsupported')).toEqual({ kind: 'contribute' });
@@ -79,7 +92,7 @@ describe('routeState', () => {
   });
 
   it('round-trips a public claim link with its explicit release context', () => {
-    const route = { kind: 'community' as const, page: 'claim-detail' as const, claimId: 'claim-42', releaseId: 'release-2026-10', returnMapHref: '#/map?f1a=field' };
+    const route = { kind: 'community' as const, page: 'claim-detail' as const, claimId: 'claim-42', releaseId: 'release-2026-10', returnMapHref: '#/map?lat=44.5&lon=8.1' };
     const serialized = serializeRoute(route);
     expect(serialized).toContain('release_id=release-2026-10');
     expect(parseRoute(serialized)).toEqual(route);

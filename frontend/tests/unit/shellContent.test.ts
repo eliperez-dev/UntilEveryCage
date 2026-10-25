@@ -4,6 +4,8 @@ import { describe, expect, it } from 'vitest';
 
 const masthead = readFileSync(resolve(process.cwd(), 'src/app/PreviewMasthead.svelte'), 'utf8');
 const about = readFileSync(resolve(process.cwd(), 'src/app/AboutPage.svelte'), 'utf8');
+const faq = readFileSync(resolve(process.cwd(), 'src/app/FaqPage.svelte'), 'utf8');
+const footer = readFileSync(resolve(process.cwd(), 'src/app/ProjectFooter.svelte'), 'utf8');
 const contributions = readFileSync(resolve(process.cwd(), 'src/app/CommunityContributions.svelte'), 'utf8');
 const contribute = readFileSync(resolve(process.cwd(), 'src/app/ContributePage.svelte'), 'utf8');
 const api = readFileSync(resolve(process.cwd(), 'src/app/ApiPage.svelte'), 'utf8');
@@ -40,10 +42,30 @@ describe('normal shell content', () => {
     expect(picker).not.toContain('rotate(-45deg)');
   });
 
-  it('keeps contribution instructions in the combined About page', () => {
-    expect(about).toContain('Explore and contribute');
-    expect(about).toContain('private tracking link');
+  it('keeps the supplied manifesto, empty counter slot, and concise FAQ separate', () => {
+    expect(about).toContain('About Until Every Cage is Empty');
+    expect(about).toContain('The Architecture of Silence');
+    expect(about).toContain('Until Every Cage is Empty</h2>');
+    expect(about).toContain('<aside class="about-counter-slot" aria-label="Animal counter"></aside>');
+    expect(about).not.toContain('Explore and contribute');
+    expect(about).not.toContain('Common questions');
+    expect(about).not.toContain('estimate-number');
+    expect(faq).toContain('Technology');
+    expect(faq).toContain('PostgreSQL with PostGIS');
+    for (const topic of ['suggest a facility', 'add evidence', 'suggest a correction', 'possible duplicate', 'privacy review', 'private tracking link', 'report a bug']) expect(faq).toContain(topic);
+    expect(faq).not.toContain('email-notification');
     expect(about).not.toContain('<video');
+  });
+
+  it('restores the living-project footer and leaves the backend version integration slot empty', () => {
+    expect(footer).toContain('independent, open-source, ad-free');
+    for (const url of ['mailto:untileverycageproject@protonmail.com', 'https://discord.gg/wbdTHzAZ4b', 'https://ko-fi.com/untileverycageisempty', 'https://linktr.ee/veganresource', 'https://github.com/eliperez-dev/UntilEveryCage']) expect(footer).toContain(url);
+    expect(footer).toContain('AGPLv3 or later');
+    expect(footer).toContain('CC BY-NC-SA where applicable');
+    expect(footer).toContain('ADAPTT');
+    expect(footer).toContain('Final Nail');
+    expect(footer).toContain('<div class="application-version-slot"></div>');
+    expect(footer).not.toContain('v1.5.1');
   });
 
   it('keeps public community browsing tied to a published release, separately from intake', () => {
@@ -63,14 +85,6 @@ describe('normal shell content', () => {
     expect(app).toContain('selectedReleaseId={new URLSearchParams(route.returnMapHref?.split(\'?\')[1] ?? \'\').get(\'release_id\')}');
     expect(api).toContain("...(releaseId ? { release_id: releaseId } : {})");
     expect(api).toContain('aria-label="Public release"');
-  });
-
-  it('keeps counter scope and source detail secondary to the estimate', () => {
-    expect(about).toContain('<h2 id="estimate-title">Estimated animals killed</h2>');
-    expect(about).toContain('Since this page opened · modeled from 2024 global estimates');
-    expect(about).toContain('<details class="source-note"><summary>Source and method</summary>');
-    expect(about).toContain('blob/eli/v2/docs/story/claim-ledger.md');
-    expect(about).not.toContain('Scope:</strong>');
   });
 
   it('uses a private fragment tracking capability for status lookup', () => {

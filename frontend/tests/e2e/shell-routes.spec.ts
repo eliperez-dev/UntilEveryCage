@@ -37,7 +37,7 @@ test('a record URL is directly addressable and has a route-specific heading', as
   await expect(page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Database', exact: true })).toBeVisible();
 });
 
-test('the shell keeps route context in the URL through back and forward navigation', async ({ page }) => {
+test('the shell keeps map camera and style context in its Database return link', async ({ page }) => {
   await page.goto('./#/map?lat=44.5&lon=8.1&z=5&list=closed&basemap=satellite');
   await expect(page.getByRole('heading', { level: 1, name: /map/i })).toBeVisible();
   await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Database', exact: true }).click();
@@ -45,41 +45,62 @@ test('the shell keeps route context in the URL through back and forward navigati
   expect(routePath(page).searchParams.get('lat')).toBe('44.5');
   expect(routePath(page).searchParams.get('lon')).toBe('8.1');
   expect(routePath(page).searchParams.get('z')).toBe('5');
+  expect(routePath(page).searchParams.get('basemap')).toBe('satellite');
+  expect(routePath(page).searchParams.get('pitch')).toBeNull();
   // A closed rail is canonicalized by omitting `list`; only the open state is encoded.
   expect(routePath(page).searchParams.get('list')).not.toBe('open');
   expect(routePath(page).searchParams.get('basemap')).toBe('satellite');
   await page.goBack();
   await expect.poll(() => routePath(page).pathname).toBe('/map');
-  expect(routePath(page).searchParams.get('lat')).toBe('44.5');
-  expect(routePath(page).searchParams.get('lon')).toBe('8.1');
-  expect(routePath(page).searchParams.get('z')).toBe('5');
-  expect(routePath(page).searchParams.get('list')).not.toBe('open');
-  expect(routePath(page).searchParams.get('basemap')).toBe('satellite');
-  await expect(page.getByRole('button', { name: /Search map/ })).toBeVisible();
-  await expect(page.getByRole('searchbox', { name: /Search across/ })).toHaveCount(0);
   await page.goForward();
   await expectRoute(page, '/database');
   expect(routePath(page).searchParams.get('basemap')).toBe('satellite');
 });
 
-test('About consolidates its legacy routes and preserves map source context', async ({ page }) => {
+test('direct Database URLs preserve only allowlisted map context in the explicit Map link', async ({ page }) => {
+  await page.goto('./#/database?lat=38&lon=-96&z=4&pitch=27&bearing=14&basemap=satellite&list=open&release_id=release-2026-10&q=private%20search&profile=community&extra=unsafe');
+  await expect(page.getByRole('heading', { level: 1, name: /Browse records/i })).toBeVisible();
+  const mapLink = page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Map', exact: true });
+  const href = await mapLink.getAttribute('href') ?? '';
+  const mapDestination = new URL(`http://test/${href.slice(2)}`);
+  expect(mapDestination.pathname).toBe('/map');
+  for (const [key, value] of Object.entries({ lat: '38', lon: '-96', z: '4', pitch: '27', bearing: '14', basemap: 'satellite', list: 'open', release_id: 'release-2026-10' })) expect(mapDestination.searchParams.get(key)).toBe(value);
+  expect(mapDestination.searchParams.has('q')).toBe(false);
+  expect(mapDestination.searchParams.has('profile')).toBe(false);
+  expect(mapDestination.searchParams.has('extra')).toBe(false);
+  await mapLink.click();
+  await expectRoute(page, '/map');
+  expect(routePath(page).searchParams.get('lat')).toBe('38');
+  expect(routePath(page).searchParams.get('pitch')).toBe('27');
+  expect(routePath(page).searchParams.get('bearing')).toBe('14');
+  expect(routePath(page).searchParams.get('basemap')).toBe('satellite');
+  expect(routePath(page).searchParams.get('q')).toBeNull();
+});
+
+test('About and FAQ pages keep legacy routes and source context usable', async ({ page }) => {
   await page.goto('./#/database');
   const aboutLink = page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'About', exact: true });
   await aboutLink.click();
   await expect.poll(() => new URL(page.url()).hash).toBe('#/about');
-  await expect(page.getByRole('heading', { level: 1, name: 'Until every cage is empty' })).toBeVisible();
-  await page.goto('./#/about/sources');
-  await expect.poll(() => new URL(page.url()).hash).toBe('#/about/sources');
+  await expect(page.getByRole('heading', { level: 1, name: 'About Until Every Cage is Empty' })).toBeVisible();
+  await page.goto('./#/about?section=sources');
+  await expect.poll(() => new URL(page.url()).hash).toBe('#/about?section=sources');
   await expect(page.getByRole('heading', { level: 2, name: 'Sources and methods' })).toBeVisible();
-  await expect(page.getByText('locality references are approximate', { exact: false })).toBeVisible();
+  await expect(page.getByText('approximate locality references', { exact: false })).toBeVisible();
   const providerDisclosure = page.locator('p').filter({ hasText: /OpenStreetMap/i });
   await expect(providerDisclosure).toContainText('satellite imagery uses Esri');
   await expect(providerDisclosure).toContainText('3D terrain uses Mapterhorn');
   await expect(providerDisclosure.getByRole('link', { name: 'Mapterhorn' })).toHaveAttribute('href', 'https://mapterhorn.com/attribution');
   await expect(providerDisclosure).toContainText('not facility records or search text.');
-  await expect(page.getByRole('link', { name: 'Contact the project' })).toHaveAttribute('href', 'mailto:untileverycageproject@protonmail.com');
+  await expect(page.getByRole('link', { name: 'Contact', exact: true })).toHaveAttribute('href', 'mailto:untileverycageproject@protonmail.com');
+  await page.goto('./#/about/faq');
+  await expect(page.getByRole('heading', { level: 1, name: 'Frequently asked questions' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 2, name: 'Records, releases, and the counter' })).toBeVisible();
+  await page.goto('./#/about/help');
+  await expect(page.getByRole('heading', { level: 2, name: 'Help, support, and contact' })).toBeVisible();
+  await page.goto('./#/methodology');
+  await expect(page.getByRole('heading', { level: 2, name: 'Technology' })).toBeVisible();
   await page.goBack();
-  await expect.poll(() => new URL(page.url()).hash).toBe('#/about');
 });
 
 test('the Contribute hub, bug report, and About pages share the primary navigation', async ({ page }) => {
@@ -92,7 +113,7 @@ test('the Contribute hub, bug report, and About pages share the primary navigati
   await expect(page.getByRole('heading', { name: 'Report a bug' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Report a public issue on GitHub' })).toHaveAttribute('href', 'https://github.com/eliperez-dev/UntilEveryCage/issues/new');
   await page.goto('./#/about/manifesto');
-  await expect(page.getByRole('heading', { name: 'Until every cage is empty' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'About Until Every Cage is Empty' })).toBeVisible();
   for (const label of ['Map', 'Contribute']) await expect(nav.getByRole('link', { name: label })).toBeVisible();
   await expect(nav.getByRole('link', { name: 'About', exact: true })).toBeVisible();
 });
@@ -217,23 +238,13 @@ test('public contribution contacts, merged About content, and code help are easy
   const about = page.getByRole('link', { name: 'About', exact: true });
   await expect(about).toHaveText('About');
   await about.click();
-  await expect(page.getByRole('heading', { name: 'Until every cage is empty' })).toBeVisible();
-  await expect(page.getByText('Animals are individuals, not database rows.', { exact: false })).toBeVisible();
-  await expect(page.getByText('Until every cage is empty.', { exact: true })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Contribute code on GitHub' })).toHaveAttribute('href', 'https://github.com/eliperez-dev/UntilEveryCage');
-  const overview = await page.locator('.about-page').evaluate(element => {
-    const stableCopy = element.cloneNode(true) as HTMLElement;
-    stableCopy.querySelector('.estimate-number')?.remove();
-    return stableCopy.innerText;
-  });
-  await expect(page.locator('.estimate-number')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'About Until Every Cage is Empty' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Until Every Cage is Empty', level: 2 })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'GitHub', exact: true })).toHaveAttribute('href', 'https://github.com/eliperez-dev/UntilEveryCage');
+  const overview = await page.locator('.manifesto').innerText();
   await page.goto('./#/about/manifesto');
-  const manifesto = await page.locator('.about-page').evaluate(element => {
-    const stableCopy = element.cloneNode(true) as HTMLElement;
-    stableCopy.querySelector('.estimate-number')?.remove();
-    return stableCopy.innerText;
-  });
+  const manifesto = await page.locator('.manifesto').innerText();
   expect(manifesto).toBe(overview);
-  await expect(page.locator('.estimate-number')).toBeVisible();
+  await expect(page.locator('.about-counter-slot')).toBeVisible();
   await expect(page.getByRole('main')).toHaveCount(1);
 });

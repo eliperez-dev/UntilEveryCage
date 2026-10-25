@@ -210,7 +210,7 @@ test('six contribution task links switch in place with prefilled records and cle
     communityWrites += 1;
     await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ submission_id: id, receipt_secret: secret, status: 'received' }) });
   });
-  await page.goto(`#/contribute/evidence?target=${recordId}&map=%23%2Fmap%3Ff1a%3Dfield`);
+  await page.goto(`#/contribute/evidence?target=${recordId}&map=${encodeURIComponent('#/map?lat=44.5&lon=8.1&z=5&basemap=satellite&release_id=release-2026-10')}`);
   const tasks = page.getByRole('navigation', { name: 'Contribution tasks' });
   const switchTask = async (name: string) => tasks.getByRole('link', { name, exact: true }).click();
   await expect(tasks.getByRole('link', { name: 'Evidence', exact: true })).toHaveAttribute('aria-current', 'page');
@@ -244,19 +244,21 @@ test('six contribution task links switch in place with prefilled records and cle
   expect(communityWrites).toBe(2);
   expect(page.url()).not.toContain(secret);
   const params = new URLSearchParams(new URL(page.url()).hash.split('?')[1]);
-  expect(params.get('map')).toBe('#/map?f1a=field');
+  expect(params.get('map')).toBe('#/map?lat=44.5&lon=8.1&z=5&basemap=satellite&release_id=release-2026-10');
   expect(params.get('target')).toBe(recordId);
 });
 
-test('the direct About link opens the combined project and methods content', async ({ page }) => {
+test('the direct About and FAQ links open their separate project and help content', async ({ page }) => {
   await page.goto('#/contribute');
   const about = page.getByRole('link', { name: 'About', exact: true });
   await about.focus();
   await page.keyboard.press('Enter');
-  await expect(page.getByRole('heading', { name: 'Until every cage is empty' })).toBeVisible();
-  await expect(page.getByText('Estimated animals killed', { exact: true })).toBeVisible();
-  await page.goto('#/about/sources');
+  await expect(page.getByRole('heading', { name: 'About Until Every Cage is Empty' })).toBeVisible();
+  await expect(page.locator('.about-counter-slot')).toBeVisible();
+  await page.goto('#/about?section=sources');
   await expect(page.getByRole('heading', { name: 'Sources and methods' })).toBeVisible();
+  await page.goto('#/about/help');
+  await expect(page.getByRole('heading', { name: 'Help, support, and contact' })).toBeVisible();
   await page.goto('#/contribute');
   await page.getByRole('navigation', { name: 'Contribution tasks' }).getByRole('link', { name: 'Privacy/removal', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Privacy or removal', exact: true })).toBeVisible();
@@ -277,7 +279,7 @@ test('compact pages and direct navigation work on a narrow touch screen without 
   expect(box!.x).toBeGreaterThanOrEqual(0);
   expect(box!.x + box!.width).toBeLessThanOrEqual(360);
   await sources.tap();
-  await expect(page.getByRole('heading', { name: 'Until every cage is empty' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'About Until Every Cage is Empty' })).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await context.close();
 });

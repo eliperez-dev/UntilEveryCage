@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { parseRoute, type RouteState } from './routeState';
+  import { mapHrefFromHash, parseRoute, safeMapHref, type RouteState } from './routeState';
   import AboutPage from './AboutPage.svelte';
+  import FaqPage from './FaqPage.svelte';
   import ContributePage from './ContributePage.svelte';
   import ProjectFooter from './ProjectFooter.svelte';
   import PublicDatabase from './PublicDatabase.svelte';
@@ -23,11 +24,8 @@
   let loading = $state(true);
   let loadError = $state('');
   let returnMapHref = $derived.by(() => {
-    if (route.kind === 'about' || route.kind === 'contribute' || route.kind === 'bug-report' || route.kind === 'community' || route.kind === 'methodology' || route.kind === 'help' || route.kind === 'api' || route.kind === 'faq' || route.kind === 'downloads') return route.returnMapHref ?? '#/map';
-    if ((route.kind === 'database' || route.kind === 'record') && route.releaseId) return `#/map?release_id=${encodeURIComponent(route.releaseId)}`;
-    if (route.kind === 'map' && route.releaseId) return `#/map?release_id=${encodeURIComponent(route.releaseId)}`;
-    const currentQuery = new URLSearchParams(window.location.hash.split('?')[1] ?? '');
-    return import.meta.env.DEV && currentQuery.get('f1a') === 'field' ? '#/map?f1a=field' : '#/map';
+    if (route.kind === 'about' || route.kind === 'contribute' || route.kind === 'bug-report' || route.kind === 'community' || route.kind === 'api' || route.kind === 'faq' || route.kind === 'downloads') return safeMapHref(route.returnMapHref) ?? '#/map';
+    return mapHrefFromHash(window.location.hash, route.kind === 'map' || route.kind === 'database' || route.kind === 'record' ? route.releaseId : undefined);
   });
   let databaseHref = $derived.by(() => {
     const query = returnMapHref.split('?')[1];
@@ -99,7 +97,7 @@
   <main class="review-loading" aria-live="polite"><p role="status">Preparing the private-preview workspace…</p><small>The map module and its local data boundary are loading.</small></main>
 {:else}
 <div class="shell">
-  <PreviewMasthead publicReleaseLabel={publicReleaseLabel(verifiedReleaseLabel)} current={route.kind === 'about' || route.kind === 'methodology' || route.kind === 'help' || route.kind === 'faq' ? 'about' : route.kind === 'contribute' || route.kind === 'bug-report' || route.kind === 'community' ? 'contribute' : route.kind === 'api' || route.kind === 'downloads' ? 'api' : route.kind === 'database' || route.kind === 'record' ? 'database' : 'map'} mapHref={returnMapHref} {databaseHref} />
+  <PreviewMasthead publicReleaseLabel={publicReleaseLabel(verifiedReleaseLabel)} current={route.kind === 'about' ? 'about' : route.kind === 'faq' ? 'faq' : route.kind === 'contribute' || route.kind === 'bug-report' || route.kind === 'community' ? 'contribute' : route.kind === 'api' || route.kind === 'downloads' ? 'api' : route.kind === 'database' || route.kind === 'record' ? 'database' : 'map'} mapHref={returnMapHref} {databaseHref} />
 
   <main id="main-content" class="shell-content" tabindex="-1">
     {#if loading}
@@ -116,8 +114,10 @@
         <p>This address does not match a page in this application.</p>
         <a href="#/map">Return to the map</a>
       </section>
-    {:else if route.kind === 'about' || route.kind === 'methodology' || route.kind === 'help' || route.kind === 'faq'}
-      <AboutPage returnMapHref={route.returnMapHref ?? '#/map'} section={route.kind === 'about' ? route.section : route.kind === 'methodology' ? 'sources' : route.kind} />
+    {:else if route.kind === 'about'}
+      <AboutPage returnMapHref={returnMapHref} section={route.section} />
+    {:else if route.kind === 'faq'}
+      <FaqPage returnMapHref={returnMapHref} section={route.section} />
     {:else if route.kind === 'api' || route.kind === 'downloads'}
       {#if ApiPage}<ApiPage selectedReleaseId={new URLSearchParams(route.returnMapHref?.split('?')[1] ?? '').get('release_id')} />{:else}<p class="state" role="status">Loading API reference…</p>{/if}
     {:else if route.kind === 'contribute'}

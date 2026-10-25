@@ -12,17 +12,18 @@ async function isolate(page: Page, publicShell = false) {
 }
 const candidate = (candidate_id = id) => ({ candidate_id, source_id:'synthetic.source', location_class:'unmapped_private_observation', display_precision:'city_postal_coarse', country_code:'DK', city:'Synthetic locality', postal_code:null, latitude:null, longitude:null, coordinate_precision:null, coordinate_review_status:'pending_human_privacy_review', factual_review_status:'not_reviewed', privacy_screening_status:'pending', project_approval:false, publication_status:'not_published', preview_label:'Private development preview — not publication-approved', display_name:candidate_id === id ? 'Synthetic first record' : 'Synthetic next record', activity_label:'Synthetic activity', source_name:'Synthetic authority' });
 
-test('direct API and About destinations preserve map context and section aliases', async ({ page }) => {
-  await isolate(page); await page.goto('./#/about?map=%23%2Fmap%3Ff1a%3Dfield');
+test('direct API and About destinations preserve safe map context and section aliases', async ({ page }) => {
+  await isolate(page); await page.goto('./#/about?map=%23%2Fmap%3Flat%3D44.5%26lon%3D8.1%26z%3D5%26release_id%3Drelease-2026-10');
   await expect(page.getByRole('button',{name:'Account menu'})).toHaveCount(0);
   await expect(page.getByRole('button',{name:'Tools',exact:true})).toBeVisible();
   const nav = page.getByRole('navigation', { name: 'Primary' });
-  await expect(nav.getByRole('link')).toHaveText(['Map','Database','API','Contribute','About']);
+  await expect(nav.getByRole('link')).toHaveText(['Map','Database','API','Contribute','About','FAQ']);
   await nav.getByRole('link',{name:'API',exact:true}).click();
   await expect(page.getByRole('heading',{name:'API and data access',exact:true})).toBeVisible();
-  expect(new URL(page.url()).hash).toContain('map=%23%2Fmap%3Ff1a%3Dfield');
+  expect(new URL(page.url()).hash).toContain('map=%23%2Fmap%3Flat%3D44.5%26lon%3D8.1%26z%3D5%26release_id%3Drelease-2026-10');
   await page.goto('./#/about/faq');
-  await expect(page.getByRole('heading',{name:'Common questions',exact:true})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Frequently asked questions',exact:true})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Records, releases, and the counter',exact:true})).toBeVisible();
 });
 
 test('private Database category filtering reaches the repository and resets paging and selection', async ({ page }) => {

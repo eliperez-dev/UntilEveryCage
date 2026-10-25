@@ -16,17 +16,19 @@ async function isolate(context: BrowserContext) {
 
 test.beforeEach(async ({ context }) => isolate(context));
 
-test('the masthead exposes five direct destinations and Tools', async ({ page }) => {
+test('the masthead exposes six direct destinations and Tools', async ({ page }) => {
   await page.goto('./#/about');
   const nav = page.getByRole('navigation', { name: 'Primary' });
-  await expect(nav.getByRole('link')).toHaveText(['Map', 'Database', 'API', 'Contribute', 'About']);
+  await expect(nav.getByRole('link')).toHaveText(['Map', 'Database', 'API', 'Contribute', 'About', 'FAQ']);
   await expect(page.getByRole('button', { name: 'Tools', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: /Show (About|Database) pages/ })).toHaveCount(0);
   await expect(page.locator('#shared-about-nav, #shared-database-nav')).toHaveCount(0);
   await nav.getByRole('link', { name: 'API', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'API and data access' })).toBeVisible();
   await nav.getByRole('link', { name: 'About', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Until every cage is empty' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'About Until Every Cage is Empty' })).toBeVisible();
+  await nav.getByRole('link', { name: 'FAQ', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Frequently asked questions' })).toBeVisible();
 });
 
 test('direct links retain native keyboard and browser navigation', async ({ page, context }) => {
@@ -48,7 +50,7 @@ test('compact direct navigation remains usable on a narrow touch screen', async 
   await isolate(context);
   const page = await context.newPage();
   await page.goto('./#/about');
-  for (const label of ['Map', 'Database', 'API', 'Contribute', 'About']) {
+  for (const label of ['Map', 'Database', 'API', 'Contribute', 'About', 'FAQ']) {
     await expect(page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: label, exact: true })).toBeVisible();
   }
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

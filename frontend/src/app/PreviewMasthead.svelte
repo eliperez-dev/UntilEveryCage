@@ -13,7 +13,7 @@
     onreleasechange,
     ondebugchange,
   }: {
-    current: "map" | "database" | "api" | "methodology" | "about" | "contribute";
+    current: "map" | "database" | "api" | "methodology" | "about" | "faq" | "contribute";
     mapHref: string;
     databaseHref: string;
     debugEnabled?: boolean;
@@ -29,6 +29,7 @@
   const logo = `${import.meta.env.BASE_URL}assets/icon.png`;
   const context = $derived(mapHref === '#/map' ? '' : `map=${encodeURIComponent(mapHref)}`);
   const aboutHref = $derived(`#/about${context ? `?${context}` : ''}`);
+  const faqHref = $derived(`#/faq${context ? `?${context}` : ''}`);
   const contributeHref = $derived(`#/contribute${context ? `?${context}` : ''}`);
   const menuHref = (path: string) => `#/${path}${context ? `?${context}` : ''}`;
   let toolsOpen = $state(false);
@@ -53,8 +54,10 @@
     <a href={mapHref} aria-current={current === "map" ? "page" : undefined}>Map</a>
     <a href={databaseHref} aria-current={current === 'database' ? 'page' : undefined}>Database</a>
     <a href={menuHref('database/api')} aria-current={current === 'api' ? 'page' : undefined}>API</a>
-    <a class="contribute-link" href={contributeHref} aria-current={current === "contribute" ? "page" : undefined}>Contribute</a>
+    <span class="nav-separator" aria-hidden="true">|</span>
+    <a href={contributeHref} aria-current={current === "contribute" ? "page" : undefined}>Contribute</a>
     <a href={aboutHref} aria-current={current === 'about' || current === 'methodology' ? 'page' : undefined}>About</a>
+    <a href={faqHref} aria-current={current === 'faq' ? 'page' : undefined}>FAQ</a>
   </nav>
   <div class="masthead-actions" bind:this={actionArea}>
     <button bind:this={toolsButton} type="button" class="header-action tools-action" aria-label="Tools" aria-expanded={toolsOpen} aria-controls="shared-tools-menu" onclick={toggleTools}>
@@ -96,8 +99,8 @@
   .wordmark img { width: 2rem; height: 2rem; }
   nav { display: flex; align-items:center; justify-self:stretch; width:100%; gap: 1rem; font: 0.77rem ui-sans-serif, system-ui, sans-serif; }
   nav a { color: #aeb9af; text-decoration: none; }
+  nav .nav-separator{color:#657067;font-size:.72rem;user-select:none}
   nav a[aria-current] { color: #f1efe8; text-decoration: underline; text-underline-offset: 0.35rem; }
-  nav .contribute-link { margin-left:auto; padding-left:1rem; border-left:1px solid #48524a; }
   .masthead-actions { position:relative; justify-self:end; display:flex; align-items:center; gap:.4rem; font-family:system-ui,sans-serif; }
   .header-action { display:flex; align-items:center; justify-content:center; gap:.4rem; min-height:2.1rem; padding:.3rem .45rem; border:1px solid #536158; background:#1a201c; color:#f1efe8; cursor:pointer; font:650 .68rem system-ui; }
   .header-action svg, .header-menu svg { width:1rem; height:1rem; flex:none; fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
@@ -116,8 +119,7 @@
   }
   @media (max-width: 60rem) {
     .masthead{grid-template-columns:minmax(0,1fr) auto;gap:.35rem 1rem;padding:.55rem 1rem}
-    nav{grid-column:1 / -1;grid-row:2;justify-content:center;gap:1.2rem}
-    nav .contribute-link{margin-left:0}
+    nav{grid-column:1 / -1;grid-row:2;justify-content:center;gap:1rem}
     .masthead-actions{grid-column:2;grid-row:1}
   }
   @media (max-width: 50rem) {
@@ -131,6 +133,5 @@
     .tools-action span { display:none; }
     .masthead-actions { gap:.25rem; }
     nav { grid-row:2; gap:.55rem; }
-    nav .contribute-link { padding-left:0; border-left:0; }
   }
 </style>

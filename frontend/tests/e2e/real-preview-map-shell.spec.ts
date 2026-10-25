@@ -27,7 +27,7 @@ test('map shell mounts and keeps Search, map modes, and navigation operable', as
   await expect(search).toBeVisible();
 });
 
-test('the four primary links retain the rich preview context across Contribute and About', async ({ page }) => {
+test('the grouped primary links retain the rich preview context across Contribute and About', async ({ page }) => {
   test.skip(!process.env.UEC_REAL_PREVIEW_URL, 'Requires the isolated local preview fixture');
   await page.route('https://tile.openstreetmap.org/**', route => route.abort());
   await page.route('https://server.arcgisonline.com/**', route => route.abort());
@@ -43,7 +43,7 @@ test('the four primary links retain the rich preview context across Contribute a
   const primary = page.getByRole('navigation', { name: 'Primary' });
   await page.goto('/#/map?f1a=field&list=closed');
   await expect(page.getByRole('button', { name: /Search map Places, facilities, sources/ })).toBeVisible();
-  for (const label of ['Map', 'Contribute']) await expect(primary.getByRole('link', { name: label })).toBeVisible();
+  for (const label of ['Map', 'Database', 'API', 'Contribute', 'About', 'FAQ']) await expect(primary.getByRole('link', { name: label, exact: true })).toBeVisible();
   await expect(primary.getByRole('link', { name: 'About', exact: true })).toBeVisible();
 
   await primary.getByRole('link', { name: 'Contribute' }).click();
@@ -54,7 +54,7 @@ test('the four primary links retain the rich preview context across Contribute a
   await expect(shellNav.getByRole('link', { name: 'About', exact: true })).toBeVisible();
 
   await shellNav.getByRole('link', { name: 'About', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Until every cage is empty' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'About Until Every Cage is Empty' })).toBeVisible();
   await shellNav.getByRole('link', { name: 'Map' }).click();
   await expect(page.getByRole('button', { name: /Search map Places, facilities, sources/ })).toBeVisible();
   for (const label of ['Map', 'Contribute']) await expect(primary.getByRole('link', { name: label })).toBeVisible();

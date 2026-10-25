@@ -16,20 +16,23 @@ async function isolate(context: BrowserContext) {
 
 test('the disclosure and credits preserve data context and appear once per non-map surface', async ({ page, context }) => {
   await isolate(context);
-  const map = '#/map?f1a=field&list=closed';
+  const map = '#/map?lat=39&lon=-97&z=5&basemap=satellite&list=open&release_id=release-2026-10';
   const suffix = `?map=${encodeURIComponent(map)}`;
   await page.setViewportSize({ width: 1440, height: 1080 });
   await page.goto(`./#/about/faq${suffix}`);
   const footer = page.getByRole('contentinfo', { name: 'Project information' });
   await expect(footer).toHaveCount(1);
-  await expect(footer).toContainText('An independent, open-source project.');
-  await expect(footer).toContainText('Records may be incomplete or out of date. Inclusion does not establish current operation or wrongdoing.');
-  await expect(footer).toContainText('Original website inspired by Final Nail.');
+  await expect(footer).toContainText('An independent, open-source, ad-free project.');
+  await expect(footer).toContainText('CC BY-NC-SA where applicable; source data may have additional terms.');
+  await expect(footer).toContainText('Counter approach adapted from ADAPTT. Original website inspired by Final Nail.');
   await expect(footer.getByRole('navigation')).toHaveCount(0);
-  await expect(footer.getByRole('link')).toHaveCount(5);
+  await expect(footer.getByRole('link')).toHaveCount(8);
   const destinations = [
-    ['Get in touch', 'mailto:untileverycageproject@protonmail.com'],
-    ['support its hosting and data work', 'https://ko-fi.com/untileverycageisempty'],
+    ['Contact', 'mailto:untileverycageproject@protonmail.com'],
+    ['GitHub', 'https://github.com/eliperez-dev/UntilEveryCage'],
+    ['Discord', 'https://discord.gg/wbdTHzAZ4b'],
+    ['Support the project', 'https://ko-fi.com/untileverycageisempty'],
+    ['Vegan resources', 'https://linktr.ee/veganresource'],
     ['AGPLv3 or later', 'https://www.gnu.org/licenses/agpl-3.0.html'],
     ['Final Nail', 'https://finalnail.com/'],
   ];
@@ -38,16 +41,16 @@ test('the disclosure and credits preserve data context and appear once per non-m
     await expect(link).toHaveAttribute('href', href);
     if (!href.startsWith('mailto:')) { await expect(link).toHaveAttribute('target', '_blank'); await expect(link).toHaveAttribute('rel', 'noreferrer'); }
   }
-  const data = footer.getByRole('link', { name: 'reuse terms' });
+  const data = footer.getByRole('link', { name: 'Data reuse terms' });
   await expect(data).toHaveAttribute('href', `#/database/downloads${suffix}`);
-  const contact = footer.getByRole('link', { name: 'Get in touch' });
+  const contact = footer.getByRole('link', { name: 'Contact', exact: true });
   await contact.focus(); await expect(contact).toBeFocused();
   expect(await contact.evaluate(element => getComputedStyle(element).outlineStyle)).toBe('solid');
   await page.keyboard.press('Tab');
-  await expect(footer.getByRole('link', { name: 'support its hosting and data work' })).toBeFocused();
+  await expect(footer.getByRole('link', { name: 'GitHub', exact: true })).toBeFocused();
   await page.screenshot({ path: '../target/footer-copy-desktop-1440.png', fullPage: true });
   await data.click();
-  await expect(page.getByRole('heading', { name: 'Downloads', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'API and data access', exact: true })).toBeVisible();
   await expect(footer).toHaveCount(1);
   expect(new URL(page.url()).hash).toContain(`map=${encodeURIComponent(map)}`);
   await expect(page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Map', exact: true })).toHaveAttribute('href', map);
@@ -75,8 +78,8 @@ test('touch disclosure wraps readably at 375px and 320px and data terms remain u
     }
     if (width === 375) await page.screenshot({ path: '../target/footer-copy-touch-375.png', fullPage: false });
   }
-  await footer.getByRole('link', { name: 'reuse terms' }).tap();
-  await expect(page.getByRole('heading', { name: 'Downloads', exact: true })).toBeVisible();
+  await footer.getByRole('link', { name: 'Data reuse terms' }).tap();
+  await expect(page.getByRole('heading', { name: 'API and data access', exact: true })).toBeVisible();
   await expect(footer).toHaveCount(1);
   await context.close();
 });
