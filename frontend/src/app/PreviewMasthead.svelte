@@ -125,12 +125,12 @@
     .masthead { grid-template-columns:minmax(0,1fr) auto; }
   }
   @media (max-width: 25rem) {
-    .masthead { grid-template-columns:minmax(0,1fr); min-height:0; gap:.35rem; }
+    .masthead { min-height:0; gap:.35rem .65rem; }
     .wordmark{font-size:.9rem}.wordmark img{width:1.6rem;height:1.6rem}
-    .masthead-actions { grid-column:1; grid-row:2; justify-self:start; }
+    .masthead-actions { grid-column:2; grid-row:1; }
     .tools-action span { display:none; }
     .masthead-actions { gap:.25rem; }
-    nav { grid-row:3; gap:.65rem; }
+    nav { grid-row:2; gap:.55rem; }
     nav .contribute-link { padding-left:0; border-left:0; }
   }
 </style>
