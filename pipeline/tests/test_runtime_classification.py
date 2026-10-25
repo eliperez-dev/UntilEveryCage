@@ -15,6 +15,7 @@ PRIVATE_PIPELINE_ALLOWLIST = {
     "be.locations",
     "ca.cfia.federal-meat",
     "ca.ontario.meat-plants",
+    "de.locations",
     "dk.smiley",
     "fsa_approved_establishments",
     "fss_approved_establishments",

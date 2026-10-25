@@ -13,6 +13,7 @@ from pipeline.common.review import write_operator_review_packet
 from pipeline.contracts.adapter_contract import SourceArtifact
 from pipeline.contracts.candidate_handoff import write_handoff
 from pipeline.contracts.source_lifecycle import atomic_json
+from pipeline.geocoding.source_queue import build_geocode_queue
 
 from .adapter import CONFIG, BltuAdapter
 from .acquire import BvlAcquisitionError, fetch as fetch_bltu
@@ -60,6 +61,34 @@ class GermanyRefreshAdapter:
             raw = Path(metadata["artifact_path"]).read_bytes()
             source_artifact = SourceArtifact(source_url=metadata["final_url"], retrieved_at_utc=metadata["retrieved_at_utc"], sha256=hashlib.sha256(raw).hexdigest(), byte_size=len(raw), effective_date="unknown", code_version=self.adapter_version, config_version=CONFIG["schema_version"], rights_caveat=CONFIG["terms"], privacy_caveat=metadata.get("privacy_caveat"), coverage=CONFIG["coverage"])
             write_handoff(run_dir / "candidate-handoff", rows, source_artifact, source_id=self.source_id, profile="d3-facility-master")
+            privacy_eligible = [row for row in rows
+                                if row.get("normalized", {}).get("privacy_gate") == "eligible"]
+            queue = build_geocode_queue(privacy_eligible, source_artifact,
+                                        run_dir / "geocode-queue", country_name="Germany")
+            queue_metadata_path = run_dir / "geocode-queue" / "geocode-queue-metadata.json"
+            queue_metadata = json.loads(queue_metadata_path.read_text(encoding="utf-8"))
+            queue_metadata.update({
+                "records_seen": len(rows),
+                "records_eligible_after_privacy": len(privacy_eligible),
+                "records_withheld_privacy_review": len(rows) - len(privacy_eligible),
+                "records_queued": queue["records_queued"],
+                "records_with_source_coordinates": sum(
+                    1 for row in privacy_eligible
+                    if row.get("normalized", {}).get("coordinate_state") in {
+                        "source-coordinate", "source_coordinates_preserved",
+                        "source-value-present-pending-review"}),
+                "records_without_usable_address": queue["records_without_usable_address"],
+                "provider_review_state": "not_configured",
+                "durable_db_jobs": False,
+                "external_provider_called": False,
+                "privacy_policy": "Only records explicitly privacy-cleared may enter the provider-neutral address queue; pending-review records are withheld.",
+            })
+            atomic_json(queue_metadata_path, queue_metadata)
+            result["report"]["geocode_queue"] = {key: queue_metadata[key] for key in (
+                "records_seen", "records_eligible_after_privacy", "records_withheld_privacy_review",
+                "records_queued", "records_with_source_coordinates",
+                "records_without_usable_address", "provider_review_state",
+                "durable_db_jobs", "external_provider_called")}
         return dict(result["report"])
 
 

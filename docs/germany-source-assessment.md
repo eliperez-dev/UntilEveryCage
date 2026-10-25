@@ -73,6 +73,14 @@ flags remain native/unresolved. Coordinates are unknown and geocoding is disable
 This remains private staging, not importer/API/map E2E. Redistribution terms and
 privacy review remain unresolved; no public rows are authorized.
 
+The shared refresh runner has also completed this live acquisition into a private
+candidate handoff. Its provider-neutral queue artifact records 15,755 accepted
+candidate observations, zero privacy-cleared for address enrichment, and all
+15,755 withheld pending privacy review; no source coordinates were supplied.
+Germany has no enabled private Geoapify source profile, so no durable provider
+jobs or external provider calls were created. The queue remains pending provider
+configuration and privacy review; no location or map readiness is claimed.
+
 ## Metadata evidence boundary
 
 Any user-supplied JSON describing this source must be treated as a lead until tied to

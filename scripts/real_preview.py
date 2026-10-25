@@ -1056,6 +1056,34 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
                         or not isinstance(summary.get("candidate_handoff_sha256"), str)):
                     write_job("failed", "lifecycle", "source_candidate_handoff_missing")
                     raise PreviewError("filtered ICPE lifecycle did not produce a validated candidate handoff; no preview import was attempted")
+            if source_id == "de.locations":
+                queue_path = source_root / "geocode-queue" / "geocode-queue-metadata.json"
+                try:
+                    queue = json.loads(queue_path.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    write_job("failed", "lifecycle", "geocode_queue_evidence_missing")
+                    raise PreviewError("Germany source lifecycle did not produce private address-queue evidence") from None
+                queue_counts = {key: queue.get(key) for key in (
+                    "records_seen", "records_eligible_after_privacy",
+                    "records_withheld_privacy_review", "records_queued",
+                    "records_with_source_coordinates", "records_without_usable_address")}
+                if (queue.get("status") != "success"
+                        or queue.get("provider_review_state") != "not_configured"
+                        or queue.get("durable_db_jobs") is not False
+                        or queue.get("external_provider_called") is not False
+                        or queue.get("geocoder_status_policy") != "pending; no external geocoder has been called"
+                        or any(not isinstance(value, int) or isinstance(value, bool) or value < 0
+                               for value in queue_counts.values())
+                        or queue_counts["records_seen"] != queue_counts["records_eligible_after_privacy"]
+                           + queue_counts["records_withheld_privacy_review"]
+                        or queue_counts["records_eligible_after_privacy"] != queue_counts["records_queued"]
+                           + queue_counts["records_with_source_coordinates"]
+                           + queue_counts["records_without_usable_address"]):
+                    write_job("failed", "lifecycle", "geocode_queue_evidence_invalid")
+                    raise PreviewError("Germany private address-queue counts or provider boundary are invalid")
+                job["geocode_queue"] = {**queue_counts, "provider_review_state": "not_configured",
+                                         "durable_db_jobs": False, "external_provider_called": False}
+                write_job("running", "transactional_preview_import")
             runner_run_id = refresh_result.get("run_id")
             if not isinstance(runner_run_id, str) or not runner_run_id:
                 write_job("failed", "lifecycle", "source_run_id_missing")
