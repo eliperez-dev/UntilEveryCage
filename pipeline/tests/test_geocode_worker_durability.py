@@ -54,6 +54,45 @@ class GeocodeWorkerDurabilityTests(unittest.TestCase):
         self.assertIn("fss_approved_establishments", params)
         self.assertIn("GB", params)
 
+    def test_exact_job_allowlist_is_parameterized_and_never_replaces_existing_gates(self):
+        class Transaction:
+            def __enter__(self): return self
+            def __exit__(self, *_): return False
+        class Cursor:
+            def fetchone(self): return None
+        class Connection:
+            def __init__(self): self.executed = []
+            def transaction(self): return Transaction()
+            def execute(self, query, params=None):
+                self.executed.append((query, params)); return Cursor()
+
+        selected, older_unselected = uuid.uuid4(), uuid.uuid4()
+        connection = Connection()
+        WORKER._claim_job(connection, "geoapify", "synthetic-worker", 3, 900,
+                          private_source_profile_id="geoapify-es-aesan-rgseaa",
+                          job_ids=(selected,))
+        sql, params = connection.executed[0]
+        self.assertIn("job.job_id = ANY(%s::uuid[])", sql)
+        self.assertEqual(params[-2:], ([selected], [selected]))
+        self.assertIn("target.source_id=%s AND candidate.source_id=%s", sql)
+        self.assertIn("candidate.country_code=%s", sql)
+        self.assertIn("NOT EXISTS (\n                  SELECT 1 FROM uec.public_access_restricted", sql)
+        self.assertEqual(params[-2], [selected])
+        self.assertNotEqual(selected, older_unselected)
+
+        default_connection = Connection()
+        WORKER._claim_job(default_connection, "geoapify", "synthetic-worker", 3, 900)
+        default_sql, default_params = default_connection.executed[0]
+        self.assertIn("job.job_id = ANY(%s::uuid[])", default_sql)
+        self.assertEqual(default_params[-2:], (None, None))
+
+    def test_job_allowlist_rejects_empty_duplicate_invalid_or_unbounded_inputs(self):
+        one = uuid.uuid4()
+        for ids, limit in (((), 1), ((one, one), 1), (("not-a-uuid",), 1), ((one,), None), ((one,), 2)):
+            with self.subTest(ids=ids, limit=limit), self.assertRaises(ValueError):
+                WORKER.run("postgresql://synthetic", "geoapify", limit, 0, 1,
+                           job_ids=ids)
+
     def test_au_pilot_requires_explicitly_bounded_worker_options(self):
         for kwargs in (
             {"provider_id": "dawa", "limit": 24, "daily_budget": 24, "max_attempts": 1, "retries": 1, "provider_interval": 1},

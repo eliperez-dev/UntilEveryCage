@@ -34,6 +34,7 @@ def _claim_job(
     au_npi_pilot: bool = False,
     au_npi_auth_recovery: bool = False,
     private_source_profile_id: str | None = None,
+    job_ids: tuple[uuid.UUID, ...] | None = None,
     _claim_retries: int = 8,
 ):
     stale_claim = False
@@ -122,6 +123,7 @@ def _claim_job(
                           )
                     )
               )
+              AND (%s::uuid[] IS NULL OR job.job_id = ANY(%s::uuid[]))
             ORDER BY job.created_at, job.job_id
             FOR UPDATE OF job SKIP LOCKED
             LIMIT 1
@@ -135,6 +137,8 @@ def _claim_job(
             profile_by_id(private_source_profile_id)["country_code"] if private_source_profile_id else None,
             profile_by_id(private_source_profile_id)["source_id"] if private_source_profile_id else None,
             profile_by_id(private_source_profile_id)["source_id"] if private_source_profile_id else None,
+            list(job_ids) if job_ids is not None else None,
+            list(job_ids) if job_ids is not None else None,
         )).fetchone()
         if not job:
             return None
@@ -173,6 +177,7 @@ def _claim_job(
         return _claim_job(
             connection, provider_id, worker_id, max_attempts, lease_timeout,
             au_npi_pilot, au_npi_auth_recovery, private_source_profile_id,
+            job_ids,
             _claim_retries - 1,
         )
     return None
@@ -373,6 +378,7 @@ def run(
     au_npi_pilot: bool = False,
     au_npi_auth_recovery: bool = False,
     private_source_profile_id: str | None = None,
+    job_ids: tuple[uuid.UUID, ...] | None = None,
 ) -> int:
     if daily_budget < 1 or max_attempts < 1 or lease_timeout < 1 or retries < 1 or provider_interval < 0:
         raise ValueError("budgets, attempts, lease timeout, retries, and provider interval must be valid")
@@ -384,6 +390,11 @@ def run(
         raise ValueError("private source profile mode is separate from the AU pilot")
     if private_source_profile_id and (provider_id != "geoapify" or profile_by_id(private_source_profile_id) is None):
         raise ValueError("enabled private Geoapify source profile required")
+    if job_ids is not None:
+        if not job_ids or len(set(job_ids)) != len(job_ids) or any(not isinstance(value, uuid.UUID) for value in job_ids):
+            raise ValueError("job_ids must be a non-empty sequence of unique UUIDs")
+        if limit is None or limit > len(job_ids):
+            raise ValueError("job_ids require a finite limit no larger than the allowlist")
     if au_npi_pilot and (
         limit is None or limit > 24 or provider_interval < 1.0 or retries > 1
         or max_attempts != (2 if au_npi_auth_recovery else 1)
@@ -402,6 +413,7 @@ def run(
                 connection, provider_id, worker_id, max_attempts, lease_timeout,
                 au_npi_pilot, au_npi_auth_recovery,
                 private_source_profile_id,
+                job_ids,
             )
             if not job:
                 break
@@ -498,6 +510,7 @@ if __name__ == "__main__":
     parser.add_argument("--au-npi-pilot", action="store_true", help="Enable only the bounded AU NPI Geoapify matching/display policy")
     parser.add_argument("--au-npi-auth-recovery", action="store_true", help="Permit only queued attempt-2 events carrying the explicit AU NPI authentication recovery marker")
     parser.add_argument("--private-source-profile", help="Explicitly process only the named enabled private Geoapify source profile")
+    parser.add_argument("--job-id", action="append", help="Optional exact job UUID allowlist; repeat to select multiple jobs")
     parser.add_argument("--worker-id", default=os.environ.get("UEC_GEOCODE_WORKER_ID"))
     args = parser.parse_args()
     count = run(
@@ -507,5 +520,6 @@ if __name__ == "__main__":
         worker_id=args.worker_id, au_npi_pilot=args.au_npi_pilot,
         au_npi_auth_recovery=args.au_npi_auth_recovery,
         private_source_profile_id=args.private_source_profile,
+        job_ids=tuple(uuid.UUID(value) for value in args.job_id) if args.job_id else None,
     )
     print(f"provider={args.provider} status=complete processed={count}")
