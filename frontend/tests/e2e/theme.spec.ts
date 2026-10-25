@@ -81,6 +81,16 @@ const contrast = (foreground: string, background: string) => {
   return (light + 0.05) / (dark! + 0.05);
 };
 
+async function expectAppSurface(page: Page, selector: string, label: string, pageErrors: string[]) {
+  try {
+    await expect(page.locator(selector).first(), `${label} surface`).toBeVisible();
+  } catch (error) {
+    const body = await page.locator('body').innerText().catch(() => '<body text unavailable>');
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`${message}\nVisible body text:\n${body.slice(0, 3000)}\nPage errors:\n${pageErrors.join('\n') || '<none>'}`);
+  }
+}
+
 test('the real theme control reflects translated selection, persists on reload, and survives denied storage', async ({ page }) => {
   await page.goto('./tests/fixtures/theme-control.html');
   const group = page.getByRole('group', { name: 'Tema de color' });
@@ -125,25 +135,29 @@ test('saved theme is applied before the app module starts', async ({ page }) => 
   await expect(page.getByRole('heading', { name: 'About Until Every Cage is Empty' })).toBeVisible();
 });
 
-for (const viewport of [{ name: 'desktop', width: 1280, height: 900 }, { name: 'mobile', width: 390, height: 844 }]) {
-  test(`map and public pages retain readable theme surfaces on ${viewport.name}`, async ({ page }) => {
-    await page.setViewportSize({ width: viewport.width, height: viewport.height });
-    await mockSanitizedApi(page);
-    const pages = [
-      { route: `./#/map?release_id=${release}`, surface: '.map-controls', label: 'map controls' },
-      { route: './#/database', surface: '.public-database', label: 'database' },
-      { route: `./#/records/${id}?release_id=${release}`, surface: '.public-record', label: 'full facility detail' },
-      { route: './#/contribute/bug', surface: '.bug-page', label: 'contribute form' },
-      { route: './#/about', surface: '.about-page', label: 'About' },
-      { route: './#/faq', surface: '.faq-page', label: 'FAQ' },
-      { route: './#/database/api', surface: '.api-page', label: 'API' },
-    ];
+const viewports = [{ name: 'desktop', width: 1280, height: 900 }, { name: 'mobile', width: 390, height: 844 }] as const;
+const publicViews = [
+  { route: `./#/map?release_id=${release}`, surface: '.map-controls', label: 'map controls' },
+  { route: './#/database', surface: '.public-database', label: 'database' },
+  { route: `./#/records/${id}?release_id=${release}`, surface: '.public-record', label: 'full facility detail' },
+  { route: './#/contribute/bug', surface: '.bug-page', label: 'contribute form' },
+  { route: './#/about', surface: '.about-page', label: 'About' },
+  { route: './#/faq', surface: '.faq-page', label: 'FAQ' },
+  { route: './#/database/api', surface: '.api-page', label: 'API' },
+] as const;
+
+for (const viewport of viewports) {
+  for (const view of publicViews) {
     for (const theme of ['dark', 'light'] as const) {
-      for (const view of pages) {
+      test(`${view.label} retains readable ${theme} surface on ${viewport.name}`, async ({ page }) => {
+        const pageErrors: string[] = [];
+        page.on('pageerror', error => pageErrors.push(error.stack ?? error.message));
+        await page.setViewportSize({ width: viewport.width, height: viewport.height });
+        await mockSanitizedApi(page);
         await page.goto(view.route);
-        await expect(page.locator(view.surface).first(), `${view.label} surface`).toBeVisible();
+        await expectAppSurface(page, view.surface, view.label, pageErrors);
         if (view.label === 'map controls') {
-          await page.getByRole('button', { name: 'Search map', exact: true }).click();
+          await page.getByRole('button', { name: 'Search map' }).click();
           const fixtureRecord = page.locator(`.record-list button[data-record-id="${id}"]`);
           await expect(fixtureRecord).toBeVisible();
           await fixtureRecord.click();
@@ -198,7 +212,7 @@ for (const viewport of [{ name: 'desktop', width: 1280, height: 900 }, { name: '
           expect(contrast(reportLinkStyle.color, reportLinkStyle.background), 'light APHIS report link contrast').toBeGreaterThanOrEqual(4.5);
         }
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${view.label} ${viewport.name} overflow`).toBe(true);
-      }
+      });
     }
-  });
+  }
 }
