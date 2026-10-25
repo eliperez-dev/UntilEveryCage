@@ -42,11 +42,11 @@ describe('normal shell content', () => {
     expect(picker).not.toContain('rotate(-45deg)');
   });
 
-  it('keeps the supplied manifesto, empty counter slot, and concise FAQ separate', () => {
+  it('keeps the supplied manifesto, counter component, and concise FAQ separate', () => {
     expect(about).toContain('About Until Every Cage is Empty');
     expect(about).toContain('The Architecture of Silence');
     expect(about).toContain('Until Every Cage is Empty</h2>');
-    expect(about).toContain('<aside class="about-counter-slot" aria-label="Animal counter"></aside>');
+    expect(about).toContain('<aside class="about-counter-slot" aria-label="Animal counter"><AnimalKillCounter /></aside>');
     expect(about).not.toContain('Explore and contribute');
     expect(about).not.toContain('Common questions');
     expect(about).not.toContain('estimate-number');
@@ -57,14 +57,14 @@ describe('normal shell content', () => {
     expect(about).not.toContain('<video');
   });
 
-  it('restores the living-project footer and leaves the backend version integration slot empty', () => {
+  it('restores the living-project footer with a backend version component', () => {
     expect(footer).toContain('independent, open-source, ad-free');
     for (const url of ['mailto:untileverycageproject@protonmail.com', 'https://discord.gg/wbdTHzAZ4b', 'https://ko-fi.com/untileverycageisempty', 'https://linktr.ee/veganresource', 'https://github.com/eliperez-dev/UntilEveryCage']) expect(footer).toContain(url);
     expect(footer).toContain('AGPLv3 or later');
     expect(footer).toContain('CC BY-NC-SA where applicable');
     expect(footer).toContain('ADAPTT');
     expect(footer).toContain('Final Nail');
-    expect(footer).toContain('<div class="application-version-slot"></div>');
+    expect(footer).toContain('<div class="application-version-slot"><ApplicationVersion /></div>');
     expect(footer).not.toContain('v1.5.1');
   });
 

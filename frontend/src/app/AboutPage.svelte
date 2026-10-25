@@ -1,4 +1,5 @@
 <script lang="ts">
+  import AnimalKillCounter from './AnimalKillCounter.svelte';
   let { returnMapHref = '#/map', section = 'overview' }: { returnMapHref?: string; section?: 'overview' | 'sources' } = $props();
   const context = $derived(returnMapHref !== '#/map' ? `?map=${encodeURIComponent(returnMapHref)}` : '');
   const route = (path: string) => `#/${path}${context}`;
@@ -43,7 +44,7 @@
       <p>Contact, GitHub, Discord, Donate and Vegan Resources using the links above.</p>
       <h2>Until Every Cage is Empty</h2>
     </section>
-    <aside class="about-counter-slot" aria-label="Animal counter"></aside>
+    <aside class="about-counter-slot" aria-label="Animal counter"><AnimalKillCounter /></aside>
   </div>
   <section id="sources" aria-labelledby="sources-title">
     <h2 id="sources-title">Sources and methods</h2>
