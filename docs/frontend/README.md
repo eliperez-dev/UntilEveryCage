@@ -83,7 +83,9 @@ publication warnings belong on public unreviewed community results. Contribute
 is a direct header link. Keep the primary links compact on desktop and touch
 screens without duplicating the consolidated pages in hover menus.
 The main map has no white MapLibre compass/pitch control and no visible drag
-instruction banner. Keep the compact map-view selector and 2D/3D toggle, native
+instruction banner. Search map and Map View share viewport-edge insets,
+colors, border treatment and typography on desktop and mobile.
+Keep the compact map-view selector and 2D/3D toggle, native
 gestures, accessible button names and provider attribution. Closing
 a focused facility preserves the current camera; X, Escape, browser Back and
 direct-selected URLs must agree. Map/Database links preserve only allowlisted
