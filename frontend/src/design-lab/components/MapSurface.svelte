@@ -1212,6 +1212,11 @@
           // sending its public UUID to the private aggregate-member API.
           selectedReferenceKey = id;
           updateVisualSettings();
+          const coordinates = event.features?.[0]?.geometry?.coordinates;
+          if (map && Array.isArray(coordinates) && coordinates.length >= 2) {
+            const center: [number, number] = [Number(coordinates[0]), Number(coordinates[1])];
+            if (center.every(Number.isFinite)) map.easeTo({ center, duration: 380, easing: (t) => 1 - Math.pow(1 - t, 3), essential: false });
+          }
           onselect(id);
         }
         return;

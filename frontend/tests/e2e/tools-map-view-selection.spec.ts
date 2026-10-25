@@ -101,6 +101,122 @@ for (const listState of ['closed', 'open'] as const) {
   });
 }
 
+const publicApproximateId = '623e4567-e89b-42d3-a456-426614174000';
+const publicReleaseId = 'synthetic-public-pin-release';
+const publicApproximatePoint: [number, number] = [6.12, 49.6];
+const publicObservedAt = '2026-01-01T00:00:00Z';
+
+for (const listState of ['closed', 'open'] as const) {
+  for (const precision of ['approximate', 'city'] as const) {
+    test(`public ${precision} pin opens detail and centers without zooming with Search ${listState}`, async ({ page }) => {
+      await installMapTiles(page);
+      const row = {
+        facility_id: publicApproximateId,
+        canonical_name: `Synthetic public ${precision} record`,
+        country_code: 'LU', city: 'Fixture locality', category: 'other_regulated_premises',
+        taxonomy_display_category: 'other_regulated_premises', taxonomy_primary_categories: ['other_regulated_premises'],
+        publication_profile: 'official', factual_review_status: 'reviewed', privacy_screening_status: 'passed',
+        project_approval: 'approved', reviewer_role: null, publication_warning: null,
+        display_precision: precision, latitude: publicApproximatePoint[1], longitude: publicApproximatePoint[0],
+        first_observed_at: null, last_observed_at: publicObservedAt, observation_count: 1, lifecycle_status: 'active_observed',
+        source_type: 'official', source_rights_status: 'cleared', provenance_source: null,
+        provenance_source_id: 'fixture.public-approximate', provenance_source_name: 'Fixture source',
+        provenance_source_url: 'https://example.test/source', provenance_retrieved_at: publicObservedAt,
+        release_id: publicReleaseId, release_ruleset_version: 'fixture-rules',
+      };
+      const releaseMeta = { release_id: publicReleaseId, ruleset_version: 'fixture-rules', release_created_at: publicObservedAt, profile: 'official' };
+      await page.route('**/api/**', async route => {
+        const url = new URL(route.request().url());
+        const path = url.pathname;
+        if (!path.startsWith('/api/')) return route.fallback();
+        let body: unknown = {};
+        if (path === '/health/live') {
+          body = { status: 'ok', service: 'uec-api', application_version: '2.0.0' };
+        } else if (path === '/api/v2/releases/manifest') {
+          const requested = url.searchParams.get('release_id');
+          body = { api_version: 'v2', data: {
+            release_id: requested === 'v0-candidate-2026-10-04-r3' ? requested : publicReleaseId,
+            profile: 'official', manifest: {}, manifest_sha256: 'a'.repeat(64), suppression_generation: 1,
+          } };
+        } else if (path === '/api/v2/map/feed') {
+          body = { api_version: 'v2', data: { type: 'FeatureCollection', features: [{
+            type: 'Feature', id: publicApproximateId,
+            geometry: { type: 'Point', coordinates: publicApproximatePoint },
+            properties: { facility_id: publicApproximateId, source_id: row.provenance_source_id,
+              category_key: row.category, category_keys: [row.category], precision, weight: 1 },
+          }] }, meta: {
+            profile: 'official', release_id: publicReleaseId, manifest_sha256: 'a'.repeat(64),
+            suppression_generation: 1, feature_count: 1, public_record_count: 1, unmapped_count: 0,
+            release_label: 'Synthetic public fixture', dataset_version: 'fixture-v1',
+          } };
+        } else if (path === `/api/v2/locations/${publicApproximateId}`) {
+          body = { api_version: 'v2', data: row, meta: releaseMeta };
+        } else if (path === '/api/v2/locations') {
+          body = { api_version: 'v2', data: [row], meta: { ...releaseMeta, next_cursor: null, total_count: 1, coverage_note: 'Synthetic public fixture.' } };
+        } else if (path === '/api/v2/discovery/facets') {
+          body = { api_version: 'v2', dimensions: {}, meta: {
+            ...releaseMeta, coverage_scope: 'Synthetic fixture only', count_semantics: 'Synthetic rows only.',
+            filters: { country_code: null, region: null, category: null, source_type: null, display_precision: null, lifecycle_status: null },
+          } };
+        }
+        await route.fulfill({ contentType: 'application/json', body: JSON.stringify(body) });
+      });
+
+      await page.goto(`./#/map?release_id=${publicReleaseId}&lat=49.5&lon=5.9&z=9&list=${listState}`);
+      await expect(page.locator('[data-data-mode="public-release"]')).toBeVisible();
+      await page.waitForFunction(() => {
+        const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+        return map?.isStyleLoaded() && map.isSourceLoaded('locations') && map.getLayer('approx-reference-pins');
+      });
+      if (listState === 'open') await expect(page.locator('#field-record-list')).toBeVisible();
+      else await expect(page.getByRole('button', { name: 'Search map' })).toBeVisible();
+
+      const layer = precision === 'approximate' ? 'approx-reference-pins' : 'approx-reference-points';
+      await expect.poll(() => page.evaluate(({ id, coordinates, layerId }) => {
+        const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+        const point = map.project(coordinates);
+        return map.queryRenderedFeatures({ x: point.x, y: point.y - 10 }, { layers: [layerId] })
+          .some((feature: any) => feature.properties?.key === id || feature.properties?.id === id || feature.id === id);
+      }, { id: publicApproximateId, coordinates: publicApproximatePoint, layerId: layer })).toBe(true);
+      const pinPoint = await page.evaluate(({ id, coordinates, layerId }) => {
+        const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+        const projected = map.project(coordinates);
+        const click = { x: projected.x, y: projected.y - 10 };
+        const hit = map.queryRenderedFeatures(click, { layers: [layerId] })
+          .some((feature: any) => feature.properties?.key === id || feature.properties?.id === id || feature.id === id);
+        const bounds = map.getCanvas().getBoundingClientRect();
+        return { x: bounds.left + click.x, y: bounds.top + click.y, hit, zoom: map.getZoom() };
+      }, { id: publicApproximateId, coordinates: publicApproximatePoint, layerId: layer });
+      expect(pinPoint.hit, 'the test click must land on the rendered public pin').toBe(true);
+      expect(pinPoint.zoom).toBeCloseTo(9, 1);
+      await page.mouse.click(pinPoint.x, pinPoint.y);
+      await expect(page.locator('.dossier')).toBeVisible();
+      await expect(page.locator('.dossier')).toContainText(`Synthetic public ${precision} record`);
+      const expectCenteredAtPin = async () => {
+        const camera = await page.evaluate(() => {
+          const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+          const center = map.getCenter();
+          return { longitude: center.lng, latitude: center.lat, zoom: map.getZoom() };
+        });
+        expect(camera.longitude).toBeCloseTo(publicApproximatePoint[0], 3);
+        expect(camera.latitude).toBeCloseTo(publicApproximatePoint[1], 3);
+        expect(camera.zoom).toBeCloseTo(9, 1);
+      };
+      await expect.poll(async () => {
+        const camera = await page.evaluate(() => {
+          const center = (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getCenter();
+          return center ? [Number(center.lng.toFixed(3)), Number(center.lat.toFixed(3))] : null;
+        });
+        return camera;
+      }).toEqual([Number(publicApproximatePoint[0].toFixed(3)), Number(publicApproximatePoint[1].toFixed(3))]);
+      await expectCenteredAtPin();
+      await page.getByRole('button', { name: 'Close record detail' }).click();
+      await expect(page.locator('.dossier')).toHaveCount(0);
+      await expectCenteredAtPin();
+    });
+  }
+}
+
 const providerReferenceKey = '0123456789abcdef0123456789abcdef';
 const providerSourceId = 'de.fixture.provider-address';
 const providerMember = {
