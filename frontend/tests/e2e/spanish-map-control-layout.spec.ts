@@ -1,5 +1,29 @@
 import { expect, test, type Page } from '@playwright/test';
 
+const releaseId = 'synthetic-spanish-layout-release';
+const observedAt = '2026-01-01T00:00:00Z';
+
+async function mockSanitizedApi(page: Page) {
+  await page.route('https://tile.openstreetmap.org/**', route => route.abort());
+  await page.route('https://server.arcgisonline.com/**', route => route.abort());
+  await page.route('**/api/**', async route => {
+    const url = new URL(route.request().url());
+    const path = url.pathname;
+    if (!path.startsWith('/api/')) return route.fallback();
+    let body: unknown = {};
+    if (path === '/api/v2/releases/manifest') {
+      body = { api_version: 'v2', data: { release_id: releaseId, profile: 'official', manifest: {}, manifest_sha256: 'a'.repeat(64), suppression_generation: 1 } };
+    } else if (path === '/api/v2/locations') {
+      body = { api_version: 'v2', data: [], meta: { release_id: releaseId, total_count: 0, next_cursor: null, coverage_note: 'Synthetic fixture only.' } };
+    } else if (path === '/api/v2/discovery/facets') {
+      body = { api_version: 'v2', dimensions: {}, meta: { release_id: releaseId, coverage_scope: 'synthetic fixture', count_semantics: 'Synthetic test rows only.', filters: {} } };
+    } else if (path === '/api/v2/map/feed') {
+      body = { api_version: 'v2', data: { type: 'FeatureCollection', features: [] }, meta: { profile: 'official', release_id: releaseId, manifest_sha256: 'a'.repeat(64), suppression_generation: 1, feature_count: 0, public_record_count: 0, unmapped_count: 0, release_label: 'Synthetic release', dataset_version: 'synthetic' } };
+    }
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify(body) });
+  });
+}
+
 const contrastRatio = (foreground: string, background: string) => {
   const luminance = (color: string) => {
     const channels = color.match(/[\d.]+/g)?.slice(0, 3).map(Number) ?? [];
@@ -20,12 +44,13 @@ async function setSpanishAndTheme(page: Page, theme: 'Claro' | 'Oscuro') {
   await page.getByRole('button', { name: theme, exact: true }).click();
   await expect(page.locator('html')).toHaveAttribute('lang', 'es');
   await expect(page.locator('html')).toHaveAttribute('data-theme', theme === 'Claro' ? 'light' : 'dark');
+  await page.getByRole('button', { name: 'Cerrar herramientas', exact: true }).click();
 }
 
 test('Spanish map controls do not overlap at 390px or 375px in either theme', async ({ page }, testInfo) => {
-  test.skip(!process.env.UEC_REAL_PREVIEW_URL, 'Requires the running local v0 preview supplied by integration.');
+  await mockSanitizedApi(page);
   await page.addInitScript(() => localStorage.setItem('uec-language', 'es'));
-  await page.goto('/#/map');
+  await page.goto('./#/map');
   await expect(page.getByRole('button', { name: 'Buscar en el mapa' })).toBeVisible();
   await expect(page.locator('.map-controls')).toBeVisible();
 
@@ -64,7 +89,7 @@ test('Spanish map controls do not overlap at 390px or 375px in either theme', as
       await page.screenshot({ path: testInfo.outputPath(`spanish-map-${width}-${theme.toLowerCase()}.png`) });
       if (width === 390) {
         const tools = page.getByRole('button', { name: 'Herramientas', exact: true });
-        if (await tools.getAttribute('aria-expanded') !== 'true') await tools.click();
+        await tools.click();
         await expect(page.getByLabel('Idioma', { exact: true })).toHaveValue('es');
         await expect(page.getByRole('group', { name: 'Tema de color' })).toBeVisible();
         await expect(page.getByRole('button', { name: theme, exact: true })).toHaveAttribute('aria-pressed', 'true');
