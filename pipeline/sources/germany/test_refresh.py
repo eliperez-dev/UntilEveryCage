@@ -33,11 +33,9 @@ class GermanyRefreshTests(unittest.TestCase):
             self.assertEqual(first["report"]["publication_eligibility"], "blocked")
             self.assertFalse(any((root / "one" / "lifecycle").glob("*/released/records.jsonl")))
 
-    def test_network_mode_requires_explicit_portal_export_url_and_terms_review(self):
+    def test_live_mode_rejects_guessed_export_url(self):
         with self.assertRaises(RefreshError):
-            refresh(run_dir=Path(tempfile.mkdtemp()), fetch=True)
-        with self.assertRaises(RefreshError):
-            refresh(run_dir=Path(tempfile.mkdtemp()), fetch=True, export_url="https://example.invalid/export.csv", terms_review_path=ROOT / "README.md")
+            refresh(run_dir=Path(tempfile.mkdtemp()), fetch=True, export_url="https://example.invalid/export.csv")
 
 
 if __name__ == "__main__":

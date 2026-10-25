@@ -1,10 +1,12 @@
 {
   "source_id": "de.locations",
   "source_url": "https://www.bvl.bund.de/bltu",
+  "acquisition_url": "https://bltu.bvl.bund.de/bltu/app/process/bvl-btl_p_veroeffentlichung?execution=e6s1",
+  "export_control": "CSV export from the public Generalliste page",
   "portal_url": "https://gis.bvl.bund.de/datenportal/",
   "adapter_version": "de-bltu-private-v2",
   "schema_version": "de-bltu-csv-v2",
   "coverage": "BVL BLtU list of German establishments approved under Regulation (EC) 853/2004; export selected from the BVL portal",
-  "terms": "Public access and export are documented by BVL, but dataset-specific reuse and redistribution terms remain pending human confirmation",
+  "terms": "Public access and CSV export are documented by BVL; private research acquisition is implemented. Dataset-specific retention, attribution, and redistribution terms remain under review",
   "geocoding": "disabled"
 }

@@ -1,15 +1,16 @@
 # Germany BVL BLtU private staging
 
-Use the stable [BVL BLtU landing page](https://www.bvl.bund.de/bltu) and select
-the current general-list CSV export in the portal. Save that export outside Git
-and run the assisted refresh:
+The live refresh follows the public BLtU session flow to select and preserve its
+general-list CSV export, then stages it privately. It uses bounded HTTPS requests,
+session cookies, a 30-second request timeout, a 16 MiB default artifact cap, and
+the pinned 50-column schema contract. Effective date stays unknown unless BVL
+supplies one. Run it with:
 
 ```text
-python -m pipeline.sources.germany.refresh --raw <private/bltu-export.csv> --run-dir <private/run> --retrieved-at-utc 2026-09-15T00:00:00Z
+python -m pipeline.sources.germany.refresh --fetch --run-dir <private/run> --output-root <private/raw>
 ```
 
-For a captured export with row-free acquisition metadata, also pass
-`--acquisition-metadata <private/capture-metadata.json>`.
+Preserved artifacts may still be replayed with `--raw <private/bltu-export.csv>`.
 
 The typed adapter preserves repeated activity columns and source evidence,
 quarantines schema and mapping anomalies, emits shared health evidence, and

@@ -49,6 +49,27 @@ decisions remain open.
 Privacy/safety review is separately required because facility addresses can overlap
 with residences or identify individuals; source origin does not resolve that risk.
 
+## 2026-10-25 public export verification
+
+The public BLtU workflow was exercised through its ordinary session navigation:
+the landing page's “Weiter ohne JavaScript” action opened the start page, and the
+“Generalliste” action opened the table. Its CSV export control returned HTTP 200
+(`application/csv`); the private capture is retained at
+`D:\\UntilEveryCage-Operations\\source-captures\\de-launch-20261025` with SHA-256
+`6dfb981a0927cebf5de5b0bd7de5debb180b1df2d633bb9becfd12c5439ab0d2` (2,065,432
+bytes). The page displays “BVL Betriebslisten Version 1.0.35 [10/2023]”; this is
+the application/list version string, not evidence of the export's effective date,
+which remains unknown.
+
+The existing private lifecycle parsed the captured 50-column schema as matched:
+15,775 input rows, 2,683 normalized and 13,092 quarantined. It retained the
+source's address evidence privately, left coordinates unknown/geocoding disabled,
+and created no release. The parser reported 9 malformed CSV rows, 11 physical
+column-count mismatches, 13,078 unmapped activity-code cases, and the associated
+identity/activity anomalies. This is fresh public acquisition and private adapter
+staging, not shared-runner/importer/API/map E2E. Redistribution terms and privacy
+review remain unresolved; no public rows are authorized.
+
 ## Metadata evidence boundary
 
 Any user-supplied JSON describing this source must be treated as a lead until tied to

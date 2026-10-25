@@ -1,4 +1,4 @@
-"""Assisted/private refresh for a BVL BLtU CSV export."""
+"""Private live acquisition or preserved-artifact refresh for BVL BLtU."""
 from __future__ import annotations
 
 import argparse
@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from pipeline.common.acquisition import AcquisitionError, fetch_source, utc_now
+from pipeline.common.acquisition import utc_now
 from pipeline.common.orchestrator import run_private_lifecycle
 from pipeline.common.review import write_operator_review_packet
 from pipeline.contracts.adapter_contract import SourceArtifact
@@ -15,10 +15,39 @@ from pipeline.contracts.candidate_handoff import write_handoff
 from pipeline.contracts.source_lifecycle import atomic_json
 
 from .adapter import CONFIG, BltuAdapter
+from .acquire import BvlAcquisitionError, fetch as fetch_bltu
 
 
 class RefreshError(ValueError):
     pass
+
+
+class GermanyRefreshAdapter:
+    """Source-owned bridge for the shared private refresh runner."""
+    source_id = CONFIG["source_id"]
+    adapter_version = CONFIG["adapter_version"]
+    source_kind = "facility_master"
+
+    def refresh(self, *, mode: str, run_dir: Path, artifact: Path | None,
+                options: dict[str, Any]) -> dict[str, Any]:
+        if mode == "fixture":
+            raw = Path(__file__).parent.parent.parent / "germany" / "fixtures" / "synthetic_bltu.csv"
+            result = refresh(run_dir=run_dir, raw_path=raw,
+                             retrieved_at_utc="2026-09-14T00:00:00Z")
+        elif mode == "local-artifact":
+            if artifact is None:
+                raise RefreshError("local artifact mode requires a preserved BVL export")
+            result = refresh(run_dir=run_dir, raw_path=artifact,
+                             acquisition_metadata_path=options.get("acquisition_metadata"))
+        elif mode == "live-acquisition":
+            result = refresh(run_dir=run_dir, fetch=True,
+                             output_root=run_dir / "acquisition",
+                             run_id=str(options.get("acquisition_run_id") or run_dir.name),
+                             timeout_seconds=float(options.get("timeout_seconds", 30)),
+                             max_bytes=int(options.get("max_bytes", 16 * 1024 * 1024)))
+        else:
+            raise RefreshError(f"unsupported Germany refresh mode: {mode}")
+        return dict(result["report"])
 
 
 REVIEW_BLOCKERS = {
@@ -60,15 +89,11 @@ def refresh(*, run_dir: str | Path, raw_path: str | Path | None = None, fetch: b
         raise RefreshError("specify exactly one of --raw or --fetch")
     retrieved = retrieved_at_utc or utc_now()
     if fetch:
-        if not export_url:
-            raise RefreshError("--export-url is required: select the current CSV/XLS export in the BVL portal")
-        if not export_url.startswith(("https://www.bvl.bund.de/", "https://gis.bvl.bund.de/")):
-            raise RefreshError("BLtU export URL must be an HTTPS BVL host")
-        if terms_review_path is None:
-            raise RefreshError("--terms-review is required with --fetch")
         try:
-            metadata = fetch_source(source_id=CONFIG["source_id"], url=export_url, output_root=Path(output_root), artifact_name="bltu-export.csv", run_id=run_id, timeout_seconds=timeout_seconds, max_bytes=max_bytes, terms_review_path=terms_review_path, code_version=CONFIG["adapter_version"], config_version=CONFIG["schema_version"], coverage=CONFIG["coverage"], rights_caveat=CONFIG["terms"], privacy_caveat="private staging; address and coordinate review pending", allowed_content_types=("text/csv", "application/csv", "application/vnd.ms-excel", "application/octet-stream"))
-        except AcquisitionError as error:
+            if export_url:
+                raise RefreshError("--export-url is no longer used; acquisition follows the configured public BLtU session")
+            metadata = fetch_bltu(output_root=output_root, run_id=run_id or retrieved.replace(":", "").replace("-", ""), timeout_seconds=timeout_seconds, max_bytes=min(max_bytes, 64 * 1024 * 1024))
+        except BvlAcquisitionError as error:
             raise RefreshError(str(error)) from error
         input_path = Path(metadata["artifact_path"])
     else:
@@ -103,19 +128,18 @@ def main() -> int:
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--raw", type=Path)
     source.add_argument("--fetch", action="store_true")
-    parser.add_argument("--export-url")
+    parser.add_argument("--export-url", help=argparse.SUPPRESS)
     parser.add_argument("--run-dir", type=Path, required=True)
     parser.add_argument("--output-root", type=Path, default=Path("data/raw"))
     parser.add_argument("--run-id")
-    parser.add_argument("--terms-review", type=Path)
     parser.add_argument("--retrieved-at-utc")
-    parser.add_argument("--timeout-seconds", type=float, default=60)
-    parser.add_argument("--max-bytes", type=int, default=128 * 1024 * 1024)
+    parser.add_argument("--timeout-seconds", type=float, default=30)
+    parser.add_argument("--max-bytes", type=int, default=16 * 1024 * 1024)
     parser.add_argument("--previous-normalized", type=Path)
     parser.add_argument("--acquisition-metadata", type=Path, help="row-free JSON sidecar for a browser-assisted export")
     args = parser.parse_args()
     try:
-        result = refresh(run_dir=args.run_dir, raw_path=args.raw, fetch=args.fetch, export_url=args.export_url, terms_review_path=args.terms_review, output_root=args.output_root, run_id=args.run_id, retrieved_at_utc=args.retrieved_at_utc, timeout_seconds=args.timeout_seconds, max_bytes=args.max_bytes, previous_normalized=args.previous_normalized, acquisition_metadata_path=args.acquisition_metadata)
+        result = refresh(run_dir=args.run_dir, raw_path=args.raw, fetch=args.fetch, export_url=args.export_url, output_root=args.output_root, run_id=args.run_id, retrieved_at_utc=args.retrieved_at_utc, timeout_seconds=args.timeout_seconds, max_bytes=args.max_bytes, previous_normalized=args.previous_normalized, acquisition_metadata_path=args.acquisition_metadata)
     except (OSError, RefreshError) as error:
         print(json.dumps({"status": "failed", "error": str(error)}, sort_keys=True))
         return 2
