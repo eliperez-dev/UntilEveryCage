@@ -1,7 +1,11 @@
 import json
+import hashlib
+import os
+import runpy
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from .location_enrichment import LOOKUP_METHOD_VERSION, LOOKUP_SOURCE_ID, registration_key_sha256
 from .map_activation import activate, load_verified_events, verified_address_query, verified_event
@@ -44,6 +48,23 @@ class _FakeConnection:
             return _Result(None if self.restricted else (1,))
         if "INSERT INTO uec.geocode_jobs" in sql: return _Result(("job-id",))
         if "INSERT INTO real_preview.geocode_targets" in sql: return _Result(("candidate-id",))
+        return _Result()
+
+
+class _FakeAcquisitionConnection:
+    def __init__(self, records_hash, representatives):
+        self.records_hash = records_hash
+        self.representatives = representatives
+    def __enter__(self): return self
+    def __exit__(self, *_): return False
+    def transaction(self): return self
+    def execute(self, sql, params=None):
+        sql = " ".join(sql.split())
+        if sql == "SELECT current_database()": return _Result(("uec_launch_sources_test_20261025",))
+        if "FROM real_preview.source_manifests manifest" in sql:
+            return _Result(("b" * 64, self.records_hash))
+        if "FROM real_preview.candidates candidate" in sql:
+            return _Result(many=self.representatives)
         return _Result()
 
 
@@ -120,6 +141,39 @@ class SpainMapActivationTests(unittest.TestCase):
                      "result_url": "https://rgsa-web-aesan.mscbs.es/rgsa/resultado_principal.jsp"}]
         enrich_records(rows, limit=1, lookup=lookup)
         self.assertEqual(seen, ["10.25892/CO"])
+
+    def test_live_acquisition_selection_is_latest_snapshot_bound_and_output_is_minimized(self):
+        record = {"source_id": "es.locations", "source_record_key": "a" * 64,
+                  "source_values": {"N_RGSEAA": "10.25892/CO", "Razon_Social": "PRIVATE NAME"},
+                  "normalized": {"establishment_id": "10.25892/CO", "address": "ORIGINAL INDUSTRIAL ROAD 7",
+                                 "province": "Test Province"}}
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            records_path = root / "normalized-records.jsonl"
+            payload = (json.dumps(record, ensure_ascii=False) + "\n").encode("utf-8")
+            records_path.write_bytes(payload)
+            output_path = root / "events" / "aesan-locality-events.jsonl"
+            fake_db = _FakeAcquisitionConnection(hashlib.sha256(payload).hexdigest(), [("10.025892/CO", "a" * 64)])
+            module_path = ROOT / "scripts" / "stages" / "acquire-spain-aesan-locality-events.py"
+            acquire = runpy.run_path(str(module_path))["acquire"]
+            requests = []
+            def lookup(keys):
+                requests.extend(keys)
+                return [{"results": [{"registration": "10.25892/CO", "address": "unused",
+                                      "municipality": "Test Municipality", "province": "Test Province"}],
+                         "result_url": "https://rgsa-web-aesan.mscbs.es/rgsa/resultado_principal.jsp",
+                         "request_url": "https://rgsa-web-aesan.mscbs.es/rgsa/procesaBusquedaServlet",
+                         "retrieved_at": "2026-10-25T15:00:00Z"}]
+            with patch.dict(os.environ, {"UEC_REAL_PREVIEW_RUNS_ROOT": str(root)}):
+                counts = acquire("unused", records_path, output_path, limit=1,
+                                 lookup=lookup, connect=lambda *_args, **_kwargs: fake_db)
+            self.assertEqual(requests, ["10.25892/CO"])
+            self.assertEqual(counts["matched"], 1)
+            retained = output_path.read_text(encoding="utf-8")
+            self.assertNotIn("PRIVATE NAME", retained)
+            self.assertNotIn("ORIGINAL INDUSTRIAL ROAD", retained)
+            self.assertNotIn("10.25892/CO", retained)
+            self.assertIn("registration_key_sha256", retained)
 
     def test_activator_creates_fresh_standard_worker_job_and_target_only(self):
         record = event()
