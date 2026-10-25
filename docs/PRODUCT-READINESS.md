@@ -24,6 +24,46 @@ publishable facilities unless explicitly labelled that way.
 
 ## Current launch decision (2026-10-24)
 
+**Required before replacing the original website:** the maintainer approved
+launch repairs and a targeted code/documentation cleanup first, followed by
+persistent cluster-index reuse, multilingual UI and map coverage from France,
+Spain, Germany and Mexico. These remain launch gates, not post-launch extras.
+The cleanup checkpoint precedes cluster persistence and translation work.
+Spanish is the first bounded translation implementation; German, French,
+Italian, Dutch and Danish follow through the same language system. Original
+source names and evidence remain unchanged. Country coverage requires a
+verified acquisition-to-database pipeline and eligible plotted records, not
+registration or adapter tests alone. None of these new gates is claimed
+complete by the previously deployed graph/terrain work below.
+
+**Launch repairs, local implementation checkpoint:** the consolidated shell has
+five direct destinations, a single About page, and one API/data-access page
+with release-aware complete CSV downloads and paginated JSON. Old informational
+routes remain aliases. Four superseded page components and their menu plumbing
+were removed; this is targeted cleanup, not a full dead-code audit. Public
+community browsing is offered only when a published community release is
+available, independently of the five submission types and tracking.
+
+Map pin selection centres the view, a concise desktop gesture hint is visible,
+and MapLibre retains one additional native tile-cache zoom level. This is not
+persistent cluster-index caching or a guarantee that every tile transition is
+flash-free. Database facets start alongside the first result request and are
+checked against its release/ruleset before display. The measured underlying
+list and facet query times were roughly unchanged; no SQL speedup is claimed.
+APHIS controls avoid repeated successful same-kind initial fetches and retain
+loading, error and retry states. Historical report coverage remains an intake
+gap, not a frontend year filter; source readiness remains in `source-status.json`.
+
+Local acceptance passed the original v0 baseline after upgrading a disposable
+copy to the current migrations, the real-v0 API parity test, complete 69,220-row
+current CSV and explicit 1,000-row export, 169 Rust tests, 296 frontend tests,
+21 API-contract tests, lint, repository hygiene and a production build. The
+About estimate uses the dated retained statistical catalog; its arithmetic was
+reproduced, but its missing source archive was not freshly verified. Hosted
+rollout identity, CI and final browser/cleanup evidence are recorded separately
+in ignored `data/staging/launch-20261024/acceptance.json`; local checks alone do
+not establish deployment or completion of the remaining launch gates.
+
 **Verified graph and terrain rollout:** Render acceptance passed at revision
 `6e02a476` after [all seven CI jobs passed](https://github.com/eliperez-dev/UntilEveryCage/actions/runs/40141519697).
 Native 2D/3D terrain and the location-first facility layout are implemented. The
@@ -62,10 +102,12 @@ Desktop guidance uses right-drag to tilt and rotate; left-drag pans.
 The selected serving package is restored into
 `uec_serving_graph_s2_keys_20261024`; previous serving, source, frozen and
 community databases are unchanged. TLS, restriction replay, schema integrity
-and read-only runtime grants passed. The clone's inherited migration 066 ledger
-checksum is identical to the prior verified package but differs from the current
-checkout; the standard replay command remains blocked on that old discrepancy.
-No existing ledger row was changed and no successful replay is claimed. Final
+and read-only runtime grants passed. A later launch-repair preflight compared all
+91 ledger entries on the disposable graph copy with the current checkout and
+found no checksum mismatches, including migration 066. The normal
+`apply-migrations.py` command then completed with exit zero and no pending
+migrations; no existing ledger row was changed. The previous replay-blocked
+note is superseded by that check. Final
 frontend-only deployment identity, UI checks and owned-resource cleanup are
 recorded in ignored `data/staging/sprint2-20261024/hosted-acceptance.json`.
 

@@ -22,7 +22,23 @@ See [claim-ledger.md](claim-ledger.md) — **Canonical** claim boundary,
 
 ## Initial source-verification result
 
-FAOSTAT is a defensible primary source for a bounded land-animal slaughtering figure. A private retrieval of the 2024 normalized bulk release on 2026-09-13 found 17 direct meat items with head units for Area=World and Element=Producing Animals/Slaughtered. After converting `1000 An` rows to heads and excluding aggregate rows and duplicate meat by-products, the selected items sum to **87,896,729,120 heads**. The modeled average is **240,653,071 heads/day** or **2,785 heads/second**, using 365.2425 days/year. This is not a universal total or live counter: it excludes items not in the selected set, includes FAO estimates where present, and spreads annual observations evenly across a calendar-year convention. The source archive hash was `C5835418C18F9322E7DECBD6800F93A216EAAE3CDFA31ACB08F0518C0C6D6853`; raw data remains outside the repository.
+The retained [aggregate catalog](../../data/manifests/animal-scale-statistics-catalog.json)
+and claims C-16/C-17 define the selected 2024 FAOSTAT scope: sixteen
+non-aggregate World meat items with the Producing Animals/Slaughtered element.
+Converting `1000 An` components to animals and summing gives **87,892,277,479
+animals**. A 366-day calendar-year model yields **240,142,834.64 per day** or
+**2,779.43 per second**. The earlier seventeen-item total and 365.2425-day
+calculation in this page were inconsistent with that catalog and are superseded.
+This is a selected-scope estimate, not all animal deaths or event-timed data.
+
+The catalog records retrieval on 2026-09-15 and archive SHA-256
+`c5835418c18f9322e7decbd6800f93a216eaae3cdfa31acb08f0518c0c6d6853`.
+The 2026-10-24 launch check reproduced the arithmetic from its sixteen
+components and checked the FAO methodology, but the named raw archive was not
+available locally. That check does not reverify the archive hash or upstream
+row extraction. The catalog retains its existing private-validation status;
+do not describe a UI counter as publication of the raw statistical archive or
+as independent confirmation of the underlying observations.
 
 The exact selected item list, units, exclusions, formula, retrieval date, source links, and limitations are recorded in claim C-16/C-17. The FAO catalog currently identifies the dataset license as CC BY 4.0, but the release/terms should be rechecked before redistribution or embedding raw data. Before public use, the maintainer should confirm that the selected scope is described prominently enough not to be mistaken for all-animal mortality.
 

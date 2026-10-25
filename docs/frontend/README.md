@@ -41,25 +41,23 @@ they are not a separate social network or a claim of universal identity.
 
 The product principle is **quiet on first contact, powerful when investigated**.
 
-The maintainer's 2026-10-04 navigation revision adds **Contribute** and **About**
-beside these two discovery views: `Map, Database | Contribute, About`.
+The maintainer's 2026-10-24 navigation revision uses five direct destinations:
+`Map, Database, API | Contribute, About`. Tools retains release selection.
 Contribute opens Add a facility by default, with visible task links to switch
 the form, plus submission tracking, community browsing and project/support links.
-Database groups Browse records, Downloads and API documentation. About groups
-Overview (the project manifesto), Sources & methodology, FAQ and Help.
-FAQ answers common questions; it does not replace the evidence and methods page.
-Help provides short written guides and controlled tutorial
-recordings; API & downloads exposes the implemented public read API through a
-self-hosted Swagger explorer. Data access still requires an eligible published
+Only offer community browsing when a published community release is available;
+submission intake is a separate capability. Database opens Browse records.
+API combines full-release CSV downloads, paginated JSON, release IDs and the
+self-hosted Swagger explorer. About combines the project manifesto, sources
+and methods, help, and common questions in one page. Old informational and
+download routes remain compatible aliases. Data access requires a published
 release, independently of the local preview or submission pilot.
 These links must appear
 consistently in the public shell and local preview; following them must preserve
 the selected preview context. Private submission forms use ordinary language;
 publication warnings belong on public unreviewed community results. Contribute
-is a direct header link; Database and About expose destinations through text-only
-menus without arrows. Clicking Database opens Browse records; clicking About
-opens Overview. Hover or keyboard focus reveals subpages. On touch devices,
-a separate compact pages control reveals the menu while title taps navigate.
+is a direct header link. Keep the primary links compact on desktop and touch
+screens without duplicating the consolidated pages in hover menus.
 State that the code is open source and provide an
 explicit GitHub path for code contributions on Overview and Contribute. Use
 the same styled masthead on all pages. Informational pages use compact type,
@@ -109,8 +107,11 @@ a competing completion ledger.
   operator-only. Public graph edges are intentionally discoverable, with
   exact/inferred and high/medium/low confidence shown together with their
   evidence and limitations.
-- MVP is English-only, but all user-facing copy uses stable localization keys;
-  domain data and rules never contain translated strings.
-- The V1 behavioral contract's checked-in de/en/es/fr locale behavior remains a
-  historical migration baseline. The V2 launch decision supersedes it with an
-  English-only MVP while preserving translation-ready architecture.
+- The current public client is English-only; a complete V2 localization system
+  is not implemented. Multilingual UI is required before launch, after the
+  targeted cleanup checkpoint. Spanish is the first bounded implementation,
+  followed by German, French, Italian, Dutch and Danish. Keep source names and
+  evidence in their original language and domain rules independent of locale.
+- The V1 de/en/es/fr locale implementation is a historical migration reference,
+  not proof that V2 language switching works. Product-level language and
+  country-coverage gates live in `docs/PRODUCT-READINESS.md`.

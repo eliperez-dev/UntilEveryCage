@@ -83,7 +83,10 @@ Do not create a large design-system abstraction before two real pages exist.
 ## Motion and interaction tone
 
 Motion is limited to map transitions, sheet entry, and loading state, all with a
-reduced-motion path. No bouncing markers, number counters, or attention pulses.
+reduced-motion path. No bouncing markers, animated map totals, or attention pulses.
+The maintainer-approved About-page animal-death estimate is a separate,
+source-dated model: keep its scope and calculation accessible, and do not
+announce each numeric update to assistive technology or imply live telemetry.
 Focus rings are visible and high contrast. Hover can enrich a row, but never
 reveals the only source, confidence, or action.
 
