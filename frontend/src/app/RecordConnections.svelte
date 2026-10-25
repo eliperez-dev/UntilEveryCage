@@ -107,13 +107,13 @@
 
 <section class="connections" aria-labelledby="connections-heading">
   <h2 id="connections-heading">Connections</h2>
-  <div class="controls">
+  {#if kind !== 'all' || confidence !== 'all' || (!loading && !error && rows.length > 0)}<div class="controls">
     <label>Relationship <select bind:value={kind}><option value="all">All</option><option value="exact">Exact</option><option value="inferred">Inferred</option></select></label>
     <label>Confidence <select bind:value={confidence}><option value="all">All</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></label>
-  </div>
+  </div>{/if}
   {#if loading}<p role="status">Loading connections…</p>
   {:else if error}<p role="alert">Connections could not be loaded. <button type="button" onclick={() => retry += 1}>Retry</button></p>
-  {:else if !rows.length}<p class="empty">No connections in this release.</p>
+  {:else if !rows.length}<p class="empty">None</p>
   {:else}<ul>
     {#each rows as edge (edge.connection_edge_id)}
       {@const endpoint = otherEndpoint(edge)}

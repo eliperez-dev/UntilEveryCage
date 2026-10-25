@@ -27,7 +27,12 @@ describe('public record connections', () => {
     expect(component).toContain('edge.provenance.source_ids');
     expect(component).toContain('Object.keys(edge.signals)');
     expect(component).not.toContain('edge.disclaimer');
-    expect(component).toContain('No connections in this release.');
+    expect(component).toContain('<p class="empty">None</p>');
+  });
+
+  it('shows None without filters for an empty record, while keeping active filters available', () => {
+    expect(component).toContain("kind !== 'all' || confidence !== 'all' || (!loading && !error && rows.length > 0)");
+    expect(component).toContain('<p class="empty">None</p>');
   });
 
   it('delegates relevance-gated APHIS reports to the on-demand report component without generic copy', () => {

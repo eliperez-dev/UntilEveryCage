@@ -37,8 +37,13 @@ test('direct links retain native keyboard and browser navigation', async ({ page
   await database.focus();
   await page.keyboard.press('Enter');
   await expect(page.getByRole('heading', { name: 'Browse records', exact: true })).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole('heading', { name: 'Frequently asked questions', exact: true })).toBeVisible();
+  await page.goForward();
+  await expect(page.getByRole('heading', { name: 'Browse records', exact: true })).toBeVisible();
   const popupPromise = context.waitForEvent('page');
-  await database.click({ modifiers: ['Control'] });
+  // Middle-click is the native, platform-independent alternate-tab gesture for a normal anchor.
+  await database.click({ button: 'middle' });
   const popup = await popupPromise;
   await expect(popup).toHaveURL(/#\/database(?:$|[/?])/);
   await expect(popup.getByRole('heading', { name: 'Browse records', exact: true })).toBeVisible();
