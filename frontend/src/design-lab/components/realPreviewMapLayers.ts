@@ -2,7 +2,7 @@ import type { Map as MapLibreMap } from 'maplibre-gl';
 import type { JsonMapCollection } from './jsonMapFallback';
 import { CATEGORY_PRESENTATIONS, CATEGORY_PRIMARY_BY_SOURCE_KEY } from '../../features/locations/categoryPresentation';
 
-export const DEFAULT_CLUSTER_RADIUS = 30;
+export const DEFAULT_CLUSTER_RADIUS = 50;
 /** Requested camera zoom. Native GeoJSON tile zooms are whole numbers. */
 export const DEFAULT_CLUSTER_MAX_ZOOM = 9;
 /** Presentation-only radius when the public projection has no supplied area. */

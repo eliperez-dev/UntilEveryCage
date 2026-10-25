@@ -92,7 +92,7 @@ sources; do not silently count legacy rows as newly acquired data.
    the remaining launch languages still need translation.
    Keep the deployed Swagger/FAQ contrast and generated Spanish record-label
    translations, Tools map controls, and exact/approximate pin centering.
-   The cluster cutoff defaults to camera zoom 9.0 with radius 30 px.
+   The cluster cutoff defaults to camera zoom 9.0 with radius 50 px.
    Use focused visual/translation checks for these nits, not repeated full
    integration suites after each small edit.
 3. Deliver missing country coverage through source-specific lanes using the

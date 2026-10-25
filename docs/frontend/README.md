@@ -50,7 +50,7 @@ API schemas own supported fields. They are not additional roadmaps.
   Do not substitute the six legacy type names for the V2 classification model.
   Processing is grey; do not invent approval for an undocumented palette.
   Preserve current category meanings until the maintainer agrees a change.
-- Default cluster radius is 30 px and the camera-zoom cutoff is 9.0. Preserve
+- Default cluster radius is 50 px and the camera-zoom cutoff is 9.0. Preserve
   explicit debug overrides. Clusters group geographically, not into a
   visible square grid. Exact and approximate records participate in clustering;
   do not make areas disappear between zoom levels or clear valid markers while

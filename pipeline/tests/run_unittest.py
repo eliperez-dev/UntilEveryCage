@@ -23,6 +23,17 @@ ALLOWED_SKIP_REASONS = {
     "set UEC_APHIS_POSTGIS_TEST_DATABASE_URL for the disposable PostGIS gate",
 }
 ALLOWED_SKIPPED_TESTS = {
+    # This acceptance needs the approved retained Spain cohort, not CI fixtures.
+    (
+        "test_spain_municipality_geocoding_postgis.SpainMunicipalityGeocodingPostGISTests"
+        ".test_bridge_acceptance_and_rejection_cases_rollback",
+        "set UEC_SPAIN_MUNICIPALITY_REAL_ACCEPTANCE=true and assigned UEC_DATABASE_URL",
+    ),
+    (
+        "pipeline.tests.test_spain_municipality_geocoding_postgis.SpainMunicipalityGeocodingPostGISTests"
+        ".test_bridge_acceptance_and_rejection_cases_rollback",
+        "set UEC_SPAIN_MUNICIPALITY_REAL_ACCEPTANCE=true and assigned UEC_DATABASE_URL",
+    ),
     (
         "test_spain_geocoding_profile.SpainGeocodingProfileTests"
         ".test_database_display_bridge_positive_and_negative_cases_rollback",
