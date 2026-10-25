@@ -1,4 +1,16 @@
 :root {
+  --page: #171a18;
+  --page-raised: #202523;
+  --page-sunken: #141916;
+  --panel: #1c211e;
+  --panel-hover: #252f28;
+  --ink: #eee9df;
+  --ink-secondary: #c6d0c5;
+  --ink-muted: #b9c3b7;
+  --line: #3d4740;
+  --line-strong: #59615c;
+  --link: #dce8d9;
+  --focus: #d49a62;
   color: #eee9df;
   background: #171a18;
   color-scheme: dark;
@@ -7,16 +19,32 @@
   text-rendering: optimizeLegibility;
 }
 
+:root[data-theme="light"] {
+  color-scheme: light;
+  --page: #f5f6f2;
+  --page-raised: #ffffff;
+  --page-sunken: #e9ede7;
+  --panel: #eef1eb;
+  --panel-hover: #e4eae1;
+  --ink: #202820;
+  --ink-secondary: #3f4b41;
+  --ink-muted: #59665b;
+  --line: #c7d0c6;
+  --line-strong: #8e9b90;
+  --link: #315d43;
+  --focus: #89531e;
+}
+
 * { box-sizing: border-box; }
 
 html, body, #app { min-height: 100%; }
-body { margin: 0; background: #171a18; color: #eee9df; }
+body { margin: 0; background: var(--page); color: var(--ink); }
 
-a { color: #dce8d9; }
+a { color: var(--link); }
 
 a:focus-visible,
 button:focus-visible {
-  outline: 3px solid #d49a62;
+  outline: 3px solid var(--focus);
   outline-offset: 3px;
 }
 
@@ -46,7 +74,125 @@ h1 { margin: 0 0 1rem; font-size: clamp(2rem, 5vw, 3rem); line-height: 1.1; }
 
 .record-id { overflow-wrap: anywhere; }
 
-button { min-height: 2.75rem; padding: .5rem 1rem; color: inherit; background: #222725; border: 1px solid #626a64; font: inherit; cursor: pointer; }
+button { min-height: 2.75rem; padding: .5rem 1rem; color: inherit; background: var(--panel); border: 1px solid var(--line-strong); font: inherit; cursor: pointer; }
+
+/* Light mode for the existing application surfaces. Map canvases and raster pins remain untouched. */
+:root[data-theme="light"] .masthead { background: var(--page-raised); color: var(--ink); border-color: var(--line); }
+:root[data-theme="light"] .masthead nav a { color: var(--ink-muted); }
+:root[data-theme="light"] .masthead nav a[aria-current] { color: var(--ink); }
+:root[data-theme="light"] .masthead .header-action,
+:root[data-theme="light"] .masthead .header-menu { background: var(--page-raised); color: var(--ink); border-color: var(--line-strong); }
+:root[data-theme="light"] .masthead .header-menu header,
+:root[data-theme="light"] .masthead .header-menu section { border-color: var(--line); }
+:root[data-theme="light"] .masthead .header-menu p,
+:root[data-theme="light"] .masthead .header-menu small { color: var(--ink-muted); }
+:root[data-theme="light"] .about-page,
+:root[data-theme="light"] .api-page,
+:root[data-theme="light"] .public-record,
+:root[data-theme="light"] .public-database,
+:root[data-theme="light"] .contribute-page,
+:root[data-theme="light"] .faq-page { color: var(--ink); }
+:root[data-theme="light"] .about-page p,
+:root[data-theme="light"] .about-page li,
+:root[data-theme="light"] .api-page p,
+:root[data-theme="light"] .public-record p,
+:root[data-theme="light"] .public-record dd,
+:root[data-theme="light"] .public-database .intro,
+:root[data-theme="light"] .faq-page p,
+:root[data-theme="light"] .contribute-page p { color: var(--ink-secondary); }
+:root[data-theme="light"] .api-page .release-access,
+:root[data-theme="light"] .public-record .warning { background: #f0eee7; color: #443d2d; border-color: #b7ad91; }
+:root[data-theme="light"] .api-page .release-label,
+:root[data-theme="light"] .api-page .release-id code { color: var(--ink); }
+:root[data-theme="light"] .api-page select,
+:root[data-theme="light"] .public-database input,
+:root[data-theme="light"] .public-database select,
+:root[data-theme="light"] .contribute-page input,
+:root[data-theme="light"] .contribute-page select,
+:root[data-theme="light"] .contribute-page textarea { background: var(--page-raised); color: var(--ink); border-color: var(--line-strong); }
+:root[data-theme="light"] .public-database button,
+:root[data-theme="light"] .public-record button,
+:root[data-theme="light"] .api-page button,
+:root[data-theme="light"] .contribute-page button { background: var(--panel-hover); color: var(--ink); border-color: var(--line-strong); }
+:root[data-theme="light"] .public-database .browse-layout,
+:root[data-theme="light"] .public-database .filters,
+:root[data-theme="light"] .public-database .result-count,
+:root[data-theme="light"] .public-record dl div,
+:root[data-theme="light"] .api-page .reuse,
+:root[data-theme="light"] .contribute-page fieldset,
+:root[data-theme="light"] .faq-page section { border-color: var(--line); }
+:root[data-theme="light"] .record-page,
+:root[data-theme="light"] .database-research { background: var(--page); color: var(--ink); }
+:root[data-theme="light"] .record-page .detail { --ink: #202820; --muted: #59665b; --line: #c7d0c6; color: var(--ink); }
+:root[data-theme="light"] .record-page .detail a { color: var(--link); }
+:root[data-theme="light"] .record-page .page footer { background: var(--page); }
+:root[data-theme="light"] .record-page .page,
+:root[data-theme="light"] .database-research .index-shell,
+:root[data-theme="light"] .database-research .facets,
+:root[data-theme="light"] .database-research .records,
+:root[data-theme="light"] .database-research .selection { color: var(--ink); border-color: var(--line); }
+:root[data-theme="light"] .database-research .facets input,
+:root[data-theme="light"] .database-research button { background: var(--page-raised); color: var(--ink); border-color: var(--line-strong); }
+:root[data-theme="light"] .database-research .quiet,
+:root[data-theme="light"] .database-research .intro,
+:root[data-theme="light"] .record-page .state { color: var(--ink-secondary); }
+:root[data-theme="light"] table[aria-label="Browse records"] { color: var(--ink); }
+:root[data-theme="light"] table[aria-label="Browse records"] th,
+:root[data-theme="light"] table[aria-label="Browse records"] td,
+:root[data-theme="light"] table[aria-label="Browse records"] tr { border-color: var(--line); }
+:root[data-theme="light"] table[aria-label="Browse records"] th { color: var(--ink); }
+:root[data-theme="light"] table[aria-label="Browse records"] td:first-child :is(a, button) { color: var(--ink); }
+:root[data-theme="light"] table[aria-label="Browse records"] tr.selected { background: #dce8d9; }
+:root[data-theme="light"] table[aria-label="Browse records"] tr:hover { background: var(--panel-hover); }
+:root[data-theme="light"] .bug-page { color: var(--ink); }
+:root[data-theme="light"] .bug-page .intro,
+:root[data-theme="light"] .bug-page .issue-link,
+:root[data-theme="light"] .bug-page .bug-form label { color: var(--ink-secondary); }
+:root[data-theme="light"] .bug-page input,
+:root[data-theme="light"] .bug-page textarea { background: var(--page-raised); color: var(--ink); border-color: var(--line-strong); }
+:root[data-theme="light"] .bug-page .draft-link a { background: var(--panel); }
+:root[data-theme="light"] .contribute-page .task-nav a { color: var(--ink-muted); text-decoration-color: var(--line-strong); }
+:root[data-theme="light"] .contribute-page .task-nav a[aria-current] { color: var(--ink); }
+:root[data-theme="light"] .project-footer { color: var(--ink-muted); border-color: var(--line); }
+:root[data-theme="light"] .project-footer a { color: var(--link); }
+
+/* Map UI chrome only; map tiles, category pins, cluster fills and legends retain their established colors. */
+:root[data-theme="light"] .field-view { --ink: #202820; --muted: #59665b; --line: #c7d0c6; color: var(--ink); background: var(--page); }
+:root[data-theme="light"] .field-view .search input,
+:root[data-theme="light"] .field-view .filters summary,
+:root[data-theme="light"] .field-view .search-toggle,
+:root[data-theme="light"] .field-view .filter-sheet,
+:root[data-theme="light"] .field-view .results header,
+:root[data-theme="light"] .field-view .record-list,
+:root[data-theme="light"] .field-view .record-list h2,
+:root[data-theme="light"] .field-view .reading-sheet,
+:root[data-theme="light"] .field-view .dossier-header,
+:root[data-theme="light"] .field-view .map-controls,
+:root[data-theme="light"] .field-view .map-controls select,
+:root[data-theme="light"] .field-view .map-camera-toggle { background-color: var(--page-raised); color: var(--ink); border-color: var(--line-strong); }
+:root[data-theme="light"] .field-view input,
+:root[data-theme="light"] .field-view select,
+:root[data-theme="light"] .field-view button,
+:root[data-theme="light"] .field-view textarea { color: var(--ink); }
+:root[data-theme="light"] .field-view .search input,
+:root[data-theme="light"] .field-view .filter-sheet button,
+:root[data-theme="light"] .field-view .search-toggle,
+:root[data-theme="light"] .field-view .results header button,
+:root[data-theme="light"] .field-view .dossier-header button,
+:root[data-theme="light"] .field-view .filter-sheet select,
+:root[data-theme="light"] .field-view .filter-sheet input { background-color: var(--panel); border-color: var(--line-strong); }
+:root[data-theme="light"] .field-view .record-list small,
+:root[data-theme="light"] .field-view .dossier-header,
+:root[data-theme="light"] .field-view .results header small { color: var(--ink-muted); }
+:root[data-theme="light"] .field-view .dossier-header a { color: var(--link); }
+:root[data-theme="light"] .location-preview .approx,
+:root[data-theme="light"] .location-preview .map-error { background: #fff; color: #202820; }
+
+.theme-control { display: grid; gap: .35rem; color: inherit; }
+.theme-control-label { margin: 0; font-size: .7rem; font-weight: 650; }
+.theme-control-options { display: grid; grid-template-columns: 1fr 1fr; gap: .3rem; }
+.theme-control button { min-height: 2rem; padding: .3rem .5rem; border: 1px solid var(--line-strong); background: var(--panel); color: inherit; font: 600 .72rem system-ui, sans-serif; cursor: pointer; }
+.theme-control button[aria-pressed="true"] { border-color: var(--focus); background: var(--panel-hover); box-shadow: inset 0 -2px var(--focus); }
 
 /* Development-only design-lab structure. Direction agents own composition polish. */
 .lab { min-height: 100vh; color: #eee9df; background: #151718; font-family: Georgia, serif; }
