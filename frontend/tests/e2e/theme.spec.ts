@@ -172,7 +172,10 @@ for (const viewport of viewports) {
         await page.setViewportSize({ width: viewport.width, height: viewport.height });
         await mockSanitizedApi(page);
         await page.goto(view.route);
-        if (view.label === 'map controls') await page.getByRole('button', { name: 'Tools', exact: true }).click();
+        if (view.label === 'map controls') {
+          await expect(page.getByRole('button', { name: 'Search map' })).toBeVisible();
+          await page.getByRole('button', { name: 'Tools', exact: true }).click();
+        }
         await expectAppSurface(page, view.surface, view.label, pageErrors);
         if (view.label === 'map controls') {
           await selectTheme(page, theme);
@@ -186,7 +189,15 @@ for (const viewport of viewports) {
           const fixtureRecord = page.locator(`.record-list button[data-record-id="${id}"]`);
           await expect(fixtureRecord).toBeVisible();
           await fixtureRecord.click();
-          await expect(page.locator('.reading-sheet[aria-label="Record evidence"] .detail')).toBeVisible();
+          const detail = page.locator('.reading-sheet[aria-label="Record evidence"] .detail');
+          await expect(detail).toBeVisible();
+          const detailStyle = await detail.evaluate(element => {
+            const computed = getComputedStyle(element);
+            return { color: computed.color, background: getComputedStyle(element.parentElement!).backgroundColor };
+          });
+          expect(contrast(detailStyle.color, detailStyle.background), `selected map dossier ${theme} contrast`).toBeGreaterThanOrEqual(4.5);
+          await page.getByRole('button', { name: 'Close record detail', exact: true }).click();
+          await expect(detail).toBeHidden();
           await page.getByRole('button', { name: 'Tools', exact: true }).click();
           await expect(page.locator('.map-view-tools')).toBeVisible();
         } else {
@@ -219,15 +230,6 @@ for (const viewport of viewports) {
             });
             expect(contrast(counterStyle.color, counterStyle.background), `About counter ${selector} contrast`).toBeGreaterThanOrEqual(4.5);
           }
-        }
-        if (view.label === 'map controls') {
-          const detail = page.locator('.reading-sheet[aria-label="Record evidence"] .detail');
-          await expect(detail).toBeVisible();
-          const detailStyle = await detail.evaluate(element => {
-            const computed = getComputedStyle(element);
-            return { color: computed.color, background: getComputedStyle(element.parentElement!).backgroundColor };
-          });
-          expect(contrast(detailStyle.color, detailStyle.background), `selected map dossier ${theme} contrast`).toBeGreaterThanOrEqual(4.5);
         }
         if (view.label === 'API') {
           const operation = page.locator('.explorer .swagger-ui .opblock').first();
