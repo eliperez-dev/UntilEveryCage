@@ -54,7 +54,7 @@ NUMERIC_PRECISIONS = {
     "source-provided", "source-provided-unspecified", "source-precision-unknown",
     "source-reported-unknown", "source-coordinate-crs-unverified",
 }
-SOURCE_LOCATION_SOURCES = {"ca.ontario.meat-plants", "ca.cfia.federal-meat", "fr.georisques.icpe.animal", "es.locations"}
+SOURCE_LOCATION_SOURCES = {"ca.ontario.meat-plants", "ca.cfia.federal-meat", "fr.georisques.icpe.animal", "es.locations", "de.locations"}
 SOURCE_GROUP_KEY_INDEX = 23
 ACTIVITY_DISPLAY_PRECEDENCE = (
     "slaughter", "meat_processing", "poultry_processing", "fish_processing",
@@ -370,6 +370,7 @@ SOURCE_NAMES = {
     "fss_approved_establishments": "Food Standards Scotland — Approved Establishments (Scotland)",
     "es.cat.feed-sandach": "Catalonia — SANDACH Feed Establishments Register",
     "es.locations": "AESAN — RGSEAA National Food Establishments Register",
+    "de.locations": "German Federal Office of Consumer Protection and Food Safety — BLtU general list",
     "dk.smiley": "Danish Veterinary and Food Administration — Find Smiley",
     "fr.dgal.section-i": "French Ministry of Agriculture — DGAL Section I",
     "fr.dgal.section-ii": "French Ministry of Agriculture — DGAL Section II",
@@ -389,6 +390,7 @@ SOURCE_MEDIA_TYPES = {
     "nl.nvwa.approved-food": "application/json",
     "fr.georisques.icpe.animal": "application/json",
     "es.locations": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "de.locations": "application/csv",
 }
 
 

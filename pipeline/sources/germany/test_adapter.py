@@ -1,4 +1,5 @@
 import hashlib
+import importlib.util
 import tempfile
 import unittest
 from pathlib import Path
@@ -32,6 +33,19 @@ class GermanyPrivateAdapterTests(unittest.TestCase):
         self.assertEqual(len(result["accepted"]), 2)
         flags = result["accepted"][0]["normalized"]["activity_flags"]
         self.assertTrue(flags)
+
+    def test_preview_projection_keeps_address_private_and_has_no_point(self):
+        script = ROOT.parents[1] / "scripts" / "maintenance" / "import-real-preview.py"
+        spec = importlib.util.spec_from_file_location("germany_preview_import", script)
+        module = importlib.util.module_from_spec(spec)
+        assert spec and spec.loader
+        spec.loader.exec_module(module)
+        raw = ROOT.parent.parent / "germany" / "fixtures" / "synthetic_bltu.csv"
+        row = BltuAdapter().parse_bytes(raw.read_bytes())["accepted"][0]
+        projected = module.parse_row("de.locations", row)
+        self.assertIsNone(projected[5])
+        self.assertIsNone(projected[6])
+        self.assertTrue(projected[18])
 
     def test_shared_private_lifecycle_emits_health_and_no_release(self):
         raw = ROOT.parent.parent / "germany" / "fixtures" / "synthetic_bltu.csv"
