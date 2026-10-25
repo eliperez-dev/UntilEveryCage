@@ -15,6 +15,7 @@ test('map shell mounts and keeps Search, map modes, and navigation operable', as
   await page.getByRole('button', { name: 'Close search panel' }).click();
   await expect(search).toBeVisible();
 
+  await page.getByRole('button', { name: 'Tools' }).click();
   const mapStyle = page.getByLabel('Map style');
   await expect(mapStyle).toHaveValue('vector');
   await expect(mapStyle.locator('option')).toHaveText(['Street', 'Satellite']);

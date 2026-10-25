@@ -154,7 +154,7 @@ test('masthead theme toggle is square, directly before Tools, and outside the To
 
 const viewports = [{ name: 'desktop', width: 1280, height: 900 }, { name: 'mobile', width: 390, height: 844 }] as const;
 const publicViews = [
-  { route: `./#/map?release_id=${release}`, surface: '.map-controls', label: 'map controls' },
+  { route: `./#/map?release_id=${release}`, surface: '.map-view-tools', label: 'map controls' },
   { route: './#/database', surface: '.public-database', label: 'database' },
   { route: `./#/records/${id}?release_id=${release}`, surface: '.public-record', label: 'full facility detail' },
   { route: './#/contribute/bug', surface: '.bug-page', label: 'contribute form' },
@@ -172,11 +172,11 @@ for (const viewport of viewports) {
         await page.setViewportSize({ width: viewport.width, height: viewport.height });
         await mockSanitizedApi(page);
         await page.goto(view.route);
+        if (view.label === 'map controls') await page.getByRole('button', { name: 'Tools', exact: true }).click();
         await expectAppSurface(page, view.surface, view.label, pageErrors);
         if (view.label === 'map controls') {
-          // The open record sheet overlays the masthead controls. Choose the
-          // theme first, then assert the selected dossier inherits it.
           await selectTheme(page, theme);
+          await page.getByRole('button', { name: 'Tools', exact: true }).click();
           await page.screenshot({ path: testInfo.outputPath(`map-en-${viewport.name}-${theme}-tools-closed.png`), fullPage: true });
           await page.getByRole('button', { name: 'Tools', exact: true }).click();
           await page.locator('#shared-tools-menu').waitFor({ state: 'visible' });
@@ -187,7 +187,8 @@ for (const viewport of viewports) {
           await expect(fixtureRecord).toBeVisible();
           await fixtureRecord.click();
           await expect(page.locator('.reading-sheet[aria-label="Record evidence"] .detail')).toBeVisible();
-          await expect(page.locator('.map-controls')).toBeVisible();
+          await page.getByRole('button', { name: 'Tools', exact: true }).click();
+          await expect(page.locator('.map-view-tools')).toBeVisible();
         } else {
           await selectTheme(page, theme);
         }

@@ -80,6 +80,9 @@
     onaggregate,
     onreference,
     onbasemap,
+    cameraViewRequest = null,
+    onCameraPitchChange,
+    onMapControlsReady,
     ondebugopenchange,
     onviewport,
     onbounds,
@@ -111,6 +114,9 @@
     onaggregate(memberIds: readonly string[]): void;
     onreference?(key: string, sourceId?: string): void;
     onbasemap(value: Basemap): void;
+    cameraViewRequest?: Readonly<{ id: number; enable3d: boolean }> | null;
+    onCameraPitchChange?(pitch: number): void;
+    onMapControlsReady?(ready: boolean): void;
     ondebugopenchange?(open: boolean): void;
     onviewport(value: Viewport): void;
     onbounds?(bounds: ViewportBounds): void;
@@ -121,6 +127,7 @@
   let nativeStyleGeneration = 0;
   let appliedBasemap = $state<Basemap | undefined>();
   let cameraPitch = $state(0);
+  let handledCameraViewRequestId = 0;
   let terrainEnabled = $state(false);
   let terrainError = $state("");
   let terrainRetryRequired = false;
@@ -336,6 +343,16 @@
     if (enable3d) setTerrain(true, true);
     else setTerrain(false);
     map.easeTo({ pitch: enable3d && terrainEnabled ? 45 : 0, duration: matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 450 });
+  }
+  $effect(() => {
+    const request = cameraViewRequest;
+    if (!map || !nativeStyleReady || !request || request.id <= handledCameraViewRequestId) return;
+    handledCameraViewRequestId = request.id;
+    setCameraView(request.enable3d);
+  });
+  function updateCameraPitch(pitch: number): void {
+    cameraPitch = pitch;
+    onCameraPitchChange?.(pitch);
   }
   function rasterTiles(basemap: Basemap): string[] {
     return ((createBaseStyle(basemap) as any).sources.base.tiles as string[]);
@@ -1016,6 +1033,18 @@
   function bindInteractions() {
     if (!map) return;
     if (usingMvt) {
+      const selectMvtRecord = (feature: any) => {
+        const key = feature?.properties?.feature_key;
+        if (typeof key !== "string" || !/^[0-9a-f-]{36}$/i.test(key)) return;
+        selectedReferenceKey = null;
+        updateVisualSettings();
+        const coordinates = feature?.geometry?.coordinates;
+        if (map && Array.isArray(coordinates) && coordinates.length >= 2) {
+          const center: [number, number] = [Number(coordinates[0]), Number(coordinates[1])];
+          if (center.every(Number.isFinite)) map.easeTo({ center, duration: 380, easing: (t) => 1 - Math.pow(1 - t, 3), essential: false });
+        }
+        onselect(key);
+      };
       const inspectMvtReference = (key: string, count: number) => {
         selectedReferenceKey = key;
         updateVisualSettings();
@@ -1059,21 +1088,11 @@
       });
       map.on("click", "mvt-source-coordinates", (event: any) => {
         if (activeFlight) return;
-        const key = event.features?.[0]?.properties?.feature_key;
-        if (typeof key === "string" && /^[0-9a-f-]{36}$/i.test(key)) {
-          selectedReferenceKey = null;
-          updateVisualSettings();
-          onselect(key);
-        }
+        selectMvtRecord(event.features?.[0]);
       });
       map.on("click", "mvt-v1-source-pins", (event: any) => {
         if (activeFlight) return;
-        const key = event.features?.[0]?.properties?.feature_key;
-        if (typeof key === "string" && /^[0-9a-f-]{36}$/i.test(key)) {
-          selectedReferenceKey = null;
-          updateVisualSettings();
-          onselect(key);
-        }
+        selectMvtRecord(event.features?.[0]);
       });
       map.on("click", "mvt-approx-reference-area", (event: any) => {
         if (activeFlight) return;
@@ -1261,7 +1280,7 @@
       maxTileCacheZoomLevels: 6,
     } as any);
     map = instance;
-    cameraPitch = instance.getPitch();
+    updateCameraPitch(instance.getPitch());
     const previewWindow = window as Window & {
       __UEC_LOCAL_PREVIEW_MAP__?: MapLibreMap;
     };
@@ -1275,6 +1294,7 @@
     instance.on("style.load", () => {
       nativeStyleGeneration++;
       nativeStyleReady = true;
+      onMapControlsReady?.(true);
       // MapLibre drops style-owned terrain on style replacement. Reapply only
       // when the restored camera is tilted; a flat view never fetches DEM tiles.
       setTerrain(instance.getPitch() > 0.5);
@@ -1370,7 +1390,7 @@
           pitch: Math.round(instance.getPitch()),
           bearing: Number((((instance.getBearing() + 180) % 360 + 360) % 360 - 180).toFixed(1)),
         });
-        cameraPitch = instance.getPitch();
+        updateCameraPitch(instance.getPitch());
         zoomSettleMs =
           zoomStartedAt === null
             ? null
@@ -1382,7 +1402,7 @@
         boundsTimer = setTimeout(() => publishBounds(), 150);
       }
     });
-    instance.on("pitch", () => { cameraPitch = instance.getPitch(); });
+    instance.on("pitch", () => updateCameraPitch(instance.getPitch()));
     instance.on("pitchend", () => setTerrain(instance.getPitch() > 0.5));
     return () => {
       basemapRequest++;
@@ -1487,15 +1507,6 @@
   aria-label={tr('Map showing records', $language)}
 >
   <div class="map-host" bind:this={host}></div>
-  <div class="map-controls-wrap">
-    <div class="map-controls" role="group" aria-label={tr('Map view', $language)}>
-      <span class="map-controls-label">{tr('Map view', $language)}</span>
-      <select aria-label={tr('Map style', $language)} value={mapState.basemap} disabled={!nativeStyleReady} onchange={(event) => onbasemap(event.currentTarget.value as Basemap)}><option value="vector">{tr('Street', $language)}</option><option value="satellite">{tr('Satellite', $language)}</option></select>
-      <button class="map-camera-toggle" type="button" disabled={!nativeStyleReady} aria-label={tr(cameraPitch > 0.5 ? 'Switch to 2D view' : 'Switch to 3D view', $language)} aria-pressed={cameraPitch > 0.5} aria-describedby="map-camera-help" title={tr('Right-drag to tilt and rotate', $language)} onclick={() => setCameraView(cameraPitch <= 0.5)}>{cameraPitch > 0.5 ? '3D' : '2D'}</button>
-      <small class="gesture-hint">{tr('Right-mouse to rotate / Left-mouse to pan', $language)}</small>
-      <span id="map-camera-help" class="sr-only">{tr('Right-drag to tilt and rotate', $language)}. {tr('On touchscreens, use two fingers to tilt.', $language)}</span>
-    </div>
-  </div>
   {#if terrainError}<small class="map-status terrain-status" role="alert">{terrainError}</small>{/if}
   {#if basemapSwitching && pendingBasemap}<small
       class="map-status"
@@ -1765,16 +1776,6 @@
     position: absolute;
     inset: 0;
   }
-  .map-controls-wrap { position:absolute; z-index:4; top:.65rem; right:.65rem; display:flex; flex-direction:column; align-items:flex-end; gap:.2rem; }
-  .map-controls { display:grid; grid-template-columns:auto auto auto; align-items:center; gap:.35rem; padding:.4rem .65rem; min-height:2.4rem; border:1px solid #69716a; background:#171a18; color:#f1efe8; font:.72rem system-ui; }
-  .gesture-hint { grid-column:1 / -1; color:var(--ink-muted,#aab0aa); font:.65rem/1.3 system-ui; text-align:right; }
-  .map-controls-label { white-space:nowrap; }
-  .map-controls select { min-width:6.2rem; min-height:1.9rem; padding:0 .35rem; border:1px solid #69716a; color:#f1efe8; background:#202421; font:inherit; }
-  .map-camera-toggle { min-width:2.45rem; min-height:1.9rem; border:1px solid #69716a; color:#f1efe8; background:#202421; cursor:pointer; font:600 .7rem system-ui; }
-  .map-camera-toggle[aria-pressed="true"] { border-color:#d8c99b; background:#33352d; color:#f5e8bf; }
-  .map-controls :is(button, select):focus-visible { outline:2px solid #f1efe8; outline-offset:2px; }
-  .map-camera-toggle:disabled, .map-controls select:disabled { opacity:.58; cursor:default; }
-  .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
   .terrain-status { top:6.8rem; left:.65rem; transform:none; }
   .feature-list-toggle,
   .diagnostics-toggle {
@@ -1937,13 +1938,6 @@
   .map-surface :global(.maplibregl-ctrl-attrib a) { color: #c1d4cf; }
   .map-surface :global(.maplibregl-ctrl-attrib-button) { filter: invert(1); }
   @media (max-width: 40rem) {
-    .map-controls-wrap { top:var(--mobile-toolbar-top,.45rem); right:var(--mobile-toolbar-inset,.4rem); left:auto; width:calc((100% - 2 * var(--mobile-toolbar-inset,.4rem) - var(--mobile-toolbar-gap,.4rem))/2); align-items:stretch; }
-    .map-controls { width:100%; min-height:var(--mobile-toolbar-height,5.25rem); height:var(--mobile-toolbar-height,5.25rem); grid-template-columns:minmax(0,1fr) auto; grid-template-rows:auto auto; align-content:center; gap:.08rem .25rem; padding:.15rem .35rem; font-size:.7rem; }
-    .map-controls-label { grid-column:1 / -1; font-size:.67rem; line-height:1.1; }
-    .gesture-hint { grid-column:1 / -1; color:var(--ink-muted,#aab0aa); font-size:.625rem; line-height:1.15; text-align:left; overflow-wrap:anywhere; }
-    .map-controls select { min-width:0; width:100%; min-height:2.75rem; padding-inline:.2rem; font-size:.7rem; }
-    .map-camera-toggle { min-width:2.75rem; min-height:2.75rem; padding:0 .25rem; }
-    .gesture-hint { display:none; }
     .map-surface :global(.precision-legend) { bottom: 9.4rem; width: auto; max-width: min(15rem, calc(100vw - 1.3rem)); }
     .map-surface :global(.precision-legend.expanded) { top: 3.5rem; bottom: auto; width: min(15rem, calc(100vw - 1.3rem)); }
     .map-surface :global(.maplibregl-ctrl-bottom-right) { right: 0.4rem; bottom: 0.4rem; left: auto; }

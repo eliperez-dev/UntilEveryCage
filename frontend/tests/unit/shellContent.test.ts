@@ -95,11 +95,12 @@ describe('normal shell content', () => {
     expect(footer).not.toContain('Counter approach adapted');
     expect(picker).toContain('new maplibregl.NavigationControl');
     expect(mapSurface).not.toContain('new maplibregl.NavigationControl');
-    expect(mapSurface).toContain('Right-mouse to rotate / Left-mouse to pan');
-    expect(mapSurface).toContain('.gesture-hint { grid-column:1 / -1;');
+    expect(masthead).toContain('map-view-tools');
+    expect(masthead).toContain('Right-mouse to rotate / Left-mouse to pan');
+    expect(masthead).toContain('.map-view-controls');
+    expect(mapSurface).not.toContain('class="map-controls-wrap"');
     expect(field).toContain('top: 0.65rem;');
     expect(field).toContain('left: 0.65rem;');
-    expect(mapSurface).toContain('top:.65rem; right:.65rem;');
     expect(footer).toContain('Final Nail');
     expect(footer).toContain('<div class="application-version-slot"><ApplicationVersion /></div>');
     expect(footer).not.toContain('v1.5.1');

@@ -8,6 +8,7 @@ test('map style exposes Street and Satellite only without refetching the native 
     if (new URL(request.url()).pathname.endsWith('/map/feed')) feedRequests++;
   });
   await page.goto('/v2-preview/#/map');
+  await page.getByRole('button', { name: 'Tools' }).click();
   const mapStyle = page.getByLabel('Map style');
   await expect(mapStyle).toHaveValue('vector');
   await expect(mapStyle.locator('option')).toHaveText(['Street', 'Satellite']);
@@ -43,6 +44,7 @@ test('unavailable satellite imagery leaves Street active', async ({ page }) => {
   test.setTimeout(45_000);
   await page.route('**/World_Imagery/**', route => route.abort());
   await page.goto('/v2-preview/#/map');
+  await page.getByRole('button', { name: 'Tools' }).click();
   const mapStyle = page.getByLabel('Map style');
   await expect(mapStyle).toHaveValue('vector');
   await mapStyle.selectOption('satellite');

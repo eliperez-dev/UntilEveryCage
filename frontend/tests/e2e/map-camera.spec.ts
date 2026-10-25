@@ -35,9 +35,17 @@ test('camera tilt, map style, and URL state preserve the map view without compas
   await page.route('**/World_Imagery/**', route => route.fulfill({ status: 200, contentType: 'image/png', body: pixel }));
   await installTerrainFixture(page);
   await page.goto('./#/map?f1a=field&scenario=dense&lat=38&lon=-96&z=4&pitch=31&bearing=24');
+  await page.waitForFunction(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    return map?.isStyleLoaded() && map.getLayer('clusters');
+  });
   const map = page.getByLabel('Map showing records');
-  const viewToggle = map.locator('.map-camera-toggle');
-  await expect(map.getByRole('group', { name: 'Map view' })).toBeVisible();
+  const tools = page.getByRole('button', { name: 'Tools', exact: true });
+  await tools.click();
+  await expect(tools).toHaveAttribute('aria-expanded', 'true');
+  const controls = page.getByRole('group', { name: 'Map view' });
+  const viewToggle = controls.locator('.map-camera-toggle');
+  await expect(controls).toBeVisible();
   await expect(map.locator('.maplibregl-ctrl-compass')).toHaveCount(0);
   await expect(viewToggle).toHaveText('3D');
   await expect(viewToggle).toHaveAttribute('aria-pressed', 'true');
@@ -90,8 +98,16 @@ test('flat camera URLs stay compact and the camera control remains usable on tou
   await installTerrainFixture(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('./#/map?f1a=field&scenario=dense');
-  const viewToggle = page.locator('.map-camera-toggle');
-  await expect(page.getByRole('group', { name: 'Map view' })).toBeVisible();
+  await page.waitForFunction(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    return map?.isStyleLoaded() && map.getLayer('clusters');
+  });
+  const tools = page.getByRole('button', { name: 'Tools', exact: true });
+  if (await tools.getAttribute('aria-expanded') !== 'true') await tools.click();
+  await expect(tools).toHaveAttribute('aria-expanded', 'true');
+  const controls = page.getByRole('group', { name: 'Map view' });
+  const viewToggle = controls.locator('.map-camera-toggle');
+  await expect(controls).toBeVisible();
   await expect(viewToggle).toBeVisible();
   await expect(viewToggle).toHaveText('2D');
   await expect(viewToggle).toHaveAttribute('aria-pressed', 'false');
@@ -106,7 +122,13 @@ test('flat camera URLs stay compact and the camera control remains usable on tou
 test('compact map view control toggles 3D and shows the map gesture hint without compass controls', async ({ page }, testInfo) => {
   await installTerrainFixture(page);
   await page.goto('./#/map?f1a=field&scenario=dense&lat=38&lon=-96&z=4');
-  await page.locator('.map-surface').waitFor({ state: 'visible', timeout: 30_000 });
+  await page.waitForFunction(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    return map?.isStyleLoaded() && map.getLayer('clusters');
+  });
+  const tools = page.getByRole('button', { name: 'Tools', exact: true });
+  if (await tools.getAttribute('aria-expanded') !== 'true') await tools.click();
+  await expect(tools).toHaveAttribute('aria-expanded', 'true');
   const controls = page.getByRole('group', { name: 'Map view' });
   const viewToggle = controls.locator('.map-camera-toggle');
   const styleSelect = controls.getByLabel('Map style');
@@ -115,11 +137,7 @@ test('compact map view control toggles 3D and shows the map gesture hint without
   await expect(styleSelect.locator('option')).toHaveText(['Street', 'Satellite']);
   await expect(viewToggle).toHaveText('2D');
   await expect(controls.locator('#map-camera-help')).toHaveClass(/sr-only/);
-  const rowTops = await Promise.all([
-    controls.getByText('Map view', { exact: true }).boundingBox(),
-    styleSelect.boundingBox(),
-    viewToggle.boundingBox(),
-  ]);
+  const rowTops = await Promise.all([styleSelect.boundingBox(), viewToggle.boundingBox()]);
   expect(rowTops.every(Boolean)).toBe(true);
   const rowCenters = rowTops.map(box => box!.y + box!.height / 2);
   expect(Math.max(...rowCenters) - Math.min(...rowCenters)).toBeLessThan(2);
@@ -147,8 +165,7 @@ test('compact map view control toggles 3D and shows the map gesture hint without
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(controls).toBeVisible();
   await expect(viewToggle).toBeVisible();
-  // The approved mobile toolbar puts the label above the style/toggle row
-  // so Map View can share an equal-width row with Search.
+  // The style selector and 2D/3D toggle stay aligned within the Tools menu.
   const mobileRowTops = await Promise.all([
     styleSelect.boundingBox(),
     viewToggle.boundingBox(),
@@ -161,7 +178,7 @@ test('compact map view control toggles 3D and shows the map gesture hint without
   expect(mobileLabel!.y + mobileLabel!.height).toBeLessThanOrEqual(mobileRowTops[0]!.y);
   await expect(controls.locator('#map-camera-help')).toHaveClass(/sr-only/);
   await expect(viewToggle).toHaveAttribute('aria-describedby', 'map-camera-help');
-  await expect(controls.getByText('Right-mouse to rotate / Left-mouse to pan', { exact: true })).toBeHidden();
+  await expect(controls.getByText('Right-mouse to rotate / Left-mouse to pan', { exact: true })).toBeVisible();
   await expect(page.locator('.maplibregl-ctrl-compass')).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath('map-controls-mobile.png') });
 });
@@ -310,7 +327,10 @@ test('flat maps do not request elevation and a DEM failure returns to a flat map
     return map?.isStyleLoaded() && map.getLayer('clusters');
   });
   expect(demRequests).toBe(0);
-  await page.locator('.map-camera-toggle').click();
+  const tools = page.getByRole('button', { name: 'Tools', exact: true });
+  await tools.click();
+  await expect(tools).toHaveAttribute('aria-expanded', 'true');
+  await page.locator('#shared-tools-menu .map-camera-toggle').click();
   await expect(page.getByRole('alert')).toContainText(/Terrain (tiles are unavailable|could not be loaded)/);
   await expect.poll(() => page.evaluate(() => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;

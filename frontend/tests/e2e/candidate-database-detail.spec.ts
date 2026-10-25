@@ -142,6 +142,7 @@ test('candidate map retains native overlays and V1 selection across route and ba
   await page.goto('/v2-preview/#/database?f1a=field&source=us.fsis');
   await page.goto('/v2-preview/#/map?f1a=field&source=us.fsis');
   await ready();
+  await page.getByRole('button', { name: 'Tools' }).click();
   await page.getByLabel('Map style').selectOption('satellite');
   await page.waitForFunction(() => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;

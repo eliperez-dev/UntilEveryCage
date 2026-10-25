@@ -1,5 +1,6 @@
 <script lang="ts">
   import { tick } from "svelte";
+  import type { Basemap } from '../design-lab/contract';
   import { language, tr } from './language';
   import ThemeControl from './ThemeControl.svelte';
   let {
@@ -14,6 +15,11 @@
     selectedReleaseId = null,
     onreleasechange,
     ondebugchange,
+    mapBasemap = 'vector',
+    mapCameraPitch = 0,
+    mapControlsReady = false,
+    onmapbasemap,
+    onmapviewtoggle,
   }: {
     current: "map" | "database" | "api" | "methodology" | "about" | "faq" | "contribute";
     mapHref: string;
@@ -26,6 +32,11 @@
     selectedReleaseId?: string | null;
     onreleasechange?(releaseId: string): void;
     ondebugchange?(enabled: boolean): void;
+    mapBasemap?: Basemap;
+    mapCameraPitch?: number;
+    mapControlsReady?: boolean;
+    onmapbasemap?(value: Basemap): void;
+    onmapviewtoggle?(): void;
   } = $props();
 
   const logo = `${import.meta.env.BASE_URL}assets/icon.png`;
@@ -43,7 +54,10 @@
     toolsOpen = false;
     if (returnFocus) void tick().then(() => toolsButton?.focus());
   }
-  function toggleTools() { toolsOpen = !toolsOpen; }
+  function toggleTools(event: MouseEvent) {
+    event.stopPropagation();
+    toolsOpen = !toolsOpen;
+  }
 </script>
 
 <svelte:window onhashchange={() => closeTools()} onkeydown={(event) => { if (event.key === "Escape" && toolsOpen) { event.preventDefault(); closeTools(true); } }} onclick={(event) => { if (event.target instanceof Node && !actionArea?.contains(event.target)) closeTools(); }} />
@@ -69,6 +83,15 @@
     {#if toolsOpen}<aside id="shared-tools-menu" class="header-menu tools-menu" aria-label={tr('Tools', $language)}>
       <header><strong><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> {tr('Tools', $language)}</strong><button type="button" aria-label={tr('Close Tools', $language)} onclick={() => closeTools(true)}>×</button></header>
       <section><label for="language-choice">{tr('Language', $language)}</label><select id="language-choice" aria-label={tr('Language', $language)} value={$language} onchange={event => language.set(event.currentTarget.value === 'es' ? 'es' : 'en')}><option value="en">English</option><option value="es">Español</option></select></section>
+      {#if current === 'map' && onmapbasemap && onmapviewtoggle}<section class="map-view-tools" role="group" aria-label={tr('Map view', $language)}>
+        <h2>{tr('Map view', $language)}</h2>
+        <div class="map-view-controls">
+          <select aria-label={tr('Map style', $language)} value={mapBasemap === 'satellite' ? 'satellite' : 'vector'} disabled={!mapControlsReady} onchange={event => onmapbasemap?.(event.currentTarget.value as Basemap)}><option value="vector">{tr('Street', $language)}</option><option value="satellite">{tr('Satellite', $language)}</option></select>
+          <button class="map-camera-toggle" type="button" disabled={!mapControlsReady} aria-label={tr(mapCameraPitch > 0.5 ? 'Switch to 2D view' : 'Switch to 3D view', $language)} aria-pressed={mapCameraPitch > 0.5} aria-describedby="map-camera-help" title={tr('Right-drag to tilt and rotate', $language)} onclick={onmapviewtoggle}>{mapCameraPitch > 0.5 ? '3D' : '2D'}</button>
+        </div>
+        <small class="gesture-hint">{tr('Right-mouse to rotate / Left-mouse to pan', $language)}</small>
+        <span id="map-camera-help" class="sr-only">{tr('Right-drag to tilt and rotate', $language)}. {tr('On touchscreens, use two fingers to tilt.', $language)}</span>
+      </section>{/if}
       <section><label for="release-choice">{tr('Current release', $language)}</label><select id="release-choice" aria-label={tr('Current release', $language)} title={displayedReleaseLabel} value={selectedReleaseId ?? ''} disabled={!releaseOptions.length || !onreleasechange} onchange={event => onreleasechange?.(event.currentTarget.value)}>{#if selectedReleaseId && !releaseOptions.some(release => release.id === selectedReleaseId)}<option value={selectedReleaseId} disabled>{tr('Selected release unavailable', $language)}</option>{/if}{#if releaseOptions.length}{#each releaseOptions as release}<option value={release.id}>{displayReleaseLabel(release.label)}</option>{/each}{:else}<option value="">{displayedReleaseLabel}</option>{/if}</select><small>{tr(releaseDescription ?? (publicReleaseLabel ? 'Release metadata from the active public map.' : 'Release selection is available from the map.'), $language)}</small></section>
       <section><h2>{tr('History', $language)}</h2><p>{tr('Open a record to view its available release history.', $language)}</p><small>{tr('Historical views follow current privacy restrictions.', $language)}</small></section>
       {#if current === 'map'}<section><label class="toggle"><input type="checkbox" checked={debugEnabled} onchange={(event) => ondebugchange?.(event.currentTarget.checked)} /> {tr('Enable debug menu', $language)}</label><small>{tr('Map diagnostics and rendering controls.', $language)}</small></section>{/if}
@@ -117,6 +140,13 @@
   .header-menu .toggle { display:flex; align-items:center; gap:.55rem; min-height:2rem; cursor:pointer; }
   .header-menu p, .header-menu small { margin:0; color:#b9c2b9; font-size:.64rem; line-height:1.4; }
   .tools-menu select { width:100%; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .map-view-controls { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:.35rem; align-items:center; }
+  .map-view-controls select { min-height:2.75rem; border:1px solid #69716a; color:#f1efe8; background:#202421; font:.72rem system-ui; }
+  .map-camera-toggle { min-width:2.75rem; min-height:2.75rem; border:1px solid #69716a; color:#f1efe8; background:#202421; cursor:pointer; font:600 .7rem system-ui; }
+  .map-camera-toggle[aria-pressed="true"] { border-color:#d8c99b; background:#33352d; color:#f5e8bf; }
+  .map-camera-toggle:disabled, .map-view-controls select:disabled { opacity:.58; cursor:default; }
+  .gesture-hint { color:#b9c2b9; font-size:.64rem; line-height:1.4; }
+  .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
   a:focus-visible, button:focus-visible, select:focus-visible { outline:2px solid #eee7d6; outline-offset:2px; }
   @media (any-pointer:coarse) {
     nav > a{display:flex;align-items:center;min-height:2.75rem}

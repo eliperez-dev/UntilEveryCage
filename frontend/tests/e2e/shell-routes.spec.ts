@@ -29,10 +29,17 @@ test('the shared shell exposes the primary map and database routes', async ({ pa
   await expect(page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Map' })).toBeVisible();
 });
 
-test('centered primary navigation and map controls stay aligned across desktop and mobile', async ({ page }) => {
+test('centered primary navigation and Tools map controls stay usable across desktop and mobile', async ({ page }) => {
   await page.route('**/api/v2/releases/manifest?**', route => route.fulfill({ contentType:'application/json', body:JSON.stringify({ api_version:'v2', data:{ release_id:'synthetic-release', profile:'official', manifest:{}, manifest_sha256:'a'.repeat(64), suppression_generation:1 } }) }));
   await page.route('**/api/v2/locations?**', route => route.fulfill({ contentType:'application/json', body:JSON.stringify({ api_version:'v2', data:[], meta:{ release_id:'synthetic-release', ruleset_version:'synthetic-rules', profile:'official', next_cursor:null, coverage_note:'Synthetic release.' } }) }));
-  await page.goto('./#/map');
+  await page.goto('./#/map?f1a=field&scenario=dense');
+  await page.waitForFunction(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    return map?.isStyleLoaded() && map.getLayer('clusters');
+  });
+  const tools = page.getByRole('button', { name: 'Tools', exact: true });
+  await tools.click();
+  await expect(tools).toHaveAttribute('aria-expanded', 'true');
   const nav = page.getByRole('navigation', { name: 'Primary' });
   await expect(nav.getByRole('link')).toHaveText(['Map','Database','API','Contribute','About','FAQ']);
   await expect(page.getByRole('button', { name: 'Search map' })).toBeVisible();
@@ -44,51 +51,32 @@ test('centered primary navigation and map controls stay aligned across desktop a
   await page.setViewportSize({ width: 1280, height: 900 });
   await expect.poll(midpoint).toBeCloseTo(640, 0);
   const mapControlGeometry = async () => page.evaluate(() => {
-    const search = document.querySelector('.search-toggle')!.getBoundingClientRect();
-    const view = document.querySelector('.map-controls-wrap')!.getBoundingClientRect();
+    const view = document.querySelector('.map-view-tools')!;
+    const bounds = view.getBoundingClientRect();
     return {
-      left: search.left,
-      right: innerWidth - view.right,
-      overlaps: search.left < view.right && view.left < search.right && search.top < view.bottom && view.top < search.bottom,
-        widthsMatch: Math.abs(search.width - view.width) < 1,
-        heightsMatch: Math.abs(search.height - view.height) < 1,
-        topsMatch: Math.abs(search.top - view.top) < 1,
+      overflow: view.scrollWidth > view.clientWidth || bounds.left < 0 || bounds.right > innerWidth,
+      touchTargets: [...view.querySelectorAll('select, button')].map(control => control.getBoundingClientRect().height),
     };
   });
   let inset = await mapControlGeometry();
-  expect(Math.abs(inset.left - inset.right)).toBeLessThan(1);
-  expect(inset.overlaps).toBe(false);
-  const alignedStyles = await page.evaluate(() => {
-    const search = getComputedStyle(document.querySelector('.search-toggle')!);
-    const view = getComputedStyle(document.querySelector('.map-controls')!);
-    return ['borderTopColor','backgroundColor','fontFamily','fontSize'].map(key => [search[key as keyof CSSStyleDeclaration], view[key as keyof CSSStyleDeclaration]]);
-  });
-  for (const [search, view] of alignedStyles) expect(search).toBe(view);
+  expect(inset.overflow).toBe(false);
+  expect(inset.touchTargets.every(height => height >= 44)).toBe(true);
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(nav.getByRole('link', { name: 'FAQ', exact: true })).toBeVisible();
   await expect.poll(midpoint).toBeCloseTo(195, 0);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   inset = await mapControlGeometry();
-  expect(Math.abs(inset.left - inset.right)).toBeLessThan(1);
-  expect(inset.overlaps).toBe(false);
-  expect(inset.widthsMatch).toBe(true);
-  expect(inset.heightsMatch).toBe(true);
-  expect(inset.topsMatch).toBe(true);
+  expect(inset.overflow).toBe(false);
+  expect(inset.touchTargets.every(height => height >= 44)).toBe(true);
+  await expect(page.getByRole('group', { name: 'Map view' })).toBeVisible();
   await page.setViewportSize({ width: 375, height: 812 });
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   inset = await mapControlGeometry();
-  expect(Math.abs(inset.left - inset.right)).toBeLessThan(1);
-  expect(inset.overlaps).toBe(false);
-  expect(inset.widthsMatch).toBe(true);
-  expect(inset.heightsMatch).toBe(true);
-  expect(inset.topsMatch).toBe(true);
+  expect(inset.overflow).toBe(false);
   await page.setViewportSize({ width: 320, height: 760 });
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   inset = await mapControlGeometry();
-  expect(inset.overlaps).toBe(false);
-  expect(inset.widthsMatch).toBe(true);
-  expect(inset.heightsMatch).toBe(true);
-  expect(inset.topsMatch).toBe(true);
+  expect(inset.overflow).toBe(false);
 });
 
 test('a record URL is directly addressable and has a route-specific heading', async ({ page }) => {

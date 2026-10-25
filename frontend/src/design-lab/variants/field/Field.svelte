@@ -213,6 +213,13 @@
     zoom: number;
   } | null>(null);
   let flightSequence = 0;
+  const mapCameraPitch = writable(0);
+  const mapControlsReady = writable(false);
+  let cameraRequestSequence = 0;
+  const cameraViewRequest = writable<{ id: number; enable3d: boolean } | null>(null);
+  function toggleMapCameraView() {
+    cameraViewRequest.set({ id: ++cameraRequestSequence, enable3d: $mapCameraPitch <= 0.5 });
+  }
   let placeSearchGeneration = 0;
   let placeSearchModule: Promise<typeof import("../../../features/placeSearch/placeSearch")> | undefined;
   // The gazetteer is lazy and local: typing a place never contacts a geocoder.
@@ -402,7 +409,7 @@
 
 <svelte:window onkeydown={onKeydown} />
 <section class="field-view">
-  <PreviewMasthead privateTools={mode === "real-preview" || mode === "candidate-preview"} publicReleaseLabel={mode === "candidate-preview" ? $candidatePreviewLabel : publicReleaseLabel(publicMapMeta?.releaseId, publicMapMeta?.releaseLabel)} releaseDescription={mode === "candidate-preview" && $candidatePreviewLabel ? 'Configured private candidate release.' : null} {releaseOptions} selectedReleaseId={mode === "public-release" ? selectedPublicReleaseId : null} {...(onreleasechange ? { onreleasechange } : {})} current="map" {mapHref} {databaseHref} debugEnabled={$debugEnabled} ondebugchange={(enabled) => { debugEnabled.set(enabled); if (!enabled) debugOpen.set(false); }} />
+  <PreviewMasthead privateTools={mode === "real-preview" || mode === "candidate-preview"} publicReleaseLabel={mode === "candidate-preview" ? $candidatePreviewLabel : publicReleaseLabel(publicMapMeta?.releaseId, publicMapMeta?.releaseLabel)} releaseDescription={mode === "candidate-preview" && $candidatePreviewLabel ? 'Configured private candidate release.' : null} {releaseOptions} selectedReleaseId={mode === "public-release" ? selectedPublicReleaseId : null} {...(onreleasechange ? { onreleasechange } : {})} current="map" {mapHref} {databaseHref} debugEnabled={$debugEnabled} ondebugchange={(enabled) => { debugEnabled.set(enabled); if (!enabled) debugOpen.set(false); }} mapBasemap={state.basemap} mapCameraPitch={$mapCameraPitch} mapControlsReady={$mapControlsReady} onmapbasemap={(value) => dispatch({ type: "basemap", value })} onmapviewtoggle={toggleMapCameraView} />
   <main class="map-stage" aria-label={tr('Investigative map field', $language)}>
     {#if mode === "synthetic" && state.scenario === "loading"}<div class="status" role="status">
         {tr('Loading records…', $language)}
@@ -425,6 +432,9 @@
         {mapTruncated}
         {mapDiagnostics}
         flightTarget={$flightTarget}
+        cameraViewRequest={$cameraViewRequest}
+        onCameraPitchChange={(pitch) => { mapCameraPitch.set(pitch); }}
+        onMapControlsReady={(ready) => { mapControlsReady.set(ready); }}
         debugEnabled={$debugEnabled}
         suppressDiagnostics={mode !== "candidate-preview" && state.listOpen && !selected}
         referenceLoading={aggregateLoading}

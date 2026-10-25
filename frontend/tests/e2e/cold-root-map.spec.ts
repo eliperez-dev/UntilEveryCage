@@ -106,6 +106,7 @@ test('cold root and warmed reload keep map controls and exact/approximate points
   expect(new URL(page.url()).hash).toContain('list=open');
   await page.getByRole('button', { name: 'Close search panel' }).click();
 
+  await page.getByRole('button', { name: 'Tools' }).click();
   await page.getByLabel('Map style').selectOption('satellite');
   await expect.poll(() => new URL(page.url()).hash).toContain('basemap=satellite');
   await expect.poll(() => page.evaluate(() => Boolean((window as any).__UEC_LOCAL_PREVIEW_MAP__?.getLayer('approx-reference-pins')))).toBe(true);
@@ -135,6 +136,7 @@ test('cold root and warmed reload keep map controls and exact/approximate points
   await expect(page.getByRole('searchbox').first()).toBeVisible();
   expect(new URL(page.url()).hash).toContain('list=open');
   await page.getByRole('button', { name: 'Close search panel' }).click();
+  await page.getByRole('button', { name: 'Tools' }).click();
   await page.getByLabel('Map style').selectOption('satellite');
   await expect.poll(() => new URL(page.url()).hash).toContain('basemap=satellite');
   await expect(page.locator('.startup-status')).toHaveCount(0);

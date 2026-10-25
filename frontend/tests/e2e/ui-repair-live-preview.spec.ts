@@ -9,6 +9,7 @@ test('live candidate map keeps the repaired controls and default V1 pins operabl
   await page.goto('/v2-preview/#/map?list=closed');
   await expect(page.locator('.lab')).toHaveAttribute('data-data-mode', 'candidate-preview');
 
+  await page.getByRole('button', { name: 'Tools' }).click();
   const mapStyle = page.getByLabel('Map style');
   await expect(mapStyle).toHaveValue('vector');
   await expect(mapStyle.locator('option')).toHaveText(['Street', 'Satellite']);
