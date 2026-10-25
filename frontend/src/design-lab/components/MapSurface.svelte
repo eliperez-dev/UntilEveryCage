@@ -1491,9 +1491,9 @@
     <div class="map-controls" role="group" aria-label={tr('Map view', $language)}>
       <span class="map-controls-label">{tr('Map view', $language)}</span>
       <select aria-label={tr('Map style', $language)} value={mapState.basemap} disabled={!nativeStyleReady} onchange={(event) => onbasemap(event.currentTarget.value as Basemap)}><option value="vector">{tr('Street', $language)}</option><option value="satellite">{tr('Satellite', $language)}</option></select>
-      <button class="map-camera-toggle" type="button" disabled={!nativeStyleReady} aria-label={cameraPitch > 0.5 ? 'Switch to 2D view' : 'Switch to 3D view'} aria-pressed={cameraPitch > 0.5} aria-describedby="map-camera-help" title="Right-drag to tilt and rotate" onclick={() => setCameraView(cameraPitch <= 0.5)}>{cameraPitch > 0.5 ? '3D' : '2D'}</button>
+      <button class="map-camera-toggle" type="button" disabled={!nativeStyleReady} aria-label={tr(cameraPitch > 0.5 ? 'Switch to 2D view' : 'Switch to 3D view', $language)} aria-pressed={cameraPitch > 0.5} aria-describedby="map-camera-help" title={tr('Right-drag to tilt and rotate', $language)} onclick={() => setCameraView(cameraPitch <= 0.5)}>{cameraPitch > 0.5 ? '3D' : '2D'}</button>
       <small class="gesture-hint">{tr('Right-mouse to rotate / Left-mouse to pan', $language)}</small>
-      <span id="map-camera-help" class="sr-only">Right-drag to tilt and rotate. On touchscreens, use two fingers to tilt.</span>
+      <span id="map-camera-help" class="sr-only">{tr('Right-drag to tilt and rotate', $language)}. {tr('On touchscreens, use two fingers to tilt.', $language)}</span>
     </div>
   </div>
   {#if terrainError}<small class="map-status terrain-status" role="alert">{terrainError}</small>{/if}
@@ -1938,11 +1938,12 @@
   .map-surface :global(.maplibregl-ctrl-attrib-button) { filter: invert(1); }
   @media (max-width: 40rem) {
     .map-controls-wrap { top:var(--mobile-toolbar-top,.45rem); right:var(--mobile-toolbar-inset,.4rem); left:auto; width:calc((100% - 2 * var(--mobile-toolbar-inset,.4rem) - var(--mobile-toolbar-gap,.4rem))/2); align-items:stretch; }
-    .map-controls { width:100%; min-height:var(--mobile-toolbar-height,5.25rem); height:var(--mobile-toolbar-height,5.25rem); grid-template-columns:minmax(0,1fr) auto; grid-template-rows:auto auto auto; align-content:center; gap:.12rem .25rem; padding:.24rem .38rem; font-size:.64rem; }
-    .map-controls-label { grid-column:1 / -1; font-size:.61rem; line-height:1.05; }
+    .map-controls { width:100%; min-height:var(--mobile-toolbar-height,5.25rem); height:var(--mobile-toolbar-height,5.25rem); grid-template-columns:minmax(0,1fr) auto; grid-template-rows:auto auto; align-content:center; gap:.08rem .25rem; padding:.15rem .35rem; font-size:.7rem; }
+    .map-controls-label { grid-column:1 / -1; font-size:.67rem; line-height:1.1; }
     .gesture-hint { grid-column:1 / -1; color:var(--ink-muted,#aab0aa); font-size:.625rem; line-height:1.15; text-align:left; overflow-wrap:anywhere; }
-    .map-controls select { min-width:0; width:100%; min-height:1.85rem; padding-inline:.2rem; font-size:.62rem; }
-    .map-camera-toggle { min-width:2.05rem; min-height:1.85rem; padding:0 .25rem; }
+    .map-controls select { min-width:0; width:100%; min-height:2.75rem; padding-inline:.2rem; font-size:.7rem; }
+    .map-camera-toggle { min-width:2.75rem; min-height:2.75rem; padding:0 .25rem; }
+    .gesture-hint { display:none; }
     .map-surface :global(.precision-legend) { bottom: 9.4rem; width: auto; max-width: min(15rem, calc(100vw - 1.3rem)); }
     .map-surface :global(.precision-legend.expanded) { top: 3.5rem; bottom: auto; width: min(15rem, calc(100vw - 1.3rem)); }
     .map-surface :global(.maplibregl-ctrl-bottom-right) { right: 0.4rem; bottom: 0.4rem; left: auto; }

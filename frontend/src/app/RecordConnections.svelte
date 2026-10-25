@@ -86,9 +86,9 @@
 
   function endpointLabel(edge: PublicGraphConnection): string {
     const endpoint = otherEndpoint(edge);
-    if (endpoint.entity_type === 'organization') return endpoint.display_name ?? 'Organization';
-    if (!endpoint.entity_id) return 'Facility record';
-    return names[endpoint.entity_id] ?? 'Facility record';
+    if (endpoint.entity_type === 'organization') return endpoint.display_name ?? tr('Organization', $language);
+    if (!endpoint.entity_id) return tr('Facility record', $language);
+    return names[endpoint.entity_id] ?? tr('Facility record', $language);
   }
 
   function humanize(value: string): string {
@@ -121,16 +121,16 @@
       <li>
         <div class="row-heading">
           {#if endpoint.entity_type === 'facility' && endpoint.entity_id}<a href={recordHref(endpoint.entity_id)}>{endpointLabel(edge)}</a>{:else}<span>{endpointLabel(edge)}</span>{/if}
-          <span class="relationship">{humanize(edge.relationship_type)}</span>
+          <span class="relationship">{tr(humanize(edge.relationship_type), $language)}</span>
         </div>
-        <p class="meta"><span>{edge.connection_type === 'exact' ? 'Exact source' : `Inferred · ${humanize(edge.confidence_band)} confidence`}</span>{#if edge.connection_type === 'inferred'}<span>{Math.round(edge.confidence * 100)}%</span>{/if}</p>
+        <p class="meta"><span>{edge.connection_type === 'exact' ? tr('Exact source', $language) : `${tr('Inferred', $language)} · ${tr(humanize(edge.confidence_band), $language)} ${tr('confidence', $language)}`}</span>{#if edge.connection_type === 'inferred'}<span>{Math.round(edge.confidence * 100)}%</span>{/if}</p>
         <details>
           <summary>{tr('Method and evidence', $language)}</summary>
           <dl>
-            <div><dt>{tr('Method', $language)}</dt><dd>{humanize(edge.match_method)}</dd></div>
-            <div><dt>{tr('Source', $language)}</dt><dd>{edge.provenance.source_ids.map(humanize).join(', ')}</dd></div>
+            <div><dt>{tr('Method', $language)}</dt><dd>{tr(humanize(edge.match_method), $language)}</dd></div>
+            <div><dt>{tr('Source', $language)}</dt><dd>{edge.provenance.source_ids.join(', ')}</dd></div>
             <div><dt>{tr('Observed', $language)}</dt><dd><time datetime={edge.observed_at}>{new Date(edge.observed_at).toLocaleDateString($language === 'es' ? 'es' : 'en')}</time></dd></div>
-            {#if Object.keys(edge.signals).length}<div><dt>{tr('Signals', $language)}</dt><dd>{Object.keys(edge.signals).map(humanize).join(', ')}</dd></div>{/if}
+            {#if Object.keys(edge.signals).length}<div><dt>{tr('Signals', $language)}</dt><dd>{Object.keys(edge.signals).map(value => tr(humanize(value), $language)).join(', ')}</dd></div>{/if}
             {#if edge.contradictions.length}<div><dt>{tr('Contradictions', $language)}</dt><dd>{edge.contradictions.length} {tr('recorded', $language)}</dd></div>{/if}
           </dl>
         </details>

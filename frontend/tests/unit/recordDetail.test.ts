@@ -34,8 +34,8 @@ describe('private preview record detail surface', () => {
     expect(component).not.toContain('Privacy screening');
     expect(component).not.toContain('Project approval');
     expect(component).toContain("raw.replace(/[_-]+/g, ' ')");
-    expect(component).toContain('{humanizeValue(coordinateStatus)}');
-    expect(component).toContain('{humanizeValue(record.coordinatePrecision)}');
+    expect(component).toContain('{displayGeneratedValue(coordinateStatus)}');
+    expect(component).toContain('{displayGeneratedValue(record.coordinatePrecision)}');
   });
 
   it('accepts only HTTPS source links and offers a stable record URL copy action', () => {
@@ -71,7 +71,7 @@ describe('private preview record detail surface', () => {
     expect(component).toContain('Estimated animals slaughtered (last 360 days)');
     expect(component).toContain('Estimated product volume (pounds/month)');
     expect(component).toContain('derivedSourceVolumeRanges');
-    expect(component).toContain('FY{report.fiscalYear} reported animals');
+    expect(component).toContain("{tr('FY ', $language)}{report.fiscalYear} {tr('reported animals', $language)}");
     expect(component.indexOf('id="source-facts-heading"')).toBeLessThan(component.indexOf('id="evidence-heading"'));
   });
 
@@ -80,7 +80,7 @@ describe('private preview record detail surface', () => {
   });
 
   it('humanizes the top activity and suppresses repeated affirmative suffixes in compact source-fact lists', () => {
-    expect(component).toContain("const activityDisplay = $derived(taxonomy ? taxonomyPrimaryLabels.join(', ') : humanizeValue(activity));");
+    expect(component).toContain("const activityDisplay = $derived(taxonomy ? taxonomyPrimaryLabels.join(', ') : displayGeneratedValue(activity));");
     expect(component).toContain('{activityDisplay}');
     expect(component).toContain('/^(?:yes|true|1)$/i.test(included.trim())');
   });

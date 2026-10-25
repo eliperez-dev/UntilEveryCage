@@ -30,10 +30,11 @@
   });
   const precision = $derived(precisionPresentation(record?.evidence?.displayPrecision));
   const humanLabel = (value: string) => value.replaceAll(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/\b(nrte|rte)\b/gi, acronym => acronym.toUpperCase()).replace(/^./, letter => letter.toLocaleUpperCase());
-  const category = (location: Location) => location.taxonomy?.primaryCategories.map(key => categoryPresentation(key).label).join(', ') || (location.category === 'unclassified' ? 'Category not provided' : humanLabel(location.category));
-  const flagActivities = (location: Location) => affirmativeEntries(location.sourceFacts?.processingActivities).map(([key, value]) => `${sourceFlagLabel(key)}${typeof value === 'string' && !/^(?:yes|true|1)$/i.test(value.trim()) ? `: ${sourceFlag(value)}` : ''}`);
+  const translatedGenerated = (value: string) => tr(humanLabel(value), $language);
+  const category = (location: Location) => location.taxonomy?.primaryCategories.map(key => tr(categoryPresentation(key).label, $language)).join(', ') || (location.category === 'unclassified' ? tr('Category not provided', $language) : translatedGenerated(location.category));
+  const flagActivities = (location: Location, localizeGenerated = true) => affirmativeEntries(location.sourceFacts?.processingActivities).map(([key, value]) => `${localizeGenerated ? translatedGenerated(key) : humanLabel(key)}${typeof value === 'string' && !/^(?:yes|true|1)$/i.test(value.trim()) ? `: ${localizeGenerated ? translatedGenerated(value) : humanLabel(value)}` : ''}`);
   const activityLabels = (location: Location) => [...new Set([
-    ...(location.taxonomy?.leafActivities.map(activity => humanLabel(activity.label)) ?? []), ...flagActivities(location),
+    ...(location.taxonomy?.leafActivities.map(activity => translatedGenerated(activity.label)) ?? []), ...flagActivities(location),
   ])];
   const isSummaryActivity = (location: Location, label: string) => location.taxonomy?.primaryCategories.some(key => categoryPresentation(key).label.toLocaleLowerCase() === label.toLocaleLowerCase()) ||
     (location.taxonomy?.primaryCategories.includes('processing_and_preparation') && label.toLocaleLowerCase() === 'processing' && activityLabels(location).some(other => other.toLocaleLowerCase() !== 'processing'));
@@ -41,7 +42,7 @@
   const sourceClassifications = (location: Location) => sourceClassificationLabels(
     [location.sourceFacts?.nativeActivityLabel, location.sourceFacts?.nativeActivityCode],
     location.taxonomy?.assignments ?? [],
-    activityLabels(location),
+    [...(location.taxonomy?.leafActivities.map(activity => humanLabel(activity.label)) ?? []), ...flagActivities(location, false)],
   );
   const geocodingConfidence = (location: Location) => {
     const raw = location.evidence?.geometryProvenance?.confidence;
@@ -51,16 +52,16 @@
   const coordinate = (value: number) => String(Number(value.toFixed(6)));
   const locationMethod = (location: Location) => {
     const method = location.evidence?.geometryProvenance?.method;
-    return method && !/^(?:source[_ -])?(?:method[_ -])?unknown$/i.test(method) ? humanLabel(method) : null;
+    return method && !/^(?:source[_ -])?(?:method[_ -])?unknown$/i.test(method) ? translatedGenerated(method) : null;
   };
-  const sourceFlag = (value: string | boolean) => value === true ? 'Yes' : typeof value === 'string' ? humanLabel(value) : null;
-  const sourceFlagLabel = (key: string) => humanLabel(key);
+  const sourceFlag = (value: string | boolean) => value === true ? tr('Yes', $language) : typeof value === 'string' ? translatedGenerated(value) : null;
+  const sourceFlagLabel = (key: string) => translatedGenerated(key);
   const affirmativeEntries = (flags: Readonly<Record<string, string | boolean>> | undefined) => flags ? Object.entries(flags).filter(([, value]) => value !== false).sort(([left], [right]) => left.localeCompare(right)) : [];
-  const formattedRange = (range: DerivedSourceVolumeRange) => {
+  const formattedRangeLocalized = (range: DerivedSourceVolumeRange) => {
     const number = (value: number) => new Intl.NumberFormat('en-US').format(value);
-    if (range.bounds === 'exclusive_upper' && range.upper !== null) return `Less than ${number(range.upper)}`;
-    if (range.bounds === 'inclusive_lower_unbounded' && range.lower !== null) return `${number(range.lower)} or more`;
-    if (range.bounds === 'inclusive_lower_exclusive_upper' && range.lower !== null && range.upper !== null) return `${number(range.lower)} to less than ${number(range.upper)}`;
+    if (range.bounds === 'exclusive_upper' && range.upper !== null) return `${tr('Less than', $language)} ${number(range.upper)}`;
+    if (range.bounds === 'inclusive_lower_unbounded' && range.lower !== null) return `${number(range.lower)} ${tr('or more', $language)}`;
+    if (range.bounds === 'inclusive_lower_exclusive_upper' && range.lower !== null && range.upper !== null) return `${number(range.lower)} ${tr('to less than', $language)} ${number(range.upper)}`;
     return null;
   };
   const slaughterRanges = (ranges: readonly DerivedSourceVolumeRange[] | undefined) => ranges?.filter(range => range.unit === 'head' && range.period === 'trailing_360_days') ?? [];
@@ -94,10 +95,10 @@
       <dl>
         <div><dt>{tr('Locality', $language)}</dt><dd>{[record.region, record.countryCode].filter(Boolean).join(', ')}</dd></div>
         {#if record.lat !== null && record.lon !== null}<div><dt>{tr('Coordinates', $language)}</dt><dd>{coordinate(record.lat)}, {coordinate(record.lon)}</dd></div>{/if}
-        <div><dt>{tr('Precision', $language)}</dt><dd>{precision}</dd></div>
+        <div><dt>{tr('Precision', $language)}</dt><dd>{tr(precision, $language)}</dd></div>
         {#if locationMethod(record)}<div><dt>{tr('Location method', $language)}</dt><dd>{locationMethod(record)}</dd></div>{/if}
         {#if record.evidence?.geometryProvenance?.provider}<div><dt>{tr('Geocoding provider', $language)}</dt><dd>{record.evidence.geometryProvenance.provider}</dd></div>{/if}
-        {#if geocodingConfidence(record) !== null || record.evidence?.geometryProvenance?.confidence_band}<div><dt>Geocoding confidence</dt><dd>{#if geocodingConfidence(record) !== null}{geocodingConfidence(record)} (provider score){/if}{#if record.evidence?.geometryProvenance?.confidence_band}{geocodingConfidence(record) !== null ? ' · ' : ''}{humanLabel(record.evidence.geometryProvenance.confidence_band)}{/if}</dd></div>{/if}
+        {#if geocodingConfidence(record) !== null || record.evidence?.geometryProvenance?.confidence_band}<div><dt>{tr('Geocoding confidence', $language)}</dt><dd>{#if geocodingConfidence(record) !== null}{geocodingConfidence(record)} ({tr('provider score', $language)}){/if}{#if record.evidence?.geometryProvenance?.confidence_band}{geocodingConfidence(record) !== null ? ' · ' : ''}{translatedGenerated(record.evidence.geometryProvenance.confidence_band)}{/if}</dd></div>{/if}
       </dl>
       {#if openMapHref}<p class="map-action"><a href={openMapHref}>{tr('Open in Map', $language)}</a></p>{/if}
     </section>
@@ -112,23 +113,23 @@
       <section class="source-facts" aria-labelledby="source-facts-heading">
         <h2 id="source-facts-heading">{tr('Source facts', $language)}</h2>
         <dl>
-          {#if record.sourceFacts.alternateNames?.length}<div><dt>Also known as</dt><dd>{record.sourceFacts.alternateNames.join(' · ')}</dd></div>{/if}
-          {#if record.sourceFacts.establishmentId}<div><dt>Establishment ID</dt><dd>{record.sourceFacts.establishmentId}</dd></div>{/if}
-          {#if record.sourceFacts.establishmentNumber}<div><dt>Establishment number</dt><dd>{record.sourceFacts.establishmentNumber}</dd></div>{/if}
-          {#if record.sourceFacts.grantDate}<div><dt>Grant date</dt><dd>{record.sourceFacts.grantDate}</dd></div>{/if}
-          {#if affirmativeEntries(record.sourceFacts.speciesSlaughtered).length}<div><dt>Species slaughtered</dt><dd>{affirmativeEntries(record.sourceFacts.speciesSlaughtered).map(([key, value]) => `${sourceFlagLabel(key)}${typeof value === 'string' ? `: ${sourceFlag(value)}` : ''}`).join(', ')}</dd></div>{/if}
-          {#if slaughterRanges(record.sourceFacts.derivedSourceVolumeRanges).length}<div><dt>Estimated animals slaughtered (last 360 days)</dt><dd>{slaughterRanges(record.sourceFacts.derivedSourceVolumeRanges).map(range => formattedRange(range) ? `${formattedRange(range)} animals` : null).filter(Boolean).join(', ')}</dd></div>{/if}
-          {#if processingRanges(record.sourceFacts.derivedSourceVolumeRanges).length}<div><dt>Estimated product volume (pounds/month)</dt><dd>{processingRanges(record.sourceFacts.derivedSourceVolumeRanges).map(range => formattedRange(range) ? `${formattedRange(range)} pounds/month` : null).filter(Boolean).join(', ')}</dd></div>{/if}
-          {#if record.sourceFacts.aphisAnnualReports?.length}{#each record.sourceFacts.aphisAnnualReports as report (report.fiscalYear)}<div><dt>FY{report.fiscalYear} reported animals</dt><dd><ul>{#each report.speciesCounts as species (species.species)}<li>{sourceFlagLabel(species.species)}: {annualSpeciesCount(species.count)}</li>{/each}</ul><a href={report.sourceUrl} target="_blank" rel="noopener noreferrer">Source report</a></dd></div>{/each}{/if}
+          {#if record.sourceFacts.alternateNames?.length}<div><dt>{tr('Also known as', $language)}</dt><dd>{record.sourceFacts.alternateNames.join(' · ')}</dd></div>{/if}
+          {#if record.sourceFacts.establishmentId}<div><dt>{tr('Establishment ID', $language)}</dt><dd>{record.sourceFacts.establishmentId}</dd></div>{/if}
+          {#if record.sourceFacts.establishmentNumber}<div><dt>{tr('Establishment number', $language)}</dt><dd>{record.sourceFacts.establishmentNumber}</dd></div>{/if}
+          {#if record.sourceFacts.grantDate}<div><dt>{tr('Grant date', $language)}</dt><dd>{record.sourceFacts.grantDate}</dd></div>{/if}
+          {#if affirmativeEntries(record.sourceFacts.speciesSlaughtered).length}<div><dt>{tr('Species slaughtered', $language)}</dt><dd>{affirmativeEntries(record.sourceFacts.speciesSlaughtered).map(([key, value]) => `${sourceFlagLabel(key)}${typeof value === 'string' ? `: ${sourceFlag(value)}` : ''}`).join(', ')}</dd></div>{/if}
+          {#if slaughterRanges(record.sourceFacts.derivedSourceVolumeRanges).length}<div><dt>{tr('Estimated animals slaughtered (last 360 days)', $language)}</dt><dd>{slaughterRanges(record.sourceFacts.derivedSourceVolumeRanges).map(range => formattedRangeLocalized(range) ? `${formattedRangeLocalized(range)} ${tr('animals', $language)}` : null).filter(Boolean).join(', ')}</dd></div>{/if}
+          {#if processingRanges(record.sourceFacts.derivedSourceVolumeRanges).length}<div><dt>{tr('Estimated product volume (pounds/month)', $language)}</dt><dd>{processingRanges(record.sourceFacts.derivedSourceVolumeRanges).map(range => formattedRangeLocalized(range) ? `${formattedRangeLocalized(range)} ${tr('pounds/month', $language)}` : null).filter(Boolean).join(', ')}</dd></div>{/if}
+          {#if record.sourceFacts.aphisAnnualReports?.length}{#each record.sourceFacts.aphisAnnualReports as report (report.fiscalYear)}<div><dt>{tr('FY', $language)}{report.fiscalYear} {tr('reported animals', $language)}</dt><dd><ul>{#each report.speciesCounts as species (species.species)}<li>{sourceFlagLabel(species.species)}: {annualSpeciesCount(species.count)}</li>{/each}</ul><a href={report.sourceUrl} target="_blank" rel="noopener noreferrer">{tr('Source report', $language)}</a></dd></div>{/each}{/if}
         </dl>
       </section>
     {/if}
     <RecordConnections facilityId={record.id} releaseId={currentRelease} {profile} sourceId={record.sourceId} sourceFacts={record.sourceFacts} />
     <section aria-labelledby="source-heading">
       <h2 id="source-heading">{tr('Source and review', $language)}</h2>
-      <dl><div><dt>Source</dt><dd>{record.source} {#if record.evidence?.sourceUrl}<a href={record.evidence.sourceUrl} target="_blank" rel="noreferrer">Open source</a>{/if}</dd></div><div><dt>Source origin</dt><dd>{record.evidence?.sourceType === 'user_submitted' ? 'Community-submitted' : record.evidence?.sourceType === 'secondary' ? 'Secondary source' : 'Government-sourced'}</dd></div>{#if record.observed !== 'unknown'}<div><dt>Observed</dt><dd>{record.observed}</dd></div>{/if}{#if record.evidence?.retrievedAt}<div><dt>Retrieved</dt><dd>{record.evidence.retrievedAt}</dd></div>{/if}<div><dt>Publication</dt><dd>{profile === 'official' ? 'Curated records' : profile === 'community' ? 'Community submissions' : 'Secondary sources'} · {publicReleaseLabel(currentRelease)}</dd></div></dl>
+      <dl><div><dt>{tr('Source', $language)}</dt><dd>{record.source} {#if record.evidence?.sourceUrl}<a href={record.evidence.sourceUrl} target="_blank" rel="noreferrer">{tr('Open source', $language)}</a>{/if}</dd></div><div><dt>{tr('Source origin', $language)}</dt><dd>{record.evidence?.sourceType === 'user_submitted' ? tr('Community-submitted', $language) : record.evidence?.sourceType === 'secondary' ? tr('Secondary source', $language) : tr('Government-sourced', $language)}</dd></div>{#if record.observed !== 'unknown'}<div><dt>{tr('Observed', $language)}</dt><dd>{record.observed}</dd></div>{/if}{#if record.evidence?.retrievedAt}<div><dt>{tr('Retrieved', $language)}</dt><dd>{record.evidence.retrievedAt}</dd></div>{/if}<div><dt>{tr('Publication', $language)}</dt><dd>{tr(profile === 'official' ? 'Curated records' : profile === 'community' ? 'Community submissions' : 'Secondary sources', $language)} · {publicReleaseLabel(currentRelease)}</dd></div></dl>
     </section>
-    <nav aria-label="Record contribution actions">{#each [['evidence','Add evidence'],['correction','Suggest a correction'],['privacy-removal','Privacy or removal']] as [type,label]}<a href={`#/contribute/${type}?target=${encodeURIComponent(record.id)}`}>{label}</a>{/each}</nav>
+    <nav aria-label={tr('Record contribution actions', $language)}>{#each [['evidence','Add evidence'],['correction','Suggest a correction'],['privacy-removal','Privacy or removal']] as [type,label]}<a href={`#/contribute/${type}?target=${encodeURIComponent(record.id)}`}>{tr(label ?? '', $language)}</a>{/each}</nav>
   {/if}
 </section>
 <style>

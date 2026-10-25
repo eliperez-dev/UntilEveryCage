@@ -43,4 +43,14 @@ describe('language selection', () => {
     expect(tr('Light theme', 'es')).toBe('Tema claro');
     expect(tr('Dark theme', 'es')).toBe('Tema oscuro');
   });
+
+  it('translates project-generated record metadata without changing source identifiers', async () => {
+    const { tr } = await import('../../src/app/language');
+    expect(tr('Establishment ID', 'es')).toBe('ID del establecimiento');
+    expect(tr('Source origin', 'es')).toBe('Origen de la fuente');
+    expect(tr('Source-provided coordinates', 'es')).toBe('Coordenadas proporcionadas por la fuente');
+    expect(tr('Processing and preparation', 'es')).toBe('Procesamiento y preparación');
+    expect(tr('Add evidence', 'es')).toBe('Añadir evidencia');
+    expect(tr('us.fsis', 'es')).toBe('us.fsis');
+  });
 });

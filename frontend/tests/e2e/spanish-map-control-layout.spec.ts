@@ -43,19 +43,6 @@ async function mockSanitizedApi(page: Page) {
   });
 }
 
-const contrastRatio = (foreground: string, background: string) => {
-  const luminance = (color: string) => {
-    const channels = color.match(/[\d.]+/g)?.slice(0, 3).map(Number) ?? [];
-    const linear = channels.map(value => {
-      const channel = value / 255;
-      return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
-    });
-    return 0.2126 * linear[0]! + 0.7152 * linear[1]! + 0.0722 * linear[2]!;
-  };
-  const [lighter, darker] = [luminance(foreground), luminance(background)].sort((left, right) => right - left);
-  return (lighter + 0.05) / (darker! + 0.05);
-};
-
 async function setSpanishAndTheme(page: Page, theme: 'Claro' | 'Oscuro') {
   const tools = page.getByRole('button', { name: 'Herramientas', exact: true });
   if (await tools.getAttribute('aria-expanded') !== 'true') await tools.click();
@@ -94,8 +81,9 @@ test('Spanish map controls share equal half-width rows at 320px, 375px and 390px
           equalHeight: Math.abs(search.height - toolbar.height) < 1,
           alignedTop: Math.abs(search.top - toolbar.top) < 1,
           sharedInset: Math.abs(search.left - (innerWidth - toolbar.right)) < 1,
-          hintColor: style.color,
-          hintFontSize: parseFloat(style.fontSize),
+          hintDisplay: style.display,
+          touchTargets: [...document.querySelectorAll('.map-controls select, .map-controls button')].map(control => control.getBoundingClientRect().height),
+          touchHelpVisibleToAssistiveTech: document.querySelector('#map-camera-help')?.textContent?.trim(),
           toolbarBackground: background,
           labelClipped: (() => {
             const label = document.querySelector('.map-controls-label')!;
@@ -112,8 +100,9 @@ test('Spanish map controls share equal half-width rows at 320px, 375px and 390px
       expect(geometry.sharedInset, `${width}px ${theme}: outer insets differ`).toBe(true);
       expect(geometry.overflow, `${width}px ${theme}: map controls overflow their toolbar`).toBe(false);
       expect(geometry.labelClipped, `${width}px ${theme}: translated toolbar label is clipped`).toBe(false);
-      expect(geometry.hintFontSize, `${width}px ${theme}: hint size`).toBeGreaterThanOrEqual(10);
-      expect(contrastRatio(geometry.hintColor, geometry.toolbarBackground), `${width}px ${theme}: hint contrast`).toBeGreaterThanOrEqual(4.5);
+      expect(geometry.hintDisplay, `${width}px ${theme}: mouse-only hint should be hidden on mobile`).toBe('none');
+      expect(geometry.touchTargets.every(height => height >= 44), `${width}px ${theme}: map controls keep 44px touch targets`).toBe(true);
+      expect(geometry.touchHelpVisibleToAssistiveTech, `${width}px ${theme}: camera and touch help remains available`).toContain('dos dedos');
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${width}px ${theme}: page overflow`).toBe(true);
 
       await page.screenshot({ path: testInfo.outputPath(`spanish-map-${width}-${theme.toLowerCase()}.png`) });
@@ -128,6 +117,8 @@ test('Spanish map controls share equal half-width rows at 320px, 375px and 390px
         await page.screenshot({ path: testInfo.outputPath(`map-es-mobile-${theme.toLowerCase()}-tools-open.png`), fullPage: true });
         await page.getByRole('button', { name: 'Cerrar herramientas', exact: true }).click();
         await page.setViewportSize({ width: 1280, height: 900 });
+        await expect(page.locator('.gesture-hint')).toBeVisible();
+        await expect(page.locator('.gesture-hint')).toHaveText('Botón derecho para girar / botón izquierdo para desplazar');
         await page.screenshot({ path: testInfo.outputPath(`map-es-desktop-${theme.toLowerCase()}-tools-closed.png`), fullPage: true });
         await page.getByRole('button', { name: 'Herramientas', exact: true }).click();
         await page.locator('#shared-tools-menu').waitFor({ state: 'visible' });

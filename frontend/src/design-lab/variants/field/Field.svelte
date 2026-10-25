@@ -647,7 +647,7 @@
     --mobile-toolbar-inset: .4rem;
     --mobile-toolbar-gap: .4rem;
     --mobile-toolbar-top: .45rem;
-    --mobile-toolbar-height: 5.25rem;
+    --mobile-toolbar-height: 4rem;
     --ink: #f1efe8;
     --muted: #aab0aa;
     --line: #48504b;

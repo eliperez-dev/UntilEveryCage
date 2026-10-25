@@ -14,14 +14,14 @@ describe('public record connections', () => {
   });
 
   it('uses only the API-approved organization display name and never resolves its identifier as a facility', () => {
-    expect(component).toContain("if (endpoint.entity_type === 'organization') return endpoint.display_name ?? 'Organization'");
+    expect(component).toContain("if (endpoint.entity_type === 'organization') return endpoint.display_name ?? tr('Organization', $language)");
     expect(component).toContain("other.entity_type === 'facility' && other.entity_id");
     expect(component).not.toContain('source_identifier');
   });
 
   it('presents exact and inferred semantics with expandable source and method details', () => {
     expect(component).toContain('Exact source');
-    expect(component).toContain('Inferred · ${humanize(edge.confidence_band)} confidence');
+    expect(component).toContain("${tr('Inferred', $language)} · ${tr(humanize(edge.confidence_band), $language)} ${tr('confidence', $language)}");
     expect(component).not.toContain('Exact · source-supported');
     expect(component).toContain('Method and evidence');
     expect(component).toContain('edge.provenance.source_ids');

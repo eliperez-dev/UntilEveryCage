@@ -10,7 +10,7 @@
 /* Match the operation hierarchy so Swagger's default dark colors cannot win. */
 .swagger-ui .opblock .opblock-summary .opblock-summary-path,
 .swagger-ui .opblock .opblock-summary .opblock-summary-path a,
-.swagger-ui .opblock .opblock-summary .opblock-summary-description{color:#eee9df}
+.swagger-ui .opblock .opblock-summary .opblock-summary-description{color:var(--api-ink,#eee9df)}
 .swagger-ui .opblock-tag svg,
 .swagger-ui .opblock-tag svg path,
 .swagger-ui .opblock .opblock-summary svg,
