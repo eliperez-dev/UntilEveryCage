@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { explorerOptions, guardExplorerRequest } from '../../src/app/publicApiExplorer';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+const apiPage = readFileSync(resolve(import.meta.dirname, '../../src/app/ApiPage.svelte'), 'utf8');
+const swaggerTheme = readFileSync(resolve(import.meta.dirname, '../../src/app/swaggerTheme.css'), 'utf8');
 const origin = 'https://example.test';
 const base = '/v2-preview/';
 describe('publicApiExplorer', () => {
@@ -19,5 +23,9 @@ describe('publicApiExplorer', () => {
   });
   it('disables remote validation/configuration, stored authentication and hash routing', () => {
     expect(explorerOptions).toMatchObject({ supportedSubmitMethods: ['get'], validatorUrl: null, queryConfigEnabled: false, persistAuthorization: false, withCredentials: false, deepLinking: false, tryItOutEnabled: false });
+  });
+  it('uses theme-aware contrast for API download links and expanded Swagger table headings', () => {
+    expect(apiPage).toContain('a{color:var(--api-link)');
+    expect(swaggerTheme).toContain('.swagger-ui .opblock table thead tr :is(th,td){color:var(--api-ink');
   });
 });

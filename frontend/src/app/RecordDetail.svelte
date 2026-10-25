@@ -266,7 +266,7 @@
   }
   function isSummaryActivity(label: string): boolean {
     return taxonomyPrimaryLabels.some(primary => sameLabel(primary, label)) ||
-      Boolean(taxonomy?.primaryCategories.includes('processing_and_preparation') && sameLabel(label, 'processing') && detailedActivityLabels.some(other => !sameLabel(other, 'processing')));
+      Boolean(taxonomy?.primaryCategories.includes('processing_and_preparation') && sameLabel(label, tr('Processing', $language)) && detailedActivityLabels.some(other => !sameLabel(other, tr('Processing', $language))));
   }
   function coordinate(value: number | null | undefined): string {
     return typeof value === 'number' ? String(Number(value.toFixed(6))) : '';

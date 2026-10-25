@@ -31,6 +31,7 @@
 .swagger-ui .opblock{background:var(--api-background,#1d2520);border-color:var(--line-strong,#536158)}
 .swagger-ui .opblock.opblock-get{background:var(--api-background,#1b2822)}
 .swagger-ui .opblock .opblock-section-header{background:var(--api-section,#252f29)}
+.swagger-ui .opblock table thead tr :is(th,td){color:var(--api-ink,#eee9df)}
 .swagger-ui :is(.model-box,.model-container,.highlight-code,.opblock-body pre.microlight){background:var(--api-input,#202523);color:var(--api-ink,#eee9df)}
 .swagger-ui :is(input[type=text],textarea,select){background:var(--api-input,#202523);color:var(--api-ink,#eee9df);border-color:var(--line-strong,#59615c)}
 .swagger-ui select option{background:var(--api-input,#202523)}

@@ -140,6 +140,19 @@ test('map detail shows one category and each activity, preserves facts, and open
   await expect(page.getByRole('link', { name: 'Open facility page', exact: true })).toHaveCount(0);
 });
 
+test('Spanish processing summary is deduplicated in map detail and the full record', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('uec-language', 'es'));
+  await mockPublicRecord(page);
+  await page.goto(`./#/map?selected=${id}&release_id=${release}`);
+  const panel = page.locator('.reading-sheet[aria-label="Record evidence"]');
+  await expect(panel.getByText('Procesamiento y preparación', { exact: true })).toHaveCount(1);
+  await expect(panel.locator('[aria-label="Actividades detalladas"]')).not.toContainText('Procesamiento');
+  await panel.getByRole('link', { name: 'Abrir página de la instalación', exact: true }).click();
+  const full = page.locator('.public-record');
+  await expect(full.getByText('Procesamiento y preparación', { exact: true })).toHaveCount(1);
+  await expect(full.locator('[aria-label="Actividades detalladas"]')).not.toContainText('Procesamiento');
+});
+
 test('city-level geocoding keeps its approximation and actual provider score in one Location section', async ({ page }) => {
   await mockPublicRecord(page, { display_precision: 'provider_locality_approximate', geometry_provenance: {
     origin: 'provider_geocode', method: 'geoapify_forward', provider: 'Synthetic geocoder', confidence: '0.72', confidence_band: 'medium',

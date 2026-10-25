@@ -36,8 +36,8 @@
   const activityLabels = (location: Location) => [...new Set([
     ...(location.taxonomy?.leafActivities.map(activity => translatedGenerated(activity.label)) ?? []), ...flagActivities(location),
   ])];
-  const isSummaryActivity = (location: Location, label: string) => location.taxonomy?.primaryCategories.some(key => categoryPresentation(key).label.toLocaleLowerCase() === label.toLocaleLowerCase()) ||
-    (location.taxonomy?.primaryCategories.includes('processing_and_preparation') && label.toLocaleLowerCase() === 'processing' && activityLabels(location).some(other => other.toLocaleLowerCase() !== 'processing'));
+  const isSummaryActivity = (location: Location, label: string) => location.taxonomy?.primaryCategories.some(key => tr(categoryPresentation(key).label, $language).toLocaleLowerCase() === label.toLocaleLowerCase()) ||
+    (location.taxonomy?.primaryCategories.includes('processing_and_preparation') && label.toLocaleLowerCase() === tr('Processing', $language).toLocaleLowerCase() && activityLabels(location).some(other => other.toLocaleLowerCase() !== tr('Processing', $language).toLocaleLowerCase()));
   const detailActivity = (location: Location) => activityLabels(location).filter(label => !isSummaryActivity(location, label)).join(', ');
   const sourceClassifications = (location: Location) => sourceClassificationLabels(
     [location.sourceFacts?.nativeActivityLabel, location.sourceFacts?.nativeActivityCode],
