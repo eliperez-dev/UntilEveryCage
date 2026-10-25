@@ -2520,7 +2520,9 @@ WHERE candidate.default_map_scope=true
   AND candidate.display_latitude BETWEEN -90 AND 90
   AND candidate.display_longitude BETWEEN -180 AND 180
   AND (candidate.display_latitude<>0 OR candidate.display_longitude<>0)
-  AND {}=$1
+  AND ({}=$1 OR md5('city-reference:' ||
+       ST_X(ST_Transform(ST_SetSRID(ST_MakePoint(candidate.display_longitude,candidate.display_latitude),4326),3857))::text || ':' ||
+       ST_Y(ST_Transform(ST_SetSRID(ST_MakePoint(candidate.display_longitude,candidate.display_latitude),4326),3857))::text)=$1)
   AND (candidate.source_id,candidate.snapshot_sha256) IN (SELECT source_id,snapshot_sha256 FROM latest)
   AND ($2::uuid IS NULL OR candidate.candidate_id>$2)
   AND ($4::text IS NULL OR candidate.source_id=$4)
@@ -5650,7 +5652,8 @@ mod v2_api_tests {
         assert!(lookup_sql.contains("candidate.source_id,candidate.snapshot_sha256) IN (SELECT source_id,snapshot_sha256 FROM latest)"));
         assert!(lookup_sql.contains("candidate.source_id=$4"));
         assert!(lookup_sql.contains("candidate.candidate_id>$2"));
-        assert!(lookup_sql.contains("AND md5((CASE"));
+        assert!(lookup_sql.contains("AND (md5((CASE"));
+        assert!(lookup_sql.contains("OR md5('city-reference:' ||"));
     }
 
     #[test]
