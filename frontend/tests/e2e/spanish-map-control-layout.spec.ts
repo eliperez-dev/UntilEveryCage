@@ -1,7 +1,24 @@
 import { expect, test, type Page } from '@playwright/test';
 
 const releaseId = 'synthetic-spanish-layout-release';
+const facilityId = '550e8400-e29b-41d4-a716-446655440000';
 const observedAt = '2026-01-01T00:00:00Z';
+const ruleset = 'synthetic-spanish-rules';
+const releaseMeta = {
+  release_id: releaseId, ruleset_version: ruleset, release_created_at: observedAt, profile: 'official',
+  coverage_note: 'Synthetic fixture only.', coverage_scope: 'synthetic fixture', count_semantics: 'Synthetic test rows only.',
+};
+const row = {
+  facility_id: facilityId, canonical_name: 'Synthetic Spanish layout facility', city: 'Synthetic locality', country_code: 'DK',
+  category: 'processing_and_preparation', source_type: 'official', publication_profile: 'official',
+  factual_review_status: 'reviewed', privacy_screening_status: 'passed', project_approval: 'approved', reviewer_role: null,
+  publication_warning: null, display_precision: 'source_reported', latitude: 55, longitude: 10,
+  first_observed_at: null, last_observed_at: observedAt, observation_count: 1, lifecycle_status: 'active_observed',
+  provenance_source_id: 'synthetic-spanish-source', provenance_source: null, provenance_source_name: 'Synthetic source',
+  provenance_source_url: 'https://example.test/source', provenance_retrieved_at: observedAt, source_rights_status: 'cleared',
+  release_id: releaseId, release_ruleset_version: ruleset, taxonomy_display_category: 'processing_and_preparation',
+  taxonomy_primary_categories: ['processing_and_preparation'],
+};
 
 async function mockSanitizedApi(page: Page) {
   await page.route('https://tile.openstreetmap.org/**', route => route.abort());
@@ -14,11 +31,13 @@ async function mockSanitizedApi(page: Page) {
     if (path === '/api/v2/releases/manifest') {
       body = { api_version: 'v2', data: { release_id: releaseId, profile: 'official', manifest: {}, manifest_sha256: 'a'.repeat(64), suppression_generation: 1 } };
     } else if (path === '/api/v2/locations') {
-      body = { api_version: 'v2', data: [], meta: { release_id: releaseId, total_count: 0, next_cursor: null, coverage_note: 'Synthetic fixture only.' } };
+      body = { api_version: 'v2', data: [row], meta: { ...releaseMeta, total_count: 1, next_cursor: null } };
     } else if (path === '/api/v2/discovery/facets') {
-      body = { api_version: 'v2', dimensions: {}, meta: { release_id: releaseId, coverage_scope: 'synthetic fixture', count_semantics: 'Synthetic test rows only.', filters: {} } };
+      body = { api_version: 'v2', dimensions: {}, meta: { ...releaseMeta, filters: { country_code: null, region: null, category: null, source_type: null, display_precision: null, lifecycle_status: null } } };
+    } else if (path === `/api/v2/locations/${facilityId}`) {
+      body = { api_version: 'v2', data: row, meta: releaseMeta };
     } else if (path === '/api/v2/map/feed') {
-      body = { api_version: 'v2', data: { type: 'FeatureCollection', features: [] }, meta: { profile: 'official', release_id: releaseId, manifest_sha256: 'a'.repeat(64), suppression_generation: 1, feature_count: 0, public_record_count: 0, unmapped_count: 0, release_label: 'Synthetic release', dataset_version: 'synthetic' } };
+      body = { api_version: 'v2', data: { type: 'FeatureCollection', features: [{ type: 'Feature', id: facilityId, geometry: { type: 'Point', coordinates: [row.longitude, row.latitude] }, properties: { facility_id: facilityId, source_id: row.provenance_source_id, category_key: row.taxonomy_display_category, category_keys: row.taxonomy_primary_categories, precision: row.display_precision, weight: 1, country_code: row.country_code } }] }, meta: { profile: 'official', release_id: releaseId, manifest_sha256: 'a'.repeat(64), suppression_generation: 1, feature_count: 1, public_record_count: 1, unmapped_count: 0, release_label: 'Synthetic release', dataset_version: 'synthetic' } };
     }
     await route.fulfill({ contentType: 'application/json', body: JSON.stringify(body) });
   });
@@ -45,6 +64,7 @@ async function setSpanishAndTheme(page: Page, theme: 'Claro' | 'Oscuro') {
   await expect(page.locator('html')).toHaveAttribute('lang', 'es');
   await expect(page.locator('html')).toHaveAttribute('data-theme', theme === 'Claro' ? 'light' : 'dark');
   await page.getByRole('button', { name: 'Cerrar herramientas', exact: true }).click();
+  await expect(page.locator('.map-controls')).toBeVisible();
 }
 
 test('Spanish map controls do not overlap at 390px or 375px in either theme', async ({ page }, testInfo) => {

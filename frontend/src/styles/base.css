@@ -109,6 +109,7 @@ button { min-height: 2.75rem; padding: .5rem 1rem; color: inherit; background: v
 :root[data-theme="light"] .api-page p,
 :root[data-theme="light"] .public-record p,
 :root[data-theme="light"] .public-record dd,
+:root[data-theme="light"] .public-record .aphis-reports a,
 :root[data-theme="light"] .public-database .intro,
 :root[data-theme="light"] .faq-page p,
 :root[data-theme="light"] .contribute-page p { color: var(--ink-secondary); }

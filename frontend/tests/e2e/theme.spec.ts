@@ -13,6 +13,9 @@ const row = {
   provenance_source_url: 'https://example.test/source', provenance_retrieved_at: observed, source_rights_status: 'cleared',
   release_id: release, release_ruleset_version: 'synthetic-rules', taxonomy_display_category: 'processing_and_preparation',
   taxonomy_primary_categories: ['processing_and_preparation'],
+  aphis_annual_reports: [{ fiscal_year: '2025', species_counts: [{ species: 'dogs', count: 1 }],
+    source_url: 'https://direct.aphis.usda.gov/awa/research-facility-report/annual-summary',
+    safe_provenance: { source_id: 'us.aphis.annual-reports', evidence_type: 'annual_reports', match_method: 'exact_source_identifier', matched_identifier_types: ['certificate_number'] } }],
 };
 const meta = { release_id: release, ruleset_version: 'synthetic-rules', profile: 'official', release_created_at: observed };
 
@@ -28,12 +31,21 @@ async function mockSanitizedApi(page: Page) {
       body = { api_version: 'v2', data: { release_id: release, profile: requestUrl.searchParams.get('profile') ?? 'official', manifest: {}, manifest_sha256: 'a'.repeat(64), suppression_generation: 1 } };
     } else if (path === `/api/v2/locations/${id}`) {
       body = { api_version: 'v2', data: row, meta };
+    } else if (path === `/api/v2/locations/${id}/aphis-report-links`) {
+      const kind = requestUrl.searchParams.get('kind');
+      body = { api_version: 'v2', data: kind === 'annual_reports' ? [{
+        reference_id: '550e8400-e29b-41d4-a716-446655440001', source_id: 'us.aphis.annual-reports', evidence_type: 'annual_reports',
+        event_date: null, event_period: '2025', source_url: 'https://direct.aphis.usda.gov/awa/research-facility-report/annual-summary',
+        report_url: 'https://www.aphis.usda.gov/sites/default/files/synthetic-annual-report.pdf',
+        column_e_url: 'https://www.aphis.usda.gov/sites/default/files/synthetic-column-e.pdf',
+        reference_origin: 'release_approved_evidence', match_method: 'exact_source_identifier',
+      }] : [], meta: { profile: 'official', release_id: release, ruleset_version: meta.ruleset_version, kind, limit: 20, next_cursor: null, public_projection: true } };
     } else if (path === '/api/v2/locations') {
       body = { api_version: 'v2', data: [row], meta: { ...meta, total_count: 1, next_cursor: null, coverage_note: 'Synthetic fixture only.' } };
     } else if (path === '/api/v2/discovery/facets') {
-      body = { api_version: 'v2', dimensions: {}, meta: { ...meta, coverage_scope: 'synthetic fixture', count_semantics: 'Synthetic test rows only.', filters: {} } };
+      body = { api_version: 'v2', dimensions: {}, meta: { ...meta, coverage_scope: 'synthetic fixture', count_semantics: 'Synthetic test rows only.', filters: { country_code: null, region: null, category: null, source_type: null, display_precision: null, lifecycle_status: null } } };
     } else if (path === '/api/v2/map/feed') {
-      body = { api_version: 'v2', data: { type: 'FeatureCollection', features: [] }, meta: { profile: 'official', release_id: release, manifest_sha256: 'a'.repeat(64), suppression_generation: 1, feature_count: 0, public_record_count: 1, unmapped_count: 0, release_label: 'Synthetic release', dataset_version: 'synthetic' } };
+      body = { api_version: 'v2', data: { type: 'FeatureCollection', features: [{ type: 'Feature', id, geometry: { type: 'Point', coordinates: [row.longitude, row.latitude] }, properties: { facility_id: id, source_id: row.provenance_source_id, category_key: row.taxonomy_display_category, category_keys: row.taxonomy_primary_categories, precision: row.display_precision, weight: 1, country_code: row.country_code } }] }, meta: { profile: 'official', release_id: release, manifest_sha256: 'a'.repeat(64), suppression_generation: 1, feature_count: 1, public_record_count: 1, unmapped_count: 0, release_label: 'Synthetic release', dataset_version: 'synthetic' } };
     } else if (path.startsWith('/api/v2/graph/')) {
       body = { api_version: 'v2-graph-v1', data: [], meta: { ...meta, limit: 20, page_max: 100, next_cursor: null, public_projection: true } };
     }
@@ -153,6 +165,21 @@ for (const viewport of [{ name: 'desktop', width: 1280, height: 900 }, { name: '
             return { color: computed.color, background: computed.backgroundColor };
           });
           expect(contrast(operationStyle.color, operationStyle.background), `Swagger operation ${theme} contrast`).toBeGreaterThanOrEqual(4.5);
+        }
+        if (view.label === 'full facility detail' && theme === 'light') {
+          await page.getByRole('button', { name: 'Fetch annual reports', exact: true }).click();
+          const reportLink = page.locator('.public-record .aphis-reports a').first();
+          await expect(reportLink).toBeVisible();
+          const reportLinkStyle = await reportLink.evaluate(element => {
+            let ancestor: Element | null = element;
+            let background = 'rgba(0, 0, 0, 0)';
+            while (ancestor && background === 'rgba(0, 0, 0, 0)') {
+              background = getComputedStyle(ancestor).backgroundColor;
+              ancestor = ancestor.parentElement;
+            }
+            return { color: getComputedStyle(element).color, background };
+          });
+          expect(contrast(reportLinkStyle.color, reportLinkStyle.background), 'light APHIS report link contrast').toBeGreaterThanOrEqual(4.5);
         }
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${view.label} ${viewport.name} overflow`).toBe(true);
       }
