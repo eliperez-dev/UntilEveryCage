@@ -30,6 +30,6 @@ def fetch(*, output_root: Path, run_id: str, terms_review_path: Path,
                        "private processing only, no release approval"),
         privacy_caveat=("Restricted private evidence; retain source business-name and industrial-address "
                         "fields only in private source staging; handoff carries address only for queued "
-                        "location enrichment; no provider transfer authorized"),
+                        "location enrichment; acquisition makes no provider calls"),
         artifact_validator=_validate_workbook,
     )

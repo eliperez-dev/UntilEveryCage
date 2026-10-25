@@ -39,7 +39,8 @@ API schemas own supported fields. They are not additional roadmaps.
 - Map is the default discovery surface; Database is the compact research table.
   Existing informational/download routes remain compatible aliases.
 - Search map and Map View use the same viewport-edge spacing, surfaces, borders
-  and typography. Controls must not overlap at narrow widths.
+  and typography. On mobile they share one equal-half horizontal row with
+  matching heights; do not stack or overlap them.
 - Resize applicable panels by dragging edges, not plus/minus width buttons.
   Do not change panel layout without the maintainer's specific approval.
 
@@ -91,6 +92,9 @@ API schemas own supported fields. They are not additional roadmaps.
 - Full page order: facility name and chain-icon Copy facility link action;
   Location facts; single-record map; activities and remaining facts.
   No separate copy-record-ID button or repeated Record Evidence heading.
+- Copy actions show a brief checkmark only after the clipboard write succeeds,
+  with a localized live-region status. Failure shows an X and accessible status;
+  neither state shifts the facility heading or share button.
 - Map detail has an `Open facility page` link, selected-release context and
   close control. It fills the mobile viewport with scrollable content.
 - Full mapped records have `Open in Map`, centering/selecting that facility
@@ -186,8 +190,10 @@ their original language; some secondary community/operator and generated API
 reference strings remain English. Extend the existing dictionary rather than
 creating another localization path or rewriting approved English copy.
 
-Tools also offers Light and Dark. Dark is the default; explicit language and
-theme choices persist as nonsensitive browser preferences. Initialize the theme
+The square theme button immediately left of Tools shows a moon in Dark and a
+sun in Light, indicating the current mode; clicking switches modes. Theme
+selection does not also appear in Tools. Dark is the default; explicit language
+and theme choices persist as nonsensitive browser preferences. Initialize the theme
 before rendering, tolerate unavailable storage, and keep maps, category pins
 and cluster colors independent of interface theme. Verify translated controls
 at narrow widths in both themes. Persistent cluster-index reuse is deferred;

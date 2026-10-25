@@ -5,6 +5,7 @@ import importlib.util
 import json
 import tempfile
 import unittest
+from urllib.parse import urlencode
 from unittest.mock import patch
 from pathlib import Path
 
@@ -22,6 +23,105 @@ FSIS_CORRECTION_SPEC.loader.exec_module(FSIS_CORRECTION_IMPORTER)
 
 
 class RealPreviewImporterTests(unittest.TestCase):
+    def test_france_out_of_extent_numeric_source_point_stays_unmapped(self):
+        self.assertFalse(IMPORTER.map_point_is_visible(
+            "fr.georisques.icpe.animal", False, "numeric_source_coordinate",
+            1.0, 2.0, 1.0, 2.0))
+        self.assertTrue(IMPORTER.map_point_is_visible(
+            "fr.georisques.icpe.animal", True, "numeric_source_coordinate",
+            46.0, 5.0, 46.0, 5.0))
+        self.assertFalse(IMPORTER.map_point_is_visible(
+            "fr.georisques.icpe.animal", True, "unmapped_private_observation",
+            None, None, None, None))
+
+    def _france_local_replay(self, root: Path):
+        from pipeline.sources.france.georisques_icpe.config import CONFIG
+
+        source_id = CONFIG["source_id"]
+        retrieved = "2026-10-20T12:00:00Z"
+        page_size = CONFIG["page_size"]
+        requested_url = (CONFIG["source_url"] + "?" + urlencode({
+            "nomenclature": ",".join(CONFIG["animal_rubrics"]), "page": 1,
+            "page_size": page_size,
+        }))
+        payload = {"results": 1, "page": 1, "total_pages": 1,
+                   "data": [{"codeAIOT": "SYNTHETIC-AIOT",
+                             "rubriques": [{"numeroRubrique": "2101"}]}]}
+        page_bytes = (json.dumps(payload, separators=(",", ":")) + "\n").encode()
+        pages_path = root / "retained-pages"
+        pages_path.mkdir()
+        page_path = pages_path / "page-00001.json"
+        page_path.write_bytes(page_bytes)
+        digest = hashlib.sha256(page_bytes).hexdigest()
+        snapshot = {
+            "source_id": source_id, "source_url": CONFIG["source_url"],
+            "run_id": "synthetic-original-acquisition", "retrieved_at_utc": retrieved,
+            "page_size": page_size, "results": 1, "total_pages": 1,
+            "sha256": digest, "byte_size": len(page_bytes),
+            "filter": {"nomenclature": list(CONFIG["animal_rubrics"])},
+            "pages": [{"page": 1, "requested_url": requested_url,
+                       "sha256": digest, "byte_size": len(page_bytes), "rows": 1}],
+        }
+        snapshot_path = root / "snapshot-manifest.json"
+        snapshot_path.write_text(json.dumps(snapshot), encoding="utf-8")
+        source_root = root / "runner-source"
+        evidence_path = source_root / "acquisition" / source_id / "retained-snapshot.json"
+        evidence_path.parent.mkdir(parents=True)
+        evidence = {
+            "source_id": source_id, "replay_mode": "verified_retained_local_artifact",
+            "original_acquisition_run_id": snapshot["run_id"],
+            "source_url": snapshot["source_url"], "retrieved_at_utc": retrieved,
+            "source_artifact_sha256": digest, "source_artifact_byte_size": len(page_bytes),
+            "results": 1, "total_pages": 1,
+            "filter": snapshot["filter"], "snapshot_manifest_path": str(snapshot_path),
+            "pages_path": str(pages_path),
+        }
+        evidence_path.write_text(json.dumps(evidence), encoding="utf-8")
+        summary = {"acquisition_classification": "assisted", "source_artifact_sha256": digest,
+                   "retrieved_at_utc": retrieved, "input_rows": 1, "candidate_handoff": True}
+        runtime = {"mode": "local-artifact"}
+        source_result = {"status": "succeeded", "acquisition_classification": "assisted",
+                         "summary": summary}
+        return source_root, runtime, source_result, digest, IMPORTER.datetime.fromisoformat(retrieved.replace("Z", "+00:00"))
+
+    def test_france_retained_local_artifact_requires_complete_verified_filtered_snapshot(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source_root, runtime, source_result, digest, retrieved = self._france_local_replay(root)
+            verified = IMPORTER.validate_france_local_artifact_replay(
+                source_root, runtime, source_result, digest, retrieved)
+            self.assertEqual(verified["source_artifact_sha256"], digest)
+            self.assertEqual(verified["replay_mode"], "verified_retained_local_artifact")
+            self.assertEqual(verified["original_acquisition_run_id"], "synthetic-original-acquisition")
+            provenance = IMPORTER.source_processing_provenance(
+                "fr.georisques.icpe.animal", runtime, source_result, verified, digest, retrieved,
+                "retained-replay-run", archived_replay=False,
+                archived_replay_evidence=None, france_local_replay_evidence=verified)
+            self.assertFalse(provenance["fresh_live_run"])
+            self.assertEqual(provenance["acquisition_classification"], "assisted")
+            self.assertEqual(provenance["processing_mode"], "verified_retained_local_artifact_replay")
+
+    def test_france_retained_local_artifact_rejects_unfiltered_or_changed_snapshot(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source_root, runtime, source_result, digest, retrieved = self._france_local_replay(root)
+            evidence_path = source_root / "acquisition" / "fr.georisques.icpe.animal" / "retained-snapshot.json"
+            evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+            evidence["filter"] = {"nomenclature": ["*"]}
+            evidence_path.write_text(json.dumps(evidence), encoding="utf-8")
+            with self.assertRaisesRegex(IMPORTER.ImportFailure, "france_retained_replay_source_provenance_mismatch"):
+                IMPORTER.validate_france_local_artifact_replay(
+                    source_root, runtime, source_result, digest, retrieved)
+
+            second_root = root / "second"
+            second_root.mkdir()
+            source_root, runtime, source_result, digest, retrieved = self._france_local_replay(second_root)
+            pages_path = Path(json.loads((source_root / "acquisition" / "fr.georisques.icpe.animal" / "retained-snapshot.json").read_text())["pages_path"])
+            (pages_path / "page-00001.json").write_bytes(b"{}\n")
+            with self.assertRaisesRegex(IMPORTER.ImportFailure, "france_retained_replay_snapshot_invalid"):
+                IMPORTER.validate_france_local_artifact_replay(
+                    source_root, runtime, source_result, digest, retrieved)
+
     def test_fsis_correction_run_ledger_bindings_match_sql(self):
         params = FSIS_CORRECTION_IMPORTER.run_ledger_params(
             "run", "snapshot", "url", "retrieved", "artifact", "normalized",

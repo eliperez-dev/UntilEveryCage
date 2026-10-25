@@ -14,7 +14,7 @@ from datetime import timezone, timedelta
 from pathlib import Path
 from typing import Any
 from datetime import datetime
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 # Direct script execution puts this file's directory, not the repository root,
 # at sys.path[0]. Keep the importer usable from strict source-runner subprocesses.
@@ -646,6 +646,18 @@ def map_unmapped_candidate_count(candidate_count: int, map_visible_count: int) -
     return candidate_count - map_visible_count
 
 
+def map_point_is_visible(source: str, default_map_scope: Any, location_class: str,
+                         latitude: float | None, longitude: float | None,
+                         display_latitude: float | None, display_longitude: float | None) -> bool:
+    """Apply France's validated animal-rubric and extent scope to point visibility."""
+    if source == "fr.georisques.icpe.animal" and default_map_scope is not True:
+        return False
+    serving_source_point = (bool(default_map_scope) and location_class == "numeric_source_coordinate"
+                            and latitude is not None and longitude is not None)
+    return ((display_latitude is not None and display_longitude is not None)
+            or serving_source_point)
+
+
 def public_zero_counts(db: psycopg.Connection) -> tuple[int, int]:
     release_count = 0
     projection_count = 0
@@ -936,9 +948,7 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
             )
         # The private preview serves source coordinates for in-scope numeric
         # candidates even where an older projection has no display_* copy.
-        serving_source_point = (bool(default_map_scope) and klass == "numeric_source_coordinate"
-                                and lat is not None and lon is not None)
-        if ((display_lat is not None and display_lon is not None) or serving_source_point):
+        if map_point_is_visible(source, default_map_scope, klass, lat, lon, display_lat, display_lon):
             map_visible_groups += 1
             coarse_placeable += klass == "city_postal"
         preview_id = db.execute(
@@ -1344,15 +1354,103 @@ def validate_archived_replay(runtime_manifest: dict[str, Any], source_result: di
             "source_artifact_sha256": source_hash, "retrieved_at_utc": retrieved_text}
 
 
+def validate_france_local_artifact_replay(root: Path, runtime_manifest: dict[str, Any],
+                                          source_result: dict[str, Any], source_hash: str,
+                                          retrieved_at: datetime) -> dict[str, Any]:
+    """Verify one Géorisques handoff against its complete retained official snapshot."""
+    from pipeline.sources.france.georisques_icpe.adapter import GeorisquesIcpeAnimalAdapter
+    from pipeline.sources.france.georisques_icpe.config import CONFIG
+
+    evidence_path = root / "acquisition" / CONFIG["source_id"] / "retained-snapshot.json"
+    if (runtime_manifest.get("mode") != "local-artifact" or source_result.get("status") != "succeeded"
+            or source_result.get("acquisition_classification") != "assisted"
+            or not evidence_path.is_file() or evidence_path.is_symlink()):
+        raise ImportFailure("france_retained_replay_evidence_missing")
+    evidence = json_object(evidence_path)
+    pages_text, manifest_text = evidence.get("pages_path"), evidence.get("snapshot_manifest_path")
+    if not isinstance(pages_text, str) or not isinstance(manifest_text, str):
+        raise ImportFailure("france_retained_replay_artifact_path_invalid")
+    pages_path, snapshot_path = Path(pages_text), Path(manifest_text)
+    if pages_path.is_symlink() or snapshot_path.is_symlink():
+        raise ImportFailure("france_retained_replay_artifact_path_invalid")
+    try:
+        pages_path = pages_path.resolve(strict=True)
+        snapshot_path = snapshot_path.resolve(strict=True)
+    except OSError:
+        raise ImportFailure("france_retained_replay_artifact_missing") from None
+    if (not pages_path.is_dir() or pages_path.is_symlink() or not snapshot_path.is_file()
+            or snapshot_path.is_symlink() or snapshot_path != pages_path.parent / "snapshot-manifest.json"):
+        raise ImportFailure("france_retained_replay_artifact_path_invalid")
+    snapshot = json_object(snapshot_path)
+    expected_filter = {"nomenclature": list(CONFIG["animal_rubrics"])}
+    if (evidence.get("source_id") != CONFIG["source_id"]
+            or evidence.get("replay_mode") != "verified_retained_local_artifact"
+            or snapshot.get("source_id") != CONFIG["source_id"]
+            or snapshot.get("source_url") != CONFIG["source_url"]
+            or evidence.get("source_url") != CONFIG["source_url"]
+            or snapshot.get("filter") != expected_filter
+            or evidence.get("filter") != expected_filter
+            or snapshot.get("run_id") != evidence.get("original_acquisition_run_id")
+            or not isinstance(snapshot.get("run_id"), str) or not snapshot["run_id"]):
+        raise ImportFailure("france_retained_replay_source_provenance_mismatch")
+    try:
+        page_size = snapshot.get("page_size")
+        pages = snapshot.get("pages")
+        if (not isinstance(page_size, int) or isinstance(page_size, bool)
+                or not 1 <= page_size <= 100 or not isinstance(pages, list)
+                or not 1 <= len(pages) <= CONFIG["max_pages"]):
+            raise ValueError
+        for expected_page, fact in enumerate(pages, 1):
+            parsed_url = urlsplit(fact.get("requested_url", "") if isinstance(fact, dict) else "")
+            query = parse_qs(parsed_url.query, strict_parsing=True)
+            if (parsed_url.scheme != "https" or parsed_url.hostname != "www.georisques.gouv.fr"
+                    or parsed_url.path != "/api/v1/installations_classees"
+                    or query != {"nomenclature": [",".join(CONFIG["animal_rubrics"])],
+                                 "page": [str(expected_page)], "page_size": [str(page_size)]}):
+                raise ValueError
+        parsed = GeorisquesIcpeAnimalAdapter().parse_pages(pages_path)
+        retrieved_text = snapshot.get("retrieved_at_utc")
+        acquired_at = datetime.fromisoformat(str(retrieved_text).replace("Z", "+00:00"))
+    except (OSError, TypeError, ValueError, KeyError):
+        raise ImportFailure("france_retained_replay_snapshot_invalid") from None
+    summary = source_result.get("summary")
+    if (acquired_at.utcoffset() is None or acquired_at != retrieved_at
+            or parsed["sha256"] != source_hash
+            or parsed["sha256"] != snapshot.get("sha256")
+            or parsed["byte_size"] != snapshot.get("byte_size")
+            or parsed["results"] != snapshot.get("results")
+            or parsed["total_pages"] != snapshot.get("total_pages")
+            or evidence.get("source_artifact_sha256") != source_hash
+            or evidence.get("source_artifact_byte_size") != parsed["byte_size"]
+            or evidence.get("results") != parsed["results"]
+            or evidence.get("total_pages") != parsed["total_pages"]
+            or not isinstance(summary, dict)
+            or summary.get("acquisition_classification") != "assisted"
+            or summary.get("source_artifact_sha256") != source_hash
+            or summary.get("retrieved_at_utc") != retrieved_text
+            or summary.get("input_rows") != parsed["results"]
+            or summary.get("candidate_handoff") is not True):
+        raise ImportFailure("france_retained_replay_snapshot_mismatch")
+    return {"source_id": CONFIG["source_id"], "replay_mode": "verified_retained_local_artifact",
+            "original_acquisition_run_id": snapshot["run_id"], "source_artifact_sha256": source_hash,
+            "retrieved_at_utc": str(retrieved_text), "results": parsed["results"],
+            "total_pages": parsed["total_pages"], "byte_size": parsed["byte_size"],
+            "terms_review": {"decision": "approved", "reference": CONFIG["terms_reference"]}}
+
+
 def source_processing_provenance(source_id: str, runtime_manifest: dict[str, Any],
                                  source_result: dict[str, Any], acquisition_evidence: dict[str, Any] | None,
                                  source_hash: str, retrieved_at: datetime, run_id: str, *,
                                  archived_replay: bool,
-                                 archived_replay_evidence: dict[str, Any] | None) -> dict[str, Any]:
+                                 archived_replay_evidence: dict[str, Any] | None,
+                                 france_local_replay_evidence: dict[str, Any] | None = None) -> dict[str, Any]:
     if archived_replay:
         return {"fresh_live_run": False, "processing_mode": "archived_replay",
                 "acquisition_classification": "archived-replay",
                 "replay_of": archived_replay_evidence}
+    if france_local_replay_evidence is not None:
+        return {"fresh_live_run": False, "processing_mode": "verified_retained_local_artifact_replay",
+                "acquisition_classification": "assisted", "replay_of": france_local_replay_evidence}
     if runtime_manifest.get("processing_mode") == "verified_replay_of_retained_live_acquisition":
         retrieved_text = retrieved_at.isoformat().replace("+00:00", "Z")
         if (source_id != "dk.smiley" or not isinstance(acquisition_evidence, dict)
@@ -1555,15 +1653,26 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
         retained_live_replay = runtime_manifest.get("processing_mode") == "verified_replay_of_retained_live_acquisition"
         if retained_live_replay and (source_id != "dk.smiley" or archived_replay):
             raise ImportFailure("retained_live_replay_source_not_supported")
+        france_local_replay = (
+            source_id == "fr.georisques.icpe.animal"
+            and runtime_manifest.get("mode") == "local-artifact"
+            and source_result.get("acquisition_classification") == "assisted"
+        )
+        france_local_replay_evidence = None
+        if france_local_replay:
+            france_local_replay_evidence = validate_france_local_artifact_replay(
+                root, runtime_manifest, source_result, source_hash, retrieved_at)
         if archived_replay:
             if source_id not in ARCHIVED_REPLAY_SOURCES:
                 raise ImportFailure("archived_replay_source_not_supported")
-        elif source_result.get("acquisition_classification") != "live":
+        elif not france_local_replay and source_result.get("acquisition_classification") != "live":
             raise ImportFailure("runtime_source_run_not_live")
         if run_manifest_path.parent.name != runtime_manifest.get("run_id"):
             raise ImportFailure("runtime_handoff_run_mismatch")
         acquisition_evidence = None
         archived_replay_evidence = None
+        if france_local_replay:
+            acquisition_evidence = france_local_replay_evidence
         if archived_replay:
             acquisition_path = root / "acquisition" / source_id / run_id / "acquisition-metadata.json"
             expected_artifact = root / "acquisition" / source_id / run_id / "source.csv"
@@ -2087,11 +2196,15 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
             unmapped_map_candidate_count = unplaceable_rows
             if unmapped_map_candidate_count < 0:
                 raise ImportFailure("runtime_location_classes_do_not_reconcile")
+            if (france_local_replay
+                    and source_summary.get("source_map_eligible_group_count") != map_visible_count):
+                raise ImportFailure("france_retained_replay_map_count_mismatch")
             processing_provenance = source_processing_provenance(
                 source_id, runtime_manifest, source_result, acquisition_evidence,
                 source_hash, retrieved_at, run_id,
                 archived_replay=archived_replay,
-                archived_replay_evidence=archived_replay_evidence)
+                archived_replay_evidence=archived_replay_evidence,
+                france_local_replay_evidence=france_local_replay_evidence)
             runtime_details = {"quarantine_reasons": source_summary.get("quarantine_reasons", {}),
                                "source_artifacts": acquisition_evidence,
                                "source_specific_counts": {key: source_summary.get(key) for key in (

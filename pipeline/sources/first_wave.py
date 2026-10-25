@@ -17,6 +17,7 @@ from pipeline.common.orchestrator import run_private_lifecycle
 from pipeline.contracts.adapter_contract import SourceAdapter, SourceArtifact
 from pipeline.contracts.candidate_handoff import write_handoff
 from pipeline.contracts.refresh import AdapterCapabilities
+from pipeline.contracts.source_lifecycle import atomic_json
 
 from .belgium.adapter import BelgiumOperatorsAdapter, CONFIG as BELGIUM_CONFIG
 from .canada.adapter import CfiaFederalMeatAdapter, OntarioMeatPlantsAdapter
@@ -318,6 +319,7 @@ class FirstWaveRefreshAdapter:
         acquisition = options.get("acquisition") if isinstance(options.get("acquisition"), Mapping) else {}
         if self.source_id == "fr.georisques.icpe.animal":
             from .france.georisques_icpe.adapter import GeorisquesIcpeAnimalAdapter
+            snapshot_manifest = None
             if raw_path.is_file():
                 raw_bytes = raw_path.read_bytes()
                 aggregate_sha256, aggregate_size = hashlib.sha256(raw_bytes).hexdigest(), len(raw_bytes)
@@ -325,7 +327,11 @@ class FirstWaveRefreshAdapter:
             else:
                 parsed_snapshot = GeorisquesIcpeAnimalAdapter().parse_pages(raw_path)
                 aggregate_sha256, aggregate_size = parsed_snapshot["sha256"], parsed_snapshot["byte_size"]
-                retrieved_at = str((acquisition or {}).get("retrieved_at_utc") or SYNTHETIC_RETRIEVED_AT)
+                snapshot_manifest = json.loads((raw_path.parent / "snapshot-manifest.json").read_text(encoding="utf-8"))
+                if snapshot_manifest.get("source_url") != GEORISQUES_ICPE_CONFIG["source_url"]:
+                    raise ValueError("retained Géorisques snapshot source URL does not match the registered API")
+                retrieved_at = str(snapshot_manifest.get("retrieved_at_utc") or
+                                    (acquisition or {}).get("retrieved_at_utc") or SYNTHETIC_RETRIEVED_AT)
             source_artifact = SourceArtifact(
                 source_url=self.descriptor.source_url, retrieved_at_utc=retrieved_at,
                 sha256=aggregate_sha256, byte_size=aggregate_size,
@@ -334,6 +340,21 @@ class FirstWaveRefreshAdapter:
                 privacy_caveat="Restricted private evidence; native facility names and addresses retained; no personal-contact expansion or geocoding.",
                 coverage=GEORISQUES_ICPE_CONFIG["coverage"],
             )
+            if mode == "local-artifact" and isinstance(snapshot_manifest, dict):
+                atomic_json(run_dir / "acquisition" / self.source_id / "retained-snapshot.json", {
+                    "source_id": self.source_id,
+                    "replay_mode": "verified_retained_local_artifact",
+                    "original_acquisition_run_id": snapshot_manifest.get("run_id"),
+                    "source_url": snapshot_manifest.get("source_url"),
+                    "retrieved_at_utc": retrieved_at,
+                    "source_artifact_sha256": aggregate_sha256,
+                    "source_artifact_byte_size": aggregate_size,
+                    "results": parsed_snapshot["results"],
+                    "total_pages": parsed_snapshot["total_pages"],
+                    "filter": snapshot_manifest.get("filter"),
+                    "snapshot_manifest_path": str(raw_path.parent / "snapshot-manifest.json"),
+                    "pages_path": str(raw_path),
+                })
         else:
             source_artifact = self.descriptor.artifact_for(raw_path)
         acquisition_facts = acquisition
@@ -472,11 +493,17 @@ class FirstWaveRefreshAdapter:
             if self.source_id == "fr.georisques.icpe.animal":
                 records = [row for row in rows if isinstance(row, dict)]
                 coordinate_extents: dict[str, int] = {}
-                native_names = native_addresses = source_coordinates = 0
+                native_names = native_addresses = source_coordinates = map_eligible = 0
+                map_eligible_groups: set[str] = set()
                 for row in records:
                     normalized = row.get("normalized") if isinstance(row.get("normalized"), dict) else {}
                     native_names += bool(normalized.get("name"))
                     native_addresses += bool(normalized.get("address"))
+                    if normalized.get("in_default_map_scope") is True:
+                        map_eligible += 1
+                        establishment_id = normalized.get("establishment_id")
+                        if isinstance(establishment_id, (str, int)) and str(establishment_id).strip():
+                            map_eligible_groups.add(str(establishment_id).strip())
                     coordinates = normalized.get("coordinates")
                     if isinstance(coordinates, dict):
                         source_coordinates += 1
@@ -487,15 +514,23 @@ class FirstWaveRefreshAdapter:
                     "retrieved_at_utc": source_artifact.retrieved_at_utc,
                     "source_artifact_sha256": source_artifact.sha256,
                     "source_artifact_byte_size": source_artifact.byte_size,
-                    "api_result_count": acquisition.get("results") if isinstance(acquisition, Mapping) else len(records),
-                    "api_pages": acquisition.get("total_pages") if isinstance(acquisition, Mapping) else None,
+                    "api_result_count": (acquisition.get("results") if isinstance(acquisition, Mapping)
+                                         and isinstance(acquisition.get("results"), int)
+                                         else snapshot_manifest.get("results") if isinstance(snapshot_manifest, dict)
+                                         else len(records)),
+                    "api_pages": (acquisition.get("total_pages") if isinstance(acquisition, Mapping)
+                                  and isinstance(acquisition.get("total_pages"), int)
+                                  else snapshot_manifest.get("total_pages") if isinstance(snapshot_manifest, dict)
+                                  else None),
                     "animal_rubric_filter_only": True,
                     "animal_rubrics": sorted(GEORISQUES_ICPE_CONFIG["animal_rubrics"]),
                     "native_name_retained_count": native_names,
                     "source_address_retained_count": native_addresses,
                     "source_coordinate_retained_count": source_coordinates,
+                    "source_map_eligible_count": map_eligible,
+                    "source_map_eligible_group_count": len(map_eligible_groups),
                     "coordinate_extent_counts": coordinate_extents,
-                    "source_coordinate_crs": "unverified; preserved only in private unmapped observations",
+                    "source_coordinate_crs": "per-row systemeCoordonneesAIOT on native AIOT X/Y; successfully transformed to EPSG:4326 with pyproj always_xy, only_best, and allow_ballpark=false; reported operation accuracy retained",
                     "publication_state": "private-only; not public-release-ready",
                 })
         if self.source_id == "fsa_approved_establishments" and status.get("status") == "candidate-ready":

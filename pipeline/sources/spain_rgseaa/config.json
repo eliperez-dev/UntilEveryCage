@@ -6,5 +6,5 @@
   "config_version": "es-aesan-rgseaa-xlsx-v1",
   "coverage": "AESAN RGSEAA post-primary-production national food-chain register; animal-origin source keys 10, 12, 14, and 15 only in the candidate handoff; not a primary-production or complete animal-facility census",
   "terms_status": "approved_for_bounded_private_acquisition",
-  "geocoding": "queued_separately_no_external_provider_authorized"
+  "geocoding": "queued_separately_no_provider_calls_during_acquisition"
 }

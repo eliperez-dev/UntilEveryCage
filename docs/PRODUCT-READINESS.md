@@ -31,15 +31,15 @@ complete; do not request another generic approval stamp.
 | Cluster persistence | Point-feed caching exists; persistent reuse of the built cluster index is not implemented |
 
 The table describes integrated product behavior. Hosting uses the existing
-Render service and manual deployment from `eli/v2` after CI. The language,
-theme and APHIS sprint does not change dataset membership, the serving
+Render service and manual deployment from `eli/v2` after CI. The latest UI
+consistency and source-readiness work does not change dataset membership, the serving
 database or the domain. Exact CI/deployment identifiers and hosted acceptance
 are recorded with the aggregate acceptance receipt below.
 
 Aggregate acceptance is retained locally in ignored
 `data/staging/launch-fidelity-20261024/acceptance.json`.
-The current language/theme/APHIS acceptance is retained in ignored
-`data/staging/launch-aphis-language-theme-20261025/acceptance.json`.
+The current UI/source acceptance is retained in ignored
+`data/staging/launch-ui-source-readiness-20261025/acceptance.json`.
 The source inventory owns graph package/runtime details and source-specific evidence.
 
 ## Launch gates
@@ -51,8 +51,8 @@ All items below remain required before replacing the original website.
 | Documentation consolidation | Complete | 46 obsolete/duplicate documents removed; one current roadmap/source inventory/frontend guide; local links and 28 documentation-contract checks passed; no application code changed |
 | Persistent cluster index | Deferred from the current sprint | Reload reuses the built index, with release/profile/manifest/restriction invalidation; cached point bytes alone do not qualify |
 | Languages | Spanish primary UI implemented and locally tested | Remaining German, French, Italian, Dutch and Danish use the same system; complete remaining English fallbacks; routes, filters and selection survive switching; source evidence stays in its original language |
-| Light/dark interface | Implemented; local visual acceptance passed after mobile spacing correction | Persistent preferences, readable controls/panels and unchanged basemap/category semantics; retain browser regression coverage |
-| France, broader Spain, Germany, Mexico | Incomplete | Actual missing coverage acquired, normalized, enriched where needed and verified on the map; an adapter or an existing Catalonia refresh is not new national coverage |
+| Light/dark interface | Consistency fixes implemented and independently reviewed | Readable nested surfaces including the About counter; mobile Search/Map View share equal halves; current-mode moon/sun button left of Tools; copy-link success feedback without layout shifts; retain browser coverage and maintainer acceptance |
+| France, broader Spain, Germany, Mexico | France source points verified locally; Spain national import/queue verified but unmapped; Germany/Mexico outstanding | Actual missing coverage acquired, normalized, enriched where needed and verified on the map; an adapter or an existing Catalonia refresh is not new national coverage |
 | APHIS history | Reliability and on-demand historical recovery implemented | Six real endpoint cases passed locally: two eligible facilities return pre-2025 annual and inspection links, sampled PDFs open, and the original no-report case returns an empty page; sample history reaches 2014, not a complete archive audit |
 | New default dated dataset | Not started | Fresh acquisition and required location enrichment for included cohorts, measured map membership/counts, retained history and current restrictions |
 | Final cutover | Not started | Maintainer frontend/data acceptance; verified monitoring, recovery and contribution operations; domain/canonical/redirect checks and rollback |
@@ -69,21 +69,25 @@ Spanish coverage or publish more locations. Its resulting candidate count is
 not an additive increase to the existing dataset. Follow the exact run and
 counts in [the source inventory](source-status.json), not copied sprint totals.
 
-France still has source-specific location work, including an unresolved ICPE
-coordinate-reference question. Germany and Mexico have acquisition/access and
-source-mapping work. Inspect the source inventory and country research before
+France now transforms explicitly declared source coordinates and has passed
+retained-capture map acceptance; subsequent shared live fetches hit upstream
+connection resets. Broader Spain has a national AESAN import and address queue,
+but its first geocoding pilot added no map points. Germany and Mexico still have
+acquisition/access and source-mapping work. Inspect the source inventory before
 promising counts or dates. Compare intended recovery with the original V1
 sources; do not silently count legacy rows as newly acquired data.
 
 ## Roadmap
 
 1. Documentation cleanup is complete.
-2. Ship and retain APHIS report recovery, Spanish, and light/dark mode without
-   redesigning approved frontend behavior. Persistent cluster reuse is deferred
-   from this sprint; the remaining launch languages still need translation.
-3. Next, deliver missing country coverage through source-specific lanes using
-   the existing shared runner and separate enrichment jobs; extend languages
-   through the same translation system.
+2. Retain the implemented UI consistency, mobile toolbar, current-mode theme
+   toggle and copy feedback without redesigning the interface. Keep APHIS
+   recovery and Spanish support. Persistent cluster reuse remains deferred;
+   the remaining launch languages still need translation.
+3. Deliver missing country coverage through source-specific lanes using the
+   existing shared runner and separate enrichment jobs. Complete Spain address
+   matching and repeat France live refresh when available; Germany and Mexico
+   remain required follow-ups. Extend languages through the same system.
 4. Build the new dated launch dataset; preserve current and historical releases.
 5. Complete the maintainer pass and production handoff, then switch the domain.
 

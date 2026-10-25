@@ -22,6 +22,13 @@ serially or assign each shared path to exactly one agent. If ownership overlaps
 or a shared interface must change, stop the conflicting edits and have the
 coordinator resolve the boundary before work continues.
 
+Include the actual worktree root, runnable installed interpreters, and exact
+test database name/container in the assignment. A container's `POSTGRES_DB`
+default is not the assigned test database. Verify `current_database()` and the
+baseline with `python scripts/dev.py baseline` before writes. Its public-release
+counts are not the totals in private staging tables. Report a rejected or blocked action promptly; inspect
+the target read-only rather than silently switching destinations.
+
 Agents work from the agreed base commit in isolated worktrees/branches. They
 commit only their owned changes, report the commit and changed paths, and never
 push or integrate another agent's branch. The coordinator reviews each result
