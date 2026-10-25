@@ -49,14 +49,20 @@ Contribute opens Add a facility by default, with visible task links to switch
 the form, plus submission tracking, community browsing and project/support links.
 Only offer community browsing when a published community release is available;
 submission intake is a separate capability. Database opens Browse records.
+Selecting a result opens its full facility page directly, without an intermediate
+preview panel. Mapped facility pages include an "Open in Map" action that centers
+and selects that facility in the same release.
 API combines full-release CSV downloads, paginated JSON, release IDs and the
 self-hosted Swagger explorer. About restores the maintainer's supplied V1
 manifesto with an 18-category estimate counter in a right-hand desktop column,
 stacked on mobile. Its modeled visible updates run around 30 times per second
-using elapsed time. The visible counter contains its estimate heading, short
-caption and values only. Rates and source notes remain in the owning model;
+using elapsed time. The visible counter heading is exactly "Animals Killed Since
+You Opened This Page", with no subtitle. Its 18 animal rows form one vertical
+list at all widths, not a two-column grid. Rates and source notes remain in the owning model;
 do not restore the removed Source and method disclosure. About contains the
-manifesto and counter, without a Sources and methods section. FAQ briefly
+manifesto and counter, without a Sources and methods section. The closing
+"Until Every Cage is Empty" heading is followed by the project's existing logo.
+FAQ briefly
 explains the data path: acquisition, cleaning/standardization, address matching
 and connections, then dated releases serving map/search/downloads through the
 Rust API. It also covers contribution questions and help/support. Do not restore

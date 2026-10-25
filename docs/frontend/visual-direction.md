@@ -96,8 +96,9 @@ The latest revision restores V1's 18-category right-side counter at roughly
 30 visible updates per second, calculated from elapsed time and isolated from
 the map/application render loop. Respect reduced motion and hidden-tab
 behaviour without distorting elapsed totals. Rate/source notes stay in the
-owning model, not an About-page disclosure. Keep only the concise estimate
-heading/caption and the linked ADAPTT footer credit;
+owning model, not an About-page disclosure. Use the exact heading "Animals
+Killed Since You Opened This Page", no subtitle, and one vertical list of all
+18 animal rows. Keep the linked ADAPTT footer credit;
 do not substitute the selected land-animal-only catalog for broader categories
 or combine overlapping estimates into an unsupported total.
 Focus rings are visible and high contrast. Hover can enrich a row, but never
