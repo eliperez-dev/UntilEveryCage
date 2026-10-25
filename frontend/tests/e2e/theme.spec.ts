@@ -66,6 +66,8 @@ async function selectTheme(page: Page, theme: 'dark' | 'light') {
   if ((await button.getAttribute('aria-pressed')) !== String(theme === 'light')) await button.click();
   await expect(button).toHaveAttribute('aria-pressed', String(theme === 'light'));
   await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+  await expect(button.locator('svg')).toHaveAttribute('data-current-theme', theme);
+  await expect(button.locator('svg circle')).toHaveCount(theme === 'light' ? 1 : 0);
 }
 
 const contrast = (foreground: string, background: string) => {
