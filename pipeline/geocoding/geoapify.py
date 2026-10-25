@@ -13,6 +13,7 @@ import urllib.parse
 import urllib.request
 from math import isfinite
 import re
+import unicodedata
 from typing import Callable
 
 from .base import GeocodeOutcome
@@ -251,4 +252,9 @@ class GeoapifyAdapter:
 
     @staticmethod
     def _normalize(value: str) -> str:
-        return " ".join(re.sub(r"[^a-z0-9]+", " ", value.casefold()).split())
+        # Spanish street and locality names commonly contain accented vowels
+        # and ñ. Compare their canonical letters without discarding ñ as an
+        # arbitrary separator; provider/source diacritic choices vary.
+        folded = unicodedata.normalize("NFKD", value.casefold())
+        unaccented = "".join(char for char in folded if not unicodedata.combining(char))
+        return " ".join(re.sub(r"[^a-z0-9]+", " ", unaccented).split())

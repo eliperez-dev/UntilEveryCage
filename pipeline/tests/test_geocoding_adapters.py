@@ -155,6 +155,24 @@ class GeoapifyAdapterTests(unittest.TestCase):
         self.assertEqual(result.provider_address_id, "good")
         self.assertEqual(result.response["_uec_selected_feature_index"], 0)
 
+    def test_spain_private_profile_matches_accented_address_without_relaxing_number(self):
+        adapter = geoapify.GeoapifyAdapter(
+            api_key="test-secret", country_code="es", private_source_profile=True,
+            allow_locality_match=False,
+            opener=unittest.mock.Mock(return_value=FakeResponse({"features": [{
+                "geometry": {"coordinates": [-3.7, 40.4]},
+                "properties": {"place_id": "synthetic", "result_type": "building",
+                               "country_code": "es", "address_line1": "10 Calle de la Constitución",
+                               "rank": {"confidence": 0.95}},
+            }]})),
+        )
+        result = adapter.geocode("10 Calle de la Constitucion, Madrid, España")
+        self.assertEqual(result.status, "accepted")
+        self.assertEqual(result.acceptance, "high_confidence_address_match")
+        mismatch = adapter.geocode("11 Calle de la Constitucion, Madrid, España")
+        self.assertEqual(mismatch.status, "review_required")
+        self.assertIsNone(mismatch.latitude)
+
     def test_private_source_profile_rejects_multiple_viable_or_wrong_country(self):
         base = {"geometry": {"type": "Point", "coordinates": [-2.5, 55.9]},
                 "properties": {"result_type": "building", "country_code": "gb",
