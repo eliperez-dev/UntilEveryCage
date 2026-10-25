@@ -100,3 +100,113 @@ for (const listState of ['closed', 'open'] as const) {
     })).toEqual([-73.9, 40.7]);
   });
 }
+
+const providerReferenceKey = '0123456789abcdef0123456789abcdef';
+const providerSourceId = 'de.fixture.provider-address';
+const providerMember = {
+  candidate_id: '123e4567-e89b-42d3-a456-426614174000',
+  source_id: providerSourceId,
+  location_class: 'city_postal',
+  display_name: 'Fixture provider-address member',
+  display_precision: 'provider_address_point_high_confidence',
+  country_code: 'DE',
+  city: 'Fixture locality',
+  postal_code: null,
+  latitude: 50.85,
+  longitude: 10,
+  coordinate_precision: 'provider-address',
+  coordinate_method: 'geoapify_rooftop',
+  coordinate_provider: 'Geoapify',
+  coordinate_confidence: 0.99,
+  coordinate_confidence_band: 'high',
+  coordinate_review_status: 'pending_human_privacy_review',
+  factual_review_status: 'not_reviewed',
+  privacy_screening_status: 'pending',
+  project_approval: false,
+  publication_status: 'not_published',
+  preview_label: 'Private real V2 candidate — not project-approved or published',
+};
+
+for (const listState of ['closed', 'open'] as const) {
+  test(`weight-one provider-address reference pin uses reference members with Search ${listState}`, async ({ page }) => {
+    const referenceRequests: string[] = [];
+    const invalidDetailRequests: string[] = [];
+    const snapshotId = 'b'.repeat(64);
+    await page.route('**/v2-preview/', async route => {
+      const response = await route.fetch();
+      const html = (await response.text())
+        .replace(/<meta name="uec-local-data-mode" content="[^"]*">/g, '')
+        .replace('<head>', '<head><meta name="uec-local-data-mode" content="real-preview">');
+      await route.fulfill({ response, body: html });
+    });
+    await page.route('**/dev/real-preview/**', async route => {
+      const url = new URL(route.request().url());
+      const path = url.pathname;
+      if (path === '/dev/real-preview/counts') {
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+          api_version: 'real-preview-v1',
+          data: { facility_candidate_count: 1, numeric_coordinate_count: 1, city_postal_count: 1, map_visible_count: 1 },
+          meta: { private_preview: true, snapshot_id: snapshotId },
+        }) });
+      }
+      if (path === '/dev/real-preview/facets') {
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+          api_version: 'real-preview-v1', data: [{ source_id: providerSourceId, location_class: 'city_postal', count: 1 }],
+        }) });
+      }
+      if (path === '/dev/real-preview/map/feed') {
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+          api_version: 'real-preview-v1',
+          data: [{
+            kind: 'provider_address_point_private', key: providerReferenceKey, source_id: providerSourceId,
+            latitude: providerMember.latitude, longitude: providerMember.longitude, weight: 1,
+            precision: 'provider_address_point_high_confidence', category_key: 'unclassified', category_keys: ['unclassified'],
+          }],
+          meta: { bounded: true, private_preview: true, scope: 'default_map_scope', zoom_max: 14, snapshot_id: snapshotId },
+        }) });
+      }
+      if (path === `/dev/real-preview/map/references/${providerReferenceKey}`) {
+        referenceRequests.push(route.request().url());
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+          api_version: 'real-preview-v1', data: [providerMember], meta: { private_preview: true, next_cursor: null },
+        }) });
+      }
+      if (path.endsWith('/locations')) {
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+          api_version: 'real-preview-v1', data: [providerMember], meta: { private_preview: true, next_cursor: null },
+        }) });
+      }
+      if (path.startsWith('/dev/real-preview/locations/')) invalidDetailRequests.push(path);
+      return route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'not found' }) });
+    });
+    await page.goto(`./#/map?f1a=field&list=${listState}&lat=50.85&lon=10&z=5`);
+    await expect(page.locator('[data-data-mode="real-preview"]')).toBeVisible();
+    await page.waitForFunction(() => {
+      const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+      return map?.isStyleLoaded() && map.isSourceLoaded('locations')
+        && map.querySourceFeatures('locations').some((feature: any) => feature.properties.kind === 'provider_address_point_private');
+    });
+    if (listState === 'open') await expect(page.locator('#field-record-list')).toBeVisible();
+    const point = await page.evaluate(() => {
+      const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+      const feature = {
+        type: 'Feature', geometry: { type: 'Point', coordinates: [10, 50.85] },
+        properties: { key: '0123456789abcdef0123456789abcdef', source_id: 'de.fixture.provider-address', kind: 'provider_address_point_private', precision: 'provider_address_point_high_confidence', weight: 1 },
+        layer: { id: 'source-coordinate-points' },
+      };
+      const original = map.queryRenderedFeatures.bind(map);
+      map.queryRenderedFeatures = (query: unknown, options: { layers?: string[] } = {}) =>
+        options.layers?.includes('source-coordinate-points') ? [feature] : original(query, options);
+      const projected = map.project([10, 50.85]);
+      const bounds = map.getCanvas().getBoundingClientRect();
+      return { x: bounds.left + projected.x, y: bounds.top + projected.y };
+    });
+    await page.mouse.click(point.x, point.y);
+    await expect.poll(() => referenceRequests.length).toBeGreaterThan(0);
+    await expect(page.locator('#field-record-list')).toBeVisible();
+    await expect(page.locator('#field-record-list')).toContainText('Fixture provider-address member');
+    expect(new URL(referenceRequests[0]!).searchParams.get('source_id')).toBe(providerSourceId);
+    expect(invalidDetailRequests).toEqual([]);
+    await expect(page.locator('.dossier[role="alert"]')).toHaveCount(0);
+  });
+}

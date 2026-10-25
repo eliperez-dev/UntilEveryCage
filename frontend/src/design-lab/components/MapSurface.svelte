@@ -1032,9 +1032,23 @@
   });
   function bindInteractions() {
     if (!map) return;
+    const inspectReference = (key: unknown, count: unknown, sourceId?: unknown) => {
+      if (typeof key !== "string" || !/^[a-f0-9]{32}$/i.test(key)) return false;
+      selectedReferenceKey = key;
+      updateVisualSettings();
+      const parsedCount = Number(count);
+      pendingReference = { key, count: Number.isFinite(parsedCount) ? parsedCount : 0, observedLoading: false };
+      onreference?.(key, typeof sourceId === "string" ? sourceId : undefined);
+      return true;
+    };
     if (usingMvt) {
+      const inspectMvtReference = (key: string, count: number) => inspectReference(key, count);
       const selectMvtRecord = (feature: any) => {
         const key = feature?.properties?.feature_key;
+        if (typeof key === "string" && /^[a-f0-9]{32}$/i.test(key)) {
+          inspectMvtReference(key, Number(feature?.properties?.count ?? feature?.properties?.weight));
+          return;
+        }
         if (typeof key !== "string" || !/^[0-9a-f-]{36}$/i.test(key)) return;
         selectedReferenceKey = null;
         updateVisualSettings();
@@ -1044,12 +1058,6 @@
           if (center.every(Number.isFinite)) map.easeTo({ center, duration: 380, easing: (t) => 1 - Math.pow(1 - t, 3), essential: false });
         }
         onselect(key);
-      };
-      const inspectMvtReference = (key: string, count: number) => {
-        selectedReferenceKey = key;
-        updateVisualSettings();
-        pendingReference = { key, count: Number.isFinite(count) ? count : 0, observedLoading: false };
-        onreference?.(key);
       };
       map.on("click", "mvt-clusters", (event: any) => {
         if (activeFlight) return;
@@ -1153,6 +1161,10 @@
         const properties = event.features?.[0]?.properties;
         const id = isRealPreview() ? properties?.key : properties?.id;
         if (typeof id === "string") {
+          // Provider-address points represent a reference group even when the
+          // source grouped just one candidate at that geometry. Their 32-hex
+          // key belongs to the reference-members endpoint, not record detail.
+          if (isRealPreview() && inspectReference(id, properties?.weight, properties?.source_id)) return;
           // A source coordinate is an ordinary record selection, never an
           // approximate reference. Clear any prior inspected reference area.
           if (selectedReferenceKey !== null) {
@@ -1188,13 +1200,7 @@
           if (Math.hypot(event.point.x - center.x, event.point.y - center.y) <= 20 * APPROX_MARKER_SCALE) return;
         }
         const key = properties?.key;
-        if (typeof key === "string") {
-          selectedReferenceKey = key;
-          updateVisualSettings();
-          const count = Number(properties?.weight);
-          pendingReference = { key, count: Number.isFinite(count) ? count : 0, observedLoading: false };
-          onreference?.(key, typeof properties?.source_id === "string" ? properties.source_id : undefined);
-        }
+        inspectReference(key, properties?.weight, properties?.source_id);
         return;
       }
       if (mode === "public-release") {
