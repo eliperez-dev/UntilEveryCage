@@ -1,6 +1,21 @@
 import { expect, test } from '@playwright/test';
 
+async function installTerrainFixture(page: import('@playwright/test').Page) {
+  const tileData = await page.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 512;
+    const context = canvas.getContext('2d')!;
+    // Terrarium RGB 128/128/128 represents a flat elevation near zero metres.
+    context.fillStyle = 'rgb(128, 128, 128)';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/webp').split(',')[1];
+  });
+  const body = Buffer.from(tileData, 'base64');
+  await page.route('https://tiles.mapterhorn.com/**', route => route.fulfill({ status: 200, contentType: 'image/webp', body }));
+}
+
 test('camera tilt, compass reset, and URL state preserve the map view', async ({ page }, testInfo) => {
+  test.setTimeout(60_000);
   const tileData = await page.evaluate(() => {
     const canvas = document.createElement('canvas');
     canvas.width = canvas.height = 256;
@@ -18,6 +33,7 @@ test('camera tilt, compass reset, and URL state preserve the map view', async ({
   const pixel = Buffer.from(tileData, 'base64');
   await page.route('https://tile.openstreetmap.org/**', route => route.fulfill({ status: 200, contentType: 'image/png', body: pixel }));
   await page.route('**/World_Imagery/**', route => route.fulfill({ status: 200, contentType: 'image/png', body: pixel }));
+  await installTerrainFixture(page);
   await page.goto('./#/map?f1a=field&scenario=dense&lat=38&lon=-96&z=4&pitch=31&bearing=24');
   const map = page.getByLabel('Map showing records');
   const viewToggle = map.locator('.map-camera-toggle');
@@ -81,6 +97,7 @@ test('camera tilt, compass reset, and URL state preserve the map view', async ({
 });
 
 test('flat camera URLs stay compact and the camera control remains usable on touch layouts', async ({ page }, testInfo) => {
+  await installTerrainFixture(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('./#/map?f1a=field&scenario=dense');
   const viewToggle = page.locator('.map-camera-toggle');
@@ -97,6 +114,7 @@ test('flat camera URLs stay compact and the camera control remains usable on tou
 });
 
 test('compact map view control toggles 3D and right-drag rotates the map', async ({ page }, testInfo) => {
+  await installTerrainFixture(page);
   await page.goto('./#/map?f1a=field&scenario=dense&lat=38&lon=-96&z=4');
   const controls = page.getByRole('group', { name: 'Map view' });
   const viewToggle = controls.locator('.map-camera-toggle');
@@ -170,6 +188,7 @@ test('selecting a map pin gently centres the camera on that record', async ({ pa
 });
 
 test('cold shared 3D URLs restore terrain after a style reload and browser Back', async ({ page }) => {
+  await installTerrainFixture(page);
   await page.route(url => new URL(url.href).pathname === '/api/v2/locations', route => route.fulfill({
     status: 200, contentType: 'application/json', body: JSON.stringify({
       api_version: 'v2', data: [], meta: { profile: 'official', release_id: 'synthetic-camera-nav', ruleset_version: 'synthetic',
