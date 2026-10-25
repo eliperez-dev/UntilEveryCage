@@ -50,6 +50,7 @@ class GermanyPrivateGeocodingTests(unittest.TestCase):
             ).fetchone()[0]
             self.assertEqual(other_profiles, [
                 "geoapify-dk-smiley:DK", "geoapify-es-aesan-rgseaa:ES",
+                "geoapify-es-aesan-verified-municipality:ES",
                 "geoapify-gb-fsa-approved-establishments:GB",
                 "geoapify-gb-fss-approved-establishments:GB",
                 "geoapify-nl-nvwa-approved-food:NL",

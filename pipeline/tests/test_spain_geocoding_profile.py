@@ -94,7 +94,7 @@ class SpainGeocodingProfileTests(unittest.TestCase):
             retained_countries = connection.execute(
                 "SELECT array_agg(country_code::text ORDER BY country_code::text) FROM real_preview.private_geocoding_source_profiles WHERE source_id <> 'es.locations'"
             ).fetchone()[0]
-            self.assertEqual(retained_countries, ["DK", "GB", "GB", "NL", "US"])
+            self.assertEqual(retained_countries, ["DE", "DK", "GB", "GB", "NL", "US"])
             shared_function = connection.execute(
                 "SELECT pg_get_functiondef('real_preview.capture_geoapify_private_display()'::regprocedure)"
             ).fetchone()[0]
