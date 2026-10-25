@@ -21,12 +21,13 @@ class RegistryTests(unittest.TestCase):
                              (country, adapter_version, schema_version))
             self.assertTrue(entry["live_callable"])
             self.assertEqual(entry["operational_classification"], "live")
-        self.assertTrue(
-            all(
-                entry["geocoding"] == ("separate-private-profile" if entry["country_code"] == "nl" else "disabled")
-                for entry in registry["adapters"]
-            )
-        )
+        separate_geocoding = {"nl.nvwa.approved-food", "es.locations"}
+        for source_id, entry in by_source.items():
+            with self.subTest(source_id=source_id):
+                self.assertEqual(
+                    entry["geocoding"],
+                    "separate-private-profile" if source_id in separate_geocoding else "disabled",
+                )
         self.assertTrue(all(entry["publication"] == "human_gate_required" for entry in registry["adapters"]))
         self.assertEqual({entry.get("source_kind", "facility_master") for entry in registry["adapters"]}, {"facility_master", "evidence_event"})
 
