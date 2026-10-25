@@ -22,6 +22,10 @@ const meta = { release_id: release, ruleset_version: 'synthetic-rules', profile:
 async function mockSanitizedApi(page: Page) {
   await page.route('https://tile.openstreetmap.org/**', route => route.abort());
   await page.route('https://server.arcgisonline.com/**', route => route.abort());
+  await page.route('**/health/live', route => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ status: 'ok', service: 'uec-api', application_version: '2.0.0' }),
+  }));
   await page.route('**/api/**', async route => {
     const requestUrl = new URL(route.request().url());
     const path = requestUrl.pathname;
@@ -54,10 +58,14 @@ async function mockSanitizedApi(page: Page) {
 }
 
 async function selectTheme(page: Page, theme: 'dark' | 'light') {
-  await page.evaluate((nextTheme) => {
-    document.documentElement.dataset.theme = nextTheme;
-    document.documentElement.style.colorScheme = nextTheme;
-  }, theme);
+  const tools = page.getByRole('button', { name: 'Tools', exact: true });
+  if (await tools.getAttribute('aria-expanded') !== 'true') await tools.click();
+  const label = theme === 'light' ? 'Light' : 'Dark';
+  const button = page.getByRole('group', { name: 'Color theme' }).getByRole('button', { name: label, exact: true });
+  await button.click();
+  await expect(button).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+  await page.getByRole('button', { name: 'Close Tools', exact: true }).click();
 }
 
 const contrast = (foreground: string, background: string) => {
@@ -122,7 +130,7 @@ for (const viewport of [{ name: 'desktop', width: 1280, height: 900 }, { name: '
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     await mockSanitizedApi(page);
     const pages = [
-      { route: `./#/map?selected=${id}&release_id=${release}`, surface: '.map-controls', label: 'map controls' },
+      { route: `./#/map?release_id=${release}`, surface: '.map-controls', label: 'map controls' },
       { route: './#/database', surface: '.public-database', label: 'database' },
       { route: `./#/records/${id}?release_id=${release}`, surface: '.public-record', label: 'full facility detail' },
       { route: './#/contribute/bug', surface: '.bug-page', label: 'contribute form' },
@@ -134,6 +142,14 @@ for (const viewport of [{ name: 'desktop', width: 1280, height: 900 }, { name: '
       for (const view of pages) {
         await page.goto(view.route);
         await expect(page.locator(view.surface).first(), `${view.label} surface`).toBeVisible();
+        if (view.label === 'map controls') {
+          await page.getByRole('button', { name: 'Search map', exact: true }).click();
+          const fixtureRecord = page.locator(`.record-list button[data-record-id="${id}"]`);
+          await expect(fixtureRecord).toBeVisible();
+          await fixtureRecord.click();
+          await expect(page.locator('.reading-sheet[aria-label="Record evidence"] .detail')).toBeVisible();
+          await expect(page.locator('.map-controls')).toBeVisible();
+        }
         await selectTheme(page, theme);
         await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
         const style = await page.locator(view.surface).first().evaluate(element => {
