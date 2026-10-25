@@ -1,6 +1,7 @@
 <script lang="ts">
   import { tick } from "svelte";
   import { language, tr } from './language';
+  import ThemeControl from './ThemeControl.svelte';
   let {
     current,
     mapHref,
@@ -67,6 +68,7 @@
     {#if toolsOpen}<aside id="shared-tools-menu" class="header-menu tools-menu" aria-label={tr('Tools', $language)}>
       <header><strong><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> {tr('Tools', $language)}</strong><button type="button" aria-label={tr('Close Tools', $language)} onclick={() => closeTools(true)}>×</button></header>
       <section><label for="language-choice">{tr('Language', $language)}</label><select id="language-choice" aria-label={tr('Language', $language)} value={$language} onchange={event => language.set(event.currentTarget.value === 'es' ? 'es' : 'en')}><option value="en">English</option><option value="es">Español</option></select></section>
+      <ThemeControl label={tr('Appearance', $language)} lightLabel={tr('Light', $language)} darkLabel={tr('Dark', $language)} />
       <section><label for="release-choice">{tr('Current release', $language)}</label><select id="release-choice" aria-label={tr('Current release', $language)} title={displayedReleaseLabel} value={selectedReleaseId ?? ''} disabled={!releaseOptions.length || !onreleasechange} onchange={event => onreleasechange?.(event.currentTarget.value)}>{#if selectedReleaseId && !releaseOptions.some(release => release.id === selectedReleaseId)}<option value={selectedReleaseId} disabled>{tr('Selected release unavailable', $language)}</option>{/if}{#if releaseOptions.length}{#each releaseOptions as release}<option value={release.id}>{displayReleaseLabel(release.label)}</option>{/each}{:else}<option value="">{displayedReleaseLabel}</option>{/if}</select><small>{releaseDescription ?? (publicReleaseLabel ? 'Release metadata from the active public map.' : 'Release selection is available from the map.')}</small></section>
       <section><h2>{tr('History', $language)}</h2><p>{tr('Open a record to view its available release history.', $language)}</p><small>{tr('Historical views follow current privacy restrictions.', $language)}</small></section>
       {#if current === 'map'}<section><label class="toggle"><input type="checkbox" checked={debugEnabled} onchange={(event) => ondebugchange?.(event.currentTarget.checked)} /> {tr('Enable debug menu', $language)}</label><small>{tr('Map diagnostics and rendering controls.', $language)}</small></section>{/if}

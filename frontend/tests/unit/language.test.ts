@@ -28,4 +28,10 @@ describe('language selection', () => {
     const { language } = await import('../../src/app/language');
     expect(get(language)).toBe('es');
   });
+
+  it('falls back to English when storage reads are unavailable', async () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('storage denied'); });
+    const { language } = await import('../../src/app/language');
+    expect(get(language)).toBe('en');
+  });
 });
