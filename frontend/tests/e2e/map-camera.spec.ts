@@ -103,14 +103,15 @@ test('flat camera URLs stay compact and the camera control remains usable on tou
   await expect.poll(() => new URL(page.url()).hash).toContain('pitch=45');
 });
 
-test('compact map view control toggles 3D and map gestures rotate the map without a visible drag hint', async ({ page }, testInfo) => {
+test('compact map view control toggles 3D and shows the map gesture hint without compass controls', async ({ page }, testInfo) => {
   await installTerrainFixture(page);
   await page.goto('./#/map?f1a=field&scenario=dense&lat=38&lon=-96&z=4');
   await page.locator('.map-surface').waitFor({ state: 'visible', timeout: 30_000 });
   const controls = page.getByRole('group', { name: 'Map view' });
   const viewToggle = controls.locator('.map-camera-toggle');
   const styleSelect = controls.getByLabel('Map style');
-  await expect(page.locator('.gesture-hint')).toHaveCount(0);
+  await expect(controls.getByText('Right-mouse to rotate / Left-mouse to pan', { exact: true })).toBeVisible();
+  await expect(page.locator('.maplibregl-ctrl-compass')).toHaveCount(0);
   await expect(styleSelect.locator('option')).toHaveText(['Street', 'Satellite']);
   await expect(viewToggle).toHaveText('2D');
   await expect(controls.locator('#map-camera-help')).toHaveClass(/sr-only/);
@@ -156,7 +157,8 @@ test('compact map view control toggles 3D and map gestures rotate the map withou
   expect(Math.max(...mobileRowCenters) - Math.min(...mobileRowCenters)).toBeLessThan(2);
   await expect(controls.locator('#map-camera-help')).toHaveClass(/sr-only/);
   await expect(viewToggle).toHaveAttribute('aria-describedby', 'map-camera-help');
-  await expect(page.locator('.gesture-hint')).toHaveCount(0);
+  await expect(controls.getByText('Right-mouse to rotate / Left-mouse to pan', { exact: true })).toBeVisible();
+  await expect(page.locator('.maplibregl-ctrl-compass')).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath('map-controls-mobile.png') });
 });
 
