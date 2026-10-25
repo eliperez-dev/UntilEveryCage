@@ -1,19 +1,30 @@
 import { test, expect } from '@playwright/test';
 
 test('Spanish selection changes primary and map controls without changing route state and persists after reload', async ({ page }) => {
-  await page.goto('./#/map?scenario=default&lat=38&lon=-96&z=4&release_id=synthetic-release&source=us.fsis&cat=Processing&selected=synthetic-record-1&focus=selected');
+  await page.goto('./#/map?scenario=default&lat=38&lon=-96&z=4&release_id=synthetic-release&source=us.fsis&category=Processing&precision=exact&country=US&source_filter=us.fsis&activity=slaughter&selected=synthetic-record-1&focus=selected');
   await expect(page.getByRole('button', { name: 'Search map' })).toBeVisible();
+  await page.getByRole('button', { name: 'Search map' }).click();
+  await expect(page.getByText('Search records', { exact: true })).toBeVisible();
   const stateBeforeSwitch = page.url().split('#')[1];
   const languageControl = async () => {
-    await page.getByRole('button', { name: 'Tools' }).click();
-    return page.getByLabel('Language');
+    await page.getByRole('button', { name: /^(Tools|Herramientas)$/ }).click();
+    return page.getByLabel(/^(Language|Idioma)$/);
   };
   const control = await languageControl();
   await control.selectOption('es');
   await expect(page.getByRole('navigation', { name: 'Navegación principal' }).getByRole('link', { name: 'Mapa', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: /Buscar en el mapa/ })).toBeVisible();
-  await expect(page.getByRole('group', { name: 'Vista del mapa' })).toContainText('Calles');
+  await expect(page.getByText('Buscar registros', { exact: true })).toBeVisible();
+  await expect(page.getByText('Filtros 6', { exact: true })).toBeVisible();
   expect(page.url().split('#')[1]).toBe(stateBeforeSwitch);
+  const mapParams = new URLSearchParams(page.url().split('?')[1] ?? '');
+  expect(mapParams.get('release_id')).toBe('synthetic-release');
+  expect(mapParams.get('lat')).toBe('38');
+  expect(mapParams.get('lon')).toBe('-96');
+  expect(mapParams.get('z')).toBe('4');
+  expect(mapParams.get('selected')).toBe('synthetic-record-1');
+  expect(mapParams.get('category')).toBe('Processing');
+  expect(mapParams.get('precision')).toBe('exact');
+  expect(mapParams.get('country')).toBe('US');
   await page.reload();
   await expect(page.getByRole('navigation', { name: 'Navegación principal' }).getByRole('link', { name: 'Mapa', exact: true })).toBeVisible();
   const restoredControl = await languageControl();
@@ -25,9 +36,10 @@ test('Spanish renders the localized FAQ while retaining the English manifest whe
   await page.getByRole('button', { name: 'Tools' }).click();
   await page.getByLabel('Language').selectOption('es');
   await expect(page.getByRole('heading', { name: 'Preguntas frecuentes' })).toBeVisible();
-  await page.getByRole('button', { name: 'Herramientas' }).click();
+  await page.getByRole('button', { name: 'Cerrar herramientas' }).click();
+  await page.getByRole('navigation', { name: 'Navegación principal' }).getByRole('link', { name: 'Acerca de' }).click();
+  await page.getByRole('button', { name: 'Herramientas', exact: true }).click();
   await page.getByLabel('Idioma').selectOption('en');
-  await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'About' }).click();
   await expect(page.getByRole('heading', { name: 'About Until Every Cage is Empty' })).toBeVisible();
   await expect(page.locator('.manifesto')).toContainText('The violence inflicted on these animals is not accidental');
 });
