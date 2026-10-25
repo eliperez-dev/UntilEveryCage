@@ -141,13 +141,13 @@
   .header-menu p, .header-menu small { margin:0; color:#b9c2b9; font-size:.64rem; line-height:1.4; }
   .tools-menu select { width:100%; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .map-view-controls { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:.35rem; align-items:center; }
-  .map-view-controls select { min-height:2.75rem; border:1px solid #69716a; color:#f1efe8; background:#202421; font:.72rem system-ui; }
-  .map-camera-toggle { min-width:2.75rem; min-height:2.75rem; border:1px solid #69716a; color:#f1efe8; background:#202421; cursor:pointer; font:600 .7rem system-ui; }
-  .map-camera-toggle[aria-pressed="true"] { border-color:#d8c99b; background:#33352d; color:#f5e8bf; }
+  .map-view-controls select { min-height:2.75rem; border:1px solid var(--line-strong); color:var(--ink); background:var(--page-raised); font:.72rem system-ui; }
+  .map-camera-toggle { min-width:2.75rem; min-height:2.75rem; border:1px solid var(--line-strong); color:var(--ink); background:var(--page-raised); cursor:pointer; font:600 .7rem system-ui; }
+  .map-camera-toggle[aria-pressed="true"] { border-color:var(--focus); background:var(--panel-hover); color:var(--ink); }
   .map-camera-toggle:disabled, .map-view-controls select:disabled { opacity:.58; cursor:default; }
   .gesture-hint { color:#b9c2b9; font-size:.64rem; line-height:1.4; }
   .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
-  a:focus-visible, button:focus-visible, select:focus-visible { outline:2px solid #eee7d6; outline-offset:2px; }
+  a:focus-visible, button:focus-visible, select:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
   @media (any-pointer:coarse) {
     nav > a{display:flex;align-items:center;min-height:2.75rem}
   }

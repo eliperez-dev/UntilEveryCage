@@ -19,7 +19,22 @@ async function installMapTiles(page: import('@playwright/test').Page) {
   await page.route('https://tiles.mapterhorn.com/**', route => route.fulfill({ status: 200, contentType: 'image/webp', body: webp }));
 }
 
-test('Tools map controls operate the active map without removing Search map', async ({ page }) => {
+function contrastRatio(foreground: string, background: string): number {
+  const luminance = (color: string) => {
+    const channels = color.match(/[\d.]+/g)?.slice(0, 3).map(Number);
+    if (!channels || channels.length !== 3) throw new Error(`Unexpected computed color: ${color}`);
+    const linear = channels.map(channel => {
+      const value = channel / 255;
+      return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+  };
+  const first = luminance(foreground);
+  const second = luminance(background);
+  return (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05);
+}
+
+test('Tools map controls operate the active map and keep style values legible in both themes', async ({ page }) => {
   await installMapTiles(page);
   await page.goto('./#/map?f1a=field&scenario=dense&lat=38&lon=-96&z=4');
   const map = page.getByLabel('Map showing records');
@@ -33,8 +48,25 @@ test('Tools map controls operate the active map without removing Search map', as
   const camera = controls.locator('.map-camera-toggle');
   await expect(style).toBeEnabled();
   await expect(camera).toHaveText('2D');
+  const themeToggle = page.locator('.masthead .theme-toggle');
+  const expectStyleContrast = async (label: string) => {
+    const colors = await style.evaluate(element => {
+      const select = element as HTMLSelectElement;
+      const computed = getComputedStyle(select);
+      return { label: select.selectedOptions[0]?.textContent?.trim(), foreground: computed.color, background: computed.backgroundColor };
+    });
+    expect(colors.label).toBe(label);
+    expect(contrastRatio(colors.foreground, colors.background)).toBeGreaterThanOrEqual(4.5);
+  };
+  if (await themeToggle.getAttribute('aria-pressed') !== 'true') await themeToggle.click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await expectStyleContrast('Street');
   await style.selectOption('satellite');
+  await expectStyleContrast('Satellite');
   await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getStyle().sources.base.tiles[0])).toContain('World_Imagery');
+  await themeToggle.click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await expectStyleContrast('Satellite');
   await camera.click();
   await expect(camera).toHaveText('3D');
   await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getPitch())).toBe(45);
