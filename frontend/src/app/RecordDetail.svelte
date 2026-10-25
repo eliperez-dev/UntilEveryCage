@@ -337,7 +337,7 @@
       onclick={onclose}
     >Close</button>
   {/if}
-  <h1 id="record-title">{name}{#if presentation === 'page'} <button class="share" type="button" aria-label="Copy facility link" title="Copy facility link" onclick={copyFacilityLink}><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.1 0l3-3A5 5 0 0 0 13 2.9l-1.7 1.7m2.7 6.4a5 5 0 0 0-7.1 0l-3 3A5 5 0 0 0 11 21.1l1.7-1.7"/></svg></button><span class="sr-only" role="status" aria-live="polite">{copyFeedback}</span>{/if}</h1>
+  <h1 id="record-title">{name}{#if presentation === 'page' || (presentation === 'rail' && publicRelease)} <button class="share" type="button" aria-label="Copy facility link" title="Copy facility link" onclick={copyFacilityLink}><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.1 0l3-3A5 5 0 0 0 13 2.9l-1.7 1.7m2.7 6.4a5 5 0 0 0-7.1 0l-3 3A5 5 0 0 0 11 21.1l1.7-1.7"/></svg></button><span class="sr-only" role="status" aria-live="polite">{copyFeedback}</span>{/if}</h1>
   {#if presentation === 'page' && import.meta.env.VITE_COMMUNITY_PILOT === 'true' && id}
     <p class="contribution-actions">{#each [['evidence','Add evidence'],['correction','Suggest a correction'],['privacy-removal','Privacy or removal']] as [type, label]}<a class="evidence-link" href={`#/contribute/${type}?target=${encodeURIComponent(id)}&map=${encodeURIComponent('#/map?f1a=field')}`}>{label}</a>{/each}</p>
   {/if}
@@ -440,6 +440,18 @@
     margin: 0.25rem 2rem 0.3rem 0;
     font: 500 1.3rem/1.2 Georgia, serif;
   }
+
+  .share {
+    display: inline-grid;
+    place-items: center;
+    width: 1.75rem;
+    min-height: 1.75rem;
+    margin-left: .2rem;
+    padding: .25rem;
+    vertical-align: middle;
+  }
+
+  .share svg { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 
   .activity {
     margin: 0.25rem 0;

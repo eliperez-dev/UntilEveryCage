@@ -15,6 +15,7 @@
   let loading = $state(false);
   let error = $state(false);
   let retryCursor = $state<string | null>(null);
+  let fetched = $state(false);
   let version = 0;
   let controller: AbortController | undefined;
   const queryKey = $derived(`${facilityId}\u0000${releaseId}\u0000${profile}`);
@@ -27,6 +28,8 @@
 
   async function load(kind: AphisReportKind, next?: string) {
     if (!relevant || !facilityId || !releaseId) return;
+    if (loading) return;
+    if (selected === kind && !next && !error && fetched) return;
     if (selected !== kind || !next) {
       controller?.abort();
       controller = new AbortController();
@@ -34,6 +37,7 @@
       rows = [];
       cursor = null;
       retryCursor = null;
+      fetched = false;
     }
     const active = controller;
     if (!active) return;
@@ -46,6 +50,7 @@
       rows = next ? [...rows, ...page.data] : page.data;
       cursor = page.nextCursor;
       retryCursor = null;
+      fetched = true;
     } catch {
       if (!active.signal.aborted && request === version) { error = true; retryCursor = next ?? null; }
     } finally {
@@ -61,6 +66,7 @@
     rows = [];
     cursor = null;
     retryCursor = null;
+    fetched = false;
     loading = false;
     error = false;
     return () => { controller?.abort(); version += 1; };
@@ -72,7 +78,7 @@
     <h3 id="aphis-reports-heading">APHIS reports</h3>
     <div class="choices" aria-label="Choose APHIS report type">
       {#each kinds as kind}
-        <button type="button" aria-pressed={selected === kind} disabled={loading} onclick={() => void load(kind)}>{title(kind)}</button>
+        <button type="button" aria-pressed={selected === kind} disabled={loading} onclick={() => void load(kind)}>{kind === 'annual_reports' ? 'Fetch annual reports' : 'Fetch inspection reports'}</button>
       {/each}
     </div>
     {#if selected}
