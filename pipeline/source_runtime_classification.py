@@ -1,8 +1,10 @@
 """Runtime discovery classes joined from the source and preview registries.
 
-The preview policy is the explicit private E2E allowlist.  The source registry
-and source-status baseline provide the universe and the non-preview fallback;
-this module does not grant publication eligibility.
+The preview policy is the explicit private pipeline allowlist. The legacy
+``production-e2e`` class permits execution; it does not certify a successful
+live refresh, map coverage or geocoding. Source-status owns measured readiness.
+The registries provide the universe and non-preview fallback; this module
+does not grant publication eligibility.
 """
 from __future__ import annotations
 

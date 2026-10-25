@@ -7,7 +7,8 @@ from pipeline.source_runtime_classification import (
 )
 
 
-VERIFIED_PRIVATE_E2E = {
+# Permission to run a private pipeline is not measured map/geocoding readiness.
+PRIVATE_PIPELINE_ALLOWLIST = {
     "au.sa.epa.licensed-activities",
     "au.npi.facilities",
     "br.sif.registered",
@@ -18,6 +19,7 @@ VERIFIED_PRIVATE_E2E = {
     "fsa_approved_establishments",
     "fss_approved_establishments",
     "es.cat.feed-sandach",
+    "es.locations",
     "fr.dgal.section-i",
     "fr.dgal.section-ii",
     "fr.georisques.icpe.animal",
@@ -33,14 +35,14 @@ VERIFIED_PRIVATE_E2E = {
 
 
 class RuntimeClassificationTests(unittest.TestCase):
-    def test_verified_private_e2e_sources_are_classified_without_public_release(self):
+    def test_enabled_private_sources_are_classified_without_public_release(self):
         index = build_runtime_classification_index()
         sources = index["sources"]
         classified = {
             source_id for source_id, row in sources.items()
             if row["classification"] == "production-e2e"
         }
-        self.assertEqual(classified, VERIFIED_PRIVATE_E2E)
+        self.assertEqual(classified, PRIVATE_PIPELINE_ALLOWLIST)
         self.assertTrue(all(sources[source_id]["private_preview_enabled"] for source_id in classified))
         self.assertTrue(all(not row["public_release"] for row in sources.values()))
 

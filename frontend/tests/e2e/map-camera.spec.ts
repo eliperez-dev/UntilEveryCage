@@ -147,14 +147,18 @@ test('compact map view control toggles 3D and shows the map gesture hint without
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(controls).toBeVisible();
   await expect(viewToggle).toBeVisible();
+  // The approved mobile toolbar puts the label above the style/toggle row
+  // so Map View can share an equal-width row with Search.
   const mobileRowTops = await Promise.all([
-    controls.getByText('Map view', { exact: true }).boundingBox(),
     styleSelect.boundingBox(),
     viewToggle.boundingBox(),
   ]);
   expect(mobileRowTops.every(Boolean)).toBe(true);
   const mobileRowCenters = mobileRowTops.map(box => box!.y + box!.height / 2);
   expect(Math.max(...mobileRowCenters) - Math.min(...mobileRowCenters)).toBeLessThan(2);
+  const mobileLabel = await controls.getByText('Map view', { exact: true }).boundingBox();
+  expect(mobileLabel).not.toBeNull();
+  expect(mobileLabel!.y + mobileLabel!.height).toBeLessThanOrEqual(mobileRowTops[0]!.y);
   await expect(controls.locator('#map-camera-help')).toHaveClass(/sr-only/);
   await expect(viewToggle).toHaveAttribute('aria-describedby', 'map-camera-help');
   await expect(controls.getByText('Right-mouse to rotate / Left-mouse to pan', { exact: true })).toBeVisible();
