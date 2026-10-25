@@ -1,5 +1,6 @@
 import importlib.util
 import datetime
+import io
 import json
 import tempfile
 import unittest
@@ -145,6 +146,16 @@ class LocalEnrichmentTests(unittest.TestCase):
                         body.index("temporary.replace(certificate_path)"))
         self.assertIn('certificate["location_enrichment"] = catalonia_location_acceptance', body)
         self.assertIn('"counts": certificate["counts"]', body)
+
+    def test_http_auth_diagnostics_keep_only_status_and_safe_error_code(self):
+        error = PREVIEW.urllib.error.HTTPError(
+            "http://127.0.0.1/counts", 401, "Unauthorized", {"Content-Type": "application/json"},
+            io.BytesIO(b'{"error":{"code":"dev_preview_auth_failed","message":"private detail"}}'))
+        with patch.object(PREVIEW.urllib.request, "urlopen", side_effect=error):
+            status, payload = PREVIEW._http("http://127.0.0.1/counts", "not-a-real-token")
+        self.assertEqual(status, 401)
+        self.assertEqual(payload, {"error": {"code": "dev_preview_auth_failed"}})
+        self.assertNotIn("private detail", json.dumps(payload))
 
     def test_catalonia_reference_capture_is_bounded_and_terms_pinned(self):
         metadata = MagicMock()

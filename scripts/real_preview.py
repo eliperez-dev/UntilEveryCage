@@ -265,6 +265,17 @@ def _http(url: str, token: str | None = None) -> tuple[int | None, dict[str, obj
         with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=3) as response:
             data = json.loads(response.read()) if "json" in response.headers.get("Content-Type", "") else None
             return response.status, data if isinstance(data, dict) else None
+    except urllib.error.HTTPError as error:
+        # Preserve only aggregate API error contracts for diagnostics; never
+        # surface raw response bodies, which could contain private details.
+        try:
+            payload = json.loads(error.read())
+        except (OSError, json.JSONDecodeError):
+            payload = None
+        safe_error = payload.get("error") if isinstance(payload, dict) else None
+        safe_code = safe_error.get("code") if isinstance(safe_error, dict) else None
+        sanitized = {"error": {"code": safe_code}} if isinstance(safe_code, str) and safe_code.replace("_", "").isalnum() else None
+        return error.code, sanitized
     except (OSError, urllib.error.URLError, json.JSONDecodeError):
         return None, None
 
@@ -462,7 +473,10 @@ def up(*, offline_handoff: bool = False) -> dict[str, object]:
         auth_status, payload = _http(counts_url, token)
         api_counts = payload.get("data") if payload else None
         if auth_status != 200 or not isinstance(api_counts, dict):
-            raise PreviewError("authenticated real-preview API count probe failed")
+            error = payload.get("error") if isinstance(payload, dict) else None
+            error_code = error.get("code") if isinstance(error, dict) else None
+            suffix = f" (http_status={auth_status}, error_code={error_code})" if error_code else f" (http_status={auth_status})"
+            raise PreviewError("authenticated real-preview API count probe failed" + suffix)
         expected_api_counts = {
             "facility_candidate_count": summary.get("source_scoped_candidate_count", summary.get("counts", {}).get("candidates")),
             "numeric_coordinate_count": summary.get("numeric_coordinate_count", summary.get("counts", {}).get("source_provided_unverified")),
