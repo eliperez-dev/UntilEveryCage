@@ -220,6 +220,9 @@ class GeorisquesIcpeAnimalTests(unittest.TestCase):
             parsed = parse_qs(urlparse(kwargs["url"]).query)
             page = int(parsed["page"][0])
             calls.append(parsed)
+            self.assertEqual(kwargs["max_attempts"], 2)
+            self.assertEqual(kwargs["retry_delay_seconds"], 2.0)
+            self.assertEqual(kwargs["max_retry_delay_seconds"], 2.0)
             content = (json.dumps(responses[page], ensure_ascii=False) + "\n").encode()
             path = Path(kwargs["output_root"]) / CONFIG["source_id"] / kwargs["run_id"] / kwargs["artifact_name"]
             path.parent.mkdir(parents=True)

@@ -86,6 +86,7 @@ const es: Record<string, string> = {
   'After submitting, keep the private tracking link shown with your receipt to check its status.': 'Después de enviar, conserva el enlace privado de seguimiento que aparece con el recibo para consultar el estado.',
   'Contribute to the project': 'Contribuir al proyecto', 'Help, support, and contact': 'Ayuda, apoyo y contacto', 'For a website problem,': 'Si tienes un problema con el sitio web,', 'report a bug': 'informa de un error', 'contact the project': 'contacta con el proyecto',
   'Code contributions and issues are on': 'Las contribuciones de código y los problemas están en', 'project Discord': 'Discord del proyecto', 'support the project': 'apoyar el proyecto',
+  'or': 'o', 'You can also join': 'También puedes unirte a',
   'The Project': 'El proyecto', 'The Reality': 'La realidad', 'The Architecture of Silence': 'La arquitectura del silencio', 'The Mission': 'La misión', 'Get Involved': 'Participa',
   'Routine Mutilation:': 'Mutilación rutinaria:', 'Total Confinement:': 'Confinamiento total:', 'Psychological Torture:': 'Tortura psicológica:',
   'Physical Erasure:': 'Borrado físico:', 'Legal Intimidation:': 'Intimidación legal:', 'Humane-Washing:': 'Lavado de imagen humanitario:',

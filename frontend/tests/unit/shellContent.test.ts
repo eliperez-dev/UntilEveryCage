@@ -71,6 +71,18 @@ describe('normal shell content', () => {
     expect(about).not.toContain('<video');
   });
 
+  it('localizes FAQ connectors and uses theme-aware accessible colors', () => {
+    expect(faq).toContain("{tr('or', $language)}");
+    expect(faq).toContain("{tr('You can also join', $language)}");
+    expect(faq).not.toContain('También puedes unirte a');
+    expect(faq).not.toContain('> o <');
+    expect(faq).toContain('color:var(--ink)');
+    expect(faq).toContain('color:var(--ink-muted)');
+    expect(faq).toContain('color:var(--link)');
+    expect(faq).not.toContain('#dce8d9');
+    expect(faq).not.toContain('#c6d0c5');
+  });
+
   it('restores the living-project footer with a backend version component', () => {
     expect(footer).toContain("{tr('An independent, open-source, ad-free project.', $language)}</p>");
     expect(language).toContain("'An independent, open-source, ad-free project.': 'Un proyecto independiente, de código abierto y sin anuncios.'");
