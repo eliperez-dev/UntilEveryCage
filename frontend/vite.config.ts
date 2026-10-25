@@ -39,7 +39,7 @@ export default defineConfig(({ command }) => {
   }
   // Vite resolves proxy contexts in declaration order. Keep the authenticated
   // candidate route ahead of the generic API route so its token is injected.
-  const localApiProxy = { ...candidatePreviewProxy, ...realPreviewProxy, '/api': { target: apiOrigin, changeOrigin: false } };
+  const localApiProxy = { ...candidatePreviewProxy, ...realPreviewProxy, '/api': { target: apiOrigin, changeOrigin: false }, '/health': { target: apiOrigin, changeOrigin: false } };
   const previewModeMeta = {
     name: 'uec-local-data-mode',
     transformIndexHtml(html: string) {

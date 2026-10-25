@@ -105,7 +105,7 @@
 <svelte:head><title>API and data access · Until Every Cage</title></svelte:head>
 <section class="api-page" aria-labelledby="api-title">
   <h1 id="api-title">API and data access</h1>
-  <p>Download the complete selected public release as CSV, or use paginated JSON for records and filters. Map and database filters do not change these exports.</p>
+  <p>Download the complete selected public release as CSV, or use paginated JSON to browse records. Downloads cover the selected release, not only the current map or database results.</p>
   <div class="release-access">
     <label>Dataset<select bind:value={profile}><option value="official">Project dataset</option>{#if communityReleaseAvailable}<option value="community">Community submissions</option>{/if}</select></label>
     {#if releaseOptions.length}<label>Release<select aria-label="Public release" value={releaseId ?? selectedReleaseId ?? ''} onchange={event => selectedReleaseId = event.currentTarget.value}>{#each releaseOptions as release}<option value={release.id}>{release.label}</option>{/each}</select></label>{/if}

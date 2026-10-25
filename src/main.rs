@@ -602,7 +602,11 @@ async fn request_observability(
 }
 
 async fn liveness() -> impl IntoResponse {
-    Json(serde_json::json!({"status": "ok", "service": "uec-api"}))
+    Json(serde_json::json!({
+        "status": "ok",
+        "service": "uec-api",
+        "application_version": env!("CARGO_PKG_VERSION")
+    }))
 }
 
 async fn diagnostics(
@@ -1344,7 +1348,7 @@ mod config_tests {
                 trusted_proxy_cidrs: Vec::new(),
             },
         );
-        let _ = router
+        let live_response = router
             .clone()
             .oneshot(
                 axum::http::Request::builder()
@@ -1354,6 +1358,14 @@ mod config_tests {
             )
             .await
             .unwrap();
+        assert_eq!(live_response.status(), StatusCode::OK);
+        let live_body = axum::body::to_bytes(live_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let live_value: serde_json::Value = serde_json::from_slice(&live_body).unwrap();
+        assert_eq!(live_value["status"], "ok");
+        assert_eq!(live_value["service"], "uec-api");
+        assert_eq!(live_value["application_version"], env!("CARGO_PKG_VERSION"));
         let response = router
             .oneshot(
                 axum::http::Request::builder()
