@@ -28,7 +28,7 @@ use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex as StdMutex};
@@ -3134,6 +3134,25 @@ fn aphis_registration_certificate_alias(value: &str) -> Option<String> {
         && bytes[..2].iter().all(u8::is_ascii_digit)
         && bytes[5..].iter().all(u8::is_ascii_digit)
         && matches!(bytes[3], b'R' | b'F' | b'V' | b'G')
+    {
+        Some(value.into())
+    } else {
+        None
+    }
+}
+
+/// Report search includes APHIS registration classes beyond research, license,
+/// veterinary, and exhibitor classes used by the annual evidence alias. Keep
+/// this broader shape check local to the live report search: it must not
+/// silently expand annual-event identity matching elsewhere.
+fn aphis_report_search_certificate(value: &str) -> Option<String> {
+    let bytes = value.as_bytes();
+    if bytes.len() == 9
+        && bytes[2] == b'-'
+        && bytes[4] == b'-'
+        && bytes[..2].iter().all(u8::is_ascii_digit)
+        && bytes[5..].iter().all(u8::is_ascii_digit)
+        && bytes[3].is_ascii_uppercase()
     {
         Some(value.into())
     } else {
@@ -7171,12 +7190,14 @@ struct AphisContext {
 static APHIS_HTTP_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| reqwest::Client::new());
 static APHIS_CONTEXT_CACHE: Lazy<Mutex<Option<AphisContext>>> = Lazy::new(|| Mutex::new(None));
 const APHIS_CONTEXT_TTL_SECS: u64 = 4 * 3600;
-static APHIS_PUBLIC_REPORT_LINK_CACHE: Lazy<Mutex<HashMap<String, (Instant, Vec<Value>)>>> =
+static APHIS_PUBLIC_REPORT_LINK_CACHE: Lazy<Mutex<HashMap<String, (Instant, AphisPublicReportPage)>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 static APHIS_PUBLIC_REPORT_QUERY_LIMITER: Lazy<tokio::sync::Semaphore> =
     Lazy::new(|| tokio::sync::Semaphore::new(2));
 const APHIS_PUBLIC_REPORT_LINK_TTL_SECS: u64 = 300;
 const APHIS_PUBLIC_REPORT_PAGE_MAX: i64 = 100;
+const APHIS_PUBLIC_HISTORY_CURSOR_MARKER: &[u8; 4] = b"APH1";
+const APHIS_PUBLIC_HISTORY_MAX_PAGE: u32 = u16::MAX as u32;
 
 async fn bounded_aphis_response_bytes(
     mut response: reqwest::Response,
@@ -7276,7 +7297,7 @@ async fn get_or_refresh_aphis_context(force: bool) -> Result<(String, String), S
     Ok(result)
 }
 
-fn build_ar_message(cert_num: &str) -> Value {
+fn build_ar_message(cert_num: &str, index: i64, number_of_rows: i64) -> Value {
     json!({
         "actions": [{
             "id": "185;a",
@@ -7285,8 +7306,8 @@ fn build_ar_message(cert_num: &str) -> Value {
             "params": {
                 "searchCriteria": {
                     "certNumber": cert_num,
-                    "index": 0,
-                    "numberOfRows": 100,
+                    "index": index,
+                    "numberOfRows": number_of_rows,
                     "isARSearch": true
                 },
                 "parentId": null,
@@ -7299,7 +7320,7 @@ fn build_ar_message(cert_num: &str) -> Value {
     })
 }
 
-fn build_ir_message(cert_num: &str) -> Value {
+fn build_ir_message(cert_num: &str, index: i64, number_of_rows: i64) -> Value {
     json!({
         "actions": [{
             "id": "185;a",
@@ -7308,8 +7329,8 @@ fn build_ir_message(cert_num: &str) -> Value {
             "params": {
                 "searchCriteria": {
                     "certNumber": cert_num,
-                    "index": 0,
-                    "numberOfRows": 100
+                    "index": index,
+                    "numberOfRows": number_of_rows
                 },
                 "parentId": null,
                 "hasTeachableMoments": false,
@@ -7425,10 +7446,17 @@ fn safe_aphis_report_document_url(value: Option<&Value>) -> Option<String> {
     let official_host = matches!(host,
         "aphis.my.site.com" | "direct.aphis.usda.gov" | "www.aphis.usda.gov" | "efile.aphis.usda.gov" | "aphis.file.force.com");
     let salesforce_document = host == "aphis.file.force.com" && safe_aphis_salesforce_download(&url);
-    let official_path = ["/PublicSearchTool/", "/awa/", "/sites/", "/efile/"]
-        .iter().any(|prefix| url.path().starts_with(prefix))
+    let path = url.path();
+    let apis_report_detail = path.starts_with("/PublicSearchTool/s/annual-report/")
+        || path == "/PublicSearchTool/s/annual-report"
+        || path.starts_with("/PublicSearchTool/s/inspection-report/")
+        || path == "/PublicSearchTool/s/inspection-report";
+    let official_document_path = apis_report_detail
+        || (path.starts_with("/awa/") && path.to_ascii_lowercase().ends_with(".pdf"))
+        || (path.starts_with("/sites/") && path.to_ascii_lowercase().ends_with(".pdf"))
+        || (path.starts_with("/efile/") && path.to_ascii_lowercase().ends_with(".pdf"))
         || salesforce_document;
-    (url.scheme() == "https" && official_host && official_path
+    (url.scheme() == "https" && official_host && official_document_path
         && url.username().is_empty() && url.password().is_none() && url.port().is_none())
         .then(|| value.to_owned())
 }
@@ -7458,28 +7486,107 @@ fn aphis_public_link_row(value: &Value, kind: &str) -> Option<Value> {
 }
 
 fn aphis_public_link_for_approved_reference<'a>(
-    rows: &'a [Value], kind: &str, event_date: Option<&str>, event_period: Option<&str>,
+    rows: &'a [AphisPublicReportCandidate], kind: &str, event_date: Option<&str>, event_period: Option<&str>,
 ) -> Option<&'a Value> {
-    rows.iter().find(|row| {
+    rows.iter().find(|candidate| {
+        let row = &candidate.link;
         if kind == "annual_reports" {
             row.get("event_period").and_then(Value::as_str) == event_period
         } else {
             row.get("event_date").and_then(Value::as_str) == event_date
         }
+    }).map(|candidate| &candidate.link)
+}
+
+#[derive(Clone)]
+struct AphisPublicReportCandidate { link: Value }
+
+#[derive(Clone)]
+struct AphisPublicReportPage { candidates: Vec<AphisPublicReportCandidate>, has_more: bool }
+
+fn aphis_public_history_cursor(page_index: u32) -> uuid::Uuid {
+    let mut bytes = [0_u8; 16];
+    bytes[..4].copy_from_slice(APHIS_PUBLIC_HISTORY_CURSOR_MARKER);
+    bytes[4..6].copy_from_slice(&(page_index.min(APHIS_PUBLIC_HISTORY_MAX_PAGE) as u16).to_be_bytes());
+    bytes[6] = 0x40;
+    bytes[8] = 0x80;
+    uuid::Uuid::from_bytes(bytes)
+}
+
+fn aphis_public_history_cursor_page(cursor: uuid::Uuid) -> Option<u32> {
+    let bytes = cursor.as_bytes();
+    (&bytes[..4] == APHIS_PUBLIC_HISTORY_CURSOR_MARKER)
+        .then(|| u16::from_be_bytes(bytes[4..6].try_into().expect("fixed cursor width")) as u32)
+}
+
+fn aphis_public_history_reference_id(
+    release_id: &str, facility_id: uuid::Uuid, kind: &str, event_key: &str,
+) -> uuid::Uuid {
+    let digest = Sha256::digest(format!("aphis-public-history-v1\0{release_id}\0{facility_id}\0{kind}\0{event_key}").as_bytes());
+    let mut bytes = [0_u8; 16];
+    bytes.copy_from_slice(&digest[..16]);
+    bytes[6] = (bytes[6] & 0x0f) | 0x50;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    uuid::Uuid::from_bytes(bytes)
+}
+
+fn aphis_recovered_public_report_link(
+    row: &Value, kind: &str, release_id: &str, facility_id: uuid::Uuid,
+) -> Option<Value> {
+    let event = aphis_public_link_row(row, kind)?;
+    let has_document = event.get("report_url").is_some_and(|value| !value.is_null())
+        || event.get("column_e_url").is_some_and(|value| !value.is_null());
+    if !has_document { return None; }
+    let event_date = event.get("event_date").and_then(Value::as_str);
+    let event_period = event.get("event_period").and_then(Value::as_str);
+    let event_key = event_date.or(event_period)?;
+    let reference_id = aphis_public_history_reference_id(release_id, facility_id, kind, event_key);
+    let (source_id, source_url) = if kind == "annual_reports" {
+        ("us.aphis.annual-reports", APHIS_ANNUAL_REPORT_SOURCE_URL)
+    } else {
+        ("us.inspections", "https://direct.aphis.usda.gov/awa/search/inspection-reports")
+    };
+    Some(json!({
+        "reference_id":reference_id,"source_id":source_id,"evidence_type":kind,
+        "event_date":event_date,"event_period":event_period,"source_url":source_url,
+        "report_url":event.get("report_url").cloned().unwrap_or(Value::Null),
+        "column_e_url":event.get("column_e_url").cloned().unwrap_or(Value::Null),
+        "reference_origin":"source_history_recovery",
+        "match_method":"exact_release_source_identifier"
+    }))
+}
+
+fn aphis_approved_public_report_link(
+    reference_id: uuid::Uuid, kind: &str, event_date: Option<String>, event_period: Option<String>,
+    source: &[AphisPublicReportCandidate],
+) -> Value {
+    let found = aphis_public_link_for_approved_reference(source, kind, event_date.as_deref(), event_period.as_deref());
+    let (source_id, source_url) = if kind == "annual_reports" {
+        ("us.aphis.annual-reports", APHIS_ANNUAL_REPORT_SOURCE_URL)
+    } else {
+        ("us.inspections", "https://direct.aphis.usda.gov/awa/search/inspection-reports")
+    };
+    json!({
+        "reference_id":reference_id,"source_id":source_id,"evidence_type":kind,
+        "event_date":event_date,"event_period":event_period,"source_url":source_url,
+        "report_url":found.and_then(|row| row.get("report_url")).cloned().unwrap_or(Value::Null),
+        "column_e_url":found.and_then(|row| row.get("column_e_url")).cloned().unwrap_or(Value::Null),
+        "reference_origin":"release_approved_evidence",
+        "match_method":"exact_source_identifier"
     })
 }
 
 #[derive(Debug)]
 enum AphisPublicReportLinkError { Busy, Source }
 
-async fn aphis_public_report_links(certificate: &str, kind: &str) -> Result<Vec<Value>, AphisPublicReportLinkError> {
-    let digest = Sha256::digest(format!("{kind}\0{certificate}").as_bytes());
+async fn aphis_public_report_links(certificate: &str, kind: &str, index: i64, limit: i64) -> Result<AphisPublicReportPage, AphisPublicReportLinkError> {
+    let digest = Sha256::digest(format!("{kind}\0{certificate}\0{index}\0{limit}").as_bytes());
     let cache_key = format!("{kind}:{digest:x}");
     {
         let cache = APHIS_PUBLIC_REPORT_LINK_CACHE.lock().await;
-        if let Some((created, rows)) = cache.get(&cache_key) {
+        if let Some((created, page)) = cache.get(&cache_key) {
             if created.elapsed() < Duration::from_secs(APHIS_PUBLIC_REPORT_LINK_TTL_SECS) {
-                return Ok(rows.clone());
+                return Ok(page.clone());
             }
         }
     }
@@ -7487,7 +7594,7 @@ async fn aphis_public_report_links(certificate: &str, kind: &str) -> Result<Vec<
     let annual = kind == "annual_reports";
     let action = if annual { "doARSearch" } else { "doIRSearch_UI" };
     let page = if annual { "/PublicSearchTool/s/annual-reports" } else { "/PublicSearchTool/s/inspection-reports" };
-    let message = if annual { build_ar_message(certificate) } else { build_ir_message(certificate) };
+    let message = if annual { build_ar_message(certificate, index, limit) } else { build_ir_message(certificate, index, limit) };
     let (fwuid, loaded) = get_or_refresh_aphis_context(false).await.map_err(|_| AphisPublicReportLinkError::Source)?;
     let mut body = call_aphis_api(&fwuid, &loaded, message.clone(), action, page).await.map_err(|_| AphisPublicReportLinkError::Source)?;
     if body["actions"][0]["state"].as_str() != Some("SUCCESS") {
@@ -7496,16 +7603,24 @@ async fn aphis_public_report_links(certificate: &str, kind: &str) -> Result<Vec<
     }
     if body["actions"][0]["state"].as_str() != Some("SUCCESS") { return Err(AphisPublicReportLinkError::Source); }
     let results = body["actions"][0]["returnValue"]["results"].as_array().ok_or(AphisPublicReportLinkError::Source)?;
-    let rows = results.iter().take(APHIS_PUBLIC_REPORT_PAGE_MAX as usize)
-        .filter_map(|row| aphis_public_link_row(row, kind)).collect::<Vec<_>>();
+    let has_more = body["actions"][0]["returnValue"]["totalCount"].as_i64()
+        .map(|total| total > index.saturating_add(1).saturating_mul(limit))
+        .unwrap_or_else(|| results.len() as i64 == limit);
+    let candidates = results.iter().take(limit.max(0) as usize)
+        .filter_map(|row| aphis_public_link_row(row, kind)
+            .map(|link| AphisPublicReportCandidate { link }))
+        .collect::<Vec<_>>();
+    let page = AphisPublicReportPage { candidates, has_more };
     let mut cache = APHIS_PUBLIC_REPORT_LINK_CACHE.lock().await;
     if cache.len() >= 128 { cache.clear(); }
-    cache.insert(cache_key, (Instant::now(), rows.clone()));
-    Ok(rows)
+    cache.insert(cache_key, (Instant::now(), page.clone()));
+    Ok(page)
 }
 
-/// Resolve actual APHIS document links only for references already approved in
-/// the requested public release. Client supplied source identifiers are never accepted.
+/// Resolve release-approved references and recover additional historical
+/// document links from APHIS's public search, anchored to this eligible release
+/// facility. Recovered rows expose only dates, source lineage and allowlisted
+/// document URLs; report contents and source identifiers remain private.
 pub async fn get_v2_aphis_report_links_handler(
     State(state): State<ApiState>,
     Path(facility_id): Path<uuid::Uuid>,
@@ -7539,8 +7654,10 @@ pub async fn get_v2_aphis_report_links_handler(
         "SELECT r.release_id,r.ruleset_version,history.provenance_source_id,stored.public_detail::text FROM uec.releases r JOIN uec.public_discovery_read_models model ON model.release_id=r.release_id JOIN uec.release_manifests manifest ON manifest.release_id=r.release_id AND manifest.manifest_sha256=model.manifest_sha256 JOIN uec.public_discovery_api_read_model history ON history.release_id=r.release_id AND history.facility_id=$2 JOIN uec.public_discovery_read_model_rows stored ON stored.release_id=history.release_id AND stored.facility_id=history.facility_id AND stored.observation_id=history.observation_id LEFT JOIN uec.public_release_history old ON old.release_id=r.release_id AND old.profile=r.profile WHERE r.test_only IS NOT TRUE AND r.profile=$1 AND ($3::text IS NULL OR r.release_id=$3) AND (r.status='promoted' OR ($3::text IS NOT NULL AND old.release_id IS NOT NULL AND r.status='validated')) ORDER BY r.created_at DESC,r.release_id DESC LIMIT 1",
         &[&profile, &facility_id, &params.release_id],
     ).await;
-    let Ok(Some(release)) = release else {
-        return aphis_report_link_error(StatusCode::NOT_FOUND, "aphis_report_unavailable", "APHIS report references unavailable");
+    let release = match release {
+        Ok(Some(release)) => release,
+        Ok(None) => return aphis_report_link_error(StatusCode::NOT_FOUND, "aphis_report_unavailable", "APHIS report references unavailable"),
+        Err(_) => return aphis_report_link_error(StatusCode::SERVICE_UNAVAILABLE, "aphis_report_unavailable", "APHIS references are temporarily unavailable"),
     };
     let release_id: String = release.get(0);
     let ruleset: String = release.get(1);
@@ -7554,46 +7671,82 @@ pub async fn get_v2_aphis_report_links_handler(
     };
     let certificate = detail.get("establishment_id").and_then(Value::as_str)
         .and_then(|value| value.strip_prefix(APHIS_REGISTRATION_ESTABLISHMENT_PREFIX))
-        .and_then(aphis_registration_certificate_alias);
+        .and_then(aphis_report_search_certificate);
     let Some(certificate) = certificate else {
         return aphis_report_link_error(StatusCode::NOT_FOUND, "aphis_report_unavailable", "APHIS report references unavailable");
     };
-    let refs = transaction.query(
-        "SELECT evidence_ref_id,event_date::text,event_period FROM uec.graph_public_evidence_references_current WHERE release_id=$1 AND public_entity_id=$2 AND endpoint_source_id='us.aphis' AND evidence_type=$3 AND ($4::uuid IS NULL OR evidence_ref_id<$4) ORDER BY evidence_ref_id DESC LIMIT $5",
-        &[&release_id, &facility_id, &kind, &params.cursor, &(limit + 1)],
+    let history_page = params.cursor.and_then(aphis_public_history_cursor_page);
+    let approved_events = transaction.query(
+        "SELECT event_date::text,event_period FROM uec.graph_public_evidence_references_current WHERE release_id=$1 AND public_entity_id=$2 AND endpoint_source_id='us.aphis' AND evidence_type=$3",
+        &[&release_id, &facility_id, &kind],
     ).await;
-    let Ok(mut refs) = refs else {
+    let Ok(approved_events) = approved_events else {
         return aphis_report_link_error(StatusCode::SERVICE_UNAVAILABLE, "aphis_report_unavailable", "APHIS report references unavailable");
     };
-    let more = refs.len() > limit as usize;
-    if more { refs.truncate(limit as usize); }
-    let next_cursor = more.then(|| refs.last().map(|row| row.get::<_, uuid::Uuid>(0)) ).flatten();
+    let approved_event_keys: HashSet<String> = approved_events.into_iter().filter_map(|row| {
+        let date: Option<String> = row.get(0);
+        let period: Option<String> = row.get(1);
+        date.or(period)
+    }).collect();
+    let mut refs = if history_page.is_none() {
+        let cursor = params.cursor;
+        match transaction.query(
+            "SELECT evidence_ref_id,event_date::text,event_period FROM uec.graph_public_evidence_references_current WHERE release_id=$1 AND public_entity_id=$2 AND endpoint_source_id='us.aphis' AND evidence_type=$3 AND ($4::uuid IS NULL OR evidence_ref_id<$4) ORDER BY evidence_ref_id DESC LIMIT $5",
+            &[&release_id, &facility_id, &kind, &cursor, &(limit + 1)],
+        ).await {
+            Ok(rows) => rows,
+            Err(_) => return aphis_report_link_error(StatusCode::SERVICE_UNAVAILABLE, "aphis_report_unavailable", "APHIS report references unavailable"),
+        }
+    } else { Vec::new() };
+    let refs_more = refs.len() > limit as usize;
+    if refs_more { refs.truncate(limit as usize); }
+    let ref_next_cursor = refs_more.then(|| refs.last().map(|row| row.get::<_, uuid::Uuid>(0))).flatten();
     if transaction.commit().await.is_err() {
         return aphis_report_link_error(StatusCode::SERVICE_UNAVAILABLE, "aphis_report_unavailable", "APHIS report references unavailable");
     }
-    if refs.is_empty() {
-        return no_store_response(Json(json!({"api_version":"v2","data":[],"meta":{"release_id":release_id,"ruleset_version":ruleset,"profile":profile,"kind":kind,"limit":limit,"next_cursor":next_cursor,"public_projection":true}})).into_response());
-    }
-    let upstream = match aphis_public_report_links(&certificate, kind).await {
-        Ok(rows) => rows,
+    let page_index = i64::from(history_page.unwrap_or(0));
+    let lookup_limit = if history_page.is_none() && !refs.is_empty() { APHIS_PUBLIC_REPORT_PAGE_MAX } else { limit };
+    let upstream = match aphis_public_report_links(&certificate, kind, page_index, lookup_limit).await {
+        Ok(page) => page,
         Err(AphisPublicReportLinkError::Busy) => return aphis_report_link_error(StatusCode::SERVICE_UNAVAILABLE, "aphis_query_busy", "APHIS report links are busy; retry shortly"),
         Err(AphisPublicReportLinkError::Source) => return aphis_report_link_error(StatusCode::BAD_GATEWAY, "aphis_source_unavailable", "APHIS report links are temporarily unavailable"),
     };
-    let data: Vec<Value> = refs.into_iter().filter_map(|reference| {
+    let has_approved_refs = !refs.is_empty();
+    let mut data: Vec<Value> = refs.into_iter().map(|reference| {
         let reference_id: uuid::Uuid = reference.get(0);
         let event_date: Option<String> = reference.get(1);
         let event_period: Option<String> = reference.get(2);
-        let found = aphis_public_link_for_approved_reference(&upstream, kind, event_date.as_deref(), event_period.as_deref());
-        let (source_id, source_url) = if kind == "annual_reports" {
-            ("us.aphis.annual-reports", APHIS_ANNUAL_REPORT_SOURCE_URL)
-        } else { ("us.inspections", "https://direct.aphis.usda.gov/awa/search/inspection-reports") };
-        Some(json!({
-            "reference_id":reference_id,"source_id":source_id,"evidence_type":kind,
-            "event_date":event_date,"event_period":event_period,"source_url":source_url,
-            "report_url":found.and_then(|row| row.get("report_url")).cloned().unwrap_or(Value::Null),
-            "column_e_url":found.and_then(|row| row.get("column_e_url")).cloned().unwrap_or(Value::Null),
-        }))
+        aphis_approved_public_report_link(reference_id, kind, event_date, event_period, &upstream.candidates)
     }).collect();
+    if history_page.is_some() || !has_approved_refs {
+        for candidate in &upstream.candidates {
+            let row = &candidate.link;
+            let key = if kind == "annual_reports" { row.get("event_period") } else { row.get("event_date") }
+                .and_then(Value::as_str);
+            if key.is_some_and(|key| approved_event_keys.contains(key)) { continue; }
+            if let Some(recovered) = aphis_recovered_public_report_link(row, kind, &release_id, facility_id) {
+                data.push(recovered);
+            }
+        }
+    }
+    let history_available = upstream.has_more || upstream.candidates.iter().any(|candidate| {
+        let row = &candidate.link;
+        let key = if kind == "annual_reports" { row.get("event_period") } else { row.get("event_date") }
+            .and_then(Value::as_str);
+        !key.is_some_and(|key| approved_event_keys.contains(key))
+            && (row.get("report_url").is_some_and(|value| !value.is_null())
+                || row.get("column_e_url").is_some_and(|value| !value.is_null()))
+    });
+    let next_cursor = if refs_more {
+        ref_next_cursor
+    } else if history_page.is_none() && has_approved_refs && history_available {
+        Some(aphis_public_history_cursor(0))
+    } else if upstream.has_more {
+        page_index.checked_add(1)
+            .filter(|next_page| *next_page <= i64::from(APHIS_PUBLIC_HISTORY_MAX_PAGE))
+            .and_then(|next_page| u32::try_from(next_page).ok())
+            .map(aphis_public_history_cursor)
+    } else { None };
     no_store_response(Json(json!({"api_version":"v2","data":data,"meta":{"release_id":release_id,"ruleset_version":ruleset,"profile":profile,"kind":kind,"limit":limit,"next_cursor":next_cursor,"public_projection":true}})).into_response())
 }
 
@@ -7621,6 +7774,9 @@ mod aphis_public_report_link_tests {
             "http://aphis.my.site.com/PublicSearchTool/s/report",
             "https://aphis.my.site.com.evil.test/PublicSearchTool/s/report",
             "https://aphis.my.site.com/redirect/report",
+            "https://aphis.my.site.com/PublicSearchTool/s/annual-reports",
+            "https://aphis.my.site.com/PublicSearchTool/s/inspection-reports",
+            "https://direct.aphis.usda.gov/awa/research-facility-report/annual-summary",
             "https://user@aphis.my.site.com/PublicSearchTool/s/report",
             "https://example.force.com/sfc/dist/version/download/?asPdf=true&d=token&ids=068000000000000AAA&oid=00D000000000000",
             "https://aphis.file.force.com/sfc/servlet.shepherd/version/download/068000000000000AAA",
@@ -7654,13 +7810,49 @@ mod aphis_public_report_link_tests {
     #[test]
     fn source_result_only_matches_an_existing_release_year_or_date() {
         let rows = vec![
-            json!({"event_period":"2025","report_url":"https://aphis.my.site.com/PublicSearchTool/s/r"}),
-            json!({"event_date":"2025-02-03","report_url":"https://aphis.my.site.com/PublicSearchTool/s/i"}),
+            AphisPublicReportCandidate { link: json!({"event_period":"2025","report_url":"https://aphis.my.site.com/PublicSearchTool/s/annual-report?id=r"}) },
+            AphisPublicReportCandidate { link: json!({"event_date":"2025-02-03","report_url":"https://aphis.my.site.com/PublicSearchTool/s/inspection-report?id=i"}) },
         ];
-        assert_eq!(aphis_public_link_for_approved_reference(&rows, "annual_reports", None, Some("2025")), Some(&rows[0]));
+        assert_eq!(aphis_public_link_for_approved_reference(&rows, "annual_reports", None, Some("2025")), Some(&rows[0].link));
         assert_eq!(aphis_public_link_for_approved_reference(&rows, "annual_reports", None, Some("2024")), None);
-        assert_eq!(aphis_public_link_for_approved_reference(&rows, "inspections", Some("2025-02-03"), None), Some(&rows[1]));
+        assert_eq!(aphis_public_link_for_approved_reference(&rows, "inspections", Some("2025-02-03"), None), Some(&rows[1].link));
         assert_eq!(aphis_public_link_for_approved_reference(&rows, "inspections", Some("2025-02-04"), None), None);
+    }
+
+    #[test]
+    fn report_search_certificate_shape_is_broader_than_annual_evidence_alias() {
+        let registration = "12-T-3456";
+        assert_eq!(aphis_registration_certificate_alias(registration), None);
+        assert_eq!(aphis_report_search_certificate(registration), Some(registration.into()));
+        assert_eq!(aphis_report_search_certificate("12-t-3456"), None);
+        assert_eq!(aphis_report_search_certificate("12-T-34567"), None);
+    }
+
+    #[test]
+    fn historical_recovery_is_exact_release_lineage_and_contains_only_actual_safe_documents() {
+        let source = json!({
+            "year":"2024", "reportLink":"https://aphis.my.site.com/PublicSearchTool/s/annual-report?id=opaque",
+            "columnELink":"https://www.aphis.usda.gov/sites/default/files/column-e.pdf",
+            "Account Name":"not returned", "Address":"not returned", "dogs":99
+        });
+        let facility = uuid::Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
+        let recovered = aphis_recovered_public_report_link(&source, "annual_reports", "release-2026-10-18", facility).unwrap();
+        assert_eq!(recovered["event_period"], "2024");
+        assert_eq!(recovered["reference_origin"], "source_history_recovery");
+        assert_eq!(recovered["match_method"], "exact_release_source_identifier");
+        assert!(recovered["reference_id"].as_str().is_some());
+        assert!(recovered.get("Account Name").is_none());
+        assert!(aphis_recovered_public_report_link(&json!({"year":"2024"}), "annual_reports", "release-2026-10-18", facility).is_none());
+        assert_eq!(aphis_public_history_cursor_page(aphis_public_history_cursor(100)), Some(100));
+        assert_eq!(aphis_public_history_cursor(100).get_version_num(), 4);
+        assert_eq!(aphis_public_history_cursor_page(uuid::Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap()), None);
+    }
+
+    #[test]
+    fn report_search_message_carries_bounded_history_page_index() {
+        let message = build_ar_message("12-R-3456", 40, 20);
+        assert_eq!(message["actions"][0]["params"]["searchCriteria"]["index"], 40);
+        assert_eq!(message["actions"][0]["params"]["searchCriteria"]["numberOfRows"], 20);
     }
 
     #[test]
@@ -7668,9 +7860,12 @@ mod aphis_public_report_link_tests {
         let source = include_str!("lib.rs");
         let handler = source.split("pub async fn get_v2_aphis_report_links_handler").nth(1).unwrap();
         let live_gate = handler.find("graph_public_evidence_references_current").unwrap();
-        let resolver_cache = handler.find("aphis_public_report_links(&certificate, kind)").unwrap();
+        let resolver_cache = handler.find("aphis_public_report_links(&certificate, kind").unwrap();
         assert!(live_gate < resolver_cache);
         assert!(handler.contains("provenance_source_id"));
+        assert!(handler.contains("exact_release_source_identifier"));
+        assert!(handler.contains("aphis_approved_public_report_link"));
+        assert!(source.contains("reference_origin\":\"release_approved_evidence\""));
         assert!(!handler.contains("Query<AphisQueryParams>"));
     }
 
@@ -7701,9 +7896,9 @@ pub async fn get_aphis_query_handler(Query(params): Query<AphisQueryParams>) -> 
         "/PublicSearchTool/s/inspection-reports"
     };
     let message = if is_annual {
-        build_ar_message(&params.cert)
+        build_ar_message(&params.cert, 0, APHIS_PUBLIC_REPORT_PAGE_MAX)
     } else {
-        build_ir_message(&params.cert)
+        build_ir_message(&params.cert, 0, APHIS_PUBLIC_REPORT_PAGE_MAX)
     };
 
     let (fwuid, loaded) = match get_or_refresh_aphis_context(false).await {

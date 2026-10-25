@@ -18,7 +18,8 @@ const aphisDocumentUrl = z.string().url().refine(value => {
       && !url.hash;
     return url.protocol === 'https:'
       && (['aphis.my.site.com', 'direct.aphis.usda.gov', 'www.aphis.usda.gov', 'efile.aphis.usda.gov'].includes(url.hostname)
-        && ['/PublicSearchTool/', '/awa/', '/sites/', '/efile/'].some(prefix => url.pathname.startsWith(prefix))
+        && (['/PublicSearchTool/s/annual-report', '/PublicSearchTool/s/inspection-report'].some(path => url.pathname === path || url.pathname.startsWith(path + '/'))
+          || ['/awa/', '/sites/', '/efile/'].some(prefix => url.pathname.startsWith(prefix) && url.pathname.toLowerCase().endsWith('.pdf')))
         || salesforceDocument)
       && !url.username && !url.password && !url.port;
   } catch { return false; }
@@ -131,6 +132,8 @@ export const aphisReportLinkSchema = z.discriminatedUnion('evidence_type', [
     source_url: z.literal('https://direct.aphis.usda.gov/awa/research-facility-report/annual-summary'),
     report_url: aphisDocumentUrl,
     column_e_url: aphisDocumentUrl,
+    reference_origin: z.enum(['release_approved_evidence', 'source_history_recovery']),
+    match_method: z.enum(['exact_source_identifier', 'exact_release_source_identifier']),
   }).strict(),
   z.object({
     reference_id: uuid,
@@ -141,8 +144,18 @@ export const aphisReportLinkSchema = z.discriminatedUnion('evidence_type', [
     source_url: z.literal('https://direct.aphis.usda.gov/awa/search/inspection-reports'),
     report_url: aphisDocumentUrl,
     column_e_url: z.null(),
+    reference_origin: z.enum(['release_approved_evidence', 'source_history_recovery']),
+    match_method: z.enum(['exact_source_identifier', 'exact_release_source_identifier']),
   }).strict(),
-]);
+]).superRefine((reference, ctx) => {
+  const recovered = reference.reference_origin === 'source_history_recovery';
+  if (recovered !== (reference.match_method === 'exact_release_source_identifier')) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'APHIS report origin and match method must agree.' });
+  }
+  if (recovered && reference.report_url === null && reference.column_e_url === null) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Recovered history rows must contain an actual APHIS document URL.' });
+  }
+});
 
 export const aphisReportLinksEnvelopeSchema = z.object({
   api_version: z.literal('v2'),
