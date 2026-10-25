@@ -38,7 +38,7 @@ test('direct links retain native keyboard and browser navigation', async ({ page
   const popupPromise = context.waitForEvent('page');
   await database.click({ modifiers: ['Control'] });
   const popup = await popupPromise;
-  await popup.waitForLoadState();
+  await popup.waitForLoadState('domcontentloaded');
   await expect(popup.getByRole('heading', { name: 'Browse records', exact: true })).toBeVisible();
   await popup.close();
 });
