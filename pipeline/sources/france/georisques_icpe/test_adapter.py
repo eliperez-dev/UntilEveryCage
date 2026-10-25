@@ -77,6 +77,7 @@ class GeorisquesIcpeAnimalTests(unittest.TestCase):
         self.assertEqual(first["capacity_indicators_source"]["bovins"], "500")
         self.assertEqual(first["coordinates"]["jurisdiction_extent"], "metropolitan-france")
         self.assertEqual(first["coordinates"]["coordinate_reference_system"], "EPSG:4326")
+        self.assertEqual(first["coordinates"]["precision"], "source-provided-unspecified")
         self.assertEqual(first["coordinates"]["source_coordinate_reference_system"], "EPSG:2154")
         self.assertTrue(first["in_default_map_scope"])
         self.assertEqual(first_record["source_values"]["coordonneeXAIOT"], 652469.0)

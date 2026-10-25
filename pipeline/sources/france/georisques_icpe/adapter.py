@@ -157,6 +157,7 @@ class GeorisquesIcpeAnimalAdapter:
         return ({
             "longitude": lon,
             "latitude": lat,
+            "precision": "source-provided-unspecified",
             "coordinate_reference_system": "EPSG:4326",
             "source_coordinate_reference_system": code,
             "source_coordinate_x": raw.get("coordonneeXAIOT"),

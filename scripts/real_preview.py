@@ -1703,7 +1703,7 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
                                                 "source_provided_unspecified": import_result.get("source_provided_coordinate_group_count"),
                                                 "exact": 0, "city_or_postal_only": import_result.get("city_postal_count"),
                                                 "unmapped": import_result.get("unmapped_map_candidate_count")},
-            "location_policy": "Native source longitude/latitude are retained privately as unmapped observations; coordinate CRS is not independently verified. No geocoding or public projection.",
+            "location_policy": "Private map points use only AIOT X/Y transformed from the row's declared systemeCoordonneesAIOT to EPSG:4326 via a best-available non-ballpark operation; transform accuracy is retained per point, while original source-coordinate precision remains unspecified. API longitude/latitude is corroboration only. Missing/invalid pairs and points outside configured French extents remain unmapped. No geocoding or public projection; publication, privacy, factual, attribution, and release gates remain separate.",
             "animal_rubric_filter_only": True,
             "publication_state": "private-only; not public-release-ready",
         })
