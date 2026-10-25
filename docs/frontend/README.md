@@ -40,7 +40,9 @@ API schemas own supported fields. They are not additional roadmaps.
   Existing informational/download routes remain compatible aliases.
 - Search map and Map View use the same viewport-edge spacing, surfaces, borders
   and typography. On mobile they share one equal-half horizontal row with
-  matching heights; do not stack or overlap them.
+  matching 64px heights and 44px map-control touch targets; do not stack or
+  overlap them. Hide the mouse-only gesture hint on narrow/mobile screens,
+  retaining accessible touch/camera help.
 - Resize applicable panels by dragging edges, not plus/minus width buttons.
   Do not change panel layout without the maintainer's specific approval.
 
@@ -60,7 +62,7 @@ API schemas own supported fields. They are not additional roadmaps.
   (250-metre radius), not a fixed-pixel circle or invented confidence interval.
   Use supported source extent where available. No permanent approximation legend.
 - Street/Satellite selector and adjacent 2D/3D toggle form one compact Map View.
-  Directly below: `Right-mouse to rotate / Left-mouse to pan`.
+  On desktop, directly below: `Right-mouse to rotate / Left-mouse to pan`.
   No separate hint banner or white MapLibre compass/pitch control on the main map.
 - Native terrain is lazy, true-scale and has a usable flat fallback.
   Keep provider attribution; changing style/camera must not rebuild facility data.

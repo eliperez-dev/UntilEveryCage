@@ -29,6 +29,12 @@ baseline with `python scripts/dev.py baseline` before writes. Its public-release
 counts are not the totals in private staging tables. Report a rejected or blocked action promptly; inspect
 the target read-only rather than silently switching destinations.
 
+For large retained source runs on this Windows host, set the existing
+`UEC_REAL_PREVIEW_RUNS_ROOT` to a task-owned directory on D: before running
+`scripts/real_preview.py refresh`. This keeps acquisition and intermediate
+handoffs out of each worktree's default `target/real-preview/runs` cache.
+Preserve and verify unique evidence before removing a completed worktree.
+
 Agents work from the agreed base commit in isolated worktrees/branches. They
 commit only their owned changes, report the commit and changed paths, and never
 push or integrate another agent's branch. The coordinator reviews each result

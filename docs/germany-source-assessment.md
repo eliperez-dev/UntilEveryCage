@@ -1,8 +1,9 @@
 # Germany BLtU source assessment
 
-Status: automated reacquisition and publication paused pending a human terms decision. This document records
-source evidence and risks; it is not legal advice, legal clearance, project approval,
-or publication authorization.
+This document owns source research and field interpretation. Current counts and
+readiness live only in [source-status.json](source-status.json). Private retrieval
+and processing have a scoped [terms record](../pipeline/sources/germany/terms-review.json);
+public redistribution rights remain unresolved.
 
 ## Source identity and scope
 
@@ -28,7 +29,8 @@ CSV; V2 must not reuse those behaviors without a reviewed, deterministic replace
 
 The official pages located for this assessment document public access and export, but
 do not present a clear license or redistribution grant for the establishment-record
-export. Therefore acquisition is **blocked pending human confirmation** of:
+export. The private acquisition authorization does not settle source permissions
+or public redistribution. Establish:
 
 1. whether automated retrieval is permitted, including rate/frequency limits;
 2. whether local research retention of the raw export is permitted;
@@ -37,15 +39,9 @@ export. Therefore acquisition is **blocked pending human confirmation** of:
 4. required attribution, notices, update/deletion obligations, and any restrictions
    on address, approval-number, or activity/species fields.
 
-This is a terms uncertainty, not a claim that the source prohibits use. A current
-real BLtU general-list export was captured on 2026-09-17 through the ordinary
-public browser flow as a restricted local research artifact and staged privately
-(15,788 input rows; 2,691 normalized; 13,097 quarantined). The row-free capture
-sidecar records the stable landing route, session navigation steps, export route,
-response headers, byte size, and SHA-256. It is not a repository fixture, release
-candidate, API source, map layer, export, or publication. That retrieval does not
-establish permission for recurring acquisition, retention, or redistribution; those
-decisions remain open.
+This is a terms uncertainty, not a claim that the source prohibits use. Retain the
+stable landing route, session navigation, exact private export URL, response
+metadata, bytes and checksum. Acquisition is not publication authorization.
 Privacy/safety review is separately required because facility addresses can overlap
 with residences or identify individuals; source origin does not resolve that risk.
 
@@ -63,21 +59,24 @@ which remains unknown.
 
 The first parser pass matched the captured 50-column schema but quarantined rows
 for activity flags outside its narrow SH/CP mapping. An aggregate audit found
-13,078 such cases. The adapter now retains all activity flags with their source
+otherwise valid rows among those exclusions. The adapter now retains all flags with their source
 column positions and values, carries the native street field privately, and
-quarantines unknown taxonomy as an unresolved classification state rather than
-discarding structurally valid observations. Reparse totals are 15,775 input,
-15,755 normalized and 20 quarantined; 11 column-count anomalies and 9 malformed
-CSV rows remain. SH and CP are the only mapped broad categories; other source
+marks unknown taxonomy as unresolved rather than
+discarding structurally valid observations. Column-count anomalies and malformed
+CSV rows remain quarantined. SH and CP are the only mapped broad categories; other source
 flags remain native/unresolved. Coordinates are unknown and geocoding is disabled.
-This remains private staging, not importer/API/map E2E. Redistribution terms and
-privacy review remain unresolved; no public rows are authorized.
+The shared private importer and authenticated list/detail routes retain the
+normalized evidence. Authenticated detail can return the source business address;
+collection/map routes and public releases do not gain address access from this work.
+The source inventory distinguishes import acceptance from actual map readiness.
 
 The shared refresh runner has also completed this live acquisition into a private
 candidate handoff. Local provider-neutral address staging is distinct from public
 release review: the source's `pending-review` privacy label is retained unchanged
 and does not alone withhold a business address from the local queue. Only explicit
 source address restrictions/withheld or known-residential evidence is excluded.
+An address-queue entry requires a nonempty source street address; city/country-only
+queries are counted separately rather than treated as street addresses.
 No source coordinates were supplied. Germany has no enabled private Geoapify
 source profile, so queue entries remain pending provider configuration; no durable
 provider jobs or external provider calls were created. This is not a claim that
@@ -93,24 +92,30 @@ by BLtU without dataset-specific evidence.
 
 ## Private/test-only implementation
 
-[`pipeline/sources/germany/`](../pipeline/sources/germany/) now provides a typed BLtU adapter and assisted refresh. Use the stable landing page to select the current CSV export, save it in private ignored storage, and run:
+[`pipeline/sources/germany/`](../pipeline/sources/germany/) provides the bounded
+public-session downloader, typed BLtU adapter and shared private import bridge:
 
 ```text
-python -m pipeline.sources.germany.refresh --raw <private/bltu-export.csv> --acquisition-metadata <private/capture-metadata.json> --run-dir <private/run> --retrieved-at-utc 2026-09-17T20:26:41Z
+python scripts/real_preview.py refresh --source de.locations
 ```
 
-The adapter preserves repeated activity columns, current/legacy approval-number provenance, and malformed source rows, quarantines schema/identity/unmapped-code anomalies, emits shared QA and health evidence, and produces only a private candidate handoff. The 2026-09-17 run matched the live 50-column cp1252 schema; eight malformed CSV rows and 13,084 unmapped activity rows were quarantined. Address and coordinate values remain private and geocoding is disabled. Candidate import, if used, must target the disposable database guard and remains test-only; no public release is created.
+Use the assigned disposable database and existing runtime configuration, not a
+serving or frozen database. Preserved captures can also be parsed with the
+source-owned `--raw` and `--acquisition-metadata` arguments. The adapter preserves
+repeated activity columns, current/legacy approval-number provenance and malformed
+rows. Unknown classifications are retained, not silently discarded. Queue artifacts
+are private; an external provider and durable provider jobs are separate stages.
 
-## Planned recurring acquisition after approval
+## Repeated acquisition
 
-Once the named human reviewer records a positive terms decision, an automated runner
-may retrieve a current export into ignored raw storage and record URL, retrieval
+The source-owned scoped terms record permits the private runner to retrieve a
+current export into ignored raw storage and record URL, retrieval
 timestamp, HTTP/content metadata, effective/publication date, byte size, SHA-256,
 adapter/config versions, and source snapshot identity. It must then run only through
 private parse/normalize/validate/quarantine staging. Unknown classifications,
 unresolved coordinates, suspicious identity changes, and source disappearance must
-remain explicit review outcomes. No geocoding, release promotion, API ingestion, or
-publication is implied by acquisition approval.
+remain explicit review outcomes. The shared command can import private candidates;
+geocoding, release promotion and publication are not implied by acquisition approval.
 
 ## Unresolved inquiry questions
 
