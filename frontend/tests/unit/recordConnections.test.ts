@@ -41,4 +41,15 @@ describe('public record connections', () => {
     expect(aphisReports).not.toContain('publication gates');
     expect(aphisReports).not.toContain('No APHIS evidence references are approved');
   });
+
+  it('offers explicit annual and inspection fetches and prevents duplicate or stale requests', () => {
+    expect(aphisReports).toContain("'Fetch annual reports' : 'Fetch inspection reports'");
+    expect(aphisReports).toContain('if (loading) return;');
+    expect(aphisReports).toContain('if (selected === kind && !next && !error && fetched) return;');
+    expect(aphisReports).toContain('const queryKey = $derived(`${facilityId}\\u0000${releaseId}\\u0000${profile}`)');
+    expect(aphisReports).toContain('request !== version');
+    expect(aphisReports).toContain('page.releaseId !== releaseId');
+    expect(aphisReports).toContain('onclick={() => void load(selected!, retryCursor ?? undefined)}');
+    expect(aphisReports).toContain('fetched = false;');
+  });
 });

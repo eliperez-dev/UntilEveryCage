@@ -47,6 +47,14 @@ describe('private preview record detail surface', () => {
     expect(component).toContain("'sourceRecordId' in record ? record.sourceRecordId : null");
   });
 
+  it('shows a compact copy action in public map previews and keeps the selected release in its URL', () => {
+    expect(component).toContain("presentation === 'page' || (presentation === 'rail' && publicRelease)");
+    expect(component).toContain("profile: 'official', ...(publicReleaseId ? { releaseId: publicReleaseId } : {})");
+    expect(component).toContain('class="share"');
+    expect(component).toContain('Copy facility link');
+    expect(component).toContain('min-height: 1.75rem');
+  });
+
   it('keeps connections scoped to an active public release', () => {
     expect(component).toContain('publicRelease && publicReleaseId && id');
     expect(component).toContain('<RecordConnections facilityId={id} releaseId={publicReleaseId} sourceId={sourceId ?? undefined} sourceFacts={sourceFacts} />');

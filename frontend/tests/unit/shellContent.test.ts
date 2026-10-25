@@ -51,6 +51,16 @@ describe('normal shell content', () => {
     expect(contributions).not.toContain('Lost receipts cannot be recovered');
   });
 
+  it('loads published community browsing independently of intake and stops retrying after one failed lookup', () => {
+    expect(contributions).toContain("page !== 'claims' && page !== 'claim-detail'");
+    expect(contributions).toContain("page === 'claims' && !claimsAttempted && !claims && !busy");
+    expect(contributions).toContain('claimsAttempted = true');
+    expect(contributions).toContain("communityRelease.trim() || releaseId.trim() || await repository.currentCommunityReleaseId()");
+    expect(contributions).toContain('Published community submissions could not be loaded. There may be no active community release.');
+    expect(contributions).toContain('No privacy-screened submissions are published in the current community release.');
+    expect(contributions).not.toContain('Open community profile');
+  });
+
   it('does not render an empty speculative connections block', () => {
     expect(field).not.toContain('private-preview relationship projection');
     expect(field).not.toContain('EVIDENCE CONNECTIONS');

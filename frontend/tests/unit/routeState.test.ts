@@ -49,6 +49,18 @@ describe('routeState', () => {
     expect(serializeRoute({ kind: 'community', page: 'form', formKind: 'evidence', targetRecordId: 'synthetic-record' })).toBe('#/contribute/evidence?target=synthetic-record');
   });
 
+  it('keeps all five contribution task routes addressable', () => {
+    const paths = [
+      ['facility', 'facility'], ['evidence', 'evidence'], ['correction', 'correction'],
+      ['duplicate', 'duplicate'], ['privacy_removal', 'privacy-removal'],
+    ] as const;
+    for (const [formKind, path] of paths) {
+      const route = { kind: 'community', page: 'form', formKind } as const;
+      expect(parseRoute(`#/contribute/${path}`)).toEqual(route);
+      expect(serializeRoute(route)).toBe(`#/contribute/${path}`);
+    }
+  });
+
   it('round-trips all selector types with record and map context, retaining old aliases', () => {
     for (const formKind of ['facility', 'evidence', 'correction', 'duplicate', 'privacy_removal', 'bug'] as const) {
       const route = { kind: 'contribute' as const, formKind, targetRecordId: 'synthetic-record', returnMapHref: '#/map?f1a=field' };
