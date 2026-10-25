@@ -36,6 +36,61 @@ verified acquisition-to-database pipeline and eligible plotted records, not
 registration or adapter tests alone. None of these new gates is claimed
 complete by the previously deployed graph/terrain work below.
 
+## Current product state
+
+This section and the current launch checklist below override older status
+snapshots retained later in this document. Do not reopen completed release
+approvals or implementation tasks solely because an old checkpoint says
+"private", "blocked", "not started" or "implementation deferred".
+
+The latest verified application revision is `04b7adb3` on `eli/v2`, deployed
+to the existing Render service after [all seven CI jobs passed](https://github.com/eliperez-dev/UntilEveryCage/actions/runs/40150638848).
+Live acceptance verified the current `release-2026-10-18` dataset: 69,220
+records and 53,107 mapped locations. Historical v0 remains available with
+63,421 records and 48,576 mapped locations after current restrictions.
+Complete CSVs, bounded exports, the known 38-edge graph case, all five
+contribution forms, database filters and map cold loading were checked.
+Exact aggregate evidence and cleanup are in ignored
+`data/staging/launch-20261024/acceptance.json`.
+
+Sprint 2 is approved and in progress: restore the maintainer's manifesto,
+compact six-link navigation, separate FAQ and V1-style footer; restore the
+18-category right-side estimate counter; correct map dismissal/return camera
+state and place the gesture hint below the view controls. Application version
+`2.0.0` must come from the Rust crate version, with no separate frontend version
+constant. These are current assignments, not completed deployment claims.
+
+<a id="roadmap"></a>
+
+## Launch gates
+
+| Remaining work | Current state | Completion evidence |
+| --- | --- | --- |
+| Sprint 2 fidelity and behaviour | In progress | Integrated UI/route/version tests, real-release browser acceptance, CI and exact Render rollout. |
+| Persistent cluster index | Not started | Reuse the built index across reloads with release/profile/manifest/restriction invalidation; caching the point feed alone does not qualify. |
+| Languages | Not started | Spanish first, then German, French, Italian, Dutch and Danish through the same complete language system; source evidence is not rewritten. |
+| France, Spain, Germany and Mexico map coverage | In progress at source-specific stages | Verified acquisition-to-database pipeline, usable source/geocoded locations and actual map membership. The source inventory owns each source's facts, counts and blockers. |
+| New default dated dataset | Not started | Prepare and verify a new release including the added eligible country cohorts; retain existing historical releases and current restrictions. The maintainer permits a new dataset to become the launch default; no date or new membership is invented here. |
+| Final public cutover | Not started | Maintainer UI/data acceptance, verified production recovery/monitoring and contribution/moderation operation, domain/canonical/redirect checks and a tested rollback route. |
+
+FY2024 APHIS annual-report recovery is a bounded follow-up in the data-coverage
+work. FY2025 capture and working report controls are not a complete archive.
+Reconcile original source documents/identifiers rather than copying legacy V1
+rows into a published release without their evidence. Earlier-year and full
+inspection history remain source-specific coverage questions.
+
+The current application/data release distinction is permanent: Cargo package
+semver identifies the application; dataset releases use dates. The existing
+public releases do not require another generic approval stamp. New source
+cohorts must still pass their actual source/release checks.
+
+## Historical implementation and verification checkpoints
+
+The following checkpoints record what was implemented or known at their
+respective dates. They are evidence, not the current launch checklist. Where
+they conflict with a later verified rollout or maintainer decision, the current
+state and checklist above take precedence.
+
 **Launch repairs, local implementation checkpoint:** the consolidated shell has
 five direct destinations, a single About page, and one API/data-access page
 with release-aware complete CSV downloads and paginated JSON. Old informational
@@ -992,7 +1047,11 @@ Do not infer a green product or publication state from passing tests. Acquisitio
 import, review, geocoding, approval, promotion, and publication are separate
 states and must be reported separately.
 
-## Current product state
+## Historical early product-state snapshot
+
+This table predates the approved and hosted releases. Its pending approvals,
+private-only frontend and missing-ledger statements are superseded by the
+current product state and later verified checkpoints above.
 
 | Workstream | Status | Current truth | Next action |
 | --- | --- | --- | --- |
@@ -1045,11 +1104,12 @@ until publication is explicitly verified. Suppression and removal can interrupt
 the chain at any stage and also apply to older releases, caches, exports,
 reimports, and restores.
 
-## Launch gates
+## Historical early launch-gate snapshot
 
-All gates below must be green for a controlled V2 public cutover. “Green” means
-the linked evidence exists and the relevant human decision is recorded where
-required.
+This is the early pre-publication checklist, retained for its evidence links.
+It is not an active list of outstanding gates; use the current Launch gates
+section above. Existing approvals and implemented restriction/serving controls
+must not be treated as missing because of this historical snapshot.
 
 | Gate | Status | Evidence | Next action |
 | --- | --- | --- | --- |
@@ -1065,7 +1125,7 @@ required.
 | Authorized release approval | Blocked: human review | [reviewed demonstration release](reviewed-demonstration-release.md), [ETHICS.md](ETHICS.md) | Name the release/profile, record approval, and verify every public projection. |
 | Public cutover and rollback | Not started | [V1/V2 reconciliation](architecture/v1-v2-reconciliation.md) | Run private E2E, parallel comparison, cutover rehearsal, then obtain explicit launch approval. |
 
-## Roadmap
+## Historical delivery checkpoints
 
 ### C1 — Repository clarity and canonical readiness
 
@@ -1545,6 +1605,8 @@ QA database used for a negative restriction test must never become an export
 source.
 
 ### Production V2 frontend
+
+Historical plan below; superseded by the hosted frontend and current checklist.
 
 **Status: Launchpad and design specification complete; implementation deferred.**
 E1 provides a one-command local stack, deterministic representative and scale

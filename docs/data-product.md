@@ -43,4 +43,12 @@ The Python contract also exposes `verify_package(Path(...))` for local verificat
 
 The stable public contract is the versioned `data_product_version` plus `schema_version`. Additive nullable fields may be added in a minor contract revision. Existing field meanings, identifiers, profile names, and coordinate safety rules are not changed silently. A breaking field/type/meaning change requires a new schema version and a documented migration note; old packages remain labeled rather than rewritten. Deprecated fields remain for one documented release cycle where safe, then are removed only in a new major schema version. Release IDs and artifact bytes are immutable; a correction creates a new release and records `supersedes`.
 
-The API remains a bounded convenience surface (`GET /api/v2/locations.csv`, maximum 1,000 rows). Reproducible bulk distribution uses the CLI package above. API and package consumers must treat `(profile, release_id, schema_version, query)` as the snapshot key and must not infer omitted rows as suppressed, closed, or absent from the underlying story.
+`GET /api/v2/locations.csv` exports the complete selected eligible public
+release/profile by default. An explicit `limit=1..1000` requests a bounded
+sample; total/returned/truncated headers distinguish it from the complete
+download. JSON location queries remain paginated for interactive/API use.
+The CLI package above adds the reproducibility sidecars and alternate formats;
+the CSV endpoint alone is not that package. API and package consumers must
+treat `(profile, release_id, schema_version, query)` as the snapshot key and
+must not infer omitted rows as suppressed, closed or absent from the underlying
+story. Current restrictions apply to full downloads and historical releases.

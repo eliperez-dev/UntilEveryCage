@@ -87,6 +87,12 @@ reduced-motion path. No bouncing markers, animated map totals, or attention puls
 The maintainer-approved About-page animal-death estimate is a separate,
 source-dated model: keep its scope and calculation accessible, and do not
 announce each numeric update to assistive technology or imply live telemetry.
+The latest revision restores V1's 18-category right-side counter at roughly
+30 visible updates per second, calculated from elapsed time and isolated from
+the map/application render loop. Respect reduced motion and hidden-tab
+behaviour without distorting elapsed totals. Source/date details stay compact;
+do not substitute the selected land-animal-only catalog for broader categories
+or combine overlapping estimates into an unsupported total.
 Focus rings are visible and high contrast. Hover can enrich a row, but never
 reveals the only source, confidence, or action.
 

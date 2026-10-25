@@ -41,16 +41,26 @@ they are not a separate social network or a claim of universal identity.
 
 The product principle is **quiet on first contact, powerful when investigated**.
 
-The maintainer's 2026-10-24 navigation revision uses five direct destinations:
-`Map, Database, API | Contribute, About`. Tools retains release selection.
+The maintainer's latest 2026-10-24 navigation revision uses six direct destinations:
+`Map, Database, API | Contribute, About, FAQ`. Keep all six links in one compact
+group with a fixed separator; do not spread the two groups across the header.
+Tools retains release selection and map diagnostics.
 Contribute opens Add a facility by default, with visible task links to switch
 the form, plus submission tracking, community browsing and project/support links.
 Only offer community browsing when a published community release is available;
 submission intake is a separate capability. Database opens Browse records.
 API combines full-release CSV downloads, paginated JSON, release IDs and the
-self-hosted Swagger explorer. About combines the project manifesto, sources
-and methods, help, and common questions in one page. Old informational and
-download routes remain compatible aliases. Data access requires a published
+self-hosted Swagger explorer. About restores the maintainer's supplied V1
+manifesto with an 18-category estimate counter in a right-hand desktop column,
+stacked on mobile. Its modeled visible updates run around 30 times per second
+using elapsed time; category rates and dates remain inspectable, with no claim
+of live measurements or counts at mapped facilities. FAQ is a separate short
+page for technology/architecture, contribution questions, and help/support.
+Do not retain a duplicate Common questions section on About. Restore the
+V1-style contact/support/credits footer, but not its obsolete version or
+country-coverage claims. Application semver comes from the backend's Rust
+crate version; dataset release dates remain independent.
+Old informational and download routes remain compatible aliases. Data access requires a published
 release, independently of the local preview or submission pilot.
 These links must appear
 consistently in the public shell and local preview; following them must preserve
@@ -58,6 +68,10 @@ the selected preview context. Private submission forms use ordinary language;
 publication warnings belong on public unreviewed community results. Contribute
 is a direct header link. Keep the primary links compact on desktop and touch
 screens without duplicating the consolidated pages in hover menus.
+Gesture guidance belongs below the map-view controls, not beside them. Closing
+a focused facility preserves the current camera; X, Escape, browser Back and
+direct-selected URLs must agree. Map/Database links preserve only allowlisted
+camera, style and release context, not raw search or arbitrary query strings.
 State that the code is open source and provide an
 explicit GitHub path for code contributions on Overview and Contribute. Use
 the same styled masthead on all pages. Informational pages use compact type,
