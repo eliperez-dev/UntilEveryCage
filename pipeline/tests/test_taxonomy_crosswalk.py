@@ -61,6 +61,27 @@ class TaxonomyCrosswalkTests(unittest.TestCase):
         self.assertEqual(cfia["taxonomy_mapping_method"], "direct")
         self.assertEqual(cfia["taxonomy_display_category"], "slaughter")
 
+    def test_germany_bltu_activity_codes_are_source_bound_and_unknowns_stay_partial(self):
+        mapped = project_observation({"source_id": "de.locations", "normalized": {
+            "activity_codes": ["SH", "CP", "GHE"]}})
+        self.assertEqual(mapped["taxonomy_mapping_method"], "direct")
+        self.assertEqual(mapped["taxonomy_mapping_status"], "mapped")
+        self.assertEqual(mapped["crosswalk_version"], "de-bltu-source-crosswalk-v1")
+        self.assertEqual(mapped["taxonomy_primaries"], ["slaughter", "processing_and_preparation"])
+        self.assertEqual({row["source_code"] for row in mapped["taxonomy_assignments"]}, {"CP; GHE; SH"})
+
+        partial = project_observation({"source_id": "de.locations", "normalized": {
+            "activity_codes": ["SH", "UNRECOGNIZED-DE-CODE"]}})
+        self.assertEqual(partial["taxonomy_mapping_status"], "partial")
+        self.assertEqual(partial["taxonomy_primaries"], ["slaughter"])
+
+        unsupported = project_observation({"source_id": "de.locations", "normalized": {
+            "activity_codes": ["UNRECOGNIZED-DE-CODE"]}})
+        self.assertEqual(unsupported["taxonomy_mapping_status"], "unmapped")
+        self.assertEqual(unsupported["taxonomy_assignments"], [])
+        self.assertIn("SH", {code for rule in crosswalk_document("de.locations")["rules"]
+                              for code in rule["source_codes"]})
+
     def test_norway_aquaculture_uses_existing_animal_production_taxonomy(self):
         mapped = project_observation({"source_id": "no.fiskeridir.aquaculture", "normalized": {
             "activity_categories": ["animal-aquaculture"], "source_species_scope": "salmon"}})

@@ -19,7 +19,8 @@ class GermanyPrivateAdapterTests(unittest.TestCase):
         result = adapter.parse_bytes(raw.read_bytes())
         self.assertEqual(len(result["accepted"]), 2)
         normalized = result["accepted"][0]["normalized"]
-        self.assertIn(normalized["activity_categories"], (("slaughter",), ("processing",)))
+        self.assertTrue(set(normalized["activity_categories"]) <= {"slaughter", "cutting", "processing",
+                                                                    "logistics_and_storage"})
         self.assertIsNotNone(normalized["address"])
         self.assertIn(normalized["activity_flags"][0]["code"], {"SH", "CP"})
         self.assertIsNone(normalized["coordinates"])

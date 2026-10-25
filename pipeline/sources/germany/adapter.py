@@ -24,6 +24,7 @@ CURRENT_HEADERS = tuple((
 SUPPORTED_HEADERS = {tuple(EXPECTED_HEADERS), CURRENT_HEADERS}
 
 CONFIG = json.loads((Path(__file__).parent / "config.json").read_text(encoding="utf-8"))
+TAXONOMY_CONFIG = json.loads((Path(__file__).parents[2] / "config" / "germany-bltu-classification-v1.json").read_text(encoding="utf-8"))
 CURRENT_ID_INDEX = 5
 NAME_INDEX = 1
 STATE_INDEX = 0
@@ -31,7 +32,7 @@ STREET_INDEX = 2
 CITY_INDEX = 3
 ACTIVITY_START = 7
 ACTIVITY_END = 44
-ACTIVITY_MAP = {"SH": "slaughter", "CP": "processing"}
+ACTIVITY_MAP = {code: rule["leaf_activity"] for code, rule in TAXONOMY_CONFIG["rules"].items()}
 
 
 def _source_columns(headers: list[str], values: list[str]) -> list[dict[str, str]]:

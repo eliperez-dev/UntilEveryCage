@@ -74,6 +74,13 @@
       "allow_locality_match": false,
       "status": "enabled-private-only",
       "source_scope": "Only AESAN RGSEAA rows in source keys 10, 12, 14, or 15; retain industrial address privately and query through the existing bounded address-enrichment queue only after separate transfer authorization"
+    },
+    {
+      "profile_id": "geoapify-de-bltu",
+      "source_id": "de.locations",
+      "country_code": "DE",
+      "status": "enabled-private-only",
+      "source_scope": "Only current-snapshot BLtU business street-address candidates with locality; external query contains street, locality, and country only, never establishment name or source payload"
     }
   ]
 }

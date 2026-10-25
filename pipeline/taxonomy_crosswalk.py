@@ -39,6 +39,13 @@ _DK = {code: (rule["classification"], "direct")
        for rule in _DK_SOURCE["rules"] if rule.get("review_status") == "approved"
        and rule.get("classification") in _DK_LEAF_PRIMARY for code in rule["codes"]}
 _NATIVE_V3 = json.loads((Path(__file__).parent / "config" / "source-taxonomy-v3.json").read_text(encoding="utf-8"))
+_DE_SOURCE = json.loads((Path(__file__).parent / "config" / "germany-bltu-classification-v1.json").read_text(encoding="utf-8"))
+_DE = {code: (rule["leaf_activity"], rule["primary_key"])
+       for code, rule in _DE_SOURCE["rules"].items()}
+
+
+def _crosswalk_version(source_id: str) -> str:
+    return "de-bltu-source-crosswalk-v1" if source_id == "de.locations" else CROSSWALK_VERSION
 _LEAF_TO_PRIMARY = {
     "slaughter": "slaughter", "meat_processing": "processing_and_preparation",
     "fish_processing": "processing_and_preparation", "dairy_processing": "processing_and_preparation",
@@ -114,6 +121,16 @@ def _decision(source: str, normalized: dict[str, Any], original: dict[str, Any])
             if code in _DK:
                 leaf, method = _DK[code]
                 assignments.append({"leaf_activity": leaf, "primary": _primary_for_leaf(leaf) or "unclassified", "method": method})
+    elif source == "de.locations":
+        unknown = False
+        for code in codes:
+            rule = _DE.get(code.upper())
+            if rule:
+                assignments.append({"leaf_activity": rule[0], "primary": rule[1], "method": "direct"})
+            else:
+                unknown = True
+        return assignments, ("partial" if assignments and unknown else
+                             "mapped" if assignments else "unmapped" if codes else "unclassified")
     elif source == "no.fiskeridir.aquaculture":
         # A non-empty species scope plus the adapter's animal-only category
         # confirms aquaculture production. Use the existing animal-production
@@ -392,14 +409,15 @@ def project_observation(record: dict[str, Any]) -> dict[str, Any]:
         item.setdefault("source_label_reference", label_reference)
         item.setdefault("source_label", source_label)
         enriched.append(item)
+    crosswalk_version = _crosswalk_version(source)
     return {
         "taxonomy_version": TAXONOMY_VERSION,
-        "crosswalk_version": CROSSWALK_VERSION,
-        "ruleset_version": CROSSWALK_VERSION,
+        "crosswalk_version": crosswalk_version,
+        "ruleset_version": crosswalk_version,
         "taxonomy_assignments": enriched,
         "taxonomy_primaries": primaries,
         "taxonomy_mapping_method": next(iter(methods)) if len(methods) == 1 else (
-            "direct" if source in {"dk.smiley", "be.locations", "us.fsis", "us.epa.echo-animal-production", "fr.georisques.icpe.animal"} or source.startswith(("it.", "es.")) else
+            "direct" if source in {"dk.smiley", "be.locations", "de.locations", "us.fsis", "us.epa.echo-animal-production", "fr.georisques.icpe.animal"} or source.startswith(("it.", "es.")) else
             "candidate" if source.startswith("au.") else "derived"),
         "taxonomy_mapping_status": status,
         "taxonomy_display_category": display,
@@ -412,6 +430,10 @@ def crosswalk_document(source_id: str) -> dict[str, Any]:
     if source_id == "dk.smiley":
         for code, (leaf, method) in sorted(_DK.items()):
             rules.append({"source_code": code, "leaf_key": leaf, "primary_key": _primary_for_leaf(leaf), "mapping_method": method})
+    elif source_id == "de.locations":
+        for code, rule in sorted(_DE_SOURCE["rules"].items()):
+            rules.append({"source_code": code, "leaf_key": rule["leaf_activity"],
+                          "primary_key": rule["primary_key"], "mapping_method": "direct"})
     elif source_id == "be.locations":
         rules = [{"source_field": "activity_codes", "signature": "exact LAP/PAP place+activity+product codebook tuple",
                   "leaf_key": "source_activity_category", "mapping_method": "direct"}]
@@ -494,8 +516,9 @@ def crosswalk_document(source_id: str) -> dict[str, Any]:
             "source_code_reference": rule.get("signature"),
             "source_label_reference": rule.get("source_field"),
         })
+    crosswalk_version = _crosswalk_version(source_id)
     return {"source_id": source_id, "taxonomy_version": TAXONOMY_VERSION,
-            "crosswalk_version": CROSSWALK_VERSION, "ruleset_version": CROSSWALK_VERSION, "rules": normalized_rules}
+            "crosswalk_version": crosswalk_version, "ruleset_version": crosswalk_version, "rules": normalized_rules}
 
 
 def persistence_assignments(projected: dict[str, Any]) -> list[dict[str, Any]]:

@@ -1,0 +1,30 @@
+{
+  "source_id": "de.locations",
+  "version": "germany-bltu-classification-v1",
+  "crosswalk_version": "de-bltu-source-crosswalk-v1",
+  "authority": "BVL BLtU general-list activity flag columns; meanings cross-checked against Regulation (EC) No 853/2004 Annex III category names",
+  "evidence": [
+    "https://www.bvl.bund.de/bltu",
+    "https://eur-lex.europa.eu/eli/reg/2004/853/oj"
+  ],
+  "rules": {
+    "SH": {"leaf_activity": "slaughter", "primary_key": "slaughter"},
+    "CP": {"leaf_activity": "cutting", "primary_key": "processing_and_preparation"},
+    "GHE": {"leaf_activity": "processing", "primary_key": "processing_and_preparation"},
+    "MM": {"leaf_activity": "processing", "primary_key": "processing_and_preparation"},
+    "MP": {"leaf_activity": "processing", "primary_key": "processing_and_preparation"},
+    "MSM": {"leaf_activity": "processing", "primary_key": "processing_and_preparation"},
+    "PP": {"leaf_activity": "processing", "primary_key": "processing_and_preparation"},
+    "EPC": {"leaf_activity": "processing", "primary_key": "processing_and_preparation"},
+    "LEP": {"leaf_activity": "processing", "primary_key": "processing_and_preparation"},
+    "FV": {"leaf_activity": "processing", "primary_key": "processing_and_preparation"},
+    "FFPP": {"leaf_activity": "processing", "primary_key": "processing_and_preparation"},
+    "PC": {"leaf_activity": "processing", "primary_key": "processing_and_preparation"},
+    "DC": {"leaf_activity": "logistics_and_storage", "primary_key": "other_regulated_premises"},
+    "CS": {"leaf_activity": "logistics_and_storage", "primary_key": "other_regulated_premises"},
+    "CC": {"leaf_activity": "logistics_and_storage", "primary_key": "other_regulated_premises"},
+    "RW": {"leaf_activity": "processing", "primary_key": "processing_and_preparation"},
+    "WM": {"leaf_activity": "logistics_and_storage", "primary_key": "other_regulated_premises"},
+    "AH": {"leaf_activity": "logistics_and_storage", "primary_key": "other_regulated_premises"}
+  }
+}
