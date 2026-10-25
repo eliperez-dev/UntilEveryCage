@@ -61,4 +61,25 @@ describe('language selection', () => {
     expect(tr('NRTE poultry processing', 'es')).toBe('Procesamiento de aves (NRTE)');
     expect(tr('NRTE processing', 'es')).toBe('Procesamiento (NRTE)');
   });
+
+  it('translates generated RTE and unspecified activity labels and shared business-name graph labels', async () => {
+    const { tr } = await import('../../src/app/language');
+    expect(tr('RTE meat processing', 'es')).toBe('Procesamiento de carne lista para consumir (RTE)');
+    expect(tr('RTE poultry processing', 'es')).toBe('Procesamiento de aves listas para consumir (RTE)');
+    expect(tr('RTE processing', 'es')).toBe('Procesamiento listo para consumir (RTE)');
+    expect(tr('RTE unspecified meat processing', 'es')).toBe('Procesamiento de carne no especificada lista para consumir (RTE)');
+    expect(tr('RTE unspecified poultry processing', 'es')).toBe('Procesamiento de aves no especificadas listas para consumir (RTE)');
+    expect(tr('Unspecified meat processing', 'es')).toBe('Procesamiento de carne no especificada');
+    expect(tr('Unspecified poultry processing', 'es')).toBe('Procesamiento de aves no especificadas');
+    expect(tr('Shared business name', 'es')).toBe('Nombre comercial compartido');
+    expect(tr('RTE meat processing', 'en')).toBe('RTE meat processing');
+    expect(tr('USDA source-native evidence', 'es')).toBe('USDA source-native evidence');
+  });
+
+  it('translates the release-help strings shown in Tools', async () => {
+    const { tr } = await import('../../src/app/language');
+    expect(tr('No verified public release loaded', 'es')).toBe('No se ha cargado una versión pública verificada');
+    expect(tr('Release metadata from the active public map.', 'es')).toBe('Metadatos de versión del mapa público activo.');
+    expect(tr('Release selection is available from the map.', 'es')).toBe('La selección de versión está disponible desde el mapa.');
+  });
 });
