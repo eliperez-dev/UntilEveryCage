@@ -50,6 +50,9 @@ test('centered primary navigation and map controls stay aligned across desktop a
       left: search.left,
       right: innerWidth - view.right,
       overlaps: search.left < view.right && view.left < search.right && search.top < view.bottom && view.top < search.bottom,
+        widthsMatch: Math.abs(search.width - view.width) < 1,
+        heightsMatch: Math.abs(search.height - view.height) < 1,
+        topsMatch: Math.abs(search.top - view.top) < 1,
     };
   });
   let inset = await mapControlGeometry();
@@ -68,11 +71,24 @@ test('centered primary navigation and map controls stay aligned across desktop a
   inset = await mapControlGeometry();
   expect(Math.abs(inset.left - inset.right)).toBeLessThan(1);
   expect(inset.overlaps).toBe(false);
+  expect(inset.widthsMatch).toBe(true);
+  expect(inset.heightsMatch).toBe(true);
+  expect(inset.topsMatch).toBe(true);
   await page.setViewportSize({ width: 375, height: 812 });
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   inset = await mapControlGeometry();
   expect(Math.abs(inset.left - inset.right)).toBeLessThan(1);
   expect(inset.overlaps).toBe(false);
+  expect(inset.widthsMatch).toBe(true);
+  expect(inset.heightsMatch).toBe(true);
+  expect(inset.topsMatch).toBe(true);
+  await page.setViewportSize({ width: 320, height: 760 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  inset = await mapControlGeometry();
+  expect(inset.overlaps).toBe(false);
+  expect(inset.widthsMatch).toBe(true);
+  expect(inset.heightsMatch).toBe(true);
+  expect(inset.topsMatch).toBe(true);
 });
 
 test('a record URL is directly addressable and has a route-specific heading', async ({ page }) => {

@@ -29,7 +29,7 @@ const es: Record<string, string> = {
   'The code is licensed under AGPLv3 or later. The project compilation is licensed under CC BY-NC-SA 4.0 where the project holds those rights. Individual sources and map providers may have separate terms.': 'El código está bajo la licencia AGPLv3 o posterior. La recopilación del proyecto está bajo CC BY-NC-SA 4.0 cuando el proyecto posee esos derechos. Las fuentes individuales y los proveedores de mapas pueden tener condiciones distintas.',
   'Credit Until Every Cage and the original sources; retain source links, release IDs, dates, and uncertainty labels. Check source rights before redistributing material.': 'Atribuye el material a Until Every Cage y a las fuentes originales; conserva los enlaces a las fuentes, los ID de versión, las fechas y las etiquetas de incertidumbre. Comprueba los derechos de las fuentes antes de redistribuir el material.',
   'Primary': 'Navegación principal', 'Tools': 'Herramientas', 'Close Tools': 'Cerrar herramientas', 'Language': 'Idioma',
-  'Appearance': 'Apariencia', 'Color theme': 'Tema de color', 'Light': 'Claro', 'Dark': 'Oscuro',
+  'Light theme': 'Tema claro', 'Dark theme': 'Tema oscuro',
   'Current release': 'Versión actual', 'No verified public release loaded': 'No se ha cargado una versión pública verificada',
   'Selected release unavailable': 'La versión seleccionada no está disponible', 'History': 'Historial',
   'Open a record to view its available release history.': 'Abre un registro para ver su historial de versiones disponible.',

@@ -644,6 +644,10 @@
 
 <style>
   .field-view {
+    --mobile-toolbar-inset: .4rem;
+    --mobile-toolbar-gap: .4rem;
+    --mobile-toolbar-top: .45rem;
+    --mobile-toolbar-height: 5.25rem;
     --ink: #f1efe8;
     --muted: #aab0aa;
     --line: #48504b;
@@ -984,7 +988,7 @@
   @media (max-width: 40rem) {
     /* The compact masthead has a second navigation row at this width. */
     .map-stage { inset: 7.2rem 0 0; }
-    .search-toggle { top: 0.45rem; left: 0.4rem; }
+    .search-toggle { top:var(--mobile-toolbar-top); left:var(--mobile-toolbar-inset); width:calc((100% - 2 * var(--mobile-toolbar-inset) - var(--mobile-toolbar-gap))/2); min-width:0; min-height:var(--mobile-toolbar-height); height:var(--mobile-toolbar-height); padding:.45rem .5rem; }
     .results { top:auto; right:0; bottom:0; left:0; width:auto !important; max-height:min(62dvh, 34rem); }
     .reading-sheet {
       top: auto;
@@ -1003,7 +1007,7 @@
     .filters { width:100%; }
     .filters summary { justify-content:flex-start; }
     .filter-sheet { right:auto; left:0; }
-    .search-toggle { min-width:10.4rem; }
+    .search-toggle { min-width:0; }
   }
   .member-context {
     display: grid;

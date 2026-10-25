@@ -35,11 +35,12 @@ describe('language selection', () => {
     expect(get(language)).toBe('en');
   });
 
-  it('translates APHIS report controls and the theme control group label', async () => {
+  it('translates APHIS report controls and the masthead theme toggle name', async () => {
     const { tr } = await import('../../src/app/language');
     expect(tr('Annual reports', 'es')).toBe('Informes anuales');
     expect(tr('Fetch inspection reports', 'es')).toBe('Cargar informes de inspección');
     expect(tr('No inspection reports found.', 'es')).toBe('No se encontraron informes de inspección.');
-    expect(tr('Color theme', 'es')).toBe('Tema de color');
+    expect(tr('Light theme', 'es')).toBe('Tema claro');
+    expect(tr('Dark theme', 'es')).toBe('Tema oscuro');
   });
 });

@@ -60,21 +60,23 @@ async function setSpanishAndTheme(page: Page, theme: 'Claro' | 'Oscuro') {
   const tools = page.getByRole('button', { name: 'Herramientas', exact: true });
   if (await tools.getAttribute('aria-expanded') !== 'true') await tools.click();
   await page.getByLabel('Idioma', { exact: true }).selectOption('es');
-  await page.getByRole('button', { name: theme, exact: true }).click();
+  const toggle = page.locator('.masthead .theme-toggle');
+  const selectedLight = theme === 'Claro';
+  if ((await toggle.getAttribute('aria-pressed')) !== String(selectedLight)) await toggle.click();
   await expect(page.locator('html')).toHaveAttribute('lang', 'es');
   await expect(page.locator('html')).toHaveAttribute('data-theme', theme === 'Claro' ? 'light' : 'dark');
   await page.getByRole('button', { name: 'Cerrar herramientas', exact: true }).click();
   await expect(page.locator('.map-controls')).toBeVisible();
 }
 
-test('Spanish map controls do not overlap at 390px or 375px in either theme', async ({ page }, testInfo) => {
+test('Spanish map controls share equal half-width rows at 320px, 375px and 390px in either theme', async ({ page }, testInfo) => {
   await mockSanitizedApi(page);
   await page.addInitScript(() => localStorage.setItem('uec-language', 'es'));
   await page.goto('./#/map');
   await expect(page.getByRole('button', { name: 'Buscar en el mapa' })).toBeVisible();
   await expect(page.locator('.map-controls')).toBeVisible();
 
-  for (const width of [390, 375]) {
+  for (const width of [390, 375, 320]) {
     await page.setViewportSize({ width, height: 844 });
     for (const theme of ['Claro', 'Oscuro'] as const) {
       await setSpanishAndTheme(page, theme);
@@ -88,6 +90,10 @@ test('Spanish map controls do not overlap at 390px or 375px in either theme', as
         return {
           overlaps: search.left < toolbar.right && toolbar.left < search.right && search.top < toolbar.bottom && toolbar.top < search.bottom,
           overflow: toolbarSurface.scrollWidth > toolbarSurface.clientWidth,
+          equalWidth: Math.abs(search.width - toolbar.width) < 1,
+          equalHeight: Math.abs(search.height - toolbar.height) < 1,
+          alignedTop: Math.abs(search.top - toolbar.top) < 1,
+          sharedInset: Math.abs(search.left - (innerWidth - toolbar.right)) < 1,
           hintColor: style.color,
           hintFontSize: parseFloat(style.fontSize),
           toolbarBackground: background,
@@ -100,6 +106,10 @@ test('Spanish map controls do not overlap at 390px or 375px in either theme', as
         };
       });
       expect(geometry.overlaps, `${width}px ${theme}: search and map controls overlap`).toBe(false);
+      expect(geometry.equalWidth, `${width}px ${theme}: toolbar halves differ`).toBe(true);
+      expect(geometry.equalHeight, `${width}px ${theme}: toolbar heights differ`).toBe(true);
+      expect(geometry.alignedTop, `${width}px ${theme}: toolbar tops differ`).toBe(true);
+      expect(geometry.sharedInset, `${width}px ${theme}: outer insets differ`).toBe(true);
       expect(geometry.overflow, `${width}px ${theme}: map controls overflow their toolbar`).toBe(false);
       expect(geometry.labelClipped, `${width}px ${theme}: translated toolbar label is clipped`).toBe(false);
       expect(geometry.hintFontSize, `${width}px ${theme}: hint size`).toBeGreaterThanOrEqual(10);
@@ -108,13 +118,22 @@ test('Spanish map controls do not overlap at 390px or 375px in either theme', as
 
       await page.screenshot({ path: testInfo.outputPath(`spanish-map-${width}-${theme.toLowerCase()}.png`) });
       if (width === 390) {
+        await page.screenshot({ path: testInfo.outputPath(`map-es-mobile-${theme.toLowerCase()}-tools-closed.png`), fullPage: true });
         const tools = page.getByRole('button', { name: 'Herramientas', exact: true });
         await tools.click();
         await expect(page.getByLabel('Idioma', { exact: true })).toHaveValue('es');
-        await expect(page.getByRole('group', { name: 'Tema de color' })).toBeVisible();
-        await expect(page.getByRole('button', { name: theme, exact: true })).toHaveAttribute('aria-pressed', 'true');
+        await expect(page.locator('#shared-tools-menu').getByRole('button', { name: /Tema (claro|oscuro)/ })).toHaveCount(0);
+        await expect(page.locator('.masthead .theme-toggle')).toHaveAttribute('aria-pressed', String(theme === 'Claro'));
         await page.screenshot({ path: testInfo.outputPath(`spanish-tools-390-${theme.toLowerCase()}.png`) });
+        await page.screenshot({ path: testInfo.outputPath(`map-es-mobile-${theme.toLowerCase()}-tools-open.png`), fullPage: true });
         await page.getByRole('button', { name: 'Cerrar herramientas', exact: true }).click();
+        await page.setViewportSize({ width: 1280, height: 900 });
+        await page.screenshot({ path: testInfo.outputPath(`map-es-desktop-${theme.toLowerCase()}-tools-closed.png`), fullPage: true });
+        await page.getByRole('button', { name: 'Herramientas', exact: true }).click();
+        await page.locator('#shared-tools-menu').waitFor({ state: 'visible' });
+        await page.screenshot({ path: testInfo.outputPath(`map-es-desktop-${theme.toLowerCase()}-tools-open.png`), fullPage: true });
+        await page.getByRole('button', { name: 'Cerrar herramientas', exact: true }).click();
+        await page.setViewportSize({ width, height: 844 });
       }
     }
   }

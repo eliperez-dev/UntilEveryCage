@@ -62,14 +62,10 @@ async function mockSanitizedApi(page: Page) {
 }
 
 async function selectTheme(page: Page, theme: 'dark' | 'light') {
-  const tools = page.getByRole('button', { name: 'Tools', exact: true });
-  if (await tools.getAttribute('aria-expanded') !== 'true') await tools.click();
-  const label = theme === 'light' ? 'Light' : 'Dark';
-  const button = page.getByRole('group', { name: 'Color theme' }).getByRole('button', { name: label, exact: true });
-  await button.click();
-  await expect(button).toHaveAttribute('aria-pressed', 'true');
+  const button = page.locator('.masthead .theme-toggle');
+  if ((await button.getAttribute('aria-pressed')) !== String(theme === 'light')) await button.click();
+  await expect(button).toHaveAttribute('aria-pressed', String(theme === 'light'));
   await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
-  await page.getByRole('button', { name: 'Close Tools', exact: true }).click();
 }
 
 const contrast = (foreground: string, background: string) => {
@@ -97,21 +93,20 @@ async function expectAppSurface(page: Page, selector: string, label: string, pag
 
 test('the real theme control reflects translated selection, persists on reload, and survives denied storage', async ({ page }) => {
   await page.goto('./tests/fixtures/theme-control.html');
-  const group = page.getByRole('group', { name: 'Tema de color' });
-  const light = group.getByRole('button', { name: 'Claro' });
-  const dark = group.getByRole('button', { name: 'Oscuro' });
+  const toggle = page.getByRole('button', { name: 'Tema oscuro' });
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  await expect(dark).toHaveAttribute('aria-pressed', 'true');
-  await expect(light).toHaveAttribute('aria-pressed', 'false');
-  await light.click();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  await toggle.focus();
+  await page.keyboard.press('Enter');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  const light = page.getByRole('button', { name: 'Tema claro' });
   await expect(light).toHaveAttribute('aria-pressed', 'true');
   const controlStyle = await light.evaluate(button => ({ color: getComputedStyle(button).color, background: getComputedStyle(button).backgroundColor }));
   expect(contrast(controlStyle.color, controlStyle.background), 'translated light theme control contrast').toBeGreaterThanOrEqual(4.5);
   expect(await page.evaluate(() => localStorage.getItem('uec-theme'))).toBe('light');
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-  await expect(page.getByRole('button', { name: 'Claro' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('button', { name: 'Tema claro' })).toHaveAttribute('aria-pressed', 'true');
 
   await page.addInitScript(() => {
     const original = Storage.prototype.setItem;
@@ -122,9 +117,9 @@ test('the real theme control reflects translated selection, persists on reload, 
   });
   await page.evaluate(() => localStorage.removeItem('uec-theme'));
   await page.reload();
-  await page.getByRole('button', { name: 'Claro' }).click();
+  await page.getByRole('button', { name: 'Tema oscuro' }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-  await expect(page.getByRole('button', { name: 'Claro' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('button', { name: 'Tema claro' })).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('saved theme is applied before the app module starts', async ({ page }) => {
@@ -137,6 +132,22 @@ test('saved theme is applied before the app module starts', async ({ page }) => 
   expect(await page.evaluate(() => document.documentElement.style.colorScheme)).toBe('light');
   resumeModule();
   await expect(page.getByRole('heading', { name: 'About Until Every Cage is Empty' })).toBeVisible();
+});
+
+test('masthead theme toggle is square, directly before Tools, and outside the Tools menu', async ({ page }) => {
+  await page.goto('./#/about');
+  const toggle = page.locator('.masthead .theme-toggle');
+  const tools = page.getByRole('button', { name: 'Tools', exact: true });
+  const boxes = await page.evaluate(() => {
+    const toggleRect = document.querySelector('.masthead .theme-toggle')!.getBoundingClientRect();
+    const toolsRect = document.querySelector('.masthead .tools-action')!.getBoundingClientRect();
+    return { width: toggleRect.width, height: toggleRect.height, gap: toolsRect.left - toggleRect.right };
+  });
+  expect(Math.abs(boxes.width - boxes.height)).toBeLessThan(1);
+  expect(boxes.gap).toBeGreaterThanOrEqual(0);
+  await tools.click();
+  await expect(page.locator('#shared-tools-menu').getByRole('button', { name: /Light theme|Dark theme/ })).toHaveCount(0);
+  await expect(toggle).toBeVisible();
 });
 
 const viewports = [{ name: 'desktop', width: 1280, height: 900 }, { name: 'mobile', width: 390, height: 844 }] as const;
@@ -153,7 +164,7 @@ const publicViews = [
 for (const viewport of viewports) {
   for (const view of publicViews) {
     for (const theme of ['dark', 'light'] as const) {
-      test(`${view.label} retains readable ${theme} surface on ${viewport.name}`, async ({ page }) => {
+      test(`${view.label} retains readable ${theme} surface on ${viewport.name}`, async ({ page }, testInfo) => {
         const pageErrors: string[] = [];
         page.on('pageerror', error => pageErrors.push(error.stack ?? error.message));
         await page.setViewportSize({ width: viewport.width, height: viewport.height });
@@ -164,6 +175,11 @@ for (const viewport of viewports) {
           // The open record sheet overlays the masthead controls. Choose the
           // theme first, then assert the selected dossier inherits it.
           await selectTheme(page, theme);
+          await page.screenshot({ path: testInfo.outputPath(`map-en-${viewport.name}-${theme}-tools-closed.png`), fullPage: true });
+          await page.getByRole('button', { name: 'Tools', exact: true }).click();
+          await page.locator('#shared-tools-menu').waitFor({ state: 'visible' });
+          await page.screenshot({ path: testInfo.outputPath(`map-en-${viewport.name}-${theme}-tools-open.png`), fullPage: true });
+          await page.getByRole('button', { name: 'Close Tools', exact: true }).click();
           await page.getByRole('button', { name: 'Search map' }).click();
           const fixtureRecord = page.locator(`.record-list button[data-record-id="${id}"]`);
           await expect(fixtureRecord).toBeVisible();
@@ -186,6 +202,21 @@ for (const viewport of viewports) {
         });
         expect(style.color).not.toBe('rgba(0, 0, 0, 0)');
         expect(contrast(style.color, style.background), `${view.label} ${theme} contrast`).toBeGreaterThanOrEqual(4.5);
+        if (view.label === 'About' && theme === 'light') {
+          await page.screenshot({ path: testInfo.outputPath('about-light-counter.png'), fullPage: true });
+          for (const selector of ['.estimate h2', '.estimate-number', '.estimate-list li span:last-child']) {
+            const counterStyle = await page.locator(selector).first().evaluate(element => {
+              let ancestor: Element | null = element;
+              let background = 'rgba(0, 0, 0, 0)';
+              while (ancestor && background === 'rgba(0, 0, 0, 0)') {
+                background = getComputedStyle(ancestor).backgroundColor;
+                ancestor = ancestor.parentElement;
+              }
+              return { color: getComputedStyle(element).color, background };
+            });
+            expect(contrast(counterStyle.color, counterStyle.background), `About counter ${selector} contrast`).toBeGreaterThanOrEqual(4.5);
+          }
+        }
         if (view.label === 'map controls') {
           const detail = page.locator('.reading-sheet[aria-label="Record evidence"] .detail');
           await expect(detail).toBeVisible();
