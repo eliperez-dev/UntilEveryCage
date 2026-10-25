@@ -79,8 +79,10 @@ class TaxonomyCrosswalkTests(unittest.TestCase):
             "activity_codes": ["UNRECOGNIZED-DE-CODE"]}})
         self.assertEqual(unsupported["taxonomy_mapping_status"], "unmapped")
         self.assertEqual(unsupported["taxonomy_assignments"], [])
-        self.assertIn("SH", {code for rule in crosswalk_document("de.locations")["rules"]
-                              for code in rule["source_codes"]})
+        rules = crosswalk_document("de.locations")["rules"]
+        self.assertIn("SH", {code for rule in rules for code in rule["source_codes"]})
+        self.assertIn("slaughterhouse", {label for rule in rules for label in rule["source_labels"]})
+        self.assertIn("ZV", {code for rule in rules for code in rule["source_codes"]})
 
     def test_norway_aquaculture_uses_existing_animal_production_taxonomy(self):
         mapped = project_observation({"source_id": "no.fiskeridir.aquaculture", "normalized": {

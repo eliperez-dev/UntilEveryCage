@@ -432,7 +432,9 @@ def crosswalk_document(source_id: str) -> dict[str, Any]:
             rules.append({"source_code": code, "leaf_key": leaf, "primary_key": _primary_for_leaf(leaf), "mapping_method": method})
     elif source_id == "de.locations":
         for code, rule in sorted(_DE_SOURCE["rules"].items()):
-            rules.append({"source_code": code, "leaf_key": rule["leaf_activity"],
+            rules.append({"source_code": code, "source_label": rule["source_label"],
+                          "source_field": "EU Commission Technical Specifications Annex V",
+                          "leaf_key": rule["leaf_activity"],
                           "primary_key": rule["primary_key"], "mapping_method": "direct"})
     elif source_id == "be.locations":
         rules = [{"source_field": "activity_codes", "signature": "exact LAP/PAP place+activity+product codebook tuple",

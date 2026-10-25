@@ -7,7 +7,9 @@ never includes establishment names in the query.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
+from pathlib import Path
 
 import psycopg
 
@@ -15,10 +17,18 @@ import psycopg
 SOURCE_ID = "de.locations"
 PROFILE_ID = "geoapify-de-bltu"
 PILOT_SIZE = 24
+DEFAULT_ARTIFACT = Path(r"D:\UntilEveryCage-Operations\source-captures\de-launch-20261025\accepted-shared-run-worker-target\runs\refresh-a9a6a0d172343491\sources\de.locations\acquisition\preview-de-locations-7b148310-cb9e-4f9f-bde3-a11a3a167b0e\bltu-general-list.csv")
 
 
-def activate(database_url: str) -> dict[str, int]:
+def activate(database_url: str, *, limit: int = PILOT_SIZE, offset: int = 0,
+             artifact_path: str | Path = DEFAULT_ARTIFACT) -> dict[str, int]:
+    if limit < 1 or offset < 0:
+        raise ValueError("invalid DE batch limit or offset")
     with psycopg.connect(database_url) as connection, connection.transaction():
+        if connection.execute("SELECT current_database()").fetchone()[0] != "uec_launch_sources_test_20261025":
+            raise RuntimeError("database_identity_invalid")
+        artifact_path = Path(artifact_path)
+        artifact_digest = hashlib.sha256(artifact_path.read_bytes()).hexdigest()
         rows = connection.execute(
             """WITH latest AS (
                    SELECT COALESCE(
@@ -30,7 +40,8 @@ def activate(database_url: str) -> dict[str, int]:
                )
                SELECT candidate.candidate_id,candidate.snapshot_sha256,
                       candidate.source_id,candidate.source_group_key,
-                      candidate.country_code,candidate.representative_observation_id,
+                      candidate.country_code,manifest.source_artifact_sha256,
+                      manifest.source_url,manifest.retrieved_at,
                       private_location.location_evidence->>'address' AS street,
                       private_location.location_evidence->>'postal_code' AS postal_code,
                       COALESCE(private_location.location_evidence->>'city',candidate.city) AS city
@@ -38,38 +49,51 @@ def activate(database_url: str) -> dict[str, int]:
                  JOIN latest ON latest.snapshot_sha256=candidate.snapshot_sha256
                  JOIN real_preview.candidate_private_location_evidence private_location
                    ON private_location.candidate_id=candidate.candidate_id
-                 JOIN uec.observations observation
-                   ON observation.observation_id=candidate.representative_observation_id
+                 JOIN real_preview.source_manifests manifest
+                   ON manifest.source_id=candidate.source_id
+                  AND manifest.snapshot_sha256=candidate.snapshot_sha256
                  WHERE candidate.source_id=%s AND candidate.country_code='DE'
                    AND candidate.location_class <> 'numeric_source_coordinate'
                    AND NULLIF(BTRIM(private_location.location_evidence->>'address'),'') IS NOT NULL
                    AND NULLIF(BTRIM(COALESCE(private_location.location_evidence->>'city',candidate.city)),'') IS NOT NULL
-                   AND observation.source_record_id IS NOT NULL
-                   AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted restricted
-                                   WHERE restricted.source_record_id=observation.source_record_id)
                  ORDER BY candidate.candidate_id
-                 LIMIT %s""",
-            (SOURCE_ID, SOURCE_ID, SOURCE_ID, PILOT_SIZE),
+                 LIMIT %s OFFSET %s""",
+            (SOURCE_ID, SOURCE_ID, SOURCE_ID, limit, offset),
         ).fetchall()
-        if len(rows) != PILOT_SIZE:
-            raise RuntimeError("DE Geoapify pilot target set is smaller than the approved bounded size")
+        if not rows:
+            raise RuntimeError("DE Geoapify batch has no eligible current-snapshot street-address candidates")
 
         queued = targets = already = 0
-        for candidate_id, snapshot, source_id, source_key, country, observation_id, street, postal, city in rows:
+        for candidate_id, snapshot, source_id, source_key, country, artifact_sha, source_url, retrieved, street, postal, city in rows:
             if source_id != SOURCE_ID or country != "DE" or not street or not city:
                 raise RuntimeError("DE Geoapify candidate scope validation failed")
-            observation = connection.execute(
-                "SELECT source_record_id FROM uec.observations WHERE observation_id=%s",
-                (observation_id,),
-            ).fetchone()
-            if observation is None:
-                raise RuntimeError("DE Geoapify candidate observation is missing")
-            source_record_id = observation[0]
-            if connection.execute(
-                "SELECT 1 FROM uec.public_access_restricted WHERE source_record_id=%s",
-                (source_record_id,),
-            ).fetchone():
-                raise RuntimeError("DE Geoapify candidate became restricted")
+            if artifact_digest != artifact_sha:
+                raise RuntimeError("DE preserved source artifact checksum does not match current manifest")
+            artifact = connection.execute("SELECT artifact_id FROM uec.raw_artifacts WHERE sha256=%s", (artifact_sha,)).fetchone()
+            if artifact is None:
+                artifact = connection.execute(
+                    """INSERT INTO uec.raw_artifacts(storage_key,sha256,byte_size,media_type,retrieved_at)
+                       VALUES (%s,%s,%s,'text/csv',%s) RETURNING artifact_id""",
+                    (str(artifact_path), artifact_sha, artifact_path.stat().st_size, retrieved),
+                ).fetchone()
+            artifact_id = artifact[0]
+            projection_key = f"real-preview:{snapshot}:{source_key}"
+            connection.execute(
+                """INSERT INTO uec.sources(source_id,country_code,name,official_url,access_method)
+                   VALUES (%s,'DE','German BVL approved establishments',%s,'private_preview_street_address_projection')
+                   ON CONFLICT (source_id) DO NOTHING""", (SOURCE_ID, source_url),
+            )
+            connection.execute(
+                """INSERT INTO uec.source_records(source_id,source_record_key,artifact_id,raw_fields,parsed_at)
+                   VALUES (%s,%s,%s,%s::jsonb,%s) ON CONFLICT DO NOTHING""",
+                (SOURCE_ID, projection_key, artifact_id, '{"projection":"real_preview_de_bltu_street_address"}', retrieved),
+            )
+            source_record_id = connection.execute(
+                "SELECT source_record_id FROM uec.source_records WHERE source_id=%s AND source_record_key=%s AND artifact_id=%s",
+                (SOURCE_ID, projection_key, artifact_id),
+            ).fetchone()[0]
+            if connection.execute("SELECT 1 FROM uec.public_access_restricted WHERE source_record_id=%s", (source_record_id,)).fetchone():
+                raise RuntimeError("DE Geoapify candidate is restricted")
 
             query = ", ".join(part.strip() for part in (street, postal, city, "Germany") if part and part.strip())
             job = connection.execute(
@@ -88,7 +112,7 @@ def activate(database_url: str) -> dict[str, int]:
             target = connection.execute(
                 """INSERT INTO real_preview.geocode_targets
                        (job_id,candidate_id,snapshot_sha256,source_id,source_record_key)
-                   VALUES (%s,%s,%s,%s,%s) ON CONFLICT (job_id) DO NOTHING
+                   VALUES (%s,%s,%s,%s,%s) ON CONFLICT (job_id,candidate_id) DO NOTHING
                    RETURNING candidate_id""",
                 (job_id, candidate_id, snapshot, source_id, source_key),
             ).fetchone()
@@ -120,19 +144,26 @@ def activate(database_url: str) -> dict[str, int]:
                 (candidate_id, snapshot, source_id, source_key, candidate_id),
             )
         return {"targets_selected": len(rows), "jobs_created": queued,
-                "targets_created": targets, "already_present": already, "provider_calls": 0}
+                "targets_created": targets, "already_present": already,
+                "limit": limit, "offset": offset, "provider_calls": 0}
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--database-url", default=os.environ.get("UEC_DATABASE_URL"))
+    parser.add_argument("--limit", type=int, default=PILOT_SIZE,
+                        help="finite candidate batch size (default: approved 24-record pilot)")
+    parser.add_argument("--offset", type=int, default=0,
+                        help="candidate-order offset for later finite batches")
     args = parser.parse_args()
-    if not args.database_url:
+    if not args.database_url or args.limit < 1 or args.offset < 0:
         return 2
     try:
-        summary = activate(args.database_url)
+        summary = activate(args.database_url, limit=args.limit, offset=args.offset)
     except Exception as error:
-        print(f"activation_failed: {type(error).__name__}")
+        sqlstate = getattr(error, "sqlstate", None)
+        constraint = getattr(getattr(error, "diag", None), "constraint_name", None)
+        print(f"activation_failed: {type(error).__name__} sqlstate={sqlstate} constraint={constraint}")
         return 1
     print("provider=geoapify source=de.locations " + " ".join(f"{key}={value}" for key, value in summary.items()))
     return 0
