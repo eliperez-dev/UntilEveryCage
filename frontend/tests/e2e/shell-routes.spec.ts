@@ -65,14 +65,10 @@ test('the shell keeps route context in the URL through back and forward navigati
 test('About consolidates its legacy routes and preserves map source context', async ({ page }) => {
   await page.goto('./#/database');
   const aboutLink = page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'About', exact: true });
-  await aboutLink.focus();
-  await aboutLink.press('ArrowDown');
-  await page.locator('#shared-about-nav').getByRole('link', { name: 'Overview' }).click();
+  await aboutLink.click();
   await expect.poll(() => new URL(page.url()).hash).toBe('#/about');
   await expect(page.getByRole('heading', { level: 1, name: 'Until every cage is empty' })).toBeVisible();
-  await aboutLink.focus();
-  await aboutLink.press('ArrowDown');
-  await page.locator('#shared-about-nav').getByRole('link', { name: 'Sources & methods' }).click();
+  await page.goto('./#/about/sources');
   await expect.poll(() => new URL(page.url()).hash).toBe('#/about/sources');
   await expect(page.getByRole('heading', { level: 2, name: 'Sources and methods' })).toBeVisible();
   await expect(page.getByText('locality references are approximate', { exact: false })).toBeVisible();
@@ -199,19 +195,14 @@ test('route controls are focusable links with explicit destinations', async ({ p
   await expect(mapLink).toHaveJSProperty('tabIndex', 0);
   await expect(mapLink).toHaveAttribute('href', /#\/map\?/);
   const databaseNavLink = page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Database', exact: true });
-  await databaseNavLink.focus();
-  await databaseNavLink.press('ArrowDown');
-  const databaseLink = page.locator('#shared-database-nav').getByRole('link', { name: 'Browse records' });
-  await databaseLink.focus();
-  await expect(databaseLink).toBeFocused();
-  await expect(databaseLink).toHaveAttribute('href', /#\/database\?/);
-  const destination = new URL(`http://test/${(await databaseLink.getAttribute('href') ?? '').slice(2)}`);
+  await expect(databaseNavLink).toHaveAttribute('href', /#\/database\?/);
+  const destination = new URL(`http://test/${(await databaseNavLink.getAttribute('href') ?? '').slice(2)}`);
   expect(destination.pathname).toBe('/database');
   expect(destination.searchParams.get('lat')).toBe('45');
   expect(destination.searchParams.get('lon')).toBe('5');
 });
 
-test('public contribution contacts, four About destinations, and code help are easy to find', async ({ page }) => {
+test('public contribution contacts, merged About content, and code help are easy to find', async ({ page }) => {
   await page.goto('./#/contribute');
   await expect(page.getByRole('heading', { level: 1, name: 'Contribute to the project' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Contribute menu' })).toHaveCount(0);
@@ -225,12 +216,9 @@ test('public contribution contacts, four About destinations, and code help are e
   await expect(page.getByRole('link', { name: 'Contribute code on GitHub' })).toHaveAttribute('href', 'https://github.com/eliperez-dev/UntilEveryCage');
   const about = page.getByRole('link', { name: 'About', exact: true });
   await expect(about).toHaveText('About');
-  await about.hover();
-  await expect(page.locator('#shared-about-nav').getByRole('link')).toHaveCount(4);
-  await expect(page.getByRole('link', { name: 'Manifesto', exact: true })).toHaveCount(0);
-  await page.locator('#shared-about-nav').getByRole('link', { name: 'Overview' }).click();
-  await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible();
-  await expect(page.getByText('Make the hidden visible.', { exact: true })).toBeVisible();
+  await about.click();
+  await expect(page.getByRole('heading', { name: 'Until every cage is empty' })).toBeVisible();
+  await expect(page.getByText('Animals are individuals, not database rows.', { exact: false })).toBeVisible();
   await expect(page.getByText('Until every cage is empty.', { exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Contribute code on GitHub' })).toHaveAttribute('href', 'https://github.com/eliperez-dev/UntilEveryCage');
   const overview = await page.locator('.about-page').innerText();

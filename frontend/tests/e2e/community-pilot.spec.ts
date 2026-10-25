@@ -249,27 +249,22 @@ test('six contribution task links switch in place with prefilled records and cle
   expect(params.get('target')).toBe(recordId);
 });
 
-test('the text-only About menu supports keyboard, dismissal, and direct destination links', async ({ page }) => {
+test('the direct About link opens the combined project and methods content', async ({ page }) => {
   await page.goto('#/contribute');
   const about = page.getByRole('link', { name: 'About', exact: true });
   await about.focus();
-  await page.keyboard.press('ArrowDown');
-  await expect(page.locator('#shared-about-nav').getByRole('link', { name: 'Overview' })).toBeFocused();
-  await page.keyboard.press('Escape');
-  await expect(about).toBeFocused();
-  await expect(about).toHaveAttribute('aria-expanded', 'false');
-  await about.hover();
-  await about.focus();
-  await page.keyboard.press('ArrowDown');
-  await expect(page.locator('#shared-about-nav').getByRole('link', { name: 'Overview' })).toBeFocused();
-  await page.getByRole('main').click({ position: { x: 10, y: 220 } });
-  await expect(about).toHaveAttribute('aria-expanded', 'false');
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('heading', { name: 'Until every cage is empty' })).toBeVisible();
+  await expect(page.getByText('Estimated animals killed', { exact: true })).toBeVisible();
+  await page.goto('#/about/sources');
+  await expect(page.getByRole('heading', { name: 'Sources and methods' })).toBeVisible();
+  await page.goto('#/contribute');
   await page.getByRole('navigation', { name: 'Contribution tasks' }).getByRole('link', { name: 'Privacy/removal', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Privacy or removal', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Contribute menu' })).toHaveCount(0);
 });
 
-test('compact pages and dropdowns work on a narrow touch screen without overflow', async ({ browser }) => {
+test('compact pages and direct navigation work on a narrow touch screen without overflow', async ({ browser }) => {
   const context = await browser.newContext({ viewport: { width: 360, height: 800 }, hasTouch: true, isMobile: true });
   const page = await context.newPage();
   await mockCommunityApi(page);
@@ -278,13 +273,12 @@ test('compact pages and dropdowns work on a narrow touch screen without overflow
     await page.getByRole('navigation', { name: 'Contribution tasks' }).getByRole('link', { name: task, exact: true }).tap();
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   }
-  await page.getByRole('button', { name: 'Show About pages' }).tap();
-  const sources = page.locator('#shared-about-nav').getByRole('link', { name: 'Sources & methodology' });
+  const sources = page.getByRole('link', { name: 'About', exact: true });
   const box = await sources.boundingBox();
   expect(box!.x).toBeGreaterThanOrEqual(0);
   expect(box!.x + box!.width).toBeLessThanOrEqual(360);
   await sources.tap();
-  await expect(page.getByRole('heading', { name: 'Sources & Methodology' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Until every cage is empty' })).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await context.close();
 });

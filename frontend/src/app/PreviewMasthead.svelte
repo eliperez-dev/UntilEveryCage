@@ -31,94 +31,37 @@
   const aboutHref = $derived(`#/about${context ? `?${context}` : ''}`);
   const contributeHref = $derived(`#/contribute${context ? `?${context}` : ''}`);
   const menuHref = (path: string) => `#/${path}${context ? `?${context}` : ''}`;
-  type NavSection = 'about' | 'database';
-  let navOpen = $state<NavSection | null>(null);
-  let dismissedSection: NavSection | null = null;
-  let hoveredSection: NavSection | null = null;
-  let keyboardInput = true;
-  let keyboardFocusedSection: NavSection | null = null;
-  let navArea: HTMLElement;
-  let aboutLink: HTMLAnchorElement;
-  let databaseLink: HTMLAnchorElement;
-  let navFocusTarget: HTMLElement | undefined;
-  let restoringNavFocus = false;
-  const parentLink = (section: NavSection) => section === 'about' ? aboutLink : databaseLink;
-  function openNav(section: NavSection, focusFirst = false, trigger: HTMLElement = parentLink(section)) {
-    dismissedSection = null; toolsOpen = false;
-    navOpen = section; navFocusTarget = trigger;
-    if (focusFirst) void tick().then(() => navArea?.querySelector<HTMLAnchorElement>(`#shared-${section}-nav a`)?.focus());
-  }
-  function hoverNav(section: NavSection, event: PointerEvent) {
-    if (event.pointerType === 'touch') return;
-    keyboardInput = false; hoveredSection = section; openNav(section);
-  }
-  function leaveNav(section: NavSection, event: PointerEvent) {
-    if (event.pointerType === 'touch') return;
-    hoveredSection = null;
-    if (!(keyboardFocusedSection === section && (event.currentTarget as HTMLElement).contains(document.activeElement)) && navOpen === section) navOpen = null;
-  }
-  function focusNav(section: NavSection) {
-    if (keyboardInput) {
-      keyboardFocusedSection = section;
-      if (dismissedSection !== section) openNav(section);
-    }
-  }
-  function blurNav(section: NavSection, event: FocusEvent) {
-    if (event.relatedTarget instanceof Node && (event.currentTarget as HTMLElement).contains(event.relatedTarget)) return;
-    if (keyboardFocusedSection === section) keyboardFocusedSection = null;
-    if (navOpen === section && hoveredSection !== section) navOpen = null;
-    if (!restoringNavFocus && dismissedSection === section) dismissedSection = null;
-  }
-  function touchNav(section: NavSection, trigger: HTMLButtonElement) {
-    if (navOpen === section) closeMenus(); else openNav(section, false, trigger);
-  }
   let toolsOpen = $state(false);
   const displayReleaseLabel = (label: string) => label.replaceAll('—', ':');
   const displayedReleaseLabel = $derived(publicReleaseLabel ? displayReleaseLabel(publicReleaseLabel) : 'No verified public release loaded');
   let actionArea = $state<HTMLDivElement>();
   let toolsButton = $state<HTMLButtonElement>();
-  function closeMenus(returnFocus: "tools" | "about" | "database" | null = null) {
-    if (navOpen) dismissedSection = navOpen;
-    restoringNavFocus = returnFocus === "about" || returnFocus === "database";
-    navOpen = null;
+  function closeTools(returnFocus = false) {
     toolsOpen = false;
-    if (returnFocus) void tick().then(() => {
-      (returnFocus === "tools" ? toolsButton : navFocusTarget ?? parentLink(returnFocus as NavSection))?.focus();
-      restoringNavFocus = false;
-    });
+    if (returnFocus) void tick().then(() => toolsButton?.focus());
   }
-  function toggleTools() { navOpen = null; toolsOpen = !toolsOpen; }
+  function toggleTools() { toolsOpen = !toolsOpen; }
 </script>
 
-<svelte:window onpointerdown={() => { keyboardInput = false; keyboardFocusedSection = null; }} onhashchange={() => closeMenus()} onkeydown={(event) => { keyboardInput = true; if (event.key === "Escape" && (navOpen || toolsOpen)) { event.preventDefault(); closeMenus(navOpen ?? (toolsOpen ? "tools" : null)); } }} onclick={(event) => { if (event.target instanceof Node && !actionArea?.contains(event.target) && !navArea?.contains(event.target)) closeMenus(); }} />
+<svelte:window onhashchange={() => closeTools()} onkeydown={(event) => { if (event.key === "Escape" && toolsOpen) { event.preventDefault(); closeTools(true); } }} onclick={(event) => { if (event.target instanceof Node && !actionArea?.contains(event.target)) closeTools(); }} />
 <div class="masthead" role="banner">
   <a class="wordmark" href={mapHref} aria-label="Until Every Cage map home">
     <img src={logo} alt="" />
     <span>Until Every Cage</span>
   </a>
-  <nav aria-label="Primary" bind:this={navArea}>
-    <a href={mapHref} onclick={() => closeMenus()} aria-current={current === "map" ? "page" : undefined}>Map</a>
-    <div class="nav-group" role="group" onpointerenter={event => hoverNav('database', event)} onpointerleave={event => leaveNav('database', event)} onfocusin={() => focusNav('database')} onfocusout={event => blurNav('database', event)}>
-      <a bind:this={databaseLink} class="nav-parent" href={databaseHref} aria-current={current === 'database' ? 'page' : undefined} aria-expanded={navOpen === 'database'} aria-controls="shared-database-nav" onclick={() => closeMenus()} onkeydown={(event) => { if (event.key === 'ArrowDown') { event.preventDefault(); openNav('database', true); } }}>Database</a>
-      <button class="touch-pages" type="button" aria-label="Show Database pages" aria-expanded={navOpen === 'database'} aria-controls="shared-database-nav" onclick={event => touchNav('database', event.currentTarget)}>…</button>
-      {#if navOpen === 'database'}<div id="shared-database-nav" class="nav-dropdown" aria-label="Database destinations"><a href={databaseHref} onclick={() => closeMenus()}>Browse records</a><a href={menuHref('database/downloads')} onclick={() => closeMenus()}>Downloads</a><a href={menuHref('database/api')} onclick={() => closeMenus()}>API documentation</a></div>{/if}
-    </div>
-    <a href={menuHref('database/api')} onclick={() => closeMenus()} aria-current={current === 'api' ? 'page' : undefined}>API</a>
-    <a class="secondary-link contribute-link" href={contributeHref} onclick={() => closeMenus()} aria-current={current === "contribute" ? "page" : undefined}>Contribute</a>
-    <div class="nav-group" role="group" onpointerenter={event => hoverNav('about', event)} onpointerleave={event => leaveNav('about', event)} onfocusin={() => focusNav('about')} onfocusout={event => blurNav('about', event)}>
-      <a bind:this={aboutLink} class="nav-parent" href={aboutHref} aria-current={current === 'about' || current === 'methodology' ? 'page' : undefined} aria-expanded={navOpen === 'about'} aria-controls="shared-about-nav" onclick={() => closeMenus()} onkeydown={(event) => { if (event.key === 'ArrowDown') { event.preventDefault(); openNav('about', true); } }}>About</a>
-      <button class="touch-pages" type="button" aria-label="Show About pages" aria-expanded={navOpen === 'about'} aria-controls="shared-about-nav" onclick={event => touchNav('about', event.currentTarget)}>…</button>
-      {#if navOpen === 'about'}<div id="shared-about-nav" class="nav-dropdown about-dropdown" aria-label="About destinations">
-        <a href={aboutHref} onclick={() => closeMenus()}>Overview</a><a href={menuHref('about/sources')} onclick={() => closeMenus()}>Sources & methods</a><a href={menuHref('about/faq')} onclick={() => closeMenus()}>FAQ</a><a href={menuHref('about/help')} onclick={() => closeMenus()}>How to use the site</a>
-      </div>{/if}
-    </div>
+  <nav aria-label="Primary">
+    <a href={mapHref} aria-current={current === "map" ? "page" : undefined}>Map</a>
+    <a href={databaseHref} aria-current={current === 'database' ? 'page' : undefined}>Database</a>
+    <a href={menuHref('database/api')} aria-current={current === 'api' ? 'page' : undefined}>API</a>
+    <a class="contribute-link" href={contributeHref} aria-current={current === "contribute" ? "page" : undefined}>Contribute</a>
+    <a href={aboutHref} aria-current={current === 'about' || current === 'methodology' ? 'page' : undefined}>About</a>
   </nav>
   <div class="masthead-actions" bind:this={actionArea}>
     <button bind:this={toolsButton} type="button" class="header-action tools-action" aria-label="Tools" aria-expanded={toolsOpen} aria-controls="shared-tools-menu" onclick={toggleTools}>
       <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg><span>Tools</span>
     </button>
     {#if toolsOpen}<aside id="shared-tools-menu" class="header-menu tools-menu" aria-label="Tools">
-      <header><strong><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> Tools</strong><button type="button" aria-label="Close Tools" onclick={() => closeMenus("tools")}>×</button></header>
+      <header><strong><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> Tools</strong><button type="button" aria-label="Close Tools" onclick={() => closeTools(true)}>×</button></header>
       <section><label for="release-choice">Current release</label><select id="release-choice" aria-label="Current release" title={displayedReleaseLabel} value={selectedReleaseId ?? ''} disabled={!releaseOptions.length || !onreleasechange} onchange={event => onreleasechange?.(event.currentTarget.value)}>{#if selectedReleaseId && !releaseOptions.some(release => release.id === selectedReleaseId)}<option value={selectedReleaseId} disabled>Selected release unavailable</option>{/if}{#if releaseOptions.length}{#each releaseOptions as release}<option value={release.id}>{displayReleaseLabel(release.label)}</option>{/each}{:else}<option value="">{displayedReleaseLabel}</option>{/if}</select><small>{releaseDescription ?? (publicReleaseLabel ? 'Release metadata from the active public map.' : 'Release selection is available from the map.')}</small></section>
       <section><h2>History</h2><p>Open a record to view its available release history.</p><small>Historical views follow current privacy restrictions.</small></section>
       {#if current === 'map'}<section><label class="toggle"><input type="checkbox" checked={debugEnabled} onchange={(event) => ondebugchange?.(event.currentTarget.checked)} /> Enable debug menu</label><small>Map diagnostics and rendering controls.</small></section>{/if}
@@ -154,17 +97,7 @@
   nav { display: flex; align-items:center; justify-self:stretch; width:100%; gap: 1rem; font: 0.77rem ui-sans-serif, system-ui, sans-serif; }
   nav a { color: #aeb9af; text-decoration: none; }
   nav a[aria-current] { color: #f1efe8; text-decoration: underline; text-underline-offset: 0.35rem; }
-  nav .secondary-link { margin-left:.2rem; padding-left:1rem; border-left:1px solid #48524a; }
-  nav .contribute-link { margin-left:auto; }
-  .nav-group{position:relative;display:flex;align-items:center;gap:.1rem}
-  .nav-parent{display:flex;align-items:center;min-height:2rem;padding:0;border:0;background:transparent;color:#aeb9af;cursor:pointer;font:inherit}
-  .nav-parent:hover,.nav-parent[aria-expanded="true"]{color:#fff}
-  .nav-parent[aria-current]{color:#f1efe8;text-decoration:underline;text-underline-offset:.35rem}
-  .touch-pages{display:none;-webkit-tap-highlight-color:transparent}
-  .nav-dropdown::before{content:"";position:absolute;left:0;right:0;top:-.6rem;height:.6rem}
-  .nav-dropdown{position:absolute;z-index:50;top:calc(100% + .5rem);left:0;display:grid;width:13rem;max-width:calc(100vw - 2rem);padding:.35rem;border:1px solid #536158;background:#171a18;box-shadow:0 .5rem 1rem #0007}
-  .nav-dropdown a{display:flex;align-items:center;min-height:2.35rem;padding:.4rem .6rem;color:#eee9df;font-size:.82rem;text-decoration:none}
-  .nav-dropdown a:hover{background:#2a332c}.about-dropdown{left:auto;right:0;width:14rem}
+  nav .contribute-link { margin-left:auto; padding-left:1rem; border-left:1px solid #48524a; }
   .masthead-actions { position:relative; justify-self:end; display:flex; align-items:center; gap:.4rem; font-family:system-ui,sans-serif; }
   .header-action { display:flex; align-items:center; justify-content:center; gap:.4rem; min-height:2.1rem; padding:.3rem .45rem; border:1px solid #536158; background:#1a201c; color:#f1efe8; cursor:pointer; font:650 .68rem system-ui; }
   .header-action svg, .header-menu svg { width:1rem; height:1rem; flex:none; fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
@@ -179,8 +112,7 @@
   .tools-menu select { width:100%; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   a:focus-visible, button:focus-visible, select:focus-visible { outline:2px solid #eee7d6; outline-offset:2px; }
   @media (any-pointer:coarse) {
-    .touch-pages{display:inline-flex;align-items:center;justify-content:center;min-width:2.75rem;min-height:2.75rem;padding:0;border:0;background:transparent;color:#aeb9af;cursor:pointer;font:1.2rem system-ui,sans-serif}
-    nav > a,.nav-parent{display:flex;align-items:center;min-height:2.75rem}
+    nav > a{display:flex;align-items:center;min-height:2.75rem}
   }
   @media (max-width: 60rem) {
     .masthead{grid-template-columns:minmax(0,1fr) auto;gap:.35rem 1rem;padding:.55rem 1rem}
@@ -199,6 +131,6 @@
     .tools-action span { display:none; }
     .masthead-actions { gap:.25rem; }
     nav { grid-row:3; gap:.65rem; }
-    nav .secondary-link { margin-left:0; padding-left:.5rem; }
+    nav .contribute-link { padding-left:0; border-left:0; }
   }
 </style>

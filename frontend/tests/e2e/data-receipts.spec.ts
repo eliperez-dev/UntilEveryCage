@@ -12,24 +12,17 @@ async function isolate(page: Page, publicShell = false) {
 }
 const candidate = (candidate_id = id) => ({ candidate_id, source_id:'synthetic.source', location_class:'unmapped_private_observation', display_precision:'city_postal_coarse', country_code:'DK', city:'Synthetic locality', postal_code:null, latitude:null, longitude:null, coordinate_precision:null, coordinate_review_status:'pending_human_privacy_review', factual_review_status:'not_reviewed', privacy_screening_status:'pending', project_approval:false, publication_status:'not_published', preview_label:'Private development preview — not publication-approved', display_name:candidate_id === id ? 'Synthetic first record' : 'Synthetic next record', activity_label:'Synthetic activity', source_name:'Synthetic authority' });
 
-test('Database and About menus expose their destinations with keyboard and preserve context', async ({ page }) => {
+test('direct API and About destinations preserve map context and section aliases', async ({ page }) => {
   await isolate(page); await page.goto('./#/about?map=%23%2Fmap%3Ff1a%3Dfield');
   await expect(page.getByRole('button',{name:'Account menu'})).toHaveCount(0);
-  await expect(page.getByRole('button',{name:'Tools',exact:true})).toHaveCount(0);
-  const database = page.getByRole('link', { name: 'Database',exact:true});
-  await database.focus(); await page.keyboard.press('ArrowDown');
-  await expect(page.locator('#shared-database-nav').getByRole('link',{name:'Browse records'})).toBeFocused();
-  await database.focus(); await page.keyboard.press('ArrowDown');
-  await expect(page.locator('#shared-database-nav').getByRole('link',{name:'Browse records'})).toBeFocused();
-  await page.keyboard.press('Escape'); await expect(database).toBeFocused();
-  await database.hover(); await page.locator('#shared-database-nav').getByRole('link',{name:'Downloads',exact:true}).click();
-  await expect(page.getByRole('heading',{name:'Downloads',exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Tools',exact:true})).toBeVisible();
+  const nav = page.getByRole('navigation', { name: 'Primary' });
+  await expect(nav.getByRole('link')).toHaveText(['Map','Database','API','Contribute','About']);
+  await nav.getByRole('link',{name:'API',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'API and data access',exact:true})).toBeVisible();
   expect(new URL(page.url()).hash).toContain('map=%23%2Fmap%3Ff1a%3Dfield');
-  await page.getByRole('link', { name: 'About',exact:true}).hover();
-  await expect(page.locator('#shared-about-nav').getByRole('link')).toHaveText(['Overview','Sources & methodology','FAQ','Help']);
-  await page.locator('#shared-about-nav').getByRole('link',{name:'FAQ'}).click();
-  await expect(page.getByRole('heading',{name:'FAQ',exact:true})).toBeVisible();
-  await expect(page.getByRole('contentinfo',{name:'Project information'})).toBeVisible();
+  await page.goto('./#/about/faq');
+  await expect(page.getByRole('heading',{name:'Common questions',exact:true})).toBeVisible();
 });
 
 test('private Database category filtering reaches the repository and resets paging and selection', async ({ page }) => {

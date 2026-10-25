@@ -119,7 +119,7 @@
     {:else if route.kind === 'about' || route.kind === 'methodology' || route.kind === 'help' || route.kind === 'faq'}
       <AboutPage returnMapHref={route.returnMapHref ?? '#/map'} section={route.kind === 'about' ? route.section : route.kind === 'methodology' ? 'sources' : route.kind} />
     {:else if route.kind === 'api' || route.kind === 'downloads'}
-      {#if ApiPage}<ApiPage />{:else}<p class="state" role="status">Loading API reference…</p>{/if}
+      {#if ApiPage}<ApiPage selectedReleaseId={new URLSearchParams(route.returnMapHref?.split('?')[1] ?? '').get('release_id')} />{:else}<p class="state" role="status">Loading API reference…</p>{/if}
     {:else if route.kind === 'contribute'}
       <ContributePage formKind={route.formKind ?? 'facility'} targetRecordId={route.targetRecordId ?? ''} returnMapHref={route.returnMapHref ?? '#/map'} />
     {:else if route.kind === 'bug-report'}

@@ -14,25 +14,18 @@ async function isolatedPage(page: Page) {
   await page.route('https://server.arcgisonline.com/**', route => route.abort());
 }
 
-test('Help provides written guides and a real, accessible local silent tutorial', async ({ page }) => {
+test('the legacy Help route opens its section in the merged About page', async ({ page }) => {
   await isolatedPage(page);
   await page.goto('./#/about/help?map=%23%2Fmap%3Ff1a%3Dfield');
-  await expect(page.getByRole('heading', { name: 'Help', exact: true })).toBeVisible();
-  const video = page.locator('video');
-  await expect(video).toHaveAttribute('controls', '');
-  await expect(video).not.toHaveAttribute('autoplay');
-  await expect(video).toHaveAttribute('aria-describedby', 'tutorial-caption');
-  await expect(page.getByText('The steps above describe the same actions.', { exact: false })).toBeVisible();
-  await expect.poll(() => video.evaluate(element => (element as HTMLVideoElement).readyState)).toBeGreaterThanOrEqual(1);
-  const duration = await video.evaluate(element => (element as HTMLVideoElement).duration);
-  expect(duration).toBeGreaterThan(5); expect(duration).toBeLessThan(30);
-  await expect(page.getByRole('link', { name: 'Check status', exact: true })).toHaveAttribute('href', /map=%23%2Fmap%3Ff1a%3Dfield/);
-  await expect(page.getByRole('link', { name: 'API documentation', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Explore and contribute', exact: true })).toBeVisible();
+  await expect(page.getByText('Keep the private tracking link provided after sending.', { exact: true })).toBeVisible();
+  await expect(page.locator('video')).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Contribute code on GitHub' })).toBeVisible();
 });
 
 test('Swagger is local and lazy, renders real GET operations and executes only on request', async ({ page, baseURL }) => {
   await isolatedPage(page);
-  let writes = 0; let reads = 0; let swaggerAssets = 0;
+  let writes = 0; let locationReads = 0; let swaggerAssets = 0;
   const external: string[] = [];
   const allowedOrigin = new URL(baseURL ?? 'http://127.0.0.1:4173/v2-preview/').origin;
   page.on('request', request => {
@@ -40,19 +33,27 @@ test('Swagger is local and lazy, renders real GET operations and executes only o
     if (url.pathname.includes('swagger-ui')) swaggerAssets += 1;
     if (url.protocol.startsWith('http') && url.origin !== allowedOrigin) external.push(url.origin);
   });
+  await page.route('**/api/v2/releases/manifest?**', async route => {
+    const url = new URL(route.request().url());
+    const requested = url.searchParams.get('release_id');
+    if (url.searchParams.get('profile') === 'community' || (requested && requested !== 'synthetic-release')) {
+      await route.fulfill({ status: 404, contentType: 'application/json', body: '{}' }); return;
+    }
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ api_version: 'v2', data: { profile: 'official', release_id: 'synthetic-release', manifest: {}, manifest_sha256: 'a'.repeat(64), suppression_generation: 0 } }) });
+  });
   await page.route('**/api/**', async route => {
     if (!new URL(route.request().url()).pathname.startsWith('/api/')) { await route.fallback(); return; }
-    if (route.request().method() !== 'GET') writes += 1; else reads += 1;
+    if (route.request().method() !== 'GET') writes += 1;
+    else if (new URL(route.request().url()).pathname.startsWith('/api/v2/locations')) locationReads += 1;
     await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ api_version: 'v2', data: [], meta: { profile: 'official', next_cursor: null } }) });
   });
   await page.goto('./#/about');
-  await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Until every cage is empty' })).toBeVisible();
   expect(swaggerAssets).toBe(0);
-  await page.getByRole('link', { name: 'Database', exact: true }).hover();
-  await page.locator('#shared-database-nav').getByRole('link', { name: 'API documentation' }).click();
+  await page.getByRole('link', { name: 'API', exact: true }).click();
   await expect(page.locator('.opblock')).toHaveCount(10);
   await expect(page.locator('.opblock-summary-method')).toHaveText(Array(10).fill('GET'));
-  expect(reads).toBe(0); expect(writes).toBe(0);
+  expect(locationReads).toBe(0); expect(writes).toBe(0);
   await expect(page.locator('.topbar')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Authorize', exact: true })).toHaveCount(0);
   const list = operation(page, '/api/v2/locations');
@@ -60,9 +61,9 @@ test('Swagger is local and lazy, renders real GET operations and executes only o
   await list.getByRole('button', { name: 'Try it out', exact: true }).click();
   await list.getByRole('button', { name: 'Execute', exact: true }).click();
   await expect(list.locator('.responses-inner')).toContainText('200');
-  expect(reads).toBe(1); expect(writes).toBe(0); expect(external).toEqual([]);
+  expect(locationReads).toBe(1); expect(writes).toBe(0); expect(external).toEqual([]);
   expect(new URL(page.url()).hash).toMatch(/^#\/(?:about|database)\/api$/);
-  await expect(page.getByRole('link', { name: 'Curated CSV (up to 1,000 records)' })).toHaveAttribute('href', '/api/v2/locations.csv?profile=official');
+  await expect(page.getByRole('link', { name: 'Download complete CSV' })).toHaveAttribute('href', '/api/v2/locations.csv?profile=official&release_id=synthetic-release');
 });
 
 test('a community warning precedes execution and remains with a displayed community response', async ({ page }) => {
@@ -74,7 +75,7 @@ test('a community warning precedes execution and remains with a displayed commun
   await list.getByRole('button', { name: 'Try it out', exact: true }).click();
   const profile = list.locator('tr').filter({ has: page.locator('.parameter__name').filter({ hasText: /^profile/ }) }).locator('select');
   await profile.selectOption('community');
-  const warning = page.getByText('Unreviewed community claim: not verified by Until Every Cage.', { exact: true });
+  const warning = page.getByText('Unreviewed community claims are not verified by Until Every Cage.', { exact: true }).first();
   await expect(warning).toBeVisible();
   await list.getByRole('button', { name: 'Execute', exact: true }).click();
   await expect(list.locator('.responses-inner')).toContainText('"community"');
@@ -83,7 +84,7 @@ test('a community warning precedes execution and remains with a displayed commun
   await expect(list.locator('.responses-inner')).toContainText('"community"');
 });
 
-test('Help and expanded API paths stay usable on mobile without changing the masthead', async ({ page }) => {
+test('About and expanded API paths stay usable on mobile with direct masthead links', async ({ page }) => {
   await isolatedPage(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('./#/about/api');
@@ -92,9 +93,8 @@ test('Help and expanded API paths stay usable on mobile without changing the mas
   await list.locator('.opblock-summary-control').click();
   await list.getByRole('button', { name: 'Try it out', exact: true }).click();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await page.getByRole('link', { name: 'About', exact: true }).hover();
-  await page.locator('#shared-about-nav').getByRole('link', { name: 'Help' }).click();
-  await expect(page.getByRole('heading', { name: 'Help', exact: true })).toBeVisible();
+  await page.getByRole('link', { name: 'About', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Until every cage is empty' })).toBeVisible();
   await expect(page.getByRole('banner')).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });

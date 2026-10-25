@@ -3,7 +3,7 @@ import type { LocalProfile } from './LocalLocationRepository';
 const manifestEnvelope = z.object({ api_version: z.literal('v2'), data: z.object({ release_id: z.string().min(1).max(160), profile: z.enum(['official','secondary','community']), manifest: z.record(z.unknown()), manifest_sha256: z.string().regex(/^[a-f0-9]{64}$/), suppression_generation: z.number().int().nonnegative() }).strict() }).strict();
 export class PublicReleaseError extends Error {}
 /** Public availability does not depend on whether a release has map tiles. */
-export type PublicReleaseIdentity = Readonly<{ releaseId: string; manifestSha256: string; suppressionGeneration: number }>;
+export type PublicReleaseIdentity = Readonly<{ releaseId: string; manifestSha256: string; suppressionGeneration: number; mapGeneratedAt?: string }>;
 export class PublicReleaseRepository {
   constructor(private readonly fetcher: typeof fetch = globalThis.fetch) {}
   async current(profile: LocalProfile, signal?: AbortSignal, releaseId?: string): Promise<PublicReleaseIdentity | null> {
@@ -13,6 +13,14 @@ export class PublicReleaseRepository {
     if (!response.ok) throw new PublicReleaseError('Release availability could not be checked. Try again.');
     const parsed = manifestEnvelope.safeParse(await response.json());
     if (!parsed.success || parsed.data.data.profile !== profile) throw new PublicReleaseError('Release availability could not be checked. Try again.');
-    return { releaseId: parsed.data.data.release_id, manifestSha256: parsed.data.data.manifest_sha256, suppressionGeneration: parsed.data.data.suppression_generation };
+    const mapArtifact = parsed.data.data.manifest.map_artifact;
+    const mapGeneratedAt = mapArtifact && typeof mapArtifact === 'object' && !Array.isArray(mapArtifact)
+      ? (mapArtifact as Record<string, unknown>).generated_at : undefined;
+    return {
+      releaseId: parsed.data.data.release_id,
+      manifestSha256: parsed.data.data.manifest_sha256,
+      suppressionGeneration: parsed.data.data.suppression_generation,
+      ...(typeof mapGeneratedAt === 'string' && Number.isFinite(Date.parse(mapGeneratedAt)) ? { mapGeneratedAt } : {}),
+    };
   }
 }

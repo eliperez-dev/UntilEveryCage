@@ -12,4 +12,13 @@ describe('public download availability',()=>{
   expect(await new PublicReleaseRepository(vi.fn().mockResolvedValue(response({},404))).current('official')).toBeNull();
   for(const result of [response({},503),response(envelope('community')),response({api_version:'v2',data:{release_id:'unvalidated'}})]) await expect(new PublicReleaseRepository(vi.fn().mockResolvedValue(result)).current('official')).rejects.toThrow('Release availability could not be checked. Try again.');
  });
+ it('loads an explicitly selected historic release and exposes its map snapshot date',async()=>{
+  const releaseId='v0-candidate-2026-10-04-r3';
+  const body=envelope();
+  body.data.release_id=releaseId;
+  body.data.manifest={map_artifact:{generated_at:'2026-10-04T12:00:00Z'}};
+  const fetcher=vi.fn().mockResolvedValue(response(body));
+  expect(await new PublicReleaseRepository(fetcher).current('official',undefined,releaseId)).toEqual({releaseId,manifestSha256:'a'.repeat(64),suppressionGeneration:1,mapGeneratedAt:'2026-10-04T12:00:00Z'});
+  expect(fetcher).toHaveBeenCalledWith(`/api/v2/releases/manifest?profile=official&release_id=${releaseId}`,expect.any(Object));
+ });
 });

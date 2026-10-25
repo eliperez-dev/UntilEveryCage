@@ -52,6 +52,25 @@ describe('normal shell content', () => {
     expect(contribute).toContain("Object.entries(taskNames)");
     expect(api).toContain("current('community')");
     expect(api).toContain('{#if communityReleaseAvailable}<option value="community">Community submissions</option>{/if}');
+    expect(api).toContain('selectedReleaseId: selectedFromRoute');
+    expect(api).toContain('repository.current(profile, controller.signal, chosenId)');
+    expect(api).toContain('API release ID: <code>{releaseId}</code>');
+    expect(api).not.toContain("limit: '1'");
+  });
+
+  it('keeps the map-selected historic release in API and download links', () => {
+    const app = readFileSync(resolve(process.cwd(), 'src/app/App.svelte'), 'utf8');
+    expect(app).toContain('selectedReleaseId={new URLSearchParams(route.returnMapHref?.split(\'?\')[1] ?? \'\').get(\'release_id\')}');
+    expect(api).toContain("...(releaseId ? { release_id: releaseId } : {})");
+    expect(api).toContain('aria-label="Public release"');
+  });
+
+  it('keeps counter scope and source detail secondary to the estimate', () => {
+    expect(about).toContain('<h2 id="estimate-title">Estimated animals killed</h2>');
+    expect(about).toContain('Since this page opened · modeled from 2024 global estimates');
+    expect(about).toContain('<details class="source-note"><summary>Source and method</summary>');
+    expect(about).toContain('blob/eli/v2/docs/story/claim-ledger.md');
+    expect(about).not.toContain('Scope:</strong>');
   });
 
   it('uses a private fragment tracking capability for status lookup', () => {

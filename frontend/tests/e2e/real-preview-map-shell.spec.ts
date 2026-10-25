@@ -53,9 +53,8 @@ test('the four primary links retain the rich preview context across Contribute a
   for (const label of ['Map', 'Contribute']) await expect(shellNav.getByRole('link', { name: label })).toBeVisible();
   await expect(shellNav.getByRole('link', { name: 'About', exact: true })).toBeVisible();
 
-  await shellNav.getByRole('link', { name: 'About', exact: true }).hover();
-  await page.locator('#shared-about-nav').getByRole('link', { name: 'Overview' }).click();
-  await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible();
+  await shellNav.getByRole('link', { name: 'About', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Until every cage is empty' })).toBeVisible();
   await shellNav.getByRole('link', { name: 'Map' }).click();
   await expect(page.getByRole('button', { name: /Search map Places, facilities, sources/ })).toBeVisible();
   for (const label of ['Map', 'Contribute']) await expect(primary.getByRole('link', { name: label })).toBeVisible();
