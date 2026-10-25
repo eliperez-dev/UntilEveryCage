@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import html.parser
+import hashlib
 import json
 import os
 import re
@@ -35,6 +36,14 @@ def registration_components(value: str) -> tuple[str, str, str] | None:
     if not match:
         return None
     return (str(int(match.group(1))), str(int(match.group(2))), (match.group(3) or "").upper())
+
+
+def registration_key_sha256(value: str) -> str | None:
+    """Hash canonical AESAN key components so the registration is not copied into map provenance."""
+    components = registration_components(value)
+    if components is None:
+        return None
+    return hashlib.sha256("\x1f".join(components).encode("ascii")).hexdigest()
 
 
 def _decode_response(response: Any) -> str:
@@ -144,6 +153,7 @@ def match_official_result(record: dict[str, Any], results: Iterable[dict[str, st
             "method_source_id": LOOKUP_SOURCE_ID, "method_version": LOOKUP_METHOD_VERSION}
     if not source_parts:
         return {**base, "outcome": "invalid_source_registration_key"}
+    base["registration_key_sha256"] = hashlib.sha256("\x1f".join(source_parts).encode("ascii")).hexdigest()
     matches = [item for item in results if registration_components(item.get("registration", "")) == source_parts]
     if not matches:
         return {**base, "outcome": "not_found"}
@@ -224,16 +234,27 @@ def enrich_records(records: Iterable[dict[str, Any]], *, limit: int = 1,
     """Run the bounded source-key lookup and return new immutable evidence events."""
     if not 1 <= limit <= MAX_LOOKUPS:
         raise ValueError(f"AESAN enrichment limit must be 1..{MAX_LOOKUPS}")
-    selected = []
+    representatives: dict[str, dict[str, Any]] = {}
     for record in records:
         if record.get("source_id") != SOURCE_ID:
             continue
         normalized = record.get("normalized") or {}
         if not isinstance(normalized.get("address"), str) or not normalized["address"].strip():
             continue
-        selected.append(record)
-        if len(selected) == limit:
-            break
+        values = record.get("source_values") or {}
+        key = values.get("N_RGSEAA") or normalized.get("establishment_id")
+        key_hash = registration_key_sha256(key) if isinstance(key, str) else None
+        record_key = record.get("source_record_key")
+        if key_hash is None or not isinstance(record_key, str) or not record_key:
+            continue
+        current = representatives.get(key_hash)
+        if current is None or record_key < current["source_record_key"]:
+            representatives[key_hash] = record
+    # The real-preview candidate groups duplicate source rows by the AESAN
+    # registration number and selects the lexicographically first row key.
+    # Use the same representative rule so each lookup can link to exactly one
+    # accepted candidate without attaching a duplicate row's address.
+    selected = list(representatives.values())[:limit]
     keys = []
     for record in selected:
         values = record.get("source_values") or {}
