@@ -145,6 +145,17 @@ class PublicOpenApiContractTests(unittest.TestCase):
         detail = self.handler(self.rust, "get_v2_location_detail_handler")
         self.assertEqual(self.query_names("/api/v2/locations/{facility_id}"), set(re.findall(r"params\s*\.\s*(\w+)", detail)))
 
+    def test_csv_contract_defaults_to_full_selected_release_and_accepts_explicit_limit(self):
+        path = "/api/v2/locations.csv"
+        operation = self.spec["paths"][path]["get"]
+        self.assertIn("every eligible row", operation["description"].lower())
+        self.assertIn("release_id", self.query_names(path))
+        contract = self.contract["endpoints"]["GET /api/v2/locations.csv"]
+        self.assertEqual(contract["default_rows"], "all eligible rows from the selected release/profile")
+        self.assertEqual(contract["limit_bounds"], "1..1000")
+        self.assertNotIn("without_limit_over_bound", contract)
+        self.assertNotIn("export_too_large", operation["description"].lower())
+
     def test_aphis_report_link_resolver_is_release_bound_and_matches_handler(self):
         path = "/api/v2/locations/{facility_id}/aphis-report-links"
         self.assertEqual(self.query_names(path), {"profile", "release_id", "kind", "cursor", "limit"})
@@ -203,8 +214,8 @@ class PublicOpenApiContractTests(unittest.TestCase):
         self.assertIn("unwrap_or(100).clamp(1, 1000)", self.rust)
         self.assertIn("unwrap_or(0).clamp(0, 1_000_000)", self.rust)
         export = self.handler(self.rust, "get_v2_locations_export_handler")
-        self.assertIn("total_count > 1000", export)
-        self.assertIn("requested_limit.is_none()", export)
+        self.assertIn("requested_limit.is_some_and", export)
+        self.assertIn("requested_limit.unwrap_or(i64::MAX)", export)
         self.assertIn("x-uec-export-truncated", export)
         map_feed = self.handler(self.rust, "get_v2_public_map_feed_handler")
         self.assertIn("PUBLIC_MAP_FEED_MAX_FEATURES", map_feed)

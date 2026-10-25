@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { LocalLocationRepository } from '../api/LocalLocationRepository';
-  import { FacetsRepository, type Facet } from '../api/FacetsRepository';
+  import { FacetsRepository, type Facet, type FacetResponse } from '../api/FacetsRepository';
   import type { Location } from '../domain/location';
   import { TAXONOMY_PRIMARY_KEYS, type TaxonomyPrimaryKey } from '../domain/taxonomy';
   import { CATEGORY_PRESENTATIONS } from '../features/locations/categoryPresentation';
@@ -36,7 +36,7 @@
   const precision = (record: Location) => precisionPresentation(record.evidence?.displayPrecision);
   const listingActivity = (record: Location) => record.taxonomy?.leafActivities.map(activity => activity.label).join(' · ') || (record.category === 'unclassified' ? '' : record.category);
   const detailActivity = (record: Location) => listingActivity(record) || 'Category not provided';
-  async function load(reset = true) {
+  async function load(reset = true, initialFacets?: Promise<FacetResponse>) {
     controller?.abort(); controller = new AbortController(); const current = controller;
     busy = true; error = ''; unavailable = false;
     if (reset) { records = []; cursor = null; totalCount = null; releaseId = requestedReleaseId; selectedId = null; }
@@ -46,11 +46,24 @@
       records = [...new Map([...(reset ? [] : records), ...result.locations].map(record => [record.id, record])).values()];
       cursor = result.nextCursor; releaseId = result.releaseId; onrelease?.(result.releaseId);
       if (facetsRelease !== result.releaseId && result.ruleset) {
-        facetsRelease = result.releaseId; facetController?.abort(); facetController = new AbortController();
-        const facetSignal = facetController.signal;
-        void facetsRepository.get('official', {}, { releaseId: result.releaseId, ruleset: result.ruleset }, facetSignal).then(value => {
-          if (!facetSignal.aborted) { countries = value.dimensions.country_code ?? []; sources = value.dimensions.source_id ?? []; }
-        }).catch(() => { if (!facetSignal.aborted) facetsRelease = ''; });
+        facetsRelease = result.releaseId;
+        // The first page adopts the in-flight prefetch; only later generations
+        // replace it. Attach a rejection handler immediately below.
+        const activeFacetController = facetController ?? new AbortController();
+        facetController = activeFacetController;
+        const facetSignal = activeFacetController.signal;
+        void (async () => {
+          let value: FacetResponse | undefined;
+          if (initialFacets) {
+            try { value = await initialFacets; } catch { if (facetSignal.aborted) return; }
+          }
+          if (!value || value.releaseId !== result.releaseId || value.ruleset !== result.ruleset) {
+            value = await facetsRepository.get('official', {}, { releaseId: result.releaseId, ...(result.ruleset ? { ruleset: result.ruleset } : {}) }, facetSignal);
+          }
+          if (!facetSignal.aborted && value.releaseId === result.releaseId && value.ruleset === result.ruleset) {
+            countries = value.dimensions.country_code ?? []; sources = value.dimensions.source_id ?? [];
+          }
+        })().catch(() => { if (!facetSignal.aborted) facetsRelease = ''; });
       }
       const counted = (result as unknown as { totalCount?: unknown }).totalCount;
       totalCount = typeof counted === 'number' ? counted : records.length;
@@ -66,7 +79,12 @@
   function setPageSize(value: string) { pageSize = Number(value) as 25 | 50 | 100; void load(); }
   const recordRoute = (id: string) => serializeRoute({kind:'record',facilityId:id,profile:'official',...(releaseId ? {releaseId} : {})});
   const recordHref = (id: string) => `${window.location.origin}${window.location.pathname}${recordRoute(id)}`;
-  onMount(() => { void load(); return () => { controller?.abort(); facetController?.abort(); clearTimeout(timer); }; });
+  onMount(() => {
+    facetController = new AbortController();
+    const initialFacets = facetsRepository.get('official', {}, requestedReleaseId ? { releaseId: requestedReleaseId } : {}, facetController.signal);
+    void load(true, initialFacets);
+    return () => { controller?.abort(); facetController?.abort(); clearTimeout(timer); };
+  });
 </script>
 <svelte:head><title>Browse records · Until Every Cage</title></svelte:head>
 <section class="public-database" aria-labelledby="browse-title">

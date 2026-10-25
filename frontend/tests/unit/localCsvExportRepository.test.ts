@@ -4,9 +4,21 @@ import { LocalCsvExportRepository } from '../../src/api/LocalCsvExportRepository
 const response = (status = 200, body = 'facility_id\nabc\n') => new Response(body, { status, headers: { 'x-uec-release-id': 'release-1', 'x-uec-manifest-sha256': 'digest-1' } });
 
 describe('LocalCsvExportRepository', () => {
-  it('returns bounded CSV and release manifest context', async () => {
-    const result = await new LocalCsvExportRepository(vi.fn().mockResolvedValue(response())).download('official');
+  it('returns CSV and release manifest context with an unbounded default request', async () => {
+    const fetcher = vi.fn().mockResolvedValue(response());
+    const result = await new LocalCsvExportRepository(fetcher).download('official');
     expect(result).toMatchObject({ releaseId: 'release-1', profile: 'official', manifestSha256: 'digest-1' });
+    expect(new URL(String(fetcher.mock.calls[0]?.[0]), 'http://localhost').searchParams.has('limit')).toBe(false);
+  });
+  it('adds a bound only when explicitly requested', async () => {
+    const fetcher = vi.fn().mockResolvedValue(response());
+    await new LocalCsvExportRepository(fetcher).download('official', undefined, 'release-a', 250);
+    const url = new URL(String(fetcher.mock.calls[0]?.[0]), 'http://localhost');
+    expect(url.searchParams.get('release_id')).toBe('release-a');
+    expect(url.searchParams.get('limit')).toBe('250');
+  });
+  it.each([0, 1001, 1.5])('rejects invalid explicit export limit %s', async (limit) => {
+    await expect(new LocalCsvExportRepository(vi.fn()).download('official', undefined, undefined, limit)).rejects.toThrow(/limit must be an integer/);
   });
   it.each([400, 404, 429, 503])('surfaces HTTP status %s', async (status) => {
     await expect(new LocalCsvExportRepository(vi.fn().mockResolvedValue(response(status))).download('official')).rejects.toMatchObject({ status });

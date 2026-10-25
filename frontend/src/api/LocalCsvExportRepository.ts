@@ -12,9 +12,13 @@ export class LocalCsvExportRepository {
   readonly #base: string | undefined;
   constructor(private readonly fetcher: FetchLike = globalThis.fetch, baseUrl = '') { this.#base = baseUrl ? localOrigin(baseUrl) : undefined; }
 
-  async download(profile: LocalProfile = 'official', signal?: AbortSignal, requestedReleaseId?: string): Promise<CsvExport> {
+  async download(profile: LocalProfile = 'official', signal?: AbortSignal, requestedReleaseId?: string, limit?: number): Promise<CsvExport> {
     const init: RequestInit = { cache: 'no-store' }; if (signal) init.signal = signal;
     const params = new URLSearchParams({ profile }); if (requestedReleaseId) params.set('release_id', requestedReleaseId);
+    if (limit !== undefined) {
+      if (!Number.isInteger(limit) || limit < 1 || limit > 1000) throw new RangeError('CSV export limit must be an integer from 1 to 1000.');
+      params.set('limit', String(limit));
+    }
     const response = await this.fetcher.call(globalThis, `${this.#base ?? ''}/api/v2/locations.csv?${params}`, init);
     if (!response.ok) {
       let message = `Local V2 export request failed with status ${response.status}.`;

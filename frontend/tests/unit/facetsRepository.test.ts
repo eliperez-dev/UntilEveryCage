@@ -11,6 +11,14 @@ describe('FacetsRepository', () => {
     expect(fetcher.mock.calls[0]?.[0]).toContain('profile=official');
   });
 
+  it('can fetch the active facet snapshot in parallel before its release is known', async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify(body())));
+    await expect(new FacetsRepository(fetcher).get('official', {})).resolves.toMatchObject({ releaseId: 'release-1', ruleset: 'rules-1' });
+    const url = new URL(String(fetcher.mock.calls[0]?.[0]), 'http://localhost');
+    expect(url.searchParams.get('profile')).toBe('official');
+    expect(url.searchParams.has('release_id')).toBe(false);
+  });
+
   it('rejects a facet snapshot from a different release', async () => {
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify(body({ meta: { ...body().meta, release_id: 'old-release' } }))));
     await expect(new FacetsRepository(fetcher).get('official', {}, { releaseId: 'release-1', ruleset: 'rules-1' })).rejects.toThrow(/different profile or promoted release/);

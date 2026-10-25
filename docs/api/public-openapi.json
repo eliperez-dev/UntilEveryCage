@@ -226,8 +226,8 @@
     "/api/v2/locations.csv": {
       "get": {
         "operationId": "downloadLocationsCsv",
-        "summary": "Download bounded CSV",
-        "description": "Exports the latest promoted eligible profile in facility UUID order, with release/profile/digest/rights and publication context on each row. Without limit, rejects more than 1,000 rows. Supplying limit=1..1000 explicitly opts into the first bounded page; response headers disclose total, returned and truncated status. Only profile and limit are effective: search, cursor, spatial filters and release_id are not applied. Use paginated JSON for larger reads. Empty eligible exports may have an empty body.",
+        "summary": "Download public CSV",
+        "description": "Exports every eligible row from the selected promoted profile and release in facility UUID order, with release/profile/digest/rights and publication context on each row. Supplying limit=1..1000 explicitly opts into the first bounded page; response headers disclose total, returned and truncated status. Search, cursor, and spatial filters are not applied. Use paginated JSON for filtered reads. Empty eligible exports may have an empty body.",
         "tags": [
           "Downloads"
         ],
@@ -244,7 +244,7 @@
         ],
         "responses": {
           "200": {
-            "description": "CSV attachment, at most the requested limit or 1,000 rows.",
+            "description": "CSV attachment with all eligible rows by default, or the requested bounded first page.",
             "headers": {
               "Content-Disposition": {
                 "schema": {
@@ -281,10 +281,10 @@
                 "schema": {"type": "integer", "minimum": 0}
               },
               "x-uec-export-returned-count": {
-                "schema": {"type": "integer", "minimum": 0, "maximum": 1000}
+                "schema": {"type": "integer", "minimum": 0}
               },
               "x-uec-export-truncated": {
-                "description": "True when the bounded CSV contains only the first page.",
+                "description": "True when an explicit limit omits eligible rows from this CSV.",
                 "schema": {"type": "boolean"}
               }
             },
@@ -1989,7 +1989,7 @@
         "name": "limit",
         "in": "query",
         "required": false,
-        "description": "Explicitly opt into the deterministic first page of a bounded CSV export. Without this parameter, datasets over 1,000 rows return export_too_large.",
+        "description": "Optional explicit bound for the deterministic first CSV page. Without this parameter, the complete eligible export is returned.",
         "schema": {"type": "integer", "minimum": 1, "maximum": 1000}
       },
       "lifecycle_status": {

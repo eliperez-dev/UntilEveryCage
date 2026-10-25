@@ -16,7 +16,7 @@ production-deployed or that every source is current.
 | Health | `/health/live`, `/health/ready`, and coarse privacy-safe `/health/diagnostics` |
 | Discovery | `/api/v2/locations`, `/api/v2/locations/{facility_id}`, `/api/v2/discovery/filters`, and `/api/v2/discovery/facets` |
 | APHIS report links | `/api/v2/locations/{facility_id}/aphis-report-links` resolves official document links only for already eligible released APHIS references; it does not publish new report facts or contents |
-| Export | Bounded `/api/v2/locations.csv`; reproducible release packages remain an operator CLI concern |
+| Export | Full selected-release `/api/v2/locations.csv` by default, with an optional bounded first page; reproducible release packages remain an operator CLI concern |
 | Release metadata | `/api/v2/releases/manifest` exposes only an eligible promoted manifest |
 | Development preview | `/api/dev/preview/candidates` is authenticated, private, test-only, and unavailable as a production surface |
 

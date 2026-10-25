@@ -101,6 +101,7 @@ test('compact map view control toggles 3D and right-drag rotates the map', async
   const controls = page.getByRole('group', { name: 'Map view' });
   const viewToggle = controls.locator('.map-camera-toggle');
   const styleSelect = controls.getByLabel('Map style');
+  await expect(controls.getByText('Right-drag to rotate / Left-drag to pan')).toBeVisible();
   await expect(styleSelect.locator('option')).toHaveText(['Street', 'Satellite']);
   await expect(viewToggle).toHaveText('2D');
   await expect(controls.locator('#map-camera-help')).toHaveClass(/sr-only/);
@@ -118,8 +119,9 @@ test('compact map view control toggles 3D and right-drag rotates the map', async
   await page.screenshot({ path: testInfo.outputPath('map-controls-desktop.png') });
   const before = await page.evaluate(() => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
-    return { pitch: map.getPitch(), bearing: map.getBearing() };
+    return { pitch: map.getPitch(), bearing: map.getBearing(), tileCacheZoomLevels: map._maxTileCacheZoomLevels };
   });
+  expect(before.tileCacheZoomLevels).toBe(6);
   const canvas = await page.locator('.maplibregl-canvas').boundingBox();
   expect(canvas).not.toBeNull();
   await page.mouse.move(canvas!.x + canvas!.width * 0.5, canvas!.y + canvas!.height * 0.6);
@@ -145,7 +147,26 @@ test('compact map view control toggles 3D and right-drag rotates the map', async
   expect(Math.max(...mobileRowCenters) - Math.min(...mobileRowCenters)).toBeLessThan(2);
   await expect(controls.locator('#map-camera-help')).toHaveClass(/sr-only/);
   await expect(viewToggle).toHaveAttribute('aria-describedby', 'map-camera-help');
+  await expect(controls.getByText('Right-drag to rotate / Left-drag to pan')).toBeHidden();
   await page.screenshot({ path: testInfo.outputPath('map-controls-mobile.png') });
+});
+
+test('selecting a map pin gently centres the camera on that record', async ({ page }) => {
+  await page.goto('./#/map?f1a=field&scenario=dense&lat=38&lon=-96&z=4');
+  await expect.poll(() => page.evaluate(() => Boolean((window as any).__UEC_LOCAL_PREVIEW_MAP__?.getLayer('exact-pins')))).toBe(true);
+  await page.evaluate(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    const feature = {
+      type: 'Feature', geometry: { type: 'Point', coordinates: [-73.9, 40.7] },
+      properties: { id: 'dense-exact-pin-centre-test' }, layer: { id: 'exact-pins' },
+    };
+    map.queryRenderedFeatures = () => [feature];
+    map.fire('click', { point: { x: 20, y: 20 }, lngLat: { lng: -73.9, lat: 40.7 }, originalEvent: new MouseEvent('click') });
+  });
+  await expect.poll(() => page.evaluate(() => {
+    const center = (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getCenter();
+    return center ? [Number(center.lng.toFixed(1)), Number(center.lat.toFixed(1))] : null;
+  })).toEqual([-73.9, 40.7]);
 });
 
 test('cold shared 3D URLs restore terrain after a style reload and browser Back', async ({ page }) => {

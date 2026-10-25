@@ -16,8 +16,8 @@ const normalizedFilter = (value: string | null | undefined): string | null => {
 
 export class FacetsRepository {
   constructor(private readonly fetcher: FetchLike = globalThis.fetch, private readonly baseUrl = '') {}
-  async get(profile: LocalProfile, filters: FacetFilters, expected: { releaseId: string; ruleset: string }, signal?: AbortSignal): Promise<FacetResponse> {
-    const params = new URLSearchParams({ profile, release_id: expected.releaseId });
+  async get(profile: LocalProfile, filters: FacetFilters, expected: { releaseId?: string; ruleset?: string } = {}, signal?: AbortSignal): Promise<FacetResponse> {
+    const params = new URLSearchParams({ profile }); if (expected.releaseId) params.set('release_id', expected.releaseId);
     for (const [key, value] of Object.entries(filters)) if (value) params.set(key, value);
     let response: Response;
     try { const init: RequestInit = { cache: 'no-store' }; if (signal) init.signal = signal; response = await this.fetcher.call(globalThis, `${this.baseUrl}/api/v2/discovery/facets?${params}`, init); }
@@ -27,7 +27,9 @@ export class FacetsRepository {
     try { payload = await response.json(); } catch { throw fail('invalid-contract', 'Coverage summary response was not valid JSON.'); }
     const parsed = responseSchema.safeParse(payload);
     if (!parsed.success) throw fail('invalid-contract', 'Coverage summary response was rejected safely.');
-    if (parsed.data.meta.profile !== profile || parsed.data.meta.release_id !== expected.releaseId || parsed.data.meta.ruleset_version !== expected.ruleset) throw fail('invalid-contract', 'Coverage summary belongs to a different profile or promoted release.');
+    if (parsed.data.meta.profile !== profile
+      || (expected.releaseId !== undefined && parsed.data.meta.release_id !== expected.releaseId)
+      || (expected.ruleset !== undefined && parsed.data.meta.ruleset_version !== expected.ruleset)) throw fail('invalid-contract', 'Coverage summary belongs to a different profile or promoted release.');
     const responseFilters = parsed.data.meta.filters;
     for (const key of ['country_code', 'region', 'category', 'source_type', 'display_precision', 'lifecycle_status'] as const) {
       if (normalizedFilter(filters[key]) !== normalizedFilter(responseFilters[key])) throw fail('invalid-contract', 'Coverage summary belongs to a different filter scope.');
