@@ -19,6 +19,7 @@
   import Field from './variants/field/Field.svelte';
 
   let labState = $state<LabState>(decodeLabHash(typeof location === 'undefined' ? '' : location.hash));
+  let pendingSelectionDismissalCamera: Pick<LabState, 'viewport' | 'basemap'> | null = null;
   const serverMode = typeof document === 'undefined' ? null : document.querySelector<HTMLMetaElement>('meta[name="uec-local-data-mode"]')?.content ?? null;
   // A configured candidate server is itself the explicit local preview
   // boundary. Requiring an extra hash flag here accidentally sent the map to
@@ -149,6 +150,9 @@
     // loads therefore need the same map-state updates as an explicit #/map URL.
     if (location.hash && !location.hash.startsWith('#/map')) return;
     const wasSelected = labState.selectedId !== null;
+    const dismissalCamera = action.type === 'select' && !action.value && history.state?.uecMapSelection
+      ? { viewport: labState.viewport, basemap: labState.basemap }
+      : null;
     labState = reduceLabState(labState, action);
     const nextHash = `${encodeLabHash(labState, mode === 'real-preview', mode === 'public-release')}${$pinnedPublicReleaseId ? `&release_id=${encodeURIComponent($pinnedPublicReleaseId)}` : ''}`;
     if (action.type === 'select' && action.value && !wasSelected) {
@@ -156,8 +160,9 @@
       // frequent map updates (especially viewport movement) stay replace-only.
       history.pushState({ ...history.state, uecMapSelection: true }, '', nextHash);
     } else if (action.type === 'select' && !action.value && history.state?.uecMapSelection) {
-      // Return to the immediately preceding unselected map entry. A direct
-      // selected URL has no marker and is cleared in place below.
+      // Return to the preceding unselected map entry, carrying the camera and
+      // style from the selected entry so the map does not jump back on close.
+      pendingSelectionDismissalCamera = dismissalCamera;
       history.back();
     } else {
       history.replaceState(history.state, '', nextHash);
@@ -310,7 +315,19 @@
     }
     const sync = () => {
       if (location.hash.startsWith('#/map')) {
-        labState = decodeLabHash(location.hash);
+        const decoded = decodeLabHash(location.hash);
+        // Browser Back and the dossier close button both leave a selected
+        // history entry. Preserve its final camera/style over the older URL.
+        const camera = pendingSelectionDismissalCamera
+          ?? (labState.selectedId && !decoded.selectedId
+            ? { viewport: labState.viewport, basemap: labState.basemap }
+            : null);
+        pendingSelectionDismissalCamera = null;
+        labState = camera ? { ...decoded, ...camera } : decoded;
+        if (camera) {
+          const preservedHash = `${encodeLabHash(labState, mode === 'real-preview', mode === 'public-release')}${$pinnedPublicReleaseId ? `&release_id=${encodeURIComponent($pinnedPublicReleaseId)}` : ''}`;
+          history.replaceState(history.state, '', preservedHash);
+        }
         const nextPinnedReleaseId = releaseFromHash();
         if ($pinnedPublicReleaseId !== nextPinnedReleaseId) {
           $pinnedPublicReleaseId = nextPinnedReleaseId;

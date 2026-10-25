@@ -116,10 +116,12 @@ test('flat camera URLs stay compact and the camera control remains usable on tou
 test('compact map view control toggles 3D and right-drag rotates the map', async ({ page }, testInfo) => {
   await installTerrainFixture(page);
   await page.goto('./#/map?f1a=field&scenario=dense&lat=38&lon=-96&z=4');
+  await page.locator('.map-surface').waitFor({ state: 'visible', timeout: 30_000 });
   const controls = page.getByRole('group', { name: 'Map view' });
   const viewToggle = controls.locator('.map-camera-toggle');
   const styleSelect = controls.getByLabel('Map style');
-  await expect(controls.getByText('Right-drag to rotate / Left-drag to pan')).toBeVisible();
+  const gestureHint = page.locator('.gesture-hint');
+  await expect(gestureHint).toBeVisible();
   await expect(styleSelect.locator('option')).toHaveText(['Street', 'Satellite']);
   await expect(viewToggle).toHaveText('2D');
   await expect(controls.locator('#map-camera-help')).toHaveClass(/sr-only/);
@@ -131,6 +133,11 @@ test('compact map view control toggles 3D and right-drag rotates the map', async
   expect(rowTops.every(Boolean)).toBe(true);
   const rowCenters = rowTops.map(box => box!.y + box!.height / 2);
   expect(Math.max(...rowCenters) - Math.min(...rowCenters)).toBeLessThan(2);
+  const [controlsBox, hintBox] = await Promise.all([controls.boundingBox(), gestureHint.boundingBox()]);
+  expect(controlsBox).not.toBeNull();
+  expect(hintBox).not.toBeNull();
+  expect(hintBox!.y).toBeGreaterThanOrEqual(controlsBox!.y + controlsBox!.height);
+  expect(Math.abs(hintBox!.x + hintBox!.width - (controlsBox!.x + controlsBox!.width))).toBeLessThan(2);
   await viewToggle.click();
   await expect(viewToggle).toHaveText('3D');
   await expect(viewToggle).toHaveAttribute('title', 'Right-drag to tilt and rotate');
@@ -165,7 +172,8 @@ test('compact map view control toggles 3D and right-drag rotates the map', async
   expect(Math.max(...mobileRowCenters) - Math.min(...mobileRowCenters)).toBeLessThan(2);
   await expect(controls.locator('#map-camera-help')).toHaveClass(/sr-only/);
   await expect(viewToggle).toHaveAttribute('aria-describedby', 'map-camera-help');
-  await expect(controls.getByText('Right-drag to rotate / Left-drag to pan')).toBeHidden();
+  await expect(gestureHint).toBeHidden();
+  await expect(controls.locator('#map-camera-help')).toContainText('On touchscreens, use two fingers to tilt');
   await page.screenshot({ path: testInfo.outputPath('map-controls-mobile.png') });
 });
 
@@ -185,6 +193,71 @@ test('selecting a map pin gently centres the camera on that record', async ({ pa
     const center = (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getCenter();
     return center ? [Number(center.lng.toFixed(1)), Number(center.lat.toFixed(1))] : null;
   })).toEqual([-73.9, 40.7]);
+});
+
+for (const dismissal of ['close button', 'Escape key', 'browser Back'] as const) {
+  test(`dismissing a selected record with ${dismissal} preserves the selected camera and style`, async ({ page }) => {
+    await installTerrainFixture(page);
+    await page.goto('./#/map?f1a=field&scenario=dense&lat=38&lon=-96&z=4&pitch=24&bearing=18');
+    await page.locator('.map-surface').waitFor({ state: 'visible', timeout: 30_000 });
+    await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getPitch())).toBe(24);
+    // Model a cold selected URL reached from a prior, wider map view. The real
+    // MapLibre layer-click interaction is covered by the built-app acceptance.
+    const selectedHash = '#/map?f1a=field&scenario=dense&lat=40.7&lon=-73.9&z=8&pitch=20&bearing=-17&basemap=satellite&selected=dense-exact-0-0';
+    await page.goto(`./${selectedHash}`);
+    await page.locator('.map-surface').waitFor({ state: 'visible', timeout: 30_000 });
+    await expect(page.locator('.dossier')).toBeVisible();
+    await page.evaluate(() => history.replaceState({ ...history.state, uecMapSelection: true }, '', location.href));
+    await expect.poll(() => page.evaluate(() => {
+      const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+      return [Number(map.getCenter().lng.toFixed(1)), Number(map.getCenter().lat.toFixed(1))];
+    })).toEqual([-73.9, 40.7]);
+    const selectedCamera = await page.evaluate(() => {
+      const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+      const center = map.getCenter();
+      return { center: [Number(center.lng.toFixed(4)), Number(center.lat.toFixed(4))], zoom: Number(map.getZoom().toFixed(2)), pitch: Number(map.getPitch().toFixed(1)), bearing: Number(map.getBearing().toFixed(1)) };
+    });
+    if (dismissal === 'close button') await page.getByRole('button', { name: 'Close record detail' }).click();
+    else if (dismissal === 'Escape key') await page.keyboard.press('Escape');
+    else await page.goBack();
+    await expect(page.locator('.dossier')).toBeHidden();
+    await expect.poll(() => page.evaluate(() => {
+      const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+      const center = map.getCenter();
+      return { center: [Number(center.lng.toFixed(4)), Number(center.lat.toFixed(4))], zoom: Number(map.getZoom().toFixed(1)), pitch: Math.round(map.getPitch()), bearing: Number(map.getBearing().toFixed(1)) };
+    })).toEqual(selectedCamera);
+    const hash = new URL(page.url()).hash;
+    expect(hash).toContain('basemap=satellite');
+    expect(hash).not.toContain('selected=');
+    expect(hash).toContain('lat=40.7');
+    expect(hash).toContain('lon=-73.9');
+    await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getStyle().sources.base.tiles[0])).toContain('World_Imagery');
+  });
+}
+
+test('a directly loaded selected URL survives reload and closes without restoring an older camera', async ({ page }) => {
+  await installTerrainFixture(page);
+  const selectedHash = '#/map?f1a=field&scenario=dense&lat=40.7&lon=-73.9&z=8&pitch=20&bearing=-17&basemap=satellite&selected=dense-exact-0-0';
+  await page.goto(`./${selectedHash}`);
+  await page.locator('.map-surface').waitFor({ state: 'visible', timeout: 30_000 });
+  await expect(page.locator('.dossier')).toBeVisible();
+  await page.reload();
+  await page.locator('.map-surface').waitFor({ state: 'visible', timeout: 30_000 });
+  await expect(page.locator('.dossier')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    const center = map.getCenter();
+    return [Number(center.lng.toFixed(2)), Number(center.lat.toFixed(2)), Number(map.getZoom().toFixed(1)), Math.round(map.getPitch()), Number(map.getBearing().toFixed(1))];
+  })).toEqual([-73.9, 40.7, 8, 20, -17]);
+  await page.getByRole('button', { name: 'Close record detail' }).click();
+  await expect(page.locator('.dossier')).toBeHidden();
+  await expect.poll(() => page.evaluate(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    const center = map.getCenter();
+    return [Number(center.lng.toFixed(2)), Number(center.lat.toFixed(2)), Number(map.getZoom().toFixed(1)), Math.round(map.getPitch()), Number(map.getBearing().toFixed(1))];
+  })).toEqual([-73.9, 40.7, 8, 20, -17]);
+  expect(new URL(page.url()).hash).toContain('basemap=satellite');
+  expect(new URL(page.url()).hash).not.toContain('selected=');
 });
 
 test('cold shared 3D URLs restore terrain after a style reload and browser Back', async ({ page }) => {

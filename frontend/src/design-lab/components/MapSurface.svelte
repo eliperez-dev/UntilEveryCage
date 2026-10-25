@@ -1487,12 +1487,14 @@
   aria-label="Map showing records"
 >
   <div class="map-host" bind:this={host}></div>
-  <div class="map-controls" role="group" aria-label="Map view">
-    <span class="map-controls-label">Map view</span>
-    <select aria-label="Map style" value={mapState.basemap} disabled={!nativeStyleReady} onchange={(event) => onbasemap(event.currentTarget.value as Basemap)}><option value="vector">Street</option><option value="satellite">Satellite</option></select>
-    <button class="map-camera-toggle" type="button" disabled={!nativeStyleReady} aria-label={cameraPitch > 0.5 ? 'Switch to 2D view' : 'Switch to 3D view'} aria-pressed={cameraPitch > 0.5} aria-describedby="map-camera-help" title="Right-drag to tilt and rotate" onclick={() => setCameraView(cameraPitch <= 0.5)}>{cameraPitch > 0.5 ? '3D' : '2D'}</button>
+  <div class="map-controls-wrap">
+    <div class="map-controls" role="group" aria-label="Map view">
+      <span class="map-controls-label">Map view</span>
+      <select aria-label="Map style" value={mapState.basemap} disabled={!nativeStyleReady} onchange={(event) => onbasemap(event.currentTarget.value as Basemap)}><option value="vector">Street</option><option value="satellite">Satellite</option></select>
+      <button class="map-camera-toggle" type="button" disabled={!nativeStyleReady} aria-label={cameraPitch > 0.5 ? 'Switch to 2D view' : 'Switch to 3D view'} aria-pressed={cameraPitch > 0.5} aria-describedby="map-camera-help" title="Right-drag to tilt and rotate" onclick={() => setCameraView(cameraPitch <= 0.5)}>{cameraPitch > 0.5 ? '3D' : '2D'}</button>
+      <span id="map-camera-help" class="sr-only">Right-drag to tilt and rotate. On touchscreens, use two fingers to tilt.</span>
+    </div>
     <span class="gesture-hint" aria-hidden="true">Right-drag to rotate / Left-drag to pan</span>
-    <span id="map-camera-help" class="sr-only">Right-drag to tilt and rotate. On touchscreens, use two fingers to tilt.</span>
   </div>
   {#if terrainError}<small class="map-status terrain-status" role="alert">{terrainError}</small>{/if}
   {#if basemapSwitching && pendingBasemap}<small
@@ -1763,12 +1765,13 @@
     position: absolute;
     inset: 0;
   }
-  .map-controls { position:absolute; z-index:4; top:.65rem; right:.65rem; display:flex; align-items:center; gap:.35rem; padding:.32rem .42rem; border:1px solid #48504b; background:#171a18ed; color:#aab0aa; font:.65rem system-ui; }
+  .map-controls-wrap { position:absolute; z-index:4; top:.65rem; right:.65rem; display:flex; flex-direction:column; align-items:flex-end; gap:.2rem; }
+  .map-controls { display:flex; align-items:center; gap:.35rem; padding:.32rem .42rem; border:1px solid #48504b; background:#171a18ed; color:#aab0aa; font:.65rem system-ui; }
   .map-controls-label { white-space:nowrap; }
   .map-controls select { min-width:6.2rem; min-height:1.9rem; padding:0 .35rem; border:1px solid #69716a; color:#f1efe8; background:#202421; font:inherit; }
   .map-camera-toggle { min-width:2.45rem; min-height:1.9rem; border:1px solid #69716a; color:#f1efe8; background:#202421; cursor:pointer; font:600 .7rem system-ui; }
   .map-camera-toggle[aria-pressed="true"] { border-color:#d8c99b; background:#33352d; color:#f5e8bf; }
-  .gesture-hint { padding-left:.3rem; color:#c6cbc4; white-space:nowrap; }
+  .gesture-hint { padding:.18rem .35rem; border:1px solid #48504b; background:#171a18ed; color:#c6cbc4; font:.6rem system-ui; white-space:nowrap; }
   .map-controls :is(button, select):focus-visible { outline:2px solid #f1efe8; outline-offset:2px; }
   .map-camera-toggle:disabled, .map-controls select:disabled { opacity:.58; cursor:default; }
   .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
@@ -1934,7 +1937,8 @@
   .map-surface :global(.maplibregl-ctrl-attrib a) { color: #c1d4cf; }
   .map-surface :global(.maplibregl-ctrl-attrib-button) { filter: invert(1); }
   @media (max-width: 40rem) {
-    .map-controls { top:.45rem; right:.4rem; gap:.25rem; padding:.28rem .32rem; font-size:.6rem; }
+    .map-controls-wrap { top:.45rem; right:.4rem; }
+    .map-controls { gap:.25rem; padding:.28rem .32rem; font-size:.6rem; }
     .map-controls select { min-width:5.3rem; }
     .map-camera-toggle { min-width:2.25rem; }
     .gesture-hint { display:none; }
