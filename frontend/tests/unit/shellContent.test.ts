@@ -18,7 +18,8 @@ describe('normal shell content', () => {
   it('keeps release context compact and removes unavailable account controls', () => {
     expect(masthead).toContain('Current release');
     expect(masthead).toContain('shared-tools-menu');
-    expect(masthead).toContain('justify-content:center; justify-self:stretch;');
+    expect(masthead).toContain('grid-template-columns: minmax(0, 1fr) max-content minmax(0, 1fr);');
+    expect(masthead).toContain('justify-content:center; justify-self:center;');
     expect(masthead).toContain('onreleasechange?.(event.currentTarget.value)');
     expect(masthead).toContain('Historical views follow current privacy restrictions.');
     expect(masthead).not.toContain('Release</button>');
