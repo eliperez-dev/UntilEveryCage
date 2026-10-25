@@ -2462,11 +2462,12 @@ pub async fn get_real_preview_reference_handler(
         return real_preview_unavailable();
     };
     let query_limit = limit + 1;
-    // The expression deliberately mirrors `reference_features` in the MVT
-    // query.  It only resolves administrative display geometries and retains
-    // the current-snapshot/source boundaries used by every preview endpoint.
+    // Keep this in parity with the `projected` reference branch of
+    // get_real_preview_map_feed_handler: provider address/locality groups use
+    // their provider kind in the feature key, while other references retain
+    // the historical city-reference key.
     let rows = match client.query(
-        &format!("WITH sources AS (SELECT source_id FROM real_preview.source_preview_runs UNION SELECT source_id FROM real_preview.source_manifests), latest AS (SELECT sources.source_id,COALESCE((SELECT run.snapshot_sha256 FROM real_preview.source_preview_runs run WHERE run.source_id=sources.source_id ORDER BY run.created_at DESC,run.run_id DESC LIMIT 1),(SELECT source_manifest.snapshot_sha256 FROM real_preview.source_manifests source_manifest WHERE source_manifest.source_id=sources.source_id ORDER BY source_manifest.retrieved_at DESC,source_manifest.snapshot_sha256 DESC LIMIT 1)) AS snapshot_sha256 FROM sources) SELECT candidate.*,manifest.source_url,manifest.retrieved_at {} FROM real_preview.candidates candidate JOIN real_preview.source_manifests manifest ON manifest.snapshot_sha256=candidate.snapshot_sha256 AND manifest.source_id=candidate.source_id WHERE candidate.default_map_scope=true AND candidate.display_geometry_source IS NOT NULL AND candidate.display_latitude BETWEEN -90 AND 90 AND candidate.display_longitude BETWEEN -180 AND 180 AND (candidate.display_latitude<>0 OR candidate.display_longitude<>0) AND md5('city-reference:' || ST_X(ST_Transform(ST_SetSRID(ST_MakePoint(candidate.display_longitude,candidate.display_latitude),4326),3857))::text || ':' || ST_Y(ST_Transform(ST_SetSRID(ST_MakePoint(candidate.display_longitude,candidate.display_latitude),4326),3857))::text)=$1 AND (candidate.source_id,candidate.snapshot_sha256) IN (SELECT source_id,snapshot_sha256 FROM latest) AND ($2::uuid IS NULL OR candidate.candidate_id>$2) AND ($4::text IS NULL OR candidate.source_id=$4) ORDER BY candidate.candidate_id LIMIT $3", REAL_PREVIEW_TAXONOMY_SELECT_SQL),
+        &real_preview_reference_lookup_sql(),
         &[&reference_key, &params.cursor, &query_limit, &params.source_id],
     ).await {
         Ok(rows) => rows,
@@ -2479,6 +2480,53 @@ pub async fn get_real_preview_reference_handler(
         StatusCode::OK,
         json!({"api_version":"real-preview-v1","data":data,"meta":{"bounded":true,"next_cursor":next,"private_preview":true,"reference_key":reference_key}}),
     )
+}
+
+fn real_preview_reference_key_sql() -> &'static str {
+    r#"md5((CASE
+        WHEN candidate.display_geometry_source LIKE 'Geoapify; high rank confidence heuristic and normalized source-address%'
+          OR candidate.display_geometry_source LIKE 'Geoapify; rank confidence >= 0.90 heuristic and normalized source-address%'
+          THEN 'provider_address_point_private'
+        WHEN candidate.display_geometry_source LIKE 'Geoapify;%'
+          THEN 'provider_locality_approximate'
+        ELSE 'city_reference'
+      END) || ':' ||
+      ST_X(ST_Transform(ST_SetSRID(ST_MakePoint(candidate.display_longitude,candidate.display_latitude),4326),3857))::text || ':' ||
+      ST_Y(ST_Transform(ST_SetSRID(ST_MakePoint(candidate.display_longitude,candidate.display_latitude),4326),3857))::text)"#
+}
+
+fn real_preview_reference_lookup_sql() -> String {
+    format!(r#"WITH sources AS (
+  SELECT source_id FROM real_preview.source_preview_runs
+  UNION SELECT source_id FROM real_preview.source_manifests
+), latest AS (
+  SELECT sources.source_id,
+         COALESCE(
+           (SELECT run.snapshot_sha256 FROM real_preview.source_preview_runs run
+            WHERE run.source_id=sources.source_id ORDER BY run.created_at DESC,run.run_id DESC LIMIT 1),
+           (SELECT source_manifest.snapshot_sha256 FROM real_preview.source_manifests source_manifest
+            WHERE source_manifest.source_id=sources.source_id
+            ORDER BY source_manifest.retrieved_at DESC,source_manifest.snapshot_sha256 DESC LIMIT 1)
+         ) AS snapshot_sha256
+  FROM sources
+)
+SELECT candidate.*,manifest.source_url,manifest.retrieved_at {}
+FROM real_preview.candidates candidate
+JOIN real_preview.source_manifests manifest
+  ON manifest.snapshot_sha256=candidate.snapshot_sha256 AND manifest.source_id=candidate.source_id
+WHERE candidate.default_map_scope=true
+  AND candidate.display_geometry_source IS NOT NULL
+  AND candidate.location_class <> 'numeric_source_coordinate'
+  AND candidate.display_latitude BETWEEN -90 AND 90
+  AND candidate.display_longitude BETWEEN -180 AND 180
+  AND (candidate.display_latitude<>0 OR candidate.display_longitude<>0)
+  AND {}=$1
+  AND (candidate.source_id,candidate.snapshot_sha256) IN (SELECT source_id,snapshot_sha256 FROM latest)
+  AND ($2::uuid IS NULL OR candidate.candidate_id>$2)
+  AND ($4::text IS NULL OR candidate.source_id=$4)
+ORDER BY candidate.candidate_id LIMIT $3"#,
+        REAL_PREVIEW_TAXONOMY_SELECT_SQL,
+        real_preview_reference_key_sql())
 }
 
 pub async fn get_real_preview_list_handler(
@@ -5589,6 +5637,21 @@ mod v2_api_tests {
     };
     use tokio_postgres::NoTls;
     use tower::ServiceExt;
+
+    #[test]
+    fn private_reference_lookup_accepts_provider_feed_keys_and_preserves_boundaries() {
+        let key_sql = real_preview_reference_key_sql();
+        let lookup_sql = real_preview_reference_lookup_sql();
+        assert!(key_sql.contains("THEN 'provider_address_point_private'"));
+        assert!(key_sql.contains("THEN 'provider_locality_approximate'"));
+        assert!(key_sql.contains("ELSE 'city_reference'"));
+        assert!(lookup_sql.contains("candidate.default_map_scope=true"));
+        assert!(lookup_sql.contains("candidate.location_class <> 'numeric_source_coordinate'"));
+        assert!(lookup_sql.contains("candidate.source_id,candidate.snapshot_sha256) IN (SELECT source_id,snapshot_sha256 FROM latest)"));
+        assert!(lookup_sql.contains("candidate.source_id=$4"));
+        assert!(lookup_sql.contains("candidate.candidate_id>$2"));
+        assert!(lookup_sql.contains("AND md5((CASE"));
+    }
 
     #[test]
     fn manifest_validator_etag_changes_when_suppression_generation_changes() {
