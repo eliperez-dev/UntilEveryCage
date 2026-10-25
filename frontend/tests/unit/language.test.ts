@@ -69,8 +69,10 @@ describe('language selection', () => {
     expect(tr('RTE processing', 'es')).toBe('Procesamiento listo para consumir (RTE)');
     expect(tr('RTE unspecified meat processing', 'es')).toBe('Procesamiento de carne no especificada lista para consumir (RTE)');
     expect(tr('RTE unspecified poultry processing', 'es')).toBe('Procesamiento de aves no especificadas listas para consumir (RTE)');
+    expect(tr('RTE unspecified processing', 'es')).toBe('Procesamiento no especificado listo para consumir (RTE)');
     expect(tr('Unspecified meat processing', 'es')).toBe('Procesamiento de carne no especificada');
     expect(tr('Unspecified poultry processing', 'es')).toBe('Procesamiento de aves no especificadas');
+    expect(tr('Unspecified processing', 'es')).toBe('Procesamiento no especificado');
     expect(tr('Shared business name', 'es')).toBe('Nombre comercial compartido');
     expect(tr('RTE meat processing', 'en')).toBe('RTE meat processing');
     expect(tr('USDA source-native evidence', 'es')).toBe('USDA source-native evidence');
