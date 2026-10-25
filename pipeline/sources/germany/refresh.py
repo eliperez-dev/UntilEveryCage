@@ -115,7 +115,7 @@ REVIEW_BLOCKERS = {
     "terms": ["BVL documents public access/export but dataset-specific reuse and redistribution terms remain pending named human confirmation."],
     "privacy": ["Facility addresses may overlap residences or identify people; address and coordinate publication review is pending and geocoding remains disabled."],
     "completeness": ["BLtU is the continuously updated 853/2004 approved-establishment list, not a census of all animal-agriculture facilities; export effective date is unknown until captured."],
-    "classification": ["Only the pinned SH/CP activity mapping is accepted; unmapped activity flags quarantine and species/activity interpretation remains source-scoped."],
+    "classification": ["Only the pinned SH/CP activity mapping is accepted; other activity flags are retained as native evidence and remain unresolved, while species/activity interpretation stays source-scoped."],
     "coverage": ["The portal export URL is session/request-specific; a selected current general-list export and its schema must be evidenced per run."],
 }
 
