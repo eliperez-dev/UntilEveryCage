@@ -99,6 +99,7 @@ test('map detail shows one category and each activity, preserves facts, and open
   await expect(panel.locator('.detail h1 [role="status"]')).toHaveText('Link copied');
   const copiedRailLink = await page.evaluate(() => navigator.clipboard.readText());
   expect(new URL(copiedRailLink).hash).toBe(`#/records/${id}?profile=official&release_id=${release}`);
+  await page.setViewportSize({ width: 390, height: 844 });
   await link.click();
   await expect(page.locator('.public-record h1')).toHaveText(row.canonical_name);
   await expect(page.locator('.location-preview')).toHaveAttribute('aria-label', 'Satellite location preview');
@@ -116,15 +117,24 @@ test('map detail shows one category and each activity, preserves facts, and open
   await expect(page.getByRole('button', { name: 'Copy facility link' })).toBeVisible();
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
   const copyButton = page.locator('.public-record h1 .share');
+  const layout = () => page.evaluate(() => {
+    const heading = document.querySelector('.public-record h1')!.getBoundingClientRect();
+    const button = document.querySelector('.public-record h1 .share')!.getBoundingClientRect();
+    return { heading: [heading.x, heading.y, heading.width, heading.height], button: [button.x, button.y, button.width, button.height] };
+  });
+  const initialLayout = await layout();
   const originalIcon = await copyButton.locator('svg path').getAttribute('d');
   await copyButton.click();
   await expect(page.locator('.public-record h1 [role="status"]')).toHaveText('Link copied');
+  expect(await layout()).toEqual(initialLayout);
   await expect.poll(() => copyButton.locator('svg path').getAttribute('d'), { timeout: 2000 }).toBe(originalIcon);
+  expect(await layout()).toEqual(initialLayout);
   await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { value: { writeText: async () => { throw new Error('synthetic clipboard rejection'); } }, configurable: true }));
   await copyButton.click();
-  await expect(page.locator('.public-record h1 .copy-error')).toHaveText('Could not copy facility link');
   await expect(page.locator('.public-record h1 [role="status"]')).toHaveText('Could not copy facility link');
+  expect(await layout()).toEqual(initialLayout);
   await expect.poll(() => copyButton.locator('svg path').getAttribute('d'), { timeout: 3000 }).toBe(originalIcon);
+  expect(await layout()).toEqual(initialLayout);
   await expect(page.locator('.public-record').getByText('Processing and preparation', { exact: true })).toHaveCount(1);
   await expect(page.locator('.public-record')).not.toContainText(/synthetic-taxonomy-version|not independently/);
   await expect(page.getByRole('link', { name: 'Open facility page', exact: true })).toHaveCount(0);
