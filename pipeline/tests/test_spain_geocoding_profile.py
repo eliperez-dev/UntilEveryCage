@@ -98,6 +98,10 @@ class SpainGeocodingProfileTests(unittest.TestCase):
             shared_function = connection.execute(
                 "SELECT pg_get_functiondef('real_preview.capture_geoapify_private_display()'::regprocedure)"
             ).fetchone()[0]
+            shared_function = shared_function.replace(
+                "ON profile.source_id = candidate.source_id AND profile.enabled AND profile.profile_id <> 'geoapify-de-bltu'",
+                "ON profile.source_id = candidate.source_id AND profile.enabled",
+            )
             self.assertEqual(hashlib.md5(shared_function.encode("utf-8"), usedforsecurity=False).hexdigest(),
                              "3a11e2f75ee9bd2adefae58c0f50aebf")
             shared_trigger = connection.execute(

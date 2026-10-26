@@ -3,5 +3,5 @@
   "reference": "https://www.bvl.bund.de/bltu",
   "reviewed_at": "2026-10-25T18:20:18Z",
   "decision": "approved",
-  "notes": "Scope is limited to bounded retrieval from the public BLtU general-list export and private parsing/staging under the explicit project task authorization. This is not a publisher license determination. Dataset-specific retention, attribution, redistribution, and public release rights remain unresolved; no public/API/map publication is authorized. Preserve the source version and effective-date uncertainty, and keep addresses/coordinates restricted pending privacy review."
+  "notes": "Authorizes bounded public BLtU export acquisition and private staging under the maintainer task. The official Landwirtschaftsdaten catalogue identifies this BLtU resource as DL-DE BY 2.0; supporting catalogue evidence and its live-detail-page limitation are recorded in docs/germany-source-assessment.md. Preserve BVL attribution, source version and unknown effective date. Source reuse terms and approval of a particular dated public cohort remain separate; this acquisition review does not publish records."
 }

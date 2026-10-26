@@ -28,8 +28,8 @@ def fetch(*, output_root: Path, run_id: str, terms_review_path: Path,
         rights_caveat=("AESAN legal notice permits reuse subject to non-distortion, source attribution, "
                        "and last-update citation unless a contrary or third-party notice applies; "
                        "private processing only, no release approval"),
-        privacy_caveat=("Restricted private evidence; retain source business-name and industrial-address "
-                        "fields only in private source staging; handoff carries address only for queued "
-                        "location enrichment; acquisition makes no provider calls"),
+        privacy_caveat=("Restricted private evidence; source business labels and industrial addresses "
+                        "remain in the private candidate handoff for display and queued location "
+                        "enrichment; acquisition makes no provider calls or public release"),
         artifact_validator=_validate_workbook,
     )

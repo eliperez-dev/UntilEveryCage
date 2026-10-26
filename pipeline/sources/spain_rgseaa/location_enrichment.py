@@ -11,6 +11,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import http.cookiejar
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
@@ -18,9 +19,22 @@ from typing import Any, Iterable
 FINDER_URL = "https://rgsa-web-aesan.mscbs.es/rgsa/formulario_principal_js.jsp"
 FINDER_HOST = "rgsa-web-aesan.mscbs.es"
 MAX_LOOKUPS = 24
+MAX_RESPONSE_BYTES = 2 * 1024 * 1024
+DEFAULT_REQUEST_INTERVAL_SECONDS = 1.0
+MAX_FORM_BYTES = 1 * 1024 * 1024
 SOURCE_ID = "es.locations"
 LOOKUP_SOURCE_ID = "es.locations.aesan-rgseaa-public-finder"
 LOOKUP_METHOD_VERSION = "es-aesan-rgseaa-locality-v1"
+
+
+class UnsupportedAesanProvinceError(ValueError):
+    """The source label has no unique equivalent in AESAN's published province dropdown."""
+
+    def __init__(self, message: str, *, response_bytes: int) -> None:
+        super().__init__(message)
+        # The ordinary form page was read before inspecting its options.
+        self.http_requests = 1
+        self.response_bytes = response_bytes
 
 
 def _fold(value: str) -> str:
@@ -47,7 +61,9 @@ def registration_key_sha256(value: str) -> str | None:
 
 
 def _decode_response(response: Any) -> str:
-    payload = response.read()
+    payload = response.read(MAX_RESPONSE_BYTES + 1)
+    if len(payload) > MAX_RESPONSE_BYTES:
+        raise ValueError("AESAN finder response exceeded the 2 MiB limit")
     headers = getattr(response, "headers", None)
     charset = headers.get_content_charset() if headers is not None and hasattr(headers, "get_content_charset") else None
     try:
@@ -73,6 +89,258 @@ class _FormParser(html.parser.HTMLParser):
     def handle_endtag(self, tag: str) -> None:
         if tag == "form":
             self.current = None
+
+
+class _SearchFormParser(html.parser.HTMLParser):
+    """Parse ordinary AESAN search and result forms, including select options."""
+    def __init__(self) -> None:
+        super().__init__()
+        self.forms: list[dict[str, Any]] = []
+        self.form: dict[str, Any] | None = None
+        self.select: dict[str, Any] | None = None
+        self.option: dict[str, Any] | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        attrs = dict(attrs)
+        if tag == "form":
+            self.form = {"action": attrs.get("action", ""), "method": attrs.get("method", "get"),
+                         "fields": []}
+            self.forms.append(self.form)
+        elif tag == "input" and self.form is not None and attrs.get("name"):
+            self.form["fields"].append({"name": attrs["name"], "value": attrs.get("value", ""),
+                                        "type": attrs.get("type", ""), "checked": "checked" in attrs})
+        elif tag == "select" and self.form is not None and attrs.get("name"):
+            self.select = {"name": attrs["name"], "value": "", "options": []}
+            self.form["fields"].append(self.select)
+        elif tag == "option" and self.select is not None:
+            self.option = {"value": attrs.get("value", ""), "text": "", "selected": "selected" in attrs}
+
+    def handle_data(self, data: str) -> None:
+        if self.option is not None:
+            self.option["text"] += data
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "option" and self.option is not None and self.select is not None:
+            self.select["options"].append(self.option)
+            if self.option["selected"]:
+                self.select["value"] = self.option["value"]
+            self.option = None
+        elif tag == "select":
+            self.select = None
+        elif tag == "form":
+            self.form = None
+
+
+class _VisibleTextParser(html.parser.HTMLParser):
+    """Extract visible page copy for recognizing an explicitly empty result."""
+    def __init__(self) -> None:
+        super().__init__()
+        self.parts: list[str] = []
+
+    def handle_data(self, data: str) -> None:
+        self.parts.append(data)
+
+
+def _explicit_empty_search_result(payload: bytes, charset: str | None) -> bool:
+    parser = _VisibleTextParser()
+    parser.feed(payload.decode(charset or "utf-8", "replace"))
+    visible = _fold(" ".join(parser.parts))
+    # Deliberately a small allowlist: a missing/changed export form is not
+    # treated as zero rows unless AESAN explicitly says the search was empty.
+    return any(message in visible for message in (
+        "no se han encontrado resultados", "no se encontraron resultados",
+        "no se ha encontrado ningun resultado", "no se encontro ningun resultado",
+        "no existen resultados", "no hay resultados",
+    ))
+
+
+def _province_key(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", _fold(value))
+
+
+_PROVINCE_ALIASES = (
+    {"acoruna", "lacoruna", "coruna", "corunaa"}, {"alava", "araba", "arabaalava"}, {"bizkaia", "vizcaya"},
+    {"gipuzkoa", "guipuzcoa"}, {"girona", "gerona"}, {"lleida", "lerida"},
+    {"illesbalears", "baleares", "islasbaleares"},
+    {"valencia", "valenciavalencia"},
+    {"castellon", "castello", "castelloncastello"},
+    {"alicante", "alacant", "alicantealacant"},
+    {"ourense", "orense"},
+    # AESAN spells these provinces with an article-order inversion in its
+    # published dropdown ("Rioja, La" and "Palmas, Las"). Navarra's source
+    # workbook uses its official coextensive one-province community name.
+    {"larioja", "riojala"},
+    {"laspalmas", "palmaslas"},
+    {"navarra", "comunidadforaldenavarra"},
+)
+
+
+def same_official_province(left: str, right: str) -> bool:
+    """Compare known official Spanish/Castilian province-name equivalents only."""
+    return official_province_key(left) == official_province_key(right)
+
+
+def official_province_key(value: str) -> str:
+    """Return a stable key across only the explicit official province aliases."""
+    key = _province_key(value)
+    aliases = next((group for group in _PROVINCE_ALIASES if key in group), None)
+    return min(aliases) if aliases else key
+
+
+def _read_bounded(response: Any, limit: int) -> bytes:
+    payload = response.read(limit + 1)
+    if len(payload) > limit:
+        raise ValueError("AESAN finder response exceeded the configured byte limit")
+    return payload
+
+
+def _select_option(field: dict[str, Any], wanted_value: str | None = None,
+                   wanted_label: str | None = None) -> str:
+    options = field.get("options", [])
+    matches = [option for option in options
+               if ((wanted_value is not None and option.get("value") == wanted_value)
+                   or (wanted_label is not None and _province_key(option.get("text", ""))
+                       == _province_key(wanted_label)))]
+    if len(matches) != 1:
+        raise ValueError("AESAN published search option missing or ambiguous")
+    return str(matches[0].get("value", ""))
+
+
+def fetch_filtered_export(province: str, sector: str, *, opener: Any | None = None,
+                          request_interval_seconds: float = DEFAULT_REQUEST_INTERVAL_SECONDS,
+                          retain_raw_export: bool = False
+                          ) -> dict[str, Any]:
+    """Use AESAN's regular province/sector form and its published Excel button.
+
+    The result workbook is returned only as minimized location rows; the response
+    body is bounded and never persisted. Registration-number search stays blank.
+    """
+    if not isinstance(province, str) or not province.strip() or "," in province:
+        raise ValueError("AESAN bulk-search province invalid")
+    if not re.fullmatch(r"\d{1,2}", str(sector)):
+        raise ValueError("AESAN bulk-search sector invalid")
+    if not 0 <= request_interval_seconds <= 60:
+        raise ValueError("AESAN request interval must be between 0 and 60 seconds")
+    jar = http.cookiejar.CookieJar()
+    client = opener or urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
+    page_request = urllib.request.Request(FINDER_URL,
+        headers={"User-Agent": "UntilEveryCage/2 AESAN source verification"})
+    with client.open(page_request, timeout=30) as response:
+        page_bytes = _read_bounded(response, MAX_FORM_BYTES)
+        page_url = response.geturl()
+        page_charset = response.headers.get_content_charset() if getattr(response, "headers", None) else None
+    if urllib.parse.urlparse(page_url).hostname != FINDER_HOST:
+        raise ValueError("AESAN public finder redirected outside its official host")
+    form_parser = _SearchFormParser()
+    form_parser.feed(page_bytes.decode(page_charset or "utf-8", "replace"))
+    form = next((item for item in form_parser.forms
+                 if {field.get("name") for field in item["fields"]}.issuperset(
+                     {"numero1", "numero2", "numero3", "clave", "provincia"})), None)
+    if form is None or form.get("method", "").lower() != "post":
+        raise ValueError("AESAN published search form contract changed")
+    fields: dict[str, str] = {}
+    for field in form["fields"]:
+        name = field.get("name")
+        if not name:
+            continue
+        if "options" in field:
+            fields[name] = str(field.get("value", ""))
+        elif field.get("type") not in {"checkbox", "submit", "button", "reset"}:
+            fields[name] = str(field.get("value", ""))
+    province_field = next(field for field in form["fields"] if field.get("name") == "provincia")
+    province_options = [option for option in province_field.get("options", [])
+                        if same_official_province(option.get("text", ""), province)]
+    if len(province_options) != 1:
+        raise UnsupportedAesanProvinceError(
+            "AESAN province has no unique supported official option",
+            response_bytes=len(page_bytes))
+    sector_field = next(field for field in form["fields"] if field.get("name") == "clave")
+    fields["provincia"] = str(province_options[0].get("value", ""))
+    fields["clave"] = _select_option(sector_field, wanted_value=str(sector))
+    fields.update({"numero1": "", "numero2": "", "numero3": ""})
+    buscar = next((field for field in form["fields"] if field.get("name") == "Buscar"), None)
+    if buscar is None:
+        raise ValueError("AESAN search submit control missing")
+    fields["Buscar"] = str(buscar.get("value") or "Buscar")
+    action = urllib.parse.urljoin(page_url, form["action"])
+    if urllib.parse.urlparse(action).hostname != FINDER_HOST:
+        raise ValueError("AESAN public finder form action is outside its official host")
+    request_headers = {"User-Agent": "UntilEveryCage/2 AESAN source verification",
+                       "Referer": page_url, "Origin": f"https://{FINDER_HOST}",
+                       "Content-Type": "application/x-www-form-urlencoded"}
+    search_request = urllib.request.Request(action, data=urllib.parse.urlencode(fields).encode("utf-8"),
+                                           headers=request_headers)
+    if request_interval_seconds:
+        time.sleep(request_interval_seconds)
+    with client.open(search_request, timeout=45) as response:
+        result_page_bytes = _read_bounded(response, MAX_FORM_BYTES)
+        result_page_url = response.geturl()
+        result_charset = response.headers.get_content_charset() if getattr(response, "headers", None) else None
+    if urllib.parse.urlparse(result_page_url).hostname != FINDER_HOST:
+        raise ValueError("AESAN search result redirected outside its official host")
+    result_parser = _SearchFormParser()
+    result_parser.feed(result_page_bytes.decode(result_charset or "utf-8", "replace"))
+    export_form = next((item for item in result_parser.forms
+                        if any(field.get("name") == "excel" and field.get("type") == "submit"
+                               for field in item["fields"])), None)
+    if export_form is None:
+        if _explicit_empty_search_result(result_page_bytes, result_charset):
+            response_sha256 = hashlib.sha256(result_page_bytes).hexdigest()
+            return {"results": [], "result_url": result_page_url,
+                    "request_url": action,
+                    "retrieved_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+                    "response_bytes": len(result_page_bytes), "content_type": "text/html",
+                    "response_sha256": response_sha256,
+                    "result_page_sha256": response_sha256,
+                    "response_kind": "explicit_empty_result_page",
+                    "query_province": province, "query_sector": str(sector),
+                    "query_province_option": str(province_options[0].get("text", "")).strip(),
+                    "query_province_option_value": str(province_options[0].get("value", "")),
+                    "http_requests": 2, "explicit_zero_results": True}
+        raise ValueError("AESAN published Excel export control missing")
+    export_fields = {}
+    for field in export_form["fields"]:
+        name = field.get("name")
+        if (name and not name.isdigit() and name not in {"regresar", "excel"}
+                and "options" not in field):
+            export_fields[name] = str(field.get("value", ""))
+    excel = next(field for field in export_form["fields"] if field.get("name") == "excel")
+    export_fields["excel"] = str(excel.get("value") or "Excel")
+    export_action = urllib.parse.urljoin(result_page_url, export_form["action"])
+    if urllib.parse.urlparse(export_action).hostname != FINDER_HOST:
+        raise ValueError("AESAN export form action is outside its official host")
+    if request_interval_seconds:
+        time.sleep(request_interval_seconds)
+    export_request = urllib.request.Request(export_action,
+        data=urllib.parse.urlencode(export_fields).encode("utf-8"), headers={**request_headers,
+            "Referer": result_page_url})
+    with client.open(export_request, timeout=60) as response:
+        export_bytes = _read_bounded(response, MAX_RESPONSE_BYTES)
+        export_url = response.geturl()
+        content_type = (response.headers.get("Content-Type", "") if getattr(response, "headers", None) else "")
+        export_charset = response.headers.get_content_charset() if getattr(response, "headers", None) else None
+    parsed_url = urllib.parse.urlparse(export_url)
+    if parsed_url.hostname != FINDER_HOST or parsed_url.path != "/rgsa/resultado_principal_excel.jsp":
+        raise ValueError("AESAN export response route changed")
+    if "excel" not in content_type.casefold() and "spreadsheet" not in content_type.casefold():
+        raise ValueError("AESAN published export response type changed")
+    text = export_bytes.decode(export_charset or "iso-8859-1", "replace")
+    results = parse_official_results(text)
+    result = {"results": results, "result_url": export_url, "request_url": action,
+              "retrieved_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+              "response_bytes": len(export_bytes), "content_type": content_type,
+              "response_sha256": hashlib.sha256(export_bytes).hexdigest(),
+              "result_page_sha256": hashlib.sha256(result_page_bytes).hexdigest(),
+              "response_kind": "official_excel_export",
+              "query_province": province, "query_sector": str(sector),
+              "query_province_option": str(province_options[0].get("text", "")).strip(),
+              "query_province_option_value": str(province_options[0].get("value", "")),
+              "http_requests": 3, "explicit_zero_results": False}
+    if retain_raw_export:
+        # The cohort worker writes this bounded response only beneath its
+        # approved private artifact root; callers otherwise receive metadata.
+        result["_raw_export_bytes"] = export_bytes
+    return result
 
 
 class _TableParser(html.parser.HTMLParser):
@@ -161,7 +429,7 @@ def match_official_result(record: dict[str, Any], results: Iterable[dict[str, st
         return {**base, "outcome": "ambiguous_exact_registration"}
     result = matches[0]
     source_province = normalized.get("province") or source_values.get("Provincia") or ""
-    if not source_province or not result.get("province") or _fold(source_province) != _fold(result["province"]):
+    if not source_province or not result.get("province") or not same_official_province(source_province, result["province"]):
         return {**base, "outcome": "province_conflict"}
     if not result.get("municipality", "").strip():
         return {**base, "outcome": "municipality_missing"}
@@ -190,13 +458,16 @@ def _fetch_form(opener: Any) -> tuple[str, dict[str, Any], str]:
     return page_url, form, action
 
 
-def fetch_registration_results(registration_keys: Iterable[str], *, opener: Any | None = None) -> list[dict[str, Any]]:
-    """Query at most 24 registration keys using AESAN's ordinary form workflow."""
+def fetch_registration_results(registration_keys: Iterable[str], *, opener: Any | None = None,
+                               request_interval_seconds: float = DEFAULT_REQUEST_INTERVAL_SECONDS) -> list[dict[str, Any]]:
+    """Query one small batch through AESAN's ordinary form, pacing POST requests."""
     keys = list(registration_keys)
     if not 1 <= len(keys) <= MAX_LOOKUPS:
         raise ValueError(f"AESAN lookup batch must contain 1..{MAX_LOOKUPS} registration keys")
     if any(registration_components(key) is None for key in keys):
         raise ValueError("AESAN lookup contains an invalid registration key")
+    if not 0 <= request_interval_seconds <= 60:
+        raise ValueError("AESAN request interval must be between 0 and 60 seconds")
     cookie_jar = http.cookiejar.CookieJar()
     client = opener or urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cookie_jar))
     page_url, form, action = _fetch_form(client)
@@ -206,7 +477,9 @@ def fetch_registration_results(registration_keys: Iterable[str], *, opener: Any 
     template = {name: value for name, value, _ in form["fields"]
                 if name not in {"check_autorizaciones", "Limpiar", "Buscar"}}
     events: list[dict[str, Any]] = []
-    for key in keys:
+    for index, key in enumerate(keys):
+        if index:
+            time.sleep(request_interval_seconds)
         sector, serial, territory = registration_components(key)  # type: ignore[misc]
         params = dict(template)
         params.update({"numero1": sector, "numero2": serial, "numero3": territory})
@@ -230,10 +503,11 @@ def fetch_registration_results(registration_keys: Iterable[str], *, opener: Any 
 
 
 def enrich_records(records: Iterable[dict[str, Any]], *, limit: int = 1,
-                   lookup: Any = fetch_registration_results) -> list[dict[str, Any]]:
-    """Run the bounded source-key lookup and return new immutable evidence events."""
-    if not 1 <= limit <= MAX_LOOKUPS:
-        raise ValueError(f"AESAN enrichment limit must be 1..{MAX_LOOKUPS}")
+                   lookup: Any = fetch_registration_results,
+                   request_interval_seconds: float = DEFAULT_REQUEST_INTERVAL_SECONDS) -> list[dict[str, Any]]:
+    """Run a resumable-cohort slice in network batches of at most 24 keys."""
+    if not 1 <= limit <= 10000:
+        raise ValueError("AESAN enrichment limit must be between 1 and 10000")
     representatives: dict[str, dict[str, Any]] = {}
     for record in records:
         if record.get("source_id") != SOURCE_ID:
@@ -263,14 +537,20 @@ def enrich_records(records: Iterable[dict[str, Any]], *, limit: int = 1,
         if registration_components(key) is None:
             raise ValueError("AESAN enrichment record lacks a valid source registration key")
         keys.append(key)
-    responses = lookup(keys) if keys else []
-    if len(responses) != len(selected):
-        raise ValueError("AESAN lookup response count does not match requested records")
     events = []
-    for record, response in zip(selected, responses):
-        events.append(match_official_result(record, response.get("results", []),
-            retrieved_at=response["retrieved_at"], result_url=response["result_url"],
-            request_url=response.get("request_url")))
+    for start in range(0, len(selected), MAX_LOOKUPS):
+        batch_records = selected[start:start + MAX_LOOKUPS]
+        batch_keys = keys[start:start + MAX_LOOKUPS]
+        if lookup is fetch_registration_results:
+            responses = lookup(batch_keys, request_interval_seconds=request_interval_seconds)
+        else:
+            responses = lookup(batch_keys)
+        if len(responses) != len(batch_records):
+            raise ValueError("AESAN lookup response count does not match requested records")
+        for record, response in zip(batch_records, responses):
+            events.append(match_official_result(record, response.get("results", []),
+                retrieved_at=response["retrieved_at"], result_url=response["result_url"],
+                request_url=response.get("request_url")))
     return events
 
 

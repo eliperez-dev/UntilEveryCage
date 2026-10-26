@@ -1,4 +1,5 @@
 import hashlib
+import importlib.util
 import json
 import tempfile
 import unittest
@@ -43,6 +44,21 @@ def workbook(rows, headers=HEADERS):
 
 
 class RgseaaAdapterTests(unittest.TestCase):
+    def test_private_business_name_does_not_clear_publication_or_explicit_restrictions(self):
+        script = Path(__file__).parents[2] / "scripts" / "maintenance" / "import-real-preview.py"
+        spec = importlib.util.spec_from_file_location("spain_private_name_import", script)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        row = RgseaaAdapter().parse_bytes(workbook([
+            ("10.00001", "PRIVATE BUSINESS", "Industrial Address", "Madrid", "Madrid", "10", "Meat"),
+        ]))["accepted"][0]
+        self.assertEqual(module.parse_row(SOURCE_ID, row)[11], "PRIVATE BUSINESS")
+        self.assertEqual(row["normalized"]["privacy_gate"], "restricted-private-evidence")
+        self.assertEqual(row["normalized"]["publication_gate"], "blocked")
+        for gate in ("blocked", "restricted-withheld-address", "restricted"):
+            row["normalized"]["privacy_gate"] = gate
+            self.assertIsNone(module.parse_row(SOURCE_ID, row)[11])
+
     def test_uses_exact_workbook_schema_and_official_animal_origin_keys(self):
         raw = workbook([
             ("10.00001", "PRIVATE BUSINESS", "Industrial Address", "Province Name", "Autonomous Community", "10", "Carnes y derivados"),
@@ -56,12 +72,15 @@ class RgseaaAdapterTests(unittest.TestCase):
         eligible, other = result["accepted"]
         self.assertEqual(eligible["source_id"], SOURCE_ID)
         self.assertEqual(eligible["normalized"]["source_classification_code"], "10")
+        self.assertEqual(eligible["normalized"]["name"], "PRIVATE BUSINESS")
+        self.assertEqual(eligible["normalized"]["privacy_gate"], "restricted-private-evidence")
+        self.assertEqual(eligible["normalized"]["publication_gate"], "blocked")
         self.assertEqual(eligible["normalized"]["address"], "Industrial Address")
         self.assertEqual(eligible["normalized"]["coordinate_state"], "not-supplied")
         self.assertEqual(eligible["source_values"]["Razon_Social"], "PRIVATE BUSINESS")
         self.assertEqual(other["normalized"]["source_scope_eligibility"], "out_of_scope")
 
-    def test_scope_handoff_excludes_non_animal_keys_and_names(self):
+    def test_scope_handoff_preserves_eligible_business_name_privately(self):
         raw = workbook([
             ("10.00001", "PRIVATE BUSINESS", "Industrial Address", "Province Name", "Autonomous Community", "10", "Carnes y derivados"),
             ("20.00002", "NON-ANIMAL", "Other Address", "Madrid", "Madrid", "20", "Harinas y derivados"),
@@ -76,10 +95,14 @@ class RgseaaAdapterTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             RgseaaAdapter().write_candidate_handoff(directory, artifact, result)
             handoff = Path(directory, "normalized", "records.jsonl").read_text(encoding="utf-8")
-            self.assertNotIn("PRIVATE BUSINESS", handoff)
+            self.assertIn("PRIVATE BUSINESS", handoff)
             self.assertNotIn("NON-ANIMAL", handoff)
             handed_row = json.loads(handoff)
             self.assertEqual(handed_row["source_values"], {})
+            self.assertEqual(handed_row["normalized"]["name"], "PRIVATE BUSINESS")
+            self.assertEqual(handed_row["normalized"]["publication_gate"], "blocked")
+            self.assertEqual(handed_row["normalized"]["source_classification_code"], "10")
+            self.assertEqual(handed_row["normalized"]["source_classification_label"], "Carnes y derivados")
             self.assertEqual(handed_row["normalized"]["private_location_evidence"]["address"],
                              "Industrial Address")
             self.assertEqual(handed_row["normalized"]["province"], "Province Name")

@@ -515,6 +515,12 @@ def parse_row(source: str, row: Any) -> tuple[Any, ...]:
     name = None
     if privacy_allows_name:
         name = safe_preview_text(pick(normalized, "canonical_name", "trading_name", "facility_name", "name"), 200)
+    elif (source == "es.locations" and privacy_gate == "restricted-private-evidence"
+          and normalized.get("source_scope_eligibility") == "eligible"
+          and normalized.get("publication_gate") == "blocked"):
+        # Retain the AESAN business label in the authorized private preview.
+        # This does not change its privacy label or permit public publication.
+        name = safe_preview_text(pick(normalized, "name"), 200)
     elif source in {"no.fiskeridir.aquaculture", "gb.scot.marine.aquaculture",
                     "us.epa.echo-animal-production", "fr.georisques.icpe.animal"}:
         # Approved source-provided facility/locality labels may appear in the

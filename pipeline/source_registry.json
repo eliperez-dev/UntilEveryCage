@@ -123,7 +123,7 @@
       "attribution_licensing_notes": "AESAN legal notice permits reuse unless contrary notices apply; preserve meaning, cite source and document last update; third-party rights remain separate. Terms review authorizes bounded private acquisition/processing only; no release approval.",
       "adapter_status": "implemented_partial",
       "expected_artifact_schema": "Single-sheet XLSX with exact native headers N_RGSEAA, Razon_Social, Domicilio_industrial, Provincia, CCAA, Clave, Clave_Descripcion; source names and industrial addresses are private evidence",
-      "blockers": ["National RGSEAA is an administrative register of post-primary food-chain establishments, not a complete animal-facility census or proof of current operation. Candidate handoff is restricted to official keys 10, 12, 14, and 15, which denote sectors rather than specific operational activities. No source coordinates; external address enrichment requires separate authorization; public release remains blocked."]
+      "blockers": ["National RGSEAA candidate scope is restricted to animal-origin keys 10, 12, 14 and 15. These identify sectors, not specific operational activities. The workbook supplies no coordinates; separate authorized enrichment preserves its own provenance and precision. Dated-cohort review and AESAN attribution remain required for release inclusion; current execution evidence belongs in docs/source-status.json."]
     },
     {
       "source_id": "fr.georisques.icpe.animal",
@@ -135,7 +135,7 @@
       "attribution_licensing_notes": "Géorisques CGU acceptance recorded for private acquisition and processing only; Licence Ouverte 2.0 attribution/update-date obligations require implementation/review, and external redistribution/publication remains blocked",
       "adapter_status": "implemented_partial",
       "expected_artifact_schema": "Paginated JSON results/page/total_pages/data; AIOT, SIRET, native name/address, status, rubriques, capacity indicators, and source coordinates; source records are regulatory observations, not verified current animal operations",
-      "blockers": ["Terms acceptance does not imply that a full capture or E2E/import has run. Coordinate CRS/datum is not independently established, so source points remain private and excluded from default maps. Coverage is only exact allowed animal-related ICPE rubriques, not a complete facility register; identity, status, privacy, attribution, factual and release review remain pending."]
+      "blockers": ["Coverage is limited to the configured animal-related ICPE rubriques. Transform only coordinates with a supported source-declared CRS; retain invalid or unsupported coordinates as unmapped. Dated-cohort review and attribution remain required for release inclusion; current acquisition and private map verification belong in docs/source-status.json."]
     },
     {
       "source_id": "fr.dgal.section-i",

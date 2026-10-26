@@ -103,6 +103,10 @@ class SpainMapActivationTests(unittest.TestCase):
 
     def test_event_requires_official_host_and_current_exact_match_method(self):
         self.assertIsNotNone(verified_event(event()))
+        bulk = event()
+        bulk["source_url"] = "https://rgsa-web-aesan.mscbs.es/rgsa/resultado_principal_excel.jsp"
+        bulk["location_evidence_addition"]["source_url"] = bulk["source_url"]
+        self.assertIsNotNone(verified_event(bulk))
         bad_host = event()
         bad_host["request_url"] = "https://example.test/rgsa/procesaBusquedaServlet"
         with self.assertRaisesRegex(ValueError, "lookup_url_out_of_scope"):

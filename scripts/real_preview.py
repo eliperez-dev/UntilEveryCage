@@ -1098,7 +1098,7 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
                 write_job("failed", "lifecycle", "source_run_id_missing")
                 raise PreviewError("source runner returned no unique run identifier")
             if source_id in {"no.fiskeridir.aquaculture", "gb.scot.marine.aquaculture",
-                             "us.epa.echo-animal-production", "fr.georisques.icpe.animal"}:
+                             "us.epa.echo-animal-production", "fr.georisques.icpe.animal", "es.locations"}:
                 # The shared runner binds acquisition sidecars to its
                 # canonical plan ID. Use that same identity for importer
                 # provenance lookup; the source-preview ledger still keeps

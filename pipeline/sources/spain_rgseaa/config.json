@@ -1,7 +1,7 @@
 {
   "source_id": "es.locations",
   "source_url": "https://www.aesan.gob.es/dam/jcr%3A0e74247c-5a4e-4c79-863b-b5dae6e79ada/260901_Industrias_RGSEAA.xlsx",
-  "adapter_version": "es-aesan-rgseaa-v1",
+  "adapter_version": "es-aesan-rgseaa-v2",
   "schema_version": "es-aesan-rgseaa-xlsx-v1",
   "config_version": "es-aesan-rgseaa-xlsx-v1",
   "coverage": "AESAN RGSEAA post-primary-production national food-chain register; animal-origin source keys 10, 12, 14, and 15 only in the candidate handoff; not a primary-production or complete animal-facility census",

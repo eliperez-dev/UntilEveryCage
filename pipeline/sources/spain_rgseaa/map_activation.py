@@ -30,14 +30,15 @@ def _official_url(value: Any, *, request: bool = False) -> str:
     if not isinstance(value, str):
         raise ValueError("lookup_url_invalid")
     parsed = urlsplit(value)
-    expected_path = "/rgsa/procesaBusquedaServlet" if request else "/rgsa/resultado_principal.jsp"
+    expected_paths = ({"/rgsa/procesaBusquedaServlet"} if request else
+                      {"/rgsa/resultado_principal.jsp", "/rgsa/resultado_principal_excel.jsp"})
     if (parsed.scheme != "https" or parsed.hostname != OFFICIAL_HOST
             or parsed.username or parsed.password or parsed.port not in (None, 443)
-            or parsed.path != expected_path):
+            or parsed.path not in expected_paths):
         raise ValueError("lookup_url_out_of_scope")
     # Query strings and fragments are deliberately discarded: the provenance
     # keeps the official route, never an accidental search/session token.
-    return urlunsplit(("https", OFFICIAL_HOST, expected_path, "", ""))
+    return urlunsplit(("https", OFFICIAL_HOST, parsed.path, "", ""))
 
 
 def verified_event(event: dict[str, Any]) -> dict[str, Any] | None:

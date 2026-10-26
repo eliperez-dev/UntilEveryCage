@@ -164,6 +164,10 @@ class RgseaaAdapter:
             non_allowlisted_key_count += bool(key) and normalized_key not in ANIMAL_ORIGIN_KEYS
             normalized = {
                 "establishment_id": registration,
+                # AESAN's Razon_Social is an organization/facility display
+                # label. It stays in the private candidate projection; the
+                # separate publication gate below remains closed.
+                "name": _clean(values["Razon_Social"]) or None,
                 "country_code": "ES",
                 "nation": "Spain",
                 "region": _clean(values["CCAA"]) or None,
@@ -234,7 +238,7 @@ class RgseaaAdapter:
         rows = [{"source_id": row["source_id"], "source_row": row["source_row"],
                  "source_record_key": row["source_record_key"], "source_values": {},
                  "normalized": {key: row["normalized"].get(key) for key in (
-                     "establishment_id", "country_code", "nation", "region", "province", "address",
+                     "establishment_id", "name", "country_code", "nation", "region", "province", "address",
                      "source_classification_code", "source_classification_label", "source_scope_eligibility",
                      "source_scope_category", "source_address_state", "coordinate_state", "coordinate_precision",
                      "privacy_gate", "coordinate_gate", "rights_gate", "publication_gate")}}

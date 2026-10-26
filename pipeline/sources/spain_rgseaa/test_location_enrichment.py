@@ -1,9 +1,14 @@
+import hashlib
 import unittest
 import tempfile
 from pathlib import Path
 from urllib.parse import parse_qs
 
-from .location_enrichment import _decode_response, append_private_events, fetch_registration_results, match_official_result, parse_official_results, query_with_verified_municipality
+from .location_enrichment import (_decode_response, append_private_events, fetch_filtered_export,
+                                  fetch_registration_results, match_official_result,
+                                  UnsupportedAesanProvinceError,
+                                  parse_official_results, query_with_verified_municipality,
+                                  same_official_province)
 
 
 class AesanLocationEnrichmentTests(unittest.TestCase):
@@ -64,7 +69,7 @@ class AesanLocationEnrichmentTests(unittest.TestCase):
             def get_content_charset(self): return "iso-8859-1"
         class Response:
             headers = Headers()
-            def read(self): return "Córdoba".encode("iso-8859-1")
+            def read(self, limit=-1): return "Córdoba".encode("iso-8859-1")[:limit]
         self.assertEqual(_decode_response(Response()), "Córdoba")
 
     def test_official_form_posts_all_empty_text_and_select_controls(self):
@@ -80,7 +85,7 @@ class AesanLocationEnrichmentTests(unittest.TestCase):
         <td>Street 7</td><td>Town</td><td>Province</td></tr></table>"""
         class Response:
             def __init__(self, body, url): self.body, self.url = body.encode(), url
-            def read(self): return self.body
+            def read(self, limit=-1): return self.body[:limit]
             def geturl(self): return self.url
             def __enter__(self): return self
             def __exit__(self, *args): return False
@@ -100,6 +105,147 @@ class AesanLocationEnrichmentTests(unittest.TestCase):
         self.assertNotIn("Limpiar",posted)
         self.assertEqual(posted["Buscar"],["Buscar/Search"])
         self.assertEqual(responses[0]["results"][0]["municipality"],"Town")
+
+    def test_enrichment_splits_full_cohort_into_bounded_batches(self):
+        from .location_enrichment import enrich_records
+        records = []
+        for index in range(25):
+            key = f"10.{index + 1:06d}/CO"
+            records.append({"source_id": "es.locations", "source_record_key": f"key-{index:02}",
+                "source_values": {"N_RGSEAA": key, "Provincia": "Córdoba"},
+                "normalized": {"establishment_id": key, "province": "Córdoba", "address": "Avenida 1"}})
+        calls = []
+        def lookup(keys):
+            calls.append(len(keys))
+            return [{"results": [], "retrieved_at": "2026-10-25T00:00:00Z",
+                     "result_url": "https://rgsa-web-aesan.mscbs.es/rgsa/resultado_principal.jsp"}
+                    for _ in keys]
+        events = enrich_records(records, limit=25, lookup=lookup)
+        self.assertEqual(calls, [24, 1])
+        self.assertEqual(len(events), 25)
+        self.assertTrue(all(event["outcome"] == "not_found" for event in events))
+
+    def test_filtered_excel_export_uses_official_controls_and_blank_registration(self):
+        form = """<form method="post" action="/rgsa/procesaBusquedaServlet">
+        <input name="numero1"><input name="numero2"><input name="numero3">
+        <select name="clave"><option value="">All</option><option value="10">Carnes</option></select>
+        <select name="provincia"><option value="">All</option><option value="M">Madrid</option></select>
+        <input type="submit" name="Buscar" value="Buscar"></form>"""
+        result = """<form method="post" action="/rgsa/resultado_principal_excel.jsp">
+        <input type="hidden" name="pagina" value="1"><input type="submit" name="excel" value="Excel">
+        </form>"""
+        workbook = """<table><tr><th>Nº RGSEAA</th><th>Razón Social</th>
+        <th>Dom. Indl. PhysicalAdress</th><th>Localidad Town</th><th>Provincia Province</th></tr>
+        <tr><td>10.025892/CO</td><td>Private name</td><td>Street 7</td><td>Town</td><td>Madrid</td></tr></table>"""
+
+        class Headers(dict):
+            def get_content_charset(self): return "iso-8859-1"
+        class Response:
+            def __init__(self, body, url, content_type="text/html"):
+                self.body, self.url, self.headers = body.encode("iso-8859-1"), url, Headers({"Content-Type": content_type})
+            def read(self, limit=-1): return self.body[:limit]
+            def geturl(self): return self.url
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+        class Opener:
+            def __init__(self): self.requests=[]
+            def open(self, request, timeout):
+                self.requests.append(request)
+                if len(self.requests) == 1:
+                    return Response(form, "https://rgsa-web-aesan.mscbs.es/rgsa/formulario_principal_js.jsp")
+                if len(self.requests) == 2:
+                    return Response(result, "https://rgsa-web-aesan.mscbs.es/rgsa/resultado_principal.jsp")
+                return Response(workbook, "https://rgsa-web-aesan.mscbs.es/rgsa/resultado_principal_excel.jsp",
+                                "application/vnd.ms-excel")
+
+        opener = Opener()
+        export = fetch_filtered_export("Madrid", "10", opener=opener, request_interval_seconds=0)
+        posted = parse_qs(opener.requests[1].data.decode(), keep_blank_values=True)
+        self.assertEqual(posted["provincia"], ["M"])
+        self.assertEqual(posted["clave"], ["10"])
+        self.assertEqual([posted[f"numero{i}"] for i in range(1, 4)], [[""], [""], [""]])
+        self.assertNotIn("Private name", str(export))
+        self.assertEqual(export["results"][0]["municipality"], "Town")
+        self.assertEqual(export["response_sha256"], hashlib.sha256(workbook.encode("iso-8859-1")).hexdigest())
+        self.assertEqual(export["result_page_sha256"], hashlib.sha256(result.encode("iso-8859-1")).hexdigest())
+        self.assertEqual(export["response_kind"], "official_excel_export")
+        self.assertEqual(export["query_province_option"], "Madrid")
+        self.assertEqual(len(opener.requests), 3)
+
+    def test_unsupported_source_province_is_a_specific_one_request_failure(self):
+        form = """<form method="post" action="/rgsa/procesaBusquedaServlet">
+        <input name="numero1"><input name="numero2"><input name="numero3">
+        <select name="clave"><option value="10">Carnes</option></select>
+        <select name="provincia"><option value="M">Madrid</option></select>
+        <input type="submit" name="Buscar" value="Buscar"></form>"""
+        class Headers(dict):
+            def get_content_charset(self): return "utf-8"
+        class Response:
+            def __init__(self, body, url):
+                self.body, self.url, self.headers = body.encode(), url, Headers()
+            def read(self, limit=-1): return self.body[:limit]
+            def geturl(self): return self.url
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+        class Opener:
+            def __init__(self): self.requests = []
+            def open(self, request, timeout):
+                self.requests.append(request)
+                return Response(form, "https://rgsa-web-aesan.mscbs.es/rgsa/formulario_principal_js.jsp")
+        opener = Opener()
+        with self.assertRaises(UnsupportedAesanProvinceError) as raised:
+            fetch_filtered_export("Bilbao", "10", opener=opener, request_interval_seconds=0)
+        self.assertEqual(raised.exception.http_requests, 1)
+        self.assertEqual(raised.exception.response_bytes, len(form.encode()))
+        self.assertEqual(len(opener.requests), 1)
+
+    def test_explicit_official_zero_result_is_resumable_without_export_button(self):
+        form = """<form method="post" action="/rgsa/procesaBusquedaServlet">
+        <input name="numero1"><input name="numero2"><input name="numero3">
+        <select name="clave"><option value="10">Carnes</option></select>
+        <select name="provincia"><option value="M">Madrid</option></select>
+        <input type="submit" name="Buscar" value="Buscar"></form>"""
+        result = "<p>No se han encontrado resultados para la consulta.</p>"
+        class Headers(dict):
+            def get_content_charset(self): return "utf-8"
+        class Response:
+            def __init__(self, body, url):
+                self.body, self.url, self.headers = body.encode(), url, Headers({"Content-Type": "text/html"})
+            def read(self, limit=-1): return self.body[:limit]
+            def geturl(self): return self.url
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+        class Opener:
+            def __init__(self): self.requests = []
+            def open(self, request, timeout):
+                self.requests.append(request)
+                if len(self.requests) == 1:
+                    return Response(form, "https://rgsa-web-aesan.mscbs.es/rgsa/formulario_principal_js.jsp")
+                return Response(result, "https://rgsa-web-aesan.mscbs.es/rgsa/resultado_principal.jsp")
+        opener = Opener()
+        export = fetch_filtered_export("Madrid", "10", opener=opener, request_interval_seconds=0)
+        self.assertEqual(export["results"], [])
+        self.assertTrue(export["explicit_zero_results"])
+        self.assertEqual(export["http_requests"], 2)
+        self.assertEqual(len(opener.requests), 2)
+
+    def test_changed_result_page_without_export_or_explicit_zero_still_fails_closed(self):
+        from .location_enrichment import _explicit_empty_search_result
+        self.assertFalse(_explicit_empty_search_result(b"<p>Search information unavailable</p>", "utf-8"))
+
+    def test_only_supported_province_name_equivalents_are_accepted(self):
+        self.assertTrue(same_official_province("A Coruña", "La Coruña"))
+        self.assertTrue(same_official_province("Coruña, A", "La Coruña"))
+        self.assertTrue(same_official_province("Bizkaia", "Vizcaya"))
+        self.assertTrue(same_official_province("Alicante", "Alicante/Alacant"))
+        self.assertTrue(same_official_province("Castellón", "Castellón/Castelló"))
+        self.assertTrue(same_official_province("Valencia", "Valencia/València"))
+        self.assertTrue(same_official_province("La Rioja", "Rioja, La"))
+        self.assertTrue(same_official_province("Las Palmas", "Palmas, Las"))
+        self.assertTrue(same_official_province("Comunidad Foral de Navarra", "Navarra"))
+        # Bilbao is a city, not a province alias for all of Bizkaia.
+        self.assertFalse(same_official_province("Bilbao", "Bizkaia"))
+        self.assertFalse(same_official_province("Sevilla", "Córdoba"))
 
 
 if __name__ == "__main__":
