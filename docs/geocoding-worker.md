@@ -169,6 +169,33 @@ for actual outcomes; no acceptance threshold was loosened.
 
 ## Operator commands and credentials
 
+### LocationIQ fallback
+
+`LOCATIONIQ_API_KEY` supplies the backend-only token. The first enabled profile
+is `locationiq-de-bltu`; acquisition still ends before geocoding. After
+Geoapify's shared daily allowance is exhausted, stage a finite batch of current
+unmapped German business addresses and optionally process just that batch:
+
+```powershell
+python pipeline/scripts/stages/activate-locationiq-preview.py --limit 24 --run-worker
+```
+
+This uses the existing jobs, leases, retries and request ledger, with a separate
+LocationIQ budget of 5,000 requests/day and a shared minimum interval of 1.05
+seconds (the free plan also limits usage to 60 requests/minute). Accepted points
+are not overwritten. Authentication and rate-limit failures stop the batch.
+There is no cross-provider request-response cache. Other sources are not
+automatically enabled by adding a token.
+
+The adapter and database independently require a single German address match,
+including street/house number, postcode, locality and supplied state. Importance
+is not used as confidence. Results retain the LocationIQ provider and method;
+source coordinates and public release membership are unchanged. Public display
+requires the [LocationIQ attribution](https://locationiq.com/attribution) and
+underlying source credits. Their [storage policy](https://help.locationiq.com/support/solutions/articles/36000216111-can-i-save-addresses-from-api-output-)
+allows retained response output but limits reusable request-response caching.
+Provider transfer authorization remains source- and destination-specific.
+
 Supply `GEOAPIFY_API_KEY` through the private environment/secret store, then use
 the optional worker profile:
 

@@ -674,7 +674,8 @@ def _coordinate(normalized: dict[str, Any], preview_candidate: tuple[Any, ...], 
     if lat is None and allow_display and preview_candidate[11] is not None:
         lat, lon = preview_candidate[11], preview_candidate[12]
         if preview_candidate[27] is not None and preview_candidate[29] == "accepted" and preview_candidate[24] is not None:
-            method = "geoapify_forward"
+            method = {"geoapify": "geoapify_forward", "locationiq": "locationiq_forward"}.get(
+                preview_candidate[28], "address_geocode")
             provider = preview_candidate[28]
             precision = preview_candidate[24]
             origin = "provider_derived"
@@ -1057,7 +1058,7 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                     if is_representative and candidate[11] is not None:
                         if candidate[27] is not None and candidate[29] == "accepted":
                             display_location = {"latitude": candidate[11], "longitude": candidate[12],
-                                "method": "geoapify_forward", "precision": candidate[24],
+                                "method": coord_method, "precision": candidate[24],
                                 "provider": candidate[28], "evidence_kind": "provider_derived",
                                 "evidence_id": candidate[27], "provider_status": candidate[29],
                                 "provider_queried_at": candidate[30].isoformat() if candidate[30] else None,

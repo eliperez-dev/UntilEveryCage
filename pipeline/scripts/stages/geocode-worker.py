@@ -107,7 +107,8 @@ def _claim_job(
                         JOIN real_preview.candidates candidate ON candidate.candidate_id=target.candidate_id
                         JOIN uec.geocode_job_events queued ON queued.job_id=job.job_id
                           AND queued.event_type='queued'
-                          AND queued.details->>'processing_mode'='private_geoapify_source_profile'
+                          AND queued.details->>'processing_mode' IN (
+                              'private_geoapify_source_profile', 'private_locationiq_source_profile')
                           AND queued.details->>'profile_id'=%s
                         WHERE target.job_id=job.job_id
                           AND target.source_id=%s AND candidate.source_id=%s
@@ -388,8 +389,14 @@ def run(
         raise ValueError("AU NPI authentication recovery requires the explicit pilot mode")
     if private_source_profile_id and (au_npi_pilot or au_npi_auth_recovery):
         raise ValueError("private source profile mode is separate from the AU pilot")
-    if private_source_profile_id and (provider_id != "geoapify" or profile_by_id(private_source_profile_id) is None):
-        raise ValueError("enabled private Geoapify source profile required")
+    if private_source_profile_id:
+        profile = profile_by_id(private_source_profile_id)
+        if profile is None or profile.get("provider_id", "geoapify") != provider_id:
+            raise ValueError("enabled private source profile for this provider required")
+    if provider_id == "locationiq" and (
+            private_source_profile_id != "locationiq-de-bltu" or limit is None
+            or limit > 5000 or daily_budget > 5000 or provider_interval < 1.05):
+        raise ValueError("LocationIQ requires its DE profile, a finite limit and free-plan rate/quota bounds")
     if job_ids is not None:
         if not job_ids or len(set(job_ids)) != len(job_ids) or any(not isinstance(value, uuid.UUID) for value in job_ids):
             raise ValueError("job_ids must be a non-empty sequence of unique UUIDs")
@@ -491,6 +498,9 @@ def run(
                 continue
             processed += 1
             print(f"provider={provider_id} status={status} processed={processed}", flush=True)
+            if outcome is not None and (outcome.acceptance == "authentication_rejected"
+                    or (provider_id == "locationiq" and outcome.acceptance == "provider_rate_limited")):
+                break
             if limit is None or processed < limit:
                 time.sleep(delay)
     return processed
@@ -509,7 +519,7 @@ if __name__ == "__main__":
     parser.add_argument("--provider-interval", type=float, default=1.0, help="Minimum shared seconds between provider reservations")
     parser.add_argument("--au-npi-pilot", action="store_true", help="Enable only the bounded AU NPI Geoapify matching/display policy")
     parser.add_argument("--au-npi-auth-recovery", action="store_true", help="Permit only queued attempt-2 events carrying the explicit AU NPI authentication recovery marker")
-    parser.add_argument("--private-source-profile", help="Explicitly process only the named enabled private Geoapify source profile")
+    parser.add_argument("--private-source-profile", help="Explicitly process only the named enabled private provider/source profile")
     parser.add_argument("--job-id", action="append", help="Optional exact job UUID allowlist; repeat to select multiple jobs")
     parser.add_argument("--worker-id", default=os.environ.get("UEC_GEOCODE_WORKER_ID"))
     args = parser.parse_args()

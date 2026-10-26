@@ -2,6 +2,21 @@
   "schema_version": "private-geocoding-source-profiles-v1",
   "publication_boundary": "private geocoding evidence only; no release eligibility",
   "provider": "geoapify",
+  "additional_providers": {
+    "locationiq": {
+      "endpoint": "https://eu1.locationiq.com/v1/search",
+      "key_environment": "LOCATIONIQ_API_KEY",
+      "daily_request_ceiling": 5000,
+      "minimum_interval_seconds": 1.05,
+      "terms_url": "https://locationiq.com/tos",
+      "storage_policy_url": "https://help.locationiq.com/support/solutions/articles/36000216111-can-i-save-addresses-from-api-output-",
+      "attribution_url": "https://locationiq.com/attribution",
+      "attribution": "Search by LocationIQ.com; retain underlying data-source attribution",
+      "processing": "Street, postcode, locality, state and country only; no business names or contacts",
+      "retention": "Response output may be retained; no reusable request-response cache is implemented",
+      "match_policy": "Single address result with matching street, house number, postcode, locality and supplied state; importance is not confidence"
+    }
+  },
   "operational_policy": {
     "endpoint": "https://api.geoapify.com/v1/geocode/search",
     "provider_terms_url": "https://www.geoapify.com/terms-and-conditions/",
@@ -82,6 +97,14 @@
       "query_kind": "verified_municipality_only",
       "status": "enabled-private-only",
       "source_scope": "Only records with append-only AESAN verified municipality and province evidence; query municipality, province, and Spain only; accepted points are approximate municipality references, never facility coordinates"
+    },
+    {
+      "profile_id": "locationiq-de-bltu",
+      "provider_id": "locationiq",
+      "source_id": "de.locations",
+      "country_code": "DE",
+      "status": "enabled-private-only",
+      "source_scope": "Current unmapped BLtU business addresses only; retain original evidence and existing accepted points; explicit operator-selected fallback"
     },
     {
       "profile_id": "geoapify-de-bltu",

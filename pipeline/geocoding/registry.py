@@ -3,12 +3,14 @@ from collections.abc import Callable
 from .base import GeocoderAdapter
 from .dawa import DawaAdapter
 from .geoapify import GeoapifyAdapter
+from .locationiq import LocationIqAdapter
 from .private_profiles import profile_by_id
 
 
 ADAPTER_FACTORIES: dict[str, Callable[[], GeocoderAdapter]] = {
     "dawa": DawaAdapter,
     "geoapify": GeoapifyAdapter,
+    "locationiq": LocationIqAdapter,
 }
 
 
@@ -16,11 +18,14 @@ def get_adapter(provider_id: str, *, au_npi_pilot: bool = False,
                 private_source_profile_id: str | None = None) -> GeocoderAdapter:
     try:
         if private_source_profile_id is not None:
-            if provider_id != "geoapify":
-                raise ValueError("private source profiles require Geoapify")
             profile = profile_by_id(private_source_profile_id)
             if profile is None:
                 raise ValueError("private source profile is not enabled")
+            if provider_id != profile.get("provider_id", "geoapify"):
+                raise ValueError("private source profile provider does not match")
+            if provider_id == "locationiq":
+                return LocationIqAdapter(country_code=profile["country_code"].lower(),
+                                         private_source_profile=True)
             return GeoapifyAdapter(country_code=profile["country_code"].lower(),
                                    private_source_profile=True,
                                    locality_only=profile.get("query_kind") in {

@@ -439,6 +439,9 @@ class CandidateBridgeTests(unittest.TestCase):
         self.assertEqual(provider[-1], "provider_derived")
         self.assertEqual(provider[2:5], ("geoapify_forward", "house_number", "geoapify"))
         self.assertEqual(bridge._point_sql_parameters(*provider[:2]), (10.2, 56.1))
+        candidate[28] = "locationiq"
+        locationiq = bridge._coordinate({}, tuple(candidate), allow_display=True)
+        self.assertEqual(locationiq[2:5], ("locationiq_forward", "house_number", "locationiq"))
 
         candidate[24] = None
         candidate[27:30] = [None, None, None]

@@ -185,7 +185,7 @@ WITH latest AS (
     SELECT candidate.source_id,
            CASE
              WHEN display.display_geometry_source IS NOT NULL
-                  AND candidate.coordinate_method IN ('address_geocode', 'geoapify_forward') THEN 'provider_derived'
+                  AND candidate.coordinate_method IN ('address_geocode', 'geoapify_forward', 'locationiq_forward') THEN 'provider_derived'
              WHEN display.display_geometry_source IS NOT NULL
                   AND candidate.location_class = 'numeric_source_coordinate' THEN 'source_coordinate'
              WHEN display.display_geometry_source IS NOT NULL

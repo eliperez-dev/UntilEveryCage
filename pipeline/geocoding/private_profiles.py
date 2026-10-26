@@ -20,7 +20,7 @@ def profiles() -> list[dict[str, Any]]:
     if not isinstance(rows, list):
         raise ValueError("private geocoding profiles must be a list")
     seen_ids: set[str] = set()
-    profiles_by_source: dict[str, list[dict[str, Any]]] = {}
+    profiles_by_source: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for row in rows:
         if not isinstance(row, dict):
             raise ValueError("private geocoding profile must be an object")
@@ -29,6 +29,13 @@ def profiles() -> list[dict[str, Any]]:
             raise ValueError("private geocoding profile IDs must be unique")
         if not isinstance(source_id, str) or not source_id:
             raise ValueError("private geocoding profile source is invalid")
+        provider = row.get("provider_id", "geoapify")
+        if provider not in {"geoapify", "locationiq"}:
+            raise ValueError("private geocoding provider is not enabled")
+        if provider == "locationiq" and (
+                profile_id != "locationiq-de-bltu" or source_id != "de.locations"
+                or row.get("country_code") != "DE"):
+            raise ValueError("LocationIQ private profile identity is invalid")
         if row.get("country_code") not in {"GB", "DK", "NL", "US", "ES", "DE"}:
             raise ValueError("private Geoapify profile country is not enabled")
         if row.get("status") != ENABLED:
@@ -37,8 +44,8 @@ def profiles() -> list[dict[str, Any]]:
                 source_id != "es.locations" or row.get("country_code") != "ES"):
             raise ValueError("Spain private geocoding profile identity is invalid")
         seen_ids.add(profile_id)
-        profiles_by_source.setdefault(source_id, []).append(row)
-    for source_id, source_profiles in profiles_by_source.items():
+        profiles_by_source.setdefault((source_id, provider), []).append(row)
+    for (source_id, _provider), source_profiles in profiles_by_source.items():
         if source_id == "es.locations":
             by_id = {row["profile_id"]: row for row in source_profiles}
             if SPAIN_ADDRESS_PROFILE_ID not in by_id:
@@ -59,9 +66,11 @@ def profiles() -> list[dict[str, Any]]:
     return rows
 
 
-def profile_for_source(source_id: str, *, enabled_only: bool = True) -> dict[str, Any] | None:
+def profile_for_source(source_id: str, *, enabled_only: bool = True,
+                       provider_id: str = "geoapify") -> dict[str, Any] | None:
     for profile in profiles():
         if (profile["source_id"] == source_id
+                and profile.get("provider_id", "geoapify") == provider_id
                 and profile["profile_id"] != SPAIN_MUNICIPALITY_PROFILE_ID
                 and (not enabled_only or profile["status"] == ENABLED)):
             return profile
