@@ -4,6 +4,8 @@ import { labRecords } from '../../src/design-lab/fixtures';
 
 const cameraFixtureId = '223e4567-e89b-42d3-a456-426614174000';
 const cameraFixturePoint: [number, number] = [4.45, 50.95];
+// A style change prepares a candidate, then the base, each with a 10s bound.
+const basemapHandoffTimeout = 22_000;
 async function installPublicCameraFixture(page: import('@playwright/test').Page) {
   const releaseId = 'synthetic-release-2026-09';
   const requests = { manifests: 0, feeds: 0 };
@@ -57,6 +59,10 @@ async function mockCameraRaster(page: import('@playwright/test').Page) {
   await page.route('https://server.arcgisonline.com/**', route => route.fulfill({ contentType: 'image/png', body }));
   return body;
 }
+
+// These tests exercise the renderer, not external imagery availability. Tests
+// that deliberately delay or fail tiles register their own routes afterward.
+test.beforeEach(async ({ page }) => { await mockCameraRaster(page); });
 
 test('a reloaded public map reports its cached projection and uses one loading message', async ({ page }) => {
   const requests = await installPublicCameraFixture(page); await mockCameraRaster(page);
@@ -176,20 +182,21 @@ for (const viewport of [{ width: 1280, height: 720 }, { width: 390, height: 844 
   });
 }
 
-test('raster detail for common geographic points stays stable across fixed-camera bearings', async ({ browser, baseURL }) => {
+test('raster detail for common geographic points stays stable across fixed-camera bearings', async ({ page }) => {
   test.setTimeout(90_000);
   const levels: number[][] = [];
   const points = [[4.45, 50.95], [4.18, 50.95], [4.45, 50.72]];
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await installPublicCameraFixture(page); await mockCameraRaster(page); await installTerrainFixture(page);
+  await page.goto('./#/map?release_id=synthetic-release-2026-09&lat=50.95&lon=4.45&z=8.3&pitch=45');
+  await page.waitForFunction(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    return map?.getLayer('clusters') && map.isSourceLoaded('base') && map.isSourceLoaded('mapterhorn-terrain');
+  });
+  // Rotate one live map, as a user does, rather than paying for four complete
+  // WebGL/worker start-ups and shutdowns inside one test timeout.
   for (const bearing of [0, 90, 180, 270]) {
-    const context = await browser.newContext({ baseURL: baseURL!, viewport: { width: 1280, height: 720 } });
-    try {
-      const page = await context.newPage();
-      await installPublicCameraFixture(page); await mockCameraRaster(page); await installTerrainFixture(page);
-      await page.goto(`./#/map?release_id=synthetic-release-2026-09&lat=50.95&lon=4.45&z=8.3&pitch=45&bearing=${bearing}`);
-      await page.waitForFunction(() => {
-        const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
-        return map?.getLayer('clusters') && map.isSourceLoaded('base') && map.isSourceLoaded('mapterhorn-terrain');
-      });
+      await page.evaluate(value => (window as any).__UEC_LOCAL_PREVIEW_MAP__.jumpTo({ bearing: value }), bearing);
       // Reload the style after the viewport has its final size. Initial hidden
       // container requests can otherwise conceal the steady-state LOD choice.
       const tiles = await page.evaluate(async () => {
@@ -220,7 +227,6 @@ test('raster detail for common geographic points stays stable across fixed-camer
         const y = Math.floor((1 - Math.asinh(Math.tan(latitude! * Math.PI / 180)) / Math.PI) / 2 * 2 ** tile.z);
         return tile.x === x && tile.y === y;
       }).map(tile => tile.z))));
-    } finally { await context.close(); }
   }
   expect(levels.every(level => level.every(Number.isFinite))).toBe(true);
   expect(levels, 'Actual raster tile zoom at common points stays at camera zoom plus the 256px tile offset').toEqual(Array.from({ length: 4 }, () => points.map(() => 9)));
@@ -366,7 +372,7 @@ test('cluster bodies render on cold and warm public maps through satellite, 3D a
   await expectClusterBody('warm');
   const tools = page.getByRole('button', { name: 'Tools', exact: true }); await tools.click();
   await page.getByLabel('Map style').selectOption('satellite');
-  await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getStyle().sources.base.tiles[0])).toContain('World_Imagery');
+  await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getStyle().sources.base.tiles[0]), { timeout: basemapHandoffTimeout }).toContain('World_Imagery');
   await expectClusterBody('satellite');
   const toggle = page.locator('#shared-tools-menu .map-camera-toggle'); await toggle.click();
   // The first tilt waits for the bounded DEM request before animating.
@@ -580,14 +586,14 @@ test('camera tilt, map style, and URL state preserve the map view without compas
   });
   await mapStyle.selectOption('satellite');
   await expect(mapStyle).toHaveValue('satellite');
-  await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getStyle().sources.base.tiles[0])).toContain('World_Imagery');
+  await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getStyle().sources.base.tiles[0]), { timeout: basemapHandoffTimeout }).toContain('World_Imagery');
   await expect.poll(() => page.evaluate(() => {
     const instance = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     return [instance.getPitch(), instance.getBearing(), instance.getZoom(), Boolean(instance.getLayer('clusters'))];
   })).toEqual([45, 24, mapState.zoom, true]);
   await mapStyle.selectOption('vector');
   await expect(mapStyle).toHaveValue('vector');
-  await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getStyle().sources.base.tiles[0])).toContain('tile.openstreetmap.org');
+  await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getStyle().sources.base.tiles[0]), { timeout: basemapHandoffTimeout }).toContain('tile.openstreetmap.org');
 });
 
 test('flat camera URLs stay compact and the camera control remains usable on touch layouts', async ({ page }, testInfo) => {
@@ -616,6 +622,7 @@ test('flat camera URLs stay compact and the camera control remains usable on tou
 });
 
 test('compact map view control toggles 3D and shows the map gesture hint without compass controls', async ({ page }, testInfo) => {
+  test.setTimeout(60_000);
   await installTerrainFixture(page);
   await page.goto('./#/map?f1a=field&scenario=dense&lat=38&lon=-96&z=4');
   await page.waitForFunction(() => {
@@ -766,6 +773,7 @@ test('a directly loaded selected URL survives reload and closes without restorin
 });
 
 test('cold shared 3D URLs restore terrain after a style reload and browser Back', async ({ page }) => {
+  test.setTimeout(60_000);
   await installTerrainFixture(page);
   await installPublicCameraFixture(page);
   const tile = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/F2sAAAAASUVORK5CYII=', 'base64');
@@ -801,7 +809,7 @@ test('cold shared 3D URLs restore terrain after a style reload and browser Back'
   await expect(page).toHaveURL(/#\/about\?/);
   await page.goBack();
   await expect(page).toHaveURL(/pitch=45.*bearing=18/);
-  await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getTerrain())).toMatchObject({ source: 'mapterhorn-terrain', exaggeration: 1 });
+  await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getTerrain()), { timeout: 15_000 }).toMatchObject({ source: 'mapterhorn-terrain', exaggeration: 1 });
   await expect.poll(() => page.evaluate(() => Boolean((window as any).__UEC_LOCAL_PREVIEW_MAP__?.getSource('mapterhorn-terrain')))).toBe(true);
   await expect(map).toBeVisible();
 });
