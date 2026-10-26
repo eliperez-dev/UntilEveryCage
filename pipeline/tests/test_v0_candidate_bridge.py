@@ -21,6 +21,14 @@ def _canonical(value):
 
 
 class CandidateBridgeTests(unittest.TestCase):
+    def test_new_country_cohorts_retain_source_typed_business_labels(self):
+        for source, field in (("de.locations", "name"), ("es.locations", "name"),
+                              ("fr.georisques.icpe.animal", "trading_name")):
+            with self.subTest(source=source):
+                self.assertEqual(bridge._facility_display_name(source, {field: "Example Facility"}),
+                                 "Example Facility")
+                self.assertIsNone(bridge._facility_display_name(source, {"operator_name": "Contact"}))
+
     def test_correction_source_record_key_is_versioned_and_keeps_evidence_identity(self):
         key = bridge._correction_source_record_key("a" * 64, "native-id")
         self.assertEqual(key, "v0-correction-v4:" + "a" * 64 + ":native-id")

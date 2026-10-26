@@ -55,7 +55,7 @@ All items below remain required before replacing the original website.
 | Persistent cluster index | Deferred from the current sprint | Reload reuses the built index, with release/profile/manifest/restriction invalidation; cached point bytes alone do not qualify |
 | Languages | Generated Spanish facility labels and activities repaired; hosted verification belongs to the current acceptance receipt | Preserve source names, original classifications and attribution. Remaining German, French, Italian, Dutch and Danish use the same system; routes, filters and selection survive switching. Secondary API/community text is not fully translated |
 | Light/dark interface and map controls | FAQ, zoom-9 default and Tools relocation deployed. Public approximate-pin centering fix shipped after four focused cases, green CI and a real hosted pin check | Preserve readable English/Spanish copy, theme behavior and Tools controls. Exact and approximate pins must select and center with Search map collapsed or expanded |
-| France, broader Spain, Germany, Mexico | France ordinary shared live refresh and all 12,455 private map members verified; Germany 249 private points after 424 queries; national Spain five approximate municipality points after a separate 18-query pilot; Mexico acquisition blocked | Complete remaining enrichment and source-rights checks, then include measured coverage in the new dated launch dataset. Private verified points are not yet published coverage |
+| France, broader Spain, Germany, Mexico | France shared live refresh and map membership verified; national AESAN municipality enrichment now verified across its full eligible cohort; Germany address staging and a larger finite geocoding batch verified; Mexico acquisition blocked | Use the exact counts, precision, rights and remaining jobs in the source inventory to prepare the new dated dataset. These private cohorts have not changed public dataset membership |
 | United Kingdom and New Zealand | Required launch-dataset targets added by the maintainer; fresh end-to-end and final-release verification pending | UK source cohorts and a permitted New Zealand source pass fresh acquisition, normalization, import, location enrichment and actual map/API checks, then appear in the final dated launch dataset. Existing UK released rows or legacy V1 New Zealand data alone do not satisfy this gate; report jurisdiction and source coverage explicitly |
 | APHIS history | Reliability and on-demand historical recovery implemented | Six real endpoint cases passed locally: two eligible facilities return pre-2025 annual and inspection links, sampled PDFs open, and the original no-report case returns an empty page; sample history reaches 2014, not a complete archive audit |
 | New default dated dataset | Not started | Fresh acquisition and required location enrichment for included cohorts, measured map membership/counts, retained history and current restrictions |
@@ -73,15 +73,24 @@ Spanish coverage or publish more locations. Its resulting candidate count is
 not an additive increase to the existing dataset. Follow the exact run and
 counts in [the source inventory](source-status.json), not copied sprint totals.
 
-France transforms explicitly declared source coordinates and has passed the
-ordinary shared live refresh, idempotent importer replay and exact API/map
-membership checks. Broader Spain has a national AESAN import and five approximate
-municipality points; 19,772 candidates remain unmapped. Germany has automated
-official acquisition, private taxonomy assignments and 249 displayed address
-matches; only a bounded subset has been geocoded, not the whole source. Mexico's current
-official attachment/token access remains blocked. Inspect the source inventory before
-promising counts or dates. Compare intended recovery with the original V1
-sources; do not silently count legacy rows as newly acquired data.
+France transforms source-declared coordinate systems. National Spain separately
+joins AESAN registration/province evidence to official IGN municipality points;
+those points remain approximate. Germany validates address, postcode and locality
+context before displaying provider points; most staged addresses still await
+geocoding. The BLtU reuse licence is identified in the official federal catalogue,
+with attribution evidence retained. Mexico's attachment/token route remains
+blocked. The source inventory owns measured counts and unresolved cases.
+
+The backend-only country sprint preserves the frontend branch and public API
+contracts. A fresh Spain refresh, importer replay, enrichment replay and exact
+map-feed membership checks passed. The shared-runner acquisition/import run-ID
+mismatch, stale private enrichment states and German display-cache disagreement
+were repaired. Source business labels are retained for the release bridge.
+The older German private candidate cache is still unnamed; its retained handoff
+contains the business labels. The measured row-free release input inventory is
+retained at `D:/UntilEveryCage-Operations/release-preparation/country-coverage-20261025/candidate-inventory.json`
+(digest `888f7005ce63a1a29c7edfd22639dfe689602a8c6ee326f37e896a2baceb1d6f`).
+It is preparation evidence, not a frozen or promoted release.
 
 ## Roadmap
 

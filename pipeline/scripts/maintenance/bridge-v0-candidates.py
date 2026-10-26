@@ -95,6 +95,9 @@ _FACILITY_NAME_FIELDS = {
     "us.fsis": ("canonical_name",),
     "us.aphis": ("canonical_name",),
     "fss_approved_establishments": ("trading_name",),
+    "de.locations": ("name", "trading_name"),
+    "es.locations": ("name",),
+    "fr.georisques.icpe.animal": ("trading_name", "name"),
 }
 
 
