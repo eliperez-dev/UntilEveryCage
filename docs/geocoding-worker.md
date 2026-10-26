@@ -180,6 +180,13 @@ unmapped German business addresses and optionally process just that batch:
 python pipeline/scripts/stages/activate-locationiq-preview.py --limit 24 --run-worker
 ```
 
+Use `--cohort unqueried` for addresses with no previous Geoapify result, or
+`--cohort previous-provider-unmapped` to try LocationIQ on addresses Geoapify
+left unmapped. The default `all` prioritizes unqueried addresses. Both selections
+exclude existing LocationIQ targets, accepted map points and restricted records;
+they retain the earlier provider's evidence unchanged. Cohorts share the same
+daily provider ledger, not separate allowances.
+
 This uses the existing jobs, leases, retries and request ledger, with a separate
 LocationIQ budget of 5,000 requests/day and a shared minimum interval of 1.05
 seconds (the free plan also limits usage to 60 requests/minute). Previously

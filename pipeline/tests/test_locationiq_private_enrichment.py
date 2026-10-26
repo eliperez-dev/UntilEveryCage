@@ -12,9 +12,42 @@ ROOT = Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location("locationiq_worker_test", ROOT / "pipeline/scripts/stages/geocode-worker.py")
 WORKER = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(WORKER)
+ACTIVATION_SPEC = importlib.util.spec_from_file_location(
+    "locationiq_activation_unit_test", ROOT / "pipeline/scripts/stages/activate-locationiq-preview.py")
+ACTIVATION = importlib.util.module_from_spec(ACTIVATION_SPEC)
+ACTIVATION_SPEC.loader.exec_module(ACTIVATION)
 
 
 class LocationIqIntegrationTests(unittest.TestCase):
+    def test_activation_cohort_is_validated_before_database_access(self):
+        with patch.object(ACTIVATION.psycopg, "connect") as connect:
+            with self.assertRaises(ValueError):
+                ACTIVATION.activate("postgresql://synthetic", cohort="retry-everything")
+        connect.assert_not_called()
+
+    def test_activation_filters_previous_provider_results_without_reusing_locationiq_targets(self):
+        for cohort, expected in (("all", None), ("unqueried", False),
+                                 ("previous-provider-unmapped", True)):
+            connection = Mock()
+            connection.__enter__ = Mock(return_value=connection)
+            connection.__exit__ = Mock(return_value=False)
+            connection.transaction.return_value.__enter__ = Mock()
+            connection.transaction.return_value.__exit__ = Mock(return_value=False)
+            connection.execute.side_effect = [Mock(fetchone=lambda: (ACTIVATION.DATABASE,)),
+                                              Mock(fetchone=lambda: (True,)),
+                                              Mock(fetchall=lambda: [])]
+            with self.subTest(cohort=cohort), patch.object(
+                    ACTIVATION.psycopg, "connect", return_value=connection):
+                summary, jobs = ACTIVATION.activate("postgresql://synthetic", limit=100, cohort=cohort)
+            sql, params = connection.execute.call_args.args
+            self.assertEqual(params, (expected, expected, 100))
+            self.assertIn("candidate.display_latitude IS NULL", sql)
+            self.assertIn("job.provider_id='locationiq'", sql)
+            self.assertIn("result.provider_id='geoapify') = %s::boolean", sql)
+            self.assertEqual(summary["cohort"], cohort)
+            self.assertEqual(summary["provider_calls"], 0)
+            self.assertEqual(jobs, ())
+
     def test_provider_profiles_remain_distinct_and_import_default_is_unchanged(self):
         self.assertEqual(profile_for_source("de.locations")["profile_id"], "geoapify-de-bltu")
         self.assertEqual(profile_for_source("de.locations", provider_id="locationiq")["profile_id"], "locationiq-de-bltu")

@@ -18,11 +18,16 @@ from pipeline.geocoding.locationiq import LocationIqAdapter
 
 PROFILE = "locationiq-de-bltu"
 DATABASE = "uec_launch_sources_test_20261025"
+COHORTS = ("all", "unqueried", "previous-provider-unmapped")
 
 
-def activate(database_url: str, *, limit: int = 24):
+def activate(database_url: str, *, limit: int = 24, cohort: str = "all"):
     if not 1 <= limit <= 5000:
         raise ValueError("fallback batch must contain 1 to 5000 records")
+    if cohort not in COHORTS:
+        raise ValueError("unsupported address cohort")
+    prior_result_required = {"all": None, "unqueried": False,
+                             "previous-provider-unmapped": True}[cohort]
     profile = profile_by_id(PROFILE)
     if profile is None or profile.get("provider_id") != "locationiq":
         raise ValueError("LocationIQ profile is not enabled")
@@ -68,10 +73,14 @@ def activate(database_url: str, *, limit: int = 24):
                   WHERE target.candidate_id=candidate.candidate_id AND target.snapshot_sha256=candidate.snapshot_sha256)
               AND NOT EXISTS (SELECT 1 FROM real_preview.enrichment_state_events state
                   WHERE state.candidate_id=candidate.candidate_id AND state.state_code='restricted')
+              AND (%s::boolean IS NULL OR EXISTS (
+                  SELECT 1 FROM uec.geocode_results result
+                  WHERE result.source_record_id=original.source_record_id
+                    AND result.provider_id='geoapify') = %s::boolean)
             ORDER BY EXISTS (SELECT 1 FROM uec.geocode_results result
                 WHERE result.source_record_id=original.source_record_id AND result.provider_id='geoapify'),
                 candidate.candidate_id LIMIT %s FOR UPDATE OF candidate SKIP LOCKED
-        """, (limit,)).fetchall()
+        """, (prior_result_required, prior_result_required, limit)).fetchall()
         job_ids = []
         rejected_queries = 0
         for candidate, snapshot, source_key, source_record, street, postal, city, region in rows:
@@ -93,18 +102,20 @@ def activate(database_url: str, *, limit: int = 24):
                 SELECT %s,'queued',1,false,%s::jsonb WHERE NOT EXISTS
                   (SELECT 1 FROM uec.geocode_job_events WHERE job_id=%s)""",
                 (job_id,json.dumps({"processing_mode":"private_locationiq_source_profile","profile_id":PROFILE,
+                                   "selection_cohort":cohort,
                                    "fallback_from_provider":"geoapify","fallback_reason":"primary_daily_allowance_exhausted"}),job_id))
             connection.execute("""INSERT INTO real_preview.enrichment_state_events
                 (candidate_id,snapshot_sha256,source_id,source_record_key,state_code,reason_code)
                 VALUES(%s,%s,'de.locations',%s,'queued','locationiq_de_bltu_fallback')""", (candidate,snapshot,source_key))
             job_ids.append(job_id)
-        return {"provider":"locationiq","source":"de.locations","jobs_staged":len(job_ids),
+        return {"provider":"locationiq","source":"de.locations","cohort":cohort,"jobs_staged":len(job_ids),
                 "invalid_query_formats_skipped":rejected_queries,"provider_calls":0}, tuple(job_ids)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--limit", type=int, default=24)
+    parser.add_argument("--cohort", choices=COHORTS, default="all")
     parser.add_argument("--run-worker", action="store_true")
     args = parser.parse_args()
     database_url = os.environ.get("UEC_DATABASE_URL")
@@ -112,7 +123,7 @@ def main() -> int:
         print(json.dumps({"status":"blocked","reason":"database_or_locationiq_key_missing"}))
         return 2
     try:
-        summary, jobs = activate(database_url, limit=args.limit)
+        summary, jobs = activate(database_url, limit=args.limit, cohort=args.cohort)
         print(json.dumps(summary), flush=True)
         if args.run_worker and jobs:
             spec = importlib.util.spec_from_file_location("locationiq_worker", Path(__file__).with_name("geocode-worker.py"))
