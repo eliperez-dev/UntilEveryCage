@@ -114,6 +114,12 @@ class PublicDiscoveryQueryContractTests(unittest.TestCase):
             body = source[start:next_handler if next_handler != -1 else None]
             self.assertIn('batch_execute("SET LOCAL jit = off")', body)
 
+    def test_map_and_list_bounds_use_planar_envelopes_including_the_whole_world(self):
+        source = _source()
+        locations = source[source.index("async fn get_v2_locations_response"):source.index("pub async fn get_v2_location_detail_handler")]
+        self.assertIn("ST_Intersects(history.display_location::geometry, ST_MakeEnvelope(", locations)
+        self.assertNotRegex(locations, r"ST_MakeEnvelope\([^)]*\)::geography")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -5137,6 +5137,8 @@ async fn get_v2_locations_response(
                   AND (newer.created_at,newer.assignment_set_id)>(sets.created_at,sets.assignment_set_id))
               AND assignment.primary_key = ANY($20::text[])))"#
     } else { "" };
+    // Viewport boxes are planar longitude/latitude bounds. Casting a global
+    // envelope to geography can be invalid or select the opposite hemisphere.
     let ordinary_filtered_ctes = if search_text.is_some() {
         format!(r#"
         {search_matches_cte}, filtered AS MATERIALIZED (
@@ -5161,7 +5163,7 @@ async fn get_v2_locations_response(
             AND ($5::text IS NULL OR history.display_precision = ANY(string_to_array($5, ',')))
             AND ($6::text IS NULL OR history.lifecycle_status = $6)
             AND ($7::text IS NULL OR history.provenance_origin_type = $7)
-            AND ($9::double precision IS NULL OR (history.display_location && ST_MakeEnvelope($9, $10, $11, $12, 4326)::geography AND ST_Intersects(history.display_location::geometry, ST_MakeEnvelope($9, $10, $11, $12, 4326))))
+            AND ($9::double precision IS NULL OR ST_Intersects(history.display_location::geometry, ST_MakeEnvelope($9, $10, $11, $12, 4326)))
             AND ($13::double precision IS NULL OR ST_DWithin(history.display_location, ST_SetSRID(ST_Point($14, $15), 4326)::geography, $13 * 1000))
             {map_taxonomy_filter}
           ORDER BY history.facility_id, history.observation_id
@@ -5191,7 +5193,7 @@ async fn get_v2_locations_response(
                       WHERE sets.observation_id=history.observation_id AND sets.taxonomy_version='uec-taxonomy-v1'
                         AND NOT EXISTS (SELECT 1 FROM uec.observation_taxonomy_assignment_sets newer WHERE newer.observation_id=sets.observation_id AND newer.taxonomy_version=sets.taxonomy_version AND (newer.created_at,newer.assignment_set_id)>(sets.created_at,sets.assignment_set_id))
                         AND lower(concat_ws(' ', assignment.leaf_label, assignment.source_code, assignment.source_label, assignment.source_code_reference, assignment.source_label_reference)) LIKE '%' || lower($8) || '%' ESCAPE '\')))
-            AND ($9::double precision IS NULL OR (history.display_location && ST_MakeEnvelope($9, $10, $11, $12, 4326)::geography AND ST_Intersects(history.display_location::geometry, ST_MakeEnvelope($9, $10, $11, $12, 4326))))
+            AND ($9::double precision IS NULL OR ST_Intersects(history.display_location::geometry, ST_MakeEnvelope($9, $10, $11, $12, 4326)))
             AND ($13::double precision IS NULL OR ST_DWithin(history.display_location, ST_SetSRID(ST_Point($14, $15), 4326)::geography, $13 * 1000))
             {map_taxonomy_filter}
           ORDER BY history.facility_id, history.observation_id
@@ -5257,7 +5259,7 @@ async fn get_v2_locations_response(
           AND ($4::text IS NULL OR history.classification_category = $4) AND ($5::text IS NULL OR history.display_precision = ANY(string_to_array($5, ',')))
           AND ($6::text IS NULL OR history.lifecycle_status = $6) AND ($7::text IS NULL OR history.provenance_origin_type = $7)
           AND $8::text IS NULL
-          AND ($9::double precision IS NULL OR (history.display_location && ST_MakeEnvelope($9, $10, $11, $12, 4326)::geography AND ST_Intersects(history.display_location::geometry, ST_MakeEnvelope($9, $10, $11, $12, 4326))))
+          AND ($9::double precision IS NULL OR ST_Intersects(history.display_location::geometry, ST_MakeEnvelope($9, $10, $11, $12, 4326)))
           AND ($13::double precision IS NULL OR ST_DWithin(history.display_location, ST_SetSRID(ST_Point($14, $15), 4326)::geography, $13 * 1000))
           AND EXISTS (
                 SELECT 1
@@ -5290,7 +5292,7 @@ async fn get_v2_locations_response(
           AND ($5::text IS NULL OR history.display_precision = ANY(string_to_array($5, ',')))
           AND ($6::text IS NULL OR history.lifecycle_status = $6)
           AND ($7::text IS NULL OR history.provenance_origin_type = $7)
-          AND ($9::double precision IS NULL OR (history.display_location && ST_MakeEnvelope($9, $10, $11, $12, 4326)::geography AND ST_Intersects(history.display_location::geometry, ST_MakeEnvelope($9, $10, $11, $12, 4326))))
+          AND ($9::double precision IS NULL OR ST_Intersects(history.display_location::geometry, ST_MakeEnvelope($9, $10, $11, $12, 4326)))
           AND ($13::double precision IS NULL OR ST_DWithin(history.display_location, ST_SetSRID(ST_Point($14, $15), 4326)::geography, $13 * 1000))
           AND EXISTS (
                 SELECT 1
@@ -5429,7 +5431,7 @@ async fn get_v2_locations_response(
           AND ($7::text IS NULL OR history.lifecycle_status = $7)
           AND ($8::text IS NULL OR history.provenance_origin_type = $8)
           {taxonomy_search_filter}
-          AND ($10::double precision IS NULL OR (history.display_location && ST_MakeEnvelope($10, $11, $12, $13, 4326)::geography AND ST_Intersects(history.display_location::geometry, ST_MakeEnvelope($10, $11, $12, $13, 4326))))
+          AND ($10::double precision IS NULL OR ST_Intersects(history.display_location::geometry, ST_MakeEnvelope($10, $11, $12, $13, 4326)))
           AND ($14::double precision IS NULL OR ST_DWithin(history.display_location, ST_SetSRID(ST_Point($15, $16), 4326)::geography, $14 * 1000))
           AND EXISTS (
                 SELECT 1

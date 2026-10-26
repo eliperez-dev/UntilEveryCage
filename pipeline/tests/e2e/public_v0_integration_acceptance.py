@@ -89,7 +89,8 @@ class PublicV0IntegrationAcceptance(unittest.TestCase):
                   ({"min_lon": "-180", "min_lat": "-90", "max_lon": "180", "max_lat": "90", "category_keys": "slaughter"}, None),
                   ({"latitude": "50", "longitude": "5", "radius_km": "100"}, None),
                   ({"display_precision": "unmapped"}, 0),
-                  ({"country_code": "US", "source_id": "us.fsis", "category_keys": "slaughter,processing"}, None)]
+                  ({"source_id": features[0]["properties"]["source_id"],
+                    "category_keys": ",".join(features[0]["properties"]["category_keys"])}, None)]
         for filters, expected_mapped in checks:
             query = {**base, **filters}
             _, headers, matches = self.get_json("/api/v2/map/matches?" + urllib.parse.urlencode(query))
