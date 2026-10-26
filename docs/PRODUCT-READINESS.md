@@ -2,7 +2,7 @@
 
 **Canonical authority:** this document is the sole product-level readiness and overall V2 roadmap authority.
 
-**Owner:** project maintainer. **Updated:** 2026-10-25, Pacific.
+**Owner:** project maintainer. **Updated:** 2026-10-26, Pacific.
 This is the only product roadmap. Source readiness belongs in
 [source-status.json](source-status.json); current frontend instructions belong
 in [frontend/README.md](frontend/README.md). [ETHICS.md](ETHICS.md) governs data work.
@@ -28,7 +28,7 @@ complete; do not request another generic approval stamp.
 | Contributions | Five record-contribution forms and separate bug-report intake implemented; final operating/retention handoff remains part of cutover |
 | Frontend repair | Requested navigation, concise copy, About counter, control alignment, full-record links and empty Connections state deployed |
 | Languages and themes | English/Spanish primary UI and persistent light/dark preferences implemented; some secondary community/operator and generated API text remains English |
-| Cluster persistence | Point-feed caching exists; persistent reuse of the built cluster index is not implemented |
+| Cluster persistence | Implemented in the reviewed integration: identity-bound worker-index reuse, bounded tile caching and local world baselines; hosted verification belongs to the integration receipt below |
 
 The table describes integrated product behavior. Hosting uses the existing
 Render service and manual deployment from `eli/v2` after CI. The latest UI
@@ -43,6 +43,10 @@ The current UI/source acceptance is retained in ignored
 The subsequent country/compact-UI integration, CI and hosted verification are
 recorded in ignored `data/staging/launch-country-polish-20261025/acceptance.json`;
 read its actual CI/deploy state rather than assuming local verification is hosted.
+The consolidated frontend, contribution redesign and persistent-map integration
+uses ignored `data/staging/frontend-render-integration-20261026/acceptance.json`.
+The encrypted inbox remains development-only; production activation and email
+are not part of that deployment. Dataset membership and database controls are unchanged.
 The source inventory owns graph package/runtime details and source-specific evidence.
 
 ## Launch gates
@@ -52,7 +56,7 @@ All items below remain required before replacing the original website.
 | Work | State | Done when |
 | --- | --- | --- |
 | Documentation consolidation | Complete | 46 obsolete/duplicate documents removed; one current roadmap/source inventory/frontend guide; local links and 28 documentation-contract checks passed; no application code changed |
-| Persistent cluster index | Deferred from the current sprint | Reload reuses the built index, with release/profile/manifest/restriction invalidation; cached point bytes alone do not qualify |
+| Persistent cluster index | Implemented; local current-release and V0 browser checks passed, with final CI/hosted state in the integration receipt | Reload reuses the built index, with release/profile/manifest/restriction invalidation; cached point bytes alone do not qualify |
 | Languages | Generated Spanish facility labels and activities repaired; hosted verification belongs to the current acceptance receipt | Preserve source names, original classifications and attribution. Remaining German, French, Italian, Dutch and Danish use the same system; routes, filters and selection survive switching. Secondary API/community text is not fully translated |
 | Light/dark interface and map controls | FAQ, zoom-9 default and Tools relocation deployed. Public approximate-pin centering fix shipped after four focused cases, green CI and a real hosted pin check | Preserve readable English/Spanish copy, theme behavior and Tools controls. Exact and approximate pins must select and center with Search map collapsed or expanded |
 | France, broader Spain, Germany, Mexico | France shared live refresh and map membership verified; national AESAN municipality enrichment now verified across its full eligible cohort; Germany address staging and a larger finite geocoding batch verified; Mexico acquisition blocked | Use the exact counts, precision, rights and remaining jobs in the source inventory to prepare the new dated dataset. These private cohorts have not changed public dataset membership |
