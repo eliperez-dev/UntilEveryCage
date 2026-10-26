@@ -373,7 +373,7 @@ const es: Record<string, string> = {
   'Search, filters, and results': 'Búsqueda, filtros y resultados', 'Search records': 'Buscar registros', 'Filters': 'Filtros',
   'Location precision': 'Precisión de ubicación',
   'Clear filters': 'Borrar filtros', 'Facility records': 'Registros de instalaciones', 'Members': 'Miembros', 'loaded': 'cargados',
-  'Preparing the map…': 'Preparando el mapa…', 'Loading page…': 'Cargando página…', 'Unable to open this page': 'No se pudo abrir esta página',
+  'Preparing the map…': 'Preparando el mapa…', 'Map unavailable in this browser.': 'El mapa no está disponible en este navegador.', 'Loading page…': 'Cargando página…', 'Unable to open this page': 'No se pudo abrir esta página',
   'Reload to try again': 'Recargar para volver a intentarlo', 'Page not found': 'Página no encontrada',
   'This address does not match a page in this application.': 'Esta dirección no corresponde a una página de esta aplicación.', 'Return to the map': 'Volver al mapa',
   'Loading API reference…': 'Cargando la referencia de la API…', 'Preparing the community pilot…': 'Preparando el programa comunitario…',
