@@ -42,7 +42,7 @@ def classify(query, response):
             or not 1 <= len(response["results"]) <= 2):
         return "invalid_retained_response"
     def evaluate(adapter):
-        return adapter(api_key="uec-offline-replay-no-credential", country_code="de",
+        return adapter(api_key="offline-placeholder", country_code="de",
                        private_source_profile=True,
                        opener=lambda *_args, **_kwargs: _Response(response["results"])).geocode(query)
     if evaluate(LocationIqAdapter).status == "accepted":
