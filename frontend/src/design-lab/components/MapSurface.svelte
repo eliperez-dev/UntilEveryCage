@@ -180,6 +180,7 @@
   let settlingSelectionFocus = false;
   let interactionsBound = false;
   let mvtError = $state("");
+  let rendererUnavailable = $state(false);
   const mapFeedRepository = createRealPreviewMapFeedRepository();
   const candidateMapFeedRepository = createTestReleaseMapFeedRepository();
   const publicMapFeedRepository = createPublicMapFeedRepository();
@@ -1592,7 +1593,9 @@
     }
     mvtInitialStartedAt = performance.now();
     mvtResourceWindowStart = mvtInitialStartedAt;
-    const instance = new maplibregl.Map({
+    let instance: MapLibreMap;
+    try {
+      instance = new maplibregl.Map({
       container: host,
       style: style(),
       center: [mapState.viewport.centerLon, mapState.viewport.centerLat],
@@ -1605,7 +1608,24 @@
       // positions can reuse MapLibre's buffered tiles without app snapshots.
       maxTileCacheZoomLevels: 6,
       maxTileCacheSize: cacheTuning.ramTiles,
-    } as any);
+      } as any);
+    } catch {
+      // Renderer failure must not abort the parent release/search effects.
+      // MapLibre rolls back its container when GPU initialization fails.
+      rendererUnavailable = true;
+      startupStage = 'ready';
+      const cleanupFailedInitialization = () => {
+        unsubscribeTiles(); unsubscribeWorld();
+        indexCacheChannel?.close(); indexCacheChannel = undefined;
+        mvtMotionController?.dispose(); mvtMotionController = undefined;
+        jsonMotionController?.dispose(); jsonMotionController = undefined;
+        nativeMotionController?.dispose(); nativeMotionController = undefined;
+        host.replaceChildren();
+      };
+      cleanupFailedInitialization();
+      onMapControlsReady?.(false);
+      return cleanupFailedInitialization;
+    }
     map = instance;
     let resizeFrame: number | undefined;
     let previousWidth = host.clientWidth;
@@ -1956,6 +1976,7 @@
   aria-label={tr('Map showing records', $language)}
 >
   <div class="map-host" bind:this={host}></div>
+  {#if rendererUnavailable}<p class="map-status" role="alert">{tr('Map unavailable in this browser.', $language)}</p>{/if}
   {#if terrainError}<small class="map-status terrain-status" role="alert">{terrainError}</small>{/if}
   {#if terrainPending}<small class="map-status terrain-status" role="status">{tr('Loading terrain…', $language)}</small>{/if}
   {#if basemapSwitching && pendingBasemap}<small
