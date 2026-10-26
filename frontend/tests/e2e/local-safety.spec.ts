@@ -23,7 +23,7 @@ test('public map route context does not silently search or enable a community pr
  const requests:string[]=[];
  page.on('request',request=>{const url=new URL(request.url());if(url.pathname.startsWith('/api/')||url.pathname.startsWith('/dev/'))requests.push(url.pathname+url.search);});
  await page.goto('./?mode=local-v2#/map?profile=community&query=private%20address');
- await expect(page.getByRole('heading',{name:'Map'})).toBeVisible();
+ await expect(page.getByRole('heading',{name:'Investigative map',exact:true})).toBeVisible();
  expect(requests.every(url=>url.startsWith('/api/v2/releases/manifest?profile=official'))).toBe(true);
 });
 

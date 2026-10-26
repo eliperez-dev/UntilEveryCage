@@ -1,4 +1,9 @@
 import { test, expect } from '@playwright/test';
+import { installEmptyPublicMap } from '../fixtures/empty-public-map';
+
+test.beforeEach(async ({ page }) => {
+  await installEmptyPublicMap(page, 'synthetic-public-release');
+});
 
 test('private preview query does not expose operator controls or candidate data', async ({ page }) => {
   const previewRequests: string[] = [];
@@ -7,7 +12,7 @@ test('private preview query does not expose operator controls or candidate data'
   });
 
   await page.goto('./?preview=dev-candidates&mode=local-v2#/map');
-  await expect(page.getByRole('heading', { name: 'Map' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Investigative map', exact: true })).toBeVisible();
   await expect(page.getByLabel(/operator token/i)).toHaveCount(0);
   await expect(page.getByRole('button', { name: /load private candidates|preview export/i })).toHaveCount(0);
   await expect(page.getByText(/private candidate|not reviewed or published/i)).toHaveCount(0);

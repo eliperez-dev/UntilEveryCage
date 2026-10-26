@@ -1,7 +1,9 @@
 import { test, expect } from '@playwright/test';
+import { installEmptyPublicMap } from '../fixtures/empty-public-map';
 
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/**', route => new URL(route.request().url()).pathname.startsWith('/api/') ? route.fulfill({ contentType: 'application/json', body: JSON.stringify({ api_version: 'v2', data: [], meta: { release_id: null, profile: 'official', coverage_note: 'No public release.' } }) }) : route.fallback());
+  await installEmptyPublicMap(page, 'synthetic-shell-release');
   await page.route('**/dev/real-preview/**', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ api_version: 'real-preview-v1', data: [], meta: { private_preview: true, next_cursor: null } }) }));
   await page.route('https://tile.openstreetmap.org/**', route => route.abort());
   await page.route('https://server.arcgisonline.com/**', route => route.abort());
@@ -20,7 +22,7 @@ test('the shared shell exposes map search through its four primary destinations'
   await expect(page.getByRole('navigation', { name:'Primary' }).getByRole('link')).toHaveText(['Map','Data','Contribute','About']);
   await page.getByRole('button', { name:'Search map' }).click();
   await expect(page.getByRole('complementary', { name:'Search, filters, and results' })).toBeVisible();
-  await expect(page.getByRole('searchbox')).toBeVisible();
+  await expect(page.getByRole('combobox', { name: 'Search across public release records' })).toBeVisible();
 });
 
 test('centered primary navigation and Tools map controls layout across desktop and mobile', async ({ page }) => {
@@ -102,7 +104,7 @@ test('About and FAQ pages keep legacy routes without obsolete source/method cont
   await page.goto('./#/database');
   const aboutLink = page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'About', exact: true });
   await aboutLink.click();
-  await expect.poll(() => new URL(page.url()).hash).toBe('#/about');
+  await expect.poll(() => routePath(page).pathname).toBe('/about');
   await expect(page.getByRole('heading', { level: 1, name: 'About Until Every Cage is Empty' })).toBeVisible();
   await page.goto('./#/about?section=sources');
   await expect.poll(() => new URL(page.url()).hash).toBe('#/about?section=sources');
