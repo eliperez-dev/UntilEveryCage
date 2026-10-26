@@ -189,10 +189,12 @@ class SecureRelayAcceptance(unittest.TestCase):
                     "reviewer_fingerprint": "b" * 40, "ciphertext": CIPHERTEXT}
         self.assertEqual(self.request("/api/private/community/secure/messages", reviewer)[0], 404)
         self.assertEqual(self.request("/api/private/community/secure/messages", reviewer, operator=True)[0], 201)
+        self.assertEqual(self.request("/api/private/community/secure/messages", {**reviewer, "message_id": str(uuid.UUID(int=0))}, operator=True)[0], 400)
         self.assertEqual(self.request("/api/private/community/secure/messages", reviewer, operator=True)[0], 200)
         contributor = {"case_id": claim["case_id"], "access_secret": claim["access_secret"],
                        "message_id": str(uuid.uuid4()), "ciphertext": CIPHERTEXT}
         self.assertEqual(self.request("/api/community/secure/messages", contributor)[0], 201)
+        self.assertEqual(self.request("/api/community/secure/messages", {**contributor, "message_id": str(uuid.UUID(int=0))})[0], 400)
         self.assertEqual(self.request("/api/community/secure/messages", contributor)[0], 200)
         self.assertEqual(self.request("/api/community/secure/messages", {**contributor, "message_id": reviewer["message_id"]})[0], 409)
         for _ in range(29):
@@ -221,6 +223,7 @@ class SecureRelayAcceptance(unittest.TestCase):
     def test_invalid_plaintext_fields_size_expiry_and_legacy(self):
         claim = self.submission()
         for change in ({"plaintext": "not allowed"}, {"ciphertext": "plaintext"},
+                       {"case_id": str(uuid.UUID(int=0))}, {"initial_message_id": str(uuid.UUID(int=0))},
                        {"reviewer_fingerprint": "c" * 40}, {"contributor_fingerprint": "b" * 40},
                        {"ciphertext": CIPHERTEXT.replace("END PGP MESSAGE", "END PGP PUBLIC KEY BLOCK")}):
             self.assertEqual(self.request("/api/community/secure/submissions", {**claim, **change})[0], 400)

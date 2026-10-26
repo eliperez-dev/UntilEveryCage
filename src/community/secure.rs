@@ -199,6 +199,9 @@ fn valid_secret(s: &str) -> bool {
         && s.bytes()
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
+fn valid_id(id: Uuid) -> bool {
+    (1..=8).contains(&id.get_version_num()) && id.get_variant() == uuid::Variant::RFC4122
+}
 fn active(status: &str) -> bool {
     matches!(status, "received" | "in_review" | "needs_information")
 }
@@ -236,7 +239,9 @@ struct Submission {
     ciphertext: String,
 }
 fn valid_submission(x: &Submission, cs: &CommunityState) -> bool {
-    x.protocol == "uec-openpgp-inbox-v1"
+    valid_id(x.case_id)
+        && valid_id(x.initial_message_id)
+        && x.protocol == "uec-openpgp-inbox-v1"
         && allowed_kind(&x.kind)
         && valid_secret(&x.access_secret)
         && valid_public_key(&x.contributor_public_key)
@@ -483,7 +488,11 @@ async fn contributor_message(
         Ok(Json(x)) => x,
         Err(e) => return rejected_json(e),
     };
-    if !valid_secret(&x.access_secret) || !valid_cipher(&x.ciphertext) {
+    if !valid_id(x.case_id)
+        || !valid_id(x.message_id)
+        || !valid_secret(&x.access_secret)
+        || !valid_cipher(&x.ciphertext)
+    {
         return bad_secure();
     }
     add_message(
@@ -522,7 +531,11 @@ async fn reviewer_message(
         Ok(Json(x)) => x,
         Err(e) => return rejected_json(e),
     };
-    if !valid_fingerprint(&x.reviewer_fingerprint) || !valid_cipher(&x.ciphertext) {
+    if !valid_id(x.case_id)
+        || !valid_id(x.message_id)
+        || !valid_fingerprint(&x.reviewer_fingerprint)
+        || !valid_cipher(&x.ciphertext)
+    {
         return bad_secure();
     }
     add_message(
@@ -821,6 +834,9 @@ mod tests {
         assert!(valid_secret(&"a".repeat(64)));
         assert!(!valid_secret(&"A".repeat(64)));
         assert!(!valid_fingerprint(&"g".repeat(40)));
+        assert!(valid_id(Uuid::new_v4()));
+        assert!(!valid_id(Uuid::nil()));
+        assert!(!valid_id(Uuid::from_bytes([255; 16])));
         assert!(!valid_cipher(
             &cipher().replace("END PGP MESSAGE", "END PGP PUBLIC KEY BLOCK")
         ));
