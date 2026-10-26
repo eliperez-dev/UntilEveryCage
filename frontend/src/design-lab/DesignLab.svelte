@@ -174,7 +174,7 @@
       ? { viewport: labState.viewport, ...(labState.navigationViewport ? { navigationViewport: labState.navigationViewport } : {}), basemap: labState.basemap, listOpen: action.type === 'results' ? true : action.type === 'close-workspace' ? false : labState.listOpen, filters: labState.filters }
       : null;
     labState = reduceLabState(labState, action);
-    const nextHash = `${encodeLabHash(labState, mode === 'real-preview', mode === 'public-release')}${$pinnedPublicReleaseId ? `&release_id=${encodeURIComponent($pinnedPublicReleaseId)}` : ''}`;
+    const nextHash = `${encodeLabHash(labState, mode !== 'public-release', mode === 'public-release')}${$pinnedPublicReleaseId ? `&release_id=${encodeURIComponent($pinnedPublicReleaseId)}` : ''}`;
     if (action.type === 'select' && action.value && !wasSelected) {
       // Selection is a navigable map state: Back dismisses the dossier. Other
       // frequent map updates (especially viewport movement) stay replace-only.
@@ -396,7 +396,7 @@
         pendingSelectionDismissalCamera = null;
         labState = camera ? { ...decoded, ...camera } : decoded;
         if (camera) {
-          const preservedHash = `${encodeLabHash(labState, mode === 'real-preview', mode === 'public-release')}${$pinnedPublicReleaseId ? `&release_id=${encodeURIComponent($pinnedPublicReleaseId)}` : ''}`;
+          const preservedHash = `${encodeLabHash(labState, mode !== 'public-release', mode === 'public-release')}${$pinnedPublicReleaseId ? `&release_id=${encodeURIComponent($pinnedPublicReleaseId)}` : ''}`;
           history.replaceState(history.state, '', preservedHash);
         }
         const nextPinnedReleaseId = releaseFromHash();
