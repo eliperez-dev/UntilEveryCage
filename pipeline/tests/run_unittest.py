@@ -55,6 +55,26 @@ ALLOWED_SKIPPED_TESTS = {
         "set UEC_GERMANY_REAL_DATA_ACCEPTANCE=true with the assigned private DB URL",
     ),
     (
+        "test_enrichment_reconciliation_view.EnrichmentReconciliationViewTests"
+        ".test_database_view_reconciles_displays_and_terminal_events_with_rollback",
+        "set UEC_ENRICHMENT_RECONCILIATION_REAL_DATA_ACCEPTANCE=true with assigned private DB URL",
+    ),
+    (
+        "pipeline.tests.test_enrichment_reconciliation_view.EnrichmentReconciliationViewTests"
+        ".test_database_view_reconciles_displays_and_terminal_events_with_rollback",
+        "set UEC_ENRICHMENT_RECONCILIATION_REAL_DATA_ACCEPTANCE=true with assigned private DB URL",
+    ),
+    (
+        "test_germany_candidate_cache_alignment.GermanyCandidateCacheAlignmentTests"
+        ".test_database_cache_repair_is_current_audited_and_rollback_safe",
+        "set UEC_GERMANY_CACHE_ALIGNMENT_REAL_ACCEPTANCE=true with assigned private DB URL",
+    ),
+    (
+        "pipeline.tests.test_germany_candidate_cache_alignment.GermanyCandidateCacheAlignmentTests"
+        ".test_database_cache_repair_is_current_audited_and_rollback_safe",
+        "set UEC_GERMANY_CACHE_ALIGNMENT_REAL_ACCEPTANCE=true with assigned private DB URL",
+    ),
+    (
         "e2e.test_graph_activation_real_italy.RealItalyGraphActivationTests"
         ".test_handoff_is_derived_from_source_native_operator_assertions",
         "set UEC_RUN_REAL_GRAPH_ACTIVATION=1 for approved local real-data acceptance",
