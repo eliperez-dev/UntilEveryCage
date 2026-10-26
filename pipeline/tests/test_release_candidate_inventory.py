@@ -165,7 +165,7 @@ class ReleaseCandidateInventoryTests(unittest.TestCase):
         self.assertIn("ON latest.source_id = candidate.source_id", sql)
         self.assertNotIn("JOIN latest USING (source_id, snapshot_sha256)", sql)
         self.assertIn("GROUP BY source_id, geometry_source", sql)
-        self.assertIn("candidate.coordinate_method IN ('address_geocode', 'geoapify_forward') THEN 'provider_derived'", sql)
+        self.assertIn("candidate.coordinate_method IN ('address_geocode', 'geoapify_forward', 'locationiq_forward') THEN 'provider_derived'", sql)
         self.assertIn("candidate.location_class = 'numeric_source_coordinate' THEN 'source_coordinate'", sql)
         self.assertIn("AND candidate.location_class = 'city_postal' THEN 'coarse_reference'", sql)
         self.assertIn("THEN 'source_coordinate_fallback'", sql)

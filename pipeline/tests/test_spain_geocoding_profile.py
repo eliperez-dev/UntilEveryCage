@@ -92,7 +92,7 @@ class SpainGeocodingProfileTests(unittest.TestCase):
             ).fetchone()[0]
             self.assertEqual(profile_count, 1)
             retained_countries = connection.execute(
-                "SELECT array_agg(country_code::text ORDER BY country_code::text) FROM real_preview.private_geocoding_source_profiles WHERE source_id <> 'es.locations'"
+                "SELECT array_agg(country_code::text ORDER BY country_code::text) FROM real_preview.private_geocoding_source_profiles WHERE source_id <> 'es.locations' AND provider_id='geoapify'"
             ).fetchone()[0]
             self.assertEqual(retained_countries, ["DE", "DK", "GB", "GB", "NL", "US"])
             shared_function = connection.execute(
