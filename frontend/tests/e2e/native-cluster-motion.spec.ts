@@ -244,7 +244,10 @@ test('animation on and off keep the same 3D camera path and mobile wheel zoom re
     paths.push(await page.evaluate(() => (window as any).__cameraMotionPath));
   }
   for (const path of paths) {
-    expect(path.length).toBeGreaterThan(10);
+    // Software-rendered CI has a different frame rate. Require a real
+    // intermediate camera position, not an arbitrary minimum FPS.
+    expect(path.length).toBeGreaterThan(1);
+    expect(path.some(sample => sample.zoom > 6 && sample.zoom < 8.8)).toBe(true);
     expect(path.every((sample, index) => index === 0 || sample.zoom >= path[index - 1]!.zoom - .000001)).toBe(true);
     expect(path.every(sample => sample.pitch === 45 && Math.abs(sample.lat - 51.19) < .000001 && Math.abs(sample.lon - 4.93) < .000001)).toBe(true);
     expect(path.at(-1)!.zoom).toBeCloseTo(8.8, 8);
@@ -262,7 +265,8 @@ test('animation on and off keep the same 3D camera path and mobile wheel zoom re
   for (let step = 0; step < 6; step++) { await page.mouse.wheel(0, -120); await page.waitForTimeout(40); }
   await page.waitForFunction(() => !(window as any).__UEC_LOCAL_PREVIEW_MAP__.isMoving() && !document.querySelector('.native-cluster-motion')?.hasAttribute('data-direction'));
   const wheel = await page.evaluate(() => (window as any).__wheelCameraZooms as number[]);
-  expect(wheel.length).toBeGreaterThan(10);
+  expect(wheel.length).toBeGreaterThan(1);
+  expect(wheel.some(zoom => zoom > 6 && zoom < wheel.at(-1)!)).toBe(true);
   expect(wheel.every((zoom, index) => index === 0 || zoom >= wheel[index - 1]! - .000001)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('mobile-3d-wheel.png') });
   await testInfo.attach('camera-comparison', { body: JSON.stringify({ animationOff: paths[0], animationOn: paths[1], wheel }), contentType: 'application/json' });

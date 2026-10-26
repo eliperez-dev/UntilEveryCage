@@ -88,6 +88,7 @@ test('replaces the retained projection when current restrictions change while aw
   await page.goto(`./#/map?release_id=${releaseId}`);
   await expect.poll(() => fixture.feedRequests).toBe(1);
   await page.getByRole('link', { name: 'About', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'About Until Every Cage is Empty', exact: true }).first()).toBeVisible();
   fixture.generation = 2;
   await page.getByRole('link', { name: 'Map', exact: true }).click();
   await expect.poll(() => fixture.feedRequests).toBe(2);
@@ -99,6 +100,7 @@ test('does not show the retained map if fresh release validation fails', async (
   await page.goto(`./#/map?release_id=${releaseId}`);
   await expect.poll(() => fixture.feedRequests).toBe(1);
   await page.getByRole('link', { name: 'About', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'About Until Every Cage is Empty', exact: true }).first()).toBeVisible();
   fixture.unavailable = true;
   await page.getByRole('link', { name: 'Map', exact: true }).click();
   await expect(page.getByRole('alert')).toHaveText('The public release could not be checked.');
@@ -130,6 +132,7 @@ test('cancels a pending device-location callback when leaving the map', async ({
   await page.goto(`./#/map?release_id=${releaseId}`);
   await page.getByRole('button', { name: 'Your location', exact: true }).click();
   await page.getByRole('link', { name: 'About', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'About Until Every Cage is Empty', exact: true }).first()).toBeVisible();
   await page.getByRole('link', { name: 'Map', exact: true }).click();
   await page.waitForFunction(() => (navigator.geolocation as Geolocation & { completed: number }).completed === 1);
   await indexUpdates(page);

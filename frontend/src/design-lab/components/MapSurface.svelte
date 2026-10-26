@@ -1841,13 +1841,15 @@
     const warm = () => { if (!cancelled && active) void warmWorldBaseline().catch(() => {}); };
     const schedule = () => {
       if (cancelled) return;
-      if ('requestIdleCallback' in window) idleHandle = requestIdleCallback(warm);
+      if ('requestIdleCallback' in window) idleHandle = requestIdleCallback(warm, { timeout: 2000 });
       else timer = setTimeout(warm, 200);
     };
-    if (instance.loaded() && !instance.isMoving()) schedule();
-    else instance.once('idle', schedule);
+    // Unrelated raster/glyph requests must not prevent a cache reset from
+    // restarting. Wait for camera movement, then use the browser's idle queue.
+    if (!instance.isMoving()) schedule();
+    else instance.once('moveend', schedule);
     return () => {
-      cancelled = true; instance.off('idle', schedule);
+      cancelled = true; instance.off('moveend', schedule);
       if (idleHandle !== undefined) cancelIdleCallback(idleHandle);
       if (timer !== undefined) clearTimeout(timer);
       cancelWorldBaselineWarmup();

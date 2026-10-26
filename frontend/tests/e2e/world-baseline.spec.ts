@@ -140,6 +140,33 @@ test('real local world streets and satellite warm through z5 and survive a full 
   await expect.poll(cacheStats, { timeout: 15_000 }).toEqual({ entries: 12, bytes: 16899100, local: true });
 });
 
+test('world warm-up does not wait for unrelated raster requests', async ({ page }) => {
+  await installWorldFixture(page);
+  const pending: import('@playwright/test').Route[] = [];
+  await page.route('https://tile.openstreetmap.org/**', route => { pending.push(route); });
+  await page.route('https://server.arcgisonline.com/**', route => { pending.push(route); });
+  try {
+    await page.goto('./#/map?release_id=synthetic-release-2026-09&lat=48&lon=10&z=13');
+    await page.waitForFunction(() => {
+      const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+      return map?.getLayer('clusters') && map.isSourceLoaded('locations');
+    });
+    await page.getByRole('button', { name: 'Tools', exact: true }).click();
+    await page.getByLabel('Enable debug menu', { exact: true }).check();
+    await page.getByRole('button', { name: 'Close Tools', exact: true }).click();
+    await page.getByRole('button', { name: 'Debug menu', exact: true }).click();
+    const debug = page.getByRole('complementary', { name: 'Debug menu', exact: true });
+    await debug.locator('details.cache-controls > summary').click();
+    await debug.locator('#debug-world-zoom').press('Home');
+    await expect.poll(() => pending.length).toBeGreaterThan(0);
+    await expect.poll(() => page.evaluate(async () => {
+      const cache = await caches.open('uec-world-baseline-v1');
+      return (await cache.keys()).length;
+    }), { timeout: 15_000 }).toBe(2);
+    expect(await page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.isSourceLoaded('base'))).toBe(false);
+  } finally { await Promise.allSettled(pending.map(route => route.abort())); }
+});
+
 test('fresh mobile world warm-up stops at the exact z4 tier', async ({ page }) => {
   test.setTimeout(45_000);
   await page.setViewportSize({ width: 375, height: 844 });

@@ -491,6 +491,7 @@ test('returning from About revalidates the release and reuses the live canvas an
   const canvas = await page.locator('.maplibregl-canvas').elementHandle();
   await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'About', exact: true }).click();
   await expect(page).toHaveURL(/#\/about/);
+  await expect(page.getByRole('heading', { name: 'About Until Every Cage is Empty', exact: true }).first()).toBeVisible();
   await page.goBack();
   await expect(page.locator('.maplibregl-canvas')).toBeVisible();
   await expect.poll(() => requests.manifests).toBeGreaterThan(manifestRequests);
@@ -807,6 +808,7 @@ test('cold shared 3D URLs restore terrain after a style reload and browser Back'
   expect(params.has('scenario')).toBe(false);
   await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'About', exact: true }).click();
   await expect(page).toHaveURL(/#\/about\?/);
+  await expect(page.getByRole('heading', { name: 'About Until Every Cage is Empty', exact: true }).first()).toBeVisible();
   await page.goBack();
   await expect(page).toHaveURL(/pitch=45.*bearing=18/);
   await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getTerrain()), { timeout: 15_000 }).toMatchObject({ source: 'mapterhorn-terrain', exaggeration: 1 });
