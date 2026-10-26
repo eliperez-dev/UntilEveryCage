@@ -101,6 +101,30 @@ ALLOWED_SKIPPED_TESTS = {
     ),
 }
 
+# These checks use the approved retained v0 copy, which CI does not contain.
+# Keep the exemption scoped to these test IDs, not a reusable skip reason.
+ALLOWED_SKIPPED_TESTS.update(
+    (
+        f"{prefix}test_locationiq_postgis.LocationIqPostgisTests.{method}",
+        "assigned disposable real-data database required",
+    )
+    for prefix in ("", "pipeline.tests.")
+    for method in (
+        "test_approved_v0_identity_and_counts_are_unchanged",
+        "test_both_provider_profiles_coexist_without_changing_default",
+        "test_database_rechecks_address_components_and_rejects_bad_points",
+        "test_real_unmapped_batch_can_be_staged_without_provider_calls_or_persistent_writes",
+    )
+)
+ALLOWED_SKIPPED_TESTS.update(
+    (
+        f"{prefix}test_locationiq_postgis.LocationIqPostgisTests."
+        "test_real_unmapped_batch_can_be_staged_without_provider_calls_or_persistent_writes",
+        "primary allowance is not exhausted",
+    )
+    for prefix in ("", "pipeline.tests.")
+)
+
 
 def main():
     parser = argparse.ArgumentParser()
