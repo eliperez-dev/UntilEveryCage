@@ -49,8 +49,36 @@ async function fixture(page: Page) {
   });
   await page.goto('./#/map?release_id=synthetic-release-2026-09&lat=51.19&lon=4.93&z=6');
   await page.waitForFunction(() => { const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__; return map?.getLayer('clusters') && map.isSourceLoaded('locations') && map.queryRenderedFeatures({ layers: ['clusters'] }).length; });
+  // Exercise the animation fast path with real, already-available worker
+  // responses. A cold software-rendered worker may intentionally exceed the
+  // production 100ms pairing budget and skip decorative motion.
+  await page.evaluate(async () => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__, source = map.getSource('locations');
+    const read = source.getClusterChildren.bind(source), cached = new Map<number, any[]>();
+    let ids = [...new Set<number>(map.queryRenderedFeatures({ layers: ['clusters'] }).map((feature: any) => Number(feature.properties.cluster_id)))];
+    for (let depth = 0; depth <= 4 && ids.length; depth++) {
+      const rows = await Promise.all(ids.map(async id => { const children = await read(id); cached.set(id, children); return children; }));
+      ids = [...new Set<number>(rows.flat().filter(feature => feature.properties?.cluster_id !== undefined).map(feature => Number(feature.properties.cluster_id)))].filter(id => !cached.has(id));
+    }
+    source.getClusterChildren = (id: number) => cached.has(id) ? Promise.resolve(cached.get(id)) : read(id);
+  });
   return requests;
 }
+
+test('a slow pairing worker skips decorative motion without blocking camera movement', async ({ page }) => {
+  await fixture(page);
+  await page.evaluate(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__, source = map.getSource('locations');
+    const read = source.getClusterChildren.bind(source);
+    source.getClusterChildren = async (id: number) => { await new Promise(resolve => setTimeout(resolve, 800)); return read(id); };
+    map.easeTo({ zoom: 8, duration: 200 });
+  });
+  await page.waitForFunction(() => !(window as any).__UEC_LOCAL_PREVIEW_MAP__.isMoving());
+  await page.waitForTimeout(900);
+  expect(await page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getZoom())).toBe(8);
+  expect(await page.evaluate(() => (window as any).__motionFrames.length)).toBe(0);
+  await expect(page.locator('.native-cluster-motion')).not.toHaveAttribute('data-direction');
+});
 
 test('native clusters split and merge with bounded visible frames and no source reload', async ({ page }, testInfo) => {
   const requests = await fixture(page);

@@ -1,12 +1,10 @@
 import { expect, test } from '@playwright/test';
 import releaseManifest from '../fixtures/release-map/manifest.json' with { type: 'json' };
 
-async function installWorldFixture(page: import('@playwright/test').Page, actualProviders = false) {
+async function installWorldFixture(page: import('@playwright/test').Page) {
   const transparent = Buffer.from(await page.evaluate(() => document.createElement('canvas').toDataURL('image/png').split(',')[1]!), 'base64');
-  if (!actualProviders) {
-    await page.route('https://tile.openstreetmap.org/**', route => route.fulfill({ contentType: 'image/png', body: transparent }));
-    await page.route('https://server.arcgisonline.com/**', route => route.fulfill({ contentType: 'image/png', body: transparent }));
-  }
+  await page.route('https://tile.openstreetmap.org/**', route => route.fulfill({ contentType: 'image/png', body: transparent }));
+  await page.route('https://server.arcgisonline.com/**', route => route.fulfill({ contentType: 'image/png', body: transparent }));
   await page.route(url => url.pathname === '/api/v2/releases/manifest', route => route.fulfill({ json: releaseManifest }));
   await page.route(url => url.pathname === '/api/v2/map/feed', route => route.fulfill({ json: {
     api_version: 'v2', data: { type: 'FeatureCollection', features: [] }, meta: {
@@ -20,8 +18,9 @@ async function installWorldFixture(page: import('@playwright/test').Page, actual
 test('satellite imagery stays backed by bounded local tiles through detailed 2D and 3D zoom', async ({ page }, testInfo) => {
   test.setTimeout(90_000);
   await page.setViewportSize({ width: 1280, height: 900 });
-  // No facility records; provider imagery and the bundled fallback are real.
-  await installWorldFixture(page, true);
+  // The bundled fallback is real; external detail tiles are deterministic.
+  // Live provider availability is checked in the hosted review instead.
+  await installWorldFixture(page);
   await page.addInitScript(() => { Object.defineProperty(navigator, 'connection', { configurable: true, value: { saveData: true } }); });
   const ranges: string[] = [], whole: string[] = [];
   page.on('request', request => {

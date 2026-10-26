@@ -648,6 +648,10 @@ test('compact map view control toggles 3D and shows the map gesture hint without
   await viewToggle.click();
   await expect(viewToggle).toHaveText('3D');
   await expect(viewToggle).toHaveAttribute('title', 'Right-drag to tilt and rotate');
+  await page.waitForFunction(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    return map.getPitch() === 45 && !map.isMoving();
+  });
   await page.screenshot({ path: testInfo.outputPath('map-controls-desktop.png') });
   const before = await page.evaluate(() => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
@@ -706,6 +710,33 @@ test('selecting a map pin gently centres the camera on that record', async ({ pa
     const center = (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getCenter();
     return center ? [Number(center.lng.toFixed(1)), Number(center.lat.toFixed(1))] : null;
   })).toEqual(point.map(value => Number(value.toFixed(1))));
+});
+
+test('a shared basemap change during map startup waits for the style', async ({ page }) => {
+  await installTerrainFixture(page);
+  await page.addInitScript(() => {
+    let current: any;
+    const errors: string[] = [];
+    (window as any).__earlyBasemapErrors = errors;
+    Object.defineProperty(window, '__UEC_LOCAL_PREVIEW_MAP__', {
+      configurable: true,
+      get: () => current,
+      set: instance => {
+        current = instance;
+        if (!instance) return;
+        const addSource = instance.addSource;
+        instance.addSource = function (...args: any[]) {
+          try { return addSource.apply(this, args); }
+          catch (error) { errors.push(`${args[0]}: ${error instanceof Error ? error.message : String(error)}`); throw error; }
+        };
+        queueMicrotask(() => { location.hash = '#/map?f1a=field&scenario=dense&basemap=satellite&lat=40.7&lon=-73.9&z=8&pitch=20&selected=dense-exact-0-0'; });
+      },
+    });
+  });
+  await page.goto('./#/map?f1a=field&scenario=dense&lat=38&lon=-96&z=4');
+  await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getStyle().sources.base.tiles[0]), { timeout: basemapHandoffTimeout }).toContain('World_Imagery');
+  expect(await page.evaluate(() => (window as any).__earlyBasemapErrors)).toEqual([]);
+  await expect(page).toHaveURL(/basemap=satellite/);
 });
 
 for (const dismissal of ['close button', 'Escape key', 'browser Back'] as const) {

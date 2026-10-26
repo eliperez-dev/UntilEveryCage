@@ -368,7 +368,7 @@
   }
   function setTerrain(enabled: boolean, explicitRetry = false): void {
     const instance = map;
-    if (!instance) return;
+    if (!instance || !nativeStyleReady) return;
     if (!enabled) {
       instance.setTerrain(null);
       if (instance.getSource(TERRAIN_SOURCE_ID)) instance.removeSource(TERRAIN_SOURCE_ID);
@@ -1669,7 +1669,11 @@
         "aria-label",
         "Record map. Select a cluster, source coordinate, or approximate area reference.",
       );
-    instance.on('styledataloading', () => nativeMotionController?.cancel(true));
+    instance.on('styledataloading', () => {
+      nativeStyleReady = false;
+      onMapControlsReady?.(false);
+      nativeMotionController?.cancel(true);
+    });
     for (const event of ['rotatestart', 'pitchstart', 'dragstart'] as const) instance.on(event, () => nativeMotionController?.cancel());
     instance.on("style.load", () => {
       nativeMotionController?.cancel(true);
@@ -1882,7 +1886,7 @@
   $effect(() => {
     const basemap = mapState.basemap;
     if (active && nativeStyleReady && map) applyWorldBaselineBasemap(map, basemap);
-    if (active && map && appliedBasemap !== basemap) {
+    if (active && nativeStyleReady && map && appliedBasemap !== basemap) {
       void applyBasemapTiles(basemap);
     }
   });
