@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { labRecords } from '../../src/design-lab/fixtures';
 
 async function installMapTiles(page: import('@playwright/test').Page) {
   const images = await page.evaluate(() => {
@@ -75,29 +76,31 @@ test('Tools map controls operate the active map and keep style values legible in
 
 for (const listState of ['closed', 'open'] as const) {
   test(`map pin selection opens its detail and centers the camera with Search ${listState}`, async ({ page }) => {
+    const record = labRecords.find(record => record.id === 'dense-exact-0-0')!;
+    const point = [record.longitude!, record.latitude!] as [number, number];
     await page.goto(`./#/map?f1a=field&scenario=dense&lat=38&lon=-96&z=4&list=${listState}`);
     await expect.poll(() => page.evaluate(() => Boolean((window as any).__UEC_LOCAL_PREVIEW_MAP__?.getLayer('exact-pins')))).toBe(true);
     if (listState === 'open') await expect(page.locator('#field-record-list')).toBeVisible();
     else await expect(page.getByRole('button', { name: 'Search map' })).toBeVisible();
 
-    const mapPoint = await page.evaluate(() => {
+    const mapPoint = await page.evaluate(({ point, id }) => {
       const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
       const feature = {
-        type: 'Feature', geometry: { type: 'Point', coordinates: [-73.9, 40.7] },
-        properties: { id: 'dense-exact-0-0' }, layer: { id: 'exact-pins' },
+        type: 'Feature', geometry: { type: 'Point', coordinates: point },
+        properties: { id }, layer: { id: 'exact-pins' },
       };
-      map.jumpTo({ center: [-73.9, 40.7], zoom: 8 });
+      map.jumpTo({ center: point, zoom: 8 });
       map.queryRenderedFeatures = (_point: unknown, options: { layers?: string[] } = {}) =>
         options.layers?.includes('exact-pins') ? [feature] : [];
       return map.getCanvas().getBoundingClientRect().toJSON();
-    });
+    }, { point, id: record.id });
     await page.mouse.click(mapPoint.x + mapPoint.width * 0.65, mapPoint.y + mapPoint.height * 0.5);
     await expect(page.locator('.dossier')).toBeVisible();
     await expect(page.locator('.dossier')).toContainText('Synthetic');
     await expect.poll(() => page.evaluate(() => {
       const center = (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getCenter();
       return center ? [Number(center.lng.toFixed(1)), Number(center.lat.toFixed(1))] : null;
-    })).toEqual([-73.9, 40.7]);
+    })).toEqual(point.map(value => Number(value.toFixed(1))));
   });
 }
 

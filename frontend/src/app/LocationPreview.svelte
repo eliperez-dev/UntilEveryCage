@@ -43,7 +43,7 @@
             error = true;
           }
         });
-        instance.once('load', () => {
+        instance.once('style.load', () => {
           if (disposed) return;
           instance.addSource('record-location', {
             type: 'geojson',

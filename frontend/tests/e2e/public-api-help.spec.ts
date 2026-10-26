@@ -1,4 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
+import publicApi from '../../../docs/api/public-openapi.json' with { type: 'json' };
+
+const publicGetCount = Object.values(publicApi.paths).filter(path => 'get' in path).length;
 
 function operation(page: Page, path: string) {
   return page.locator('.opblock').filter({ has: page.locator('.opblock-summary-path').filter({ hasText: new RegExp(`^${path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`) }) });
@@ -52,8 +55,8 @@ test('Swagger is local and lazy, renders real GET operations and executes only o
   await expect(page.getByRole('heading', { name: 'About Until Every Cage is Empty' })).toBeVisible();
   expect(swaggerAssets).toBe(0);
   await page.getByRole('link', { name: 'Data', exact: true }).click();
-  await expect(page.locator('.opblock')).toHaveCount(13);
-  await expect(page.locator('.opblock-summary-method')).toHaveText(Array(13).fill('GET'));
+  await expect(page.locator('.opblock')).toHaveCount(publicGetCount);
+  await expect(page.locator('.opblock-summary-method')).toHaveText(Array(publicGetCount).fill('GET'));
   expect(locationReads).toBe(0); expect(writes).toBe(0);
   await expect(page.locator('.topbar')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Authorize', exact: true })).toHaveCount(0);
@@ -89,7 +92,7 @@ test('About and expanded API paths stay usable on mobile with direct masthead li
   await isolatedPage(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('./#/about/api');
-  await expect(page.locator('.opblock')).toHaveCount(13);
+  await expect(page.locator('.opblock')).toHaveCount(publicGetCount);
   const list = operation(page, '/api/v2/locations');
   await list.locator('.opblock-summary-control').click();
   await list.getByRole('button', { name: 'Try it out', exact: true }).click();
@@ -153,7 +156,7 @@ test('conditional manifest GET preserves If-None-Match and handles 304 without c
 test('explorer text remains readable and narrow parameters use the available page width', async ({ page }) => {
   await isolatedPage(page);
   await page.goto('./#/about/api');
-  await expect(page.locator('.opblock')).toHaveCount(13);
+  await expect(page.locator('.opblock')).toHaveCount(publicGetCount);
   const list = operation(page, '/api/v2/locations');
   for (const width of [1440, 768, 375]) {
     await page.setViewportSize({ width, height: 900 });

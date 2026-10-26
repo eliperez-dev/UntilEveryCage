@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import releaseManifest from '../fixtures/release-map/manifest.json' with { type: 'json' };
+import { labRecords } from '../../src/design-lab/fixtures';
 
 const cameraFixtureId = '223e4567-e89b-42d3-a456-426614174000';
 const cameraFixturePoint: [number, number] = [4.45, 50.95];
@@ -669,21 +670,24 @@ test('compact map view control toggles 3D and shows the map gesture hint without
 });
 
 test('selecting a map pin gently centres the camera on that record', async ({ page }) => {
+  const record = labRecords.find(record => record.id === 'dense-exact-0-0')!;
+  const point = [record.longitude!, record.latitude!] as [number, number];
   await page.goto('./#/map?f1a=field&scenario=dense&lat=38&lon=-96&z=4');
   await expect.poll(() => page.evaluate(() => Boolean((window as any).__UEC_LOCAL_PREVIEW_MAP__?.getLayer('exact-pins')))).toBe(true);
-  await page.evaluate(() => {
+  await page.evaluate(({ point, id }) => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     const feature = {
-      type: 'Feature', geometry: { type: 'Point', coordinates: [-73.9, 40.7] },
-      properties: { id: 'dense-exact-pin-centre-test' }, layer: { id: 'exact-pins' },
+      type: 'Feature', geometry: { type: 'Point', coordinates: point },
+      properties: { id }, layer: { id: 'exact-pins' },
     };
-    map.queryRenderedFeatures = () => [feature];
-    map.fire('click', { point: { x: 20, y: 20 }, lngLat: { lng: -73.9, lat: 40.7 }, originalEvent: new MouseEvent('click') });
-  });
+    map.queryRenderedFeatures = (_point: unknown, options: { layers?: string[] } = {}) =>
+      options.layers?.includes('exact-pins') ? [feature] : [];
+    map.fire('click', { point: { x: 20, y: 20 }, lngLat: { lng: point[0], lat: point[1] }, originalEvent: new MouseEvent('click') });
+  }, { point, id: record.id });
   await expect.poll(() => page.evaluate(() => {
     const center = (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getCenter();
     return center ? [Number(center.lng.toFixed(1)), Number(center.lat.toFixed(1))] : null;
-  })).toEqual([-73.9, 40.7]);
+  })).toEqual(point.map(value => Number(value.toFixed(1))));
 });
 
 for (const dismissal of ['close button', 'Escape key', 'browser Back'] as const) {
