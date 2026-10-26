@@ -154,8 +154,8 @@ test('the Contribute hub, bug report, and About pages share the primary navigati
   const nav = page.getByRole('navigation', { name: 'Primary' });
   for (const label of ['Map', 'Contribute']) await expect(nav.getByRole('link', { name: label })).toBeVisible();
   await expect(nav.getByRole('link', { name: 'About', exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Contribute to the project', level: 1 })).toBeVisible();
-  await page.getByRole('link', { name: 'Report a bug', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Contribute', level: 1 })).toBeVisible();
+  await page.getByRole('link', { name: 'Report a problem', exact: false }).click();
   await expect(page.getByRole('heading', { name: 'Report a bug' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Report a public issue on GitHub' })).toHaveAttribute('href', 'https://github.com/eliperez-dev/UntilEveryCage/issues/new');
   await page.goto('./#/about/manifesto');
@@ -174,10 +174,11 @@ test('bug reports submit to the system without copying URL context', async ({ pa
   await page.getByLabel('What happened?').fill('Synthetic display issue');
   await page.getByLabel('Steps to reproduce').fill('Open a synthetic page.');
   await page.getByRole('button', { name: 'Send report', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('Report saved.');
+  await expect(page.getByRole('heading', { name: 'Contribution received' })).toBeVisible();
+  await expect(page.getByText('Report saved.', { exact: true })).toBeVisible();
   expect(submitted).toEqual({ kind: 'bug', consent: true, description: 'Synthetic display issue', reproduction_steps: 'Open a synthetic page.' });
   await expect(page.getByRole('link', { name: 'Track report', exact: true })).toHaveAttribute('href', /^#\/contribution-status\?submission_id=/);
-  await expect(page.getByRole('button', { name: 'Sent', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Send report', exact: true })).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'Open email draft' })).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'Report a public issue on GitHub' })).toHaveAttribute('href', 'https://github.com/eliperez-dev/UntilEveryCage/issues/new');
 });
@@ -188,7 +189,7 @@ test('a failed bug submission keeps the form available for retry', async ({ page
   await page.getByLabel('What happened?').fill('Synthetic retry issue');
   await page.getByLabel('Steps to reproduce').fill('Synthetic steps');
   await page.getByRole('button', { name: 'Send report', exact: true }).click();
-  await expect(page.getByRole('alert')).toContainText('Could not send the report.');
+  await expect(page.getByRole('alert')).toContainText('The community service is unavailable.');
   await expect(page.getByLabel('What happened?')).toHaveValue('Synthetic retry issue');
   await expect(page.getByRole('button', { name: 'Send report', exact: true })).toBeEnabled();
 });
@@ -203,24 +204,23 @@ test('a hash route remains a supported entry point for the same shell destinatio
 test('a cold contribution route recovers after its module import fails once', async ({ page }) => {
   const recordId = '4c4708fa-cdde-51dd-b7b9-30c907f7acce';
   let failedImport = false;
-  let communityImportRequests = 0;
-  page.on('request', request => { if (new URL(request.url()).pathname.includes('CommunityContributions')) communityImportRequests += 1; });
+  let formImportRequests = 0;
+  page.on('request', request => { if (new URL(request.url()).pathname.includes('ContributionForm')) formImportRequests += 1; });
   await page.route('**/api/community/capabilities', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ enabled: true, types: ['facility', 'evidence', 'correction', 'duplicate', 'privacy_removal'] }) }));
   await page.route('**/*', route => {
     const url = new URL(route.request().url());
-    if (!failedImport && /CommunityContributions(?:-[^/]+)?\.(?:svelte|js)$/.test(url.pathname)) {
+    if (!failedImport && /ContributionForm(?:-[^/]+)?\.(?:svelte|js)$/.test(url.pathname)) {
       failedImport = true;
       return route.abort();
     }
     return route.fallback();
   });
   await page.goto(`./#/contribute/evidence?target=${recordId}`);
-  await expect(page.getByRole('heading', { name: 'Unable to open this page' })).toBeVisible();
-  await expect(page.getByText('The community pilot could not be opened.')).toBeVisible();
-  await page.getByRole('button', { name: 'Reload to try again' }).click();
-  await expect.poll(() => communityImportRequests).toBeGreaterThan(1);
+  await expect(page.getByText('The form could not be opened.')).toBeVisible();
+  await page.getByRole('button', { name: 'Retry', exact: true }).click();
+  await expect.poll(() => formImportRequests).toBeGreaterThan(1);
   await expect(page.getByRole('heading', { name: 'Add evidence' })).toBeVisible();
-  await expect(page.getByLabel('Record link or ID')).toHaveValue(recordId);
+  await expect(page.getByText('Linked record', { exact: true })).toBeVisible();
 });
 
 test('public map navigation links keep release and viewport context without fixture parameters', async ({ page }) => {
@@ -271,14 +271,14 @@ test('route controls are focusable links with explicit destinations', async ({ p
 
 test('public contribution contacts, merged About content, and code help are easy to find', async ({ page }) => {
   await page.goto('./#/contribute');
-  await expect(page.getByRole('heading', { level: 1, name: 'Contribute to the project' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Contribute' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Contribute menu' })).toHaveCount(0);
   await expect(page.getByLabel('Contribution type')).toHaveCount(0);
   const tasks = page.getByRole('navigation', { name: 'Contribution tasks' });
-  await expect(tasks).toHaveCount(0);
+  await expect(tasks.getByRole('link')).toHaveCount(4);
   await expect(page.getByRole('link', { name: 'Check status', exact: true })).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'Community submissions', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('link', { name: 'Report a bug', exact: true })).toHaveAttribute('href', /#\/contribute\?type=bug/);
+  await expect(page.getByRole('link', { name: /Report a problem/ })).toHaveAttribute('href', /#\/contribute\?type=bug/);
   await expect(page.locator('.contribute-page a[href="mailto:untileverycageproject@protonmail.com"]')).toBeVisible();
   await expect(page.getByRole('link', { name: 'Contribute code on GitHub' })).toHaveAttribute('href', 'https://github.com/eliperez-dev/UntilEveryCage');
   const about = page.getByRole('link', { name: 'About', exact: true });

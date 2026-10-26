@@ -68,13 +68,13 @@ def prepare(dsn):
 
 
 class LocalApi:
-    def __init__(self, dsn, public_key=PUBLIC_KEY, fingerprint="b" * 40, token=None, daily_limit=1000):
+    def __init__(self, dsn, public_key=PUBLIC_KEY, fingerprint="b" * 40, token=None, daily_limit=1000, port=0):
         self.token = token or secrets.token_hex(32)
         binary = Path(os.environ.get("UEC_SECURE_TEST_BINARY", ROOT / "target/debug/uec-api.exe"))
         if not binary.is_file():
             raise RuntimeError("build the owned backend binary before testing")
         with socket.socket() as sock:
-            sock.bind(("127.0.0.1", 0))
+            sock.bind(("127.0.0.1", port))
             port = sock.getsockname()[1]
         self.origin = f"http://127.0.0.1:{port}"
         env = {k: v for k, v in os.environ.items() if not k.startswith("UEC_")}
@@ -291,7 +291,8 @@ class SecureRelayAcceptance(unittest.TestCase):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--prepare", action="store_true")
-    parser.add_argument("--serve", type=Path, help="public-only synthetic bootstrap JSON; local integration only")
+    parser.add_argument("--serve", type=Path, help="synthetic relay bootstrap with public key and private test operator token; local only")
+    parser.add_argument("--port", type=int, default=0, help="optional loopback integration-preview port")
     args, remaining = parser.parse_known_args()
     if args.prepare or args.serve:
         dsn = os.environ["UEC_SECURE_TEST_DATABASE_URL"]
@@ -299,8 +300,8 @@ if __name__ == "__main__":
         if args.serve:
             bootstrap = json.loads(args.serve.read_text(encoding="utf-8"))
             if set(bootstrap) != {"reviewer_public_key", "reviewer_fingerprint", "operator_token"}:
-                raise RuntimeError("bootstrap must contain only public key, fingerprint and local test operator token")
-            api = LocalApi(dsn, bootstrap["reviewer_public_key"], bootstrap["reviewer_fingerprint"], bootstrap["operator_token"])
+                raise RuntimeError("private test bootstrap must contain only public key, fingerprint and local operator token")
+            api = LocalApi(dsn, bootstrap["reviewer_public_key"], bootstrap["reviewer_fingerprint"], bootstrap["operator_token"], port=args.port)
             print(json.dumps({"origin": api.origin, "api_pid": api.process.pid, "database": DATABASE,
                               "experimental_local_only": True}), flush=True)
             try:

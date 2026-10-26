@@ -64,8 +64,8 @@ export type CommunityCapabilities = Readonly<{ enabled: boolean; types: readonly
 let capabilitiesRequest: Promise<CommunityCapabilities> | undefined;
 
 /** Public, deliberately small runtime switch for a locked static build. */
-export function communityCapabilities(fetcher: FetchLike = fetch): Promise<CommunityCapabilities> {
-  if (fetcher === fetch && capabilitiesRequest) return capabilitiesRequest;
+export function communityCapabilities(fetcher: FetchLike = fetch, refresh = false): Promise<CommunityCapabilities> {
+  if (fetcher === fetch && capabilitiesRequest && !refresh) return capabilitiesRequest;
   const request = (async () => {
     try {
       const response = await fetcher('/api/community/capabilities', { cache: 'no-store', credentials: 'same-origin', headers: { Accept: 'application/json' } });

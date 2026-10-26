@@ -17,6 +17,26 @@ export default defineConfig(({ command }) => {
     ? process.env.VITE_REAL_PREVIEW_MAP_SOURCE ?? 'mvt'
     : undefined;
   const apiOrigin = process.env.VITE_API_ORIGIN ?? 'http://127.0.0.1:8000';
+  // Optional split-origin contribution service, including its private queue.
+  // This unprefixed environment variable
+  // belongs to the Vite process only and is never defined in browser code.
+  const communityApiOrigin = process.env.UEC_COMMUNITY_API_ORIGIN?.trim();
+  const secureApiOrigin = command === 'serve' && process.env.VITE_SECURE_INBOX_EXPERIMENT === 'true'
+    ? process.env.UEC_SECURE_COMMUNITY_API_ORIGIN?.trim() : undefined;
+  const secureProxy: Record<string, string | ProxyOptions> = {};
+  if (secureApiOrigin) {
+    const origin = new URL(secureApiOrigin);
+    if (origin.protocol !== 'http:' || !['127.0.0.1', 'localhost', '[::1]'].includes(origin.hostname)
+      || origin.username || origin.password || origin.pathname !== '/' || origin.search || origin.hash) throw new Error('The local encrypted inbox requires a loopback API origin.');
+    secureProxy['/api/community/secure'] = { target: origin.origin, changeOrigin: false };
+    secureProxy['/api/private/community/secure'] = { target: origin.origin, changeOrigin: false };
+  }
+  const communityProxy: Record<string, string | ProxyOptions> = communityApiOrigin
+    ? {
+      '/api/community': { target: communityApiOrigin, changeOrigin: new URL(communityApiOrigin).protocol === 'https:' },
+      '/api/private/community': { target: communityApiOrigin, changeOrigin: new URL(communityApiOrigin).protocol === 'https:' },
+    }
+    : {};
   const realPreviewProxy: Record<string, string | ProxyOptions> = {};
   if (previewToken && process.env.VITE_LOCAL_DATA_MODE === 'real-preview') {
     realPreviewProxy['/dev/real-preview'] = {
@@ -38,8 +58,10 @@ export default defineConfig(({ command }) => {
     };
   }
   // Vite resolves proxy contexts in declaration order. Keep the authenticated
-  // candidate route ahead of the generic API route so its token is injected.
-  const localApiProxy = { ...candidatePreviewProxy, ...realPreviewProxy, '/api': { target: apiOrigin, changeOrigin: false }, '/health': { target: apiOrigin, changeOrigin: false } };
+  // candidate route and optional community override ahead of the generic API.
+  // Hosted HTTPS APIs need their own Host header; loopback API behavior stays the same.
+  const apiChangeOrigin = new URL(apiOrigin).protocol === 'https:';
+  const localApiProxy = { ...secureProxy, ...candidatePreviewProxy, ...realPreviewProxy, ...communityProxy, '/api': { target: apiOrigin, changeOrigin: apiChangeOrigin }, '/health': { target: apiOrigin, changeOrigin: apiChangeOrigin } };
   const previewModeMeta = {
     name: 'uec-local-data-mode',
     transformIndexHtml(html: string) {

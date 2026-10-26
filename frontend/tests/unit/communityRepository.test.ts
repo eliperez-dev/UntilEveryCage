@@ -10,6 +10,17 @@ function response(body: unknown, status = 200) {
 }
 
 describe('community contribution repository', () => {
+  it('can refresh a cached unavailable capability without changing the default cache contract', async () => {
+    const fetcher = vi.fn(async () => response(fetcher.mock.calls.length === 1 ? {} : { enabled: true, types: ['facility', 'evidence', 'correction', 'duplicate', 'privacy_removal'] }, fetcher.mock.calls.length === 1 ? 404 : 200));
+    vi.stubGlobal('fetch', fetcher);
+    try {
+      await expect(communityCapabilities()).resolves.toEqual({ enabled: false, types: [] });
+      await expect(communityCapabilities()).resolves.toEqual({ enabled: false, types: [] });
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      await expect(communityCapabilities(fetch, true)).resolves.toMatchObject({ enabled: true });
+      expect(fetcher).toHaveBeenCalledTimes(2);
+    } finally { vi.unstubAllGlobals(); }
+  });
   it('submits typed bug fields and reads them back through the private queue', async () => {
     const draft: ContributionDraft = { kind: 'bug', consent: true, description: 'Synthetic issue', expected_behavior: 'Synthetic expectation', reproduction_steps: 'Synthetic steps', page_url: 'https://example.test/page' };
     const fetcher = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => String(input).includes('/api/private/') ? response({ pending_count: 1, submissions: [{ ...draft, submission_id: id, status: 'received', created_at: '2026-10-19T00:00:00Z' }] }) : response({ submission_id: id, receipt_secret: 'synthetic-private-token', status: 'received' }, 201));

@@ -8,6 +8,7 @@ export type RouteState =
   | Readonly<{ kind: 'api'; returnMapHref?: string }>
   | Readonly<{ kind: 'contribute'; formKind?: ContributionType; targetRecordId?: string; returnMapHref?: string }>
   | Readonly<{ kind: 'bug-report'; returnMapHref?: string }>
+  | Readonly<{ kind: 'secure-inbox' | 'secure-review' }>
   | Readonly<{ kind: 'record'; facilityId: string; profile?: 'official' | 'secondary' | 'community'; releaseId?: string; returnMapHref?: string }>
   | Readonly<{ kind: 'community'; page: 'form' | 'status' | 'claims' | 'claim-detail' | 'review'; formKind?: 'facility' | 'evidence' | 'correction' | 'duplicate' | 'privacy_removal'; claimId?: string; targetRecordId?: string; releaseId?: string; returnMapHref?: string }>
   | Readonly<{ kind: 'not-found'; fragment: string }>;
@@ -48,13 +49,16 @@ export function mapHrefFromHash(hash: string, releaseOverride?: string): string 
   return mapHrefFromParams(new URLSearchParams(hash.split('?')[1] ?? ''), releaseOverride);
 }
 
-export function parseRoute(hash: string): RouteState {
+export function parseRoute(hash: string, allowLocalSecure = false): RouteState {
   const raw = hash.startsWith('#') ? hash.slice(1) : hash;
   const [pathPart] = raw.split('?');
   const path = pathPart || '/map';
   const params = new URLSearchParams(raw.split('?')[1] ?? '');
   const requestedMapHref = params.get('map');
   const returnMapHref = safeMapHref(requestedMapHref);
+
+  // Private credentials remain in the local fragment, not the route object.
+  if (allowLocalSecure && (path === '/secure-inbox' || path === '/secure-review')) return { kind: path.slice(1) as 'secure-inbox' | 'secure-review' };
 
   if (path === '/' || path === '/map') { const releaseId = params.get('release_id'); return { kind: 'map', ...(releaseId && /^[A-Za-z0-9._-]{1,160}$/.test(releaseId) ? { releaseId } : {}) }; }
   if (path === '/database') {
@@ -108,6 +112,7 @@ export function parseRoute(hash: string): RouteState {
 }
 
 export function serializeRoute(route: RoutableState): string {
+  if (route.kind === 'secure-inbox' || route.kind === 'secure-review') return `#/${route.kind}`;
   if (route.kind === 'map') return `#/map${route.releaseId ? `?release_id=${encodeURIComponent(route.releaseId)}` : ''}`;
   if (route.kind === 'database') { const params = new URLSearchParams({ ...(route.releaseId ? { release_id: route.releaseId } : {}), ...(route.returnMapHref ? { map: route.returnMapHref } : {}) }); return `#/database${params.size ? `?${params}` : ''}`; }
   if (route.kind === 'about') return `#/about${route.section === 'sources' ? '?section=sources' : ''}${route.returnMapHref ? `${route.section === 'sources' ? '&' : '?'}map=${encodeURIComponent(route.returnMapHref)}` : ''}`;
