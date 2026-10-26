@@ -76,6 +76,9 @@ export default defineConfig(({ command }) => {
       : '/v2-preview/',
     publicDir: 'public',
     plugins: [svelte(), previewModeMeta, publicReferenceAssets()],
+    // This lazy worker dependency must be optimized before the first map visit;
+    // discovering it later forces a full page reload and discards UI state.
+    optimizeDeps: { include: ['maplibre-gl/dist/maplibre-gl-worker.mjs'] },
     define: realPreviewMapSource
       ? { 'import.meta.env.VITE_REAL_PREVIEW_MAP_SOURCE': JSON.stringify(realPreviewMapSource) }
       : {},
