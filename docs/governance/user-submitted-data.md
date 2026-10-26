@@ -65,3 +65,34 @@ origin when evidence is reviewed or promoted.
 Accounts, contributor history, email delivery and screened community publication
 may be considered later through [the sole roadmap](../PRODUCT-READINESS.md).
 Do not reintroduce an accounts-provider proposal or a separate feature roadmap.
+
+## Experimental encrypted inbox
+
+The separate `uec-openpgp-inbox-v1` relay is default-off and startup rejects
+enablement in production. Its current scope is synthetic local testing on a
+verified disposable V0 copy. Existing intake/status remains unchanged and is
+not end-to-end encrypted. No hosted encryption subscription is required.
+
+The client uses pinned OpenPGP.js to encrypt and sign messages. The relay stores
+opaque armor, public keys, hashed access credentials, type/status and timing,
+never a private key or recovery export. Relay framing and author metadata do
+not verify signatures: clients must validate full fingerprints against parsed
+keys, independently pin the reviewer key, and verify signed case/message/author
+context before displaying content. Identical authenticated history re-reads
+are allowed; conflicting message IDs are rejected. Recovery from an old backup
+does not establish freshness or prevent server history rollback.
+
+Recovery is a local encrypted file plus a separate random recovery secret. Its
+encrypted contents may include the independent API access secret; that secret
+is not the decryption key. Neither recovery material nor private keys belong
+in URLs, email, server storage or logs. Email alerts and attachments are not
+implemented. No intake creates or publishes facility/release/graph records.
+
+Inbox access expires after configured receipt days. Removal/expiry erases
+ciphertext, keys and the access hash; minimal case/event metadata is purged
+after configured retention days following removal. New accepted secure writes
+opportunistically apply expiry; idle enforcement still requires maintenance.
+Transport metadata remains visible. A compromised browser or delivered client
+can access plaintext/keys; the prototype does not establish anonymity or an
+unconditional hosting-blind guarantee. Production requires separate integration
+review, reviewer-key custody/bootstrap, role grants and operational acceptance.

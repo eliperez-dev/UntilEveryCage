@@ -138,6 +138,37 @@ blindly. Production serving and community roles are separate; follow the
 [production runbook](../deployment/production-operations.md) for grants and
 submission-specific recovery checks, not the original pilot's shared-pool setup.
 
+## Experimental local encrypted inbox (separate from V2 data)
+
+Default-off; `production` startup rejects enablement. This is not an alternate
+publication API. Existing plaintext community routes and their DTOs are unchanged.
+The protocol is `uec-openpgp-inbox-v1`; the client, not this relay, validates
+OpenPGP keys, signatures and signed message context. No files/email are supported.
+
+| Route | Request and response |
+| --- | --- |
+| `GET /api/community/secure/capabilities` | Disabled pilot: `enabled:false`; enabled local pilot: `enabled:true`, `mode:embedded_sdk`, `provider:openpgpjs-self-hosted`, `security_status:experimental_local_only`, `protocol`, reviewer public key/fingerprint, `replies:true`, `email_alerts:false`, `max_ciphertext_bytes:98304`. Parent intake disabled: 404. |
+| `POST /api/community/secure/submissions` | `case_id`, `initial_message_id` UUIDs; `kind` facility/evidence/correction/duplicate/privacy_removal/bug; `protocol`; `access_secret` lowercase hex64; `contributor_public_key`, `contributor_fingerprint`, `reviewer_fingerprint`, `ciphertext`. Returns 201, or 200 for an identical active-case retry, with `case_id,status,created_at,expires_at`. |
+| `POST /api/community/secure/inbox` | `case_id,access_secret`; returns case `kind,status`, both public keys/fingerprints, `created_at,updated_at,expires_at`, and `messages` ordered by `ordinal`, each containing `message_id,ordinal,author,ciphertext,created_at`. Does not return the access secret/hash. |
+| `POST /api/community/secure/messages` | `case_id,access_secret,message_id,ciphertext`; returns 201, or 200 for an identical retry, with `case_id,message_id,status:stored`. |
+| `GET /api/private/community/secure/queue` | Distinct operator bearer; returns `cases`, at most 20 active unexpired case metadata rows, oldest first; no message plaintext, access hash or private keys. |
+| `POST /api/private/community/secure/inbox` | Operator bearer and `case_id`; same ciphertext inbox DTO as contributor read. |
+| `POST /api/private/community/secure/messages` | Operator bearer; `case_id,message_id,reviewer_fingerprint,ciphertext`; same stored-message response. The client must independently verify the reviewer's signature. |
+| `POST /api/private/community/secure/disposition` | Operator bearer; `case_id,status` in `in_review,needs_information,closed,removed`. Closed cases remain readable until expiry but reject new messages. Removal erases ciphertext, keys and access hash; cannot reopen removed cases. |
+| `POST /api/private/community/secure/maintenance` | Operator bearer; returns aggregate `expired,purged` counts. Clears expired ciphertext/access and purges removed metadata/events after configured retention. |
+
+JSON denies unknown fields and is bounded to 128 KiB; each public key is at
+most 16 KiB, full fingerprints are lowercase hex40/64, and each armored message
+is at most 98,304 bytes. There are at most 32 messages including the submission
+and 64 MiB of ciphertext across the relay. Admission caps are shared with legacy
+intake under one database lock. Identical message IDs with changed author or
+ciphertext return 409. Wrong/expired credentials and unauthorized operator
+access return generic 404; input 400, body size 413, capacity/rate 429, storage
+failure 503, using the existing V2 error envelope and no-store/no-referrer.
+Removed metadata may later be purged; this is not a durable replay/freshness
+guarantee. The [contribution contract](../governance/user-submitted-data.md)
+owns recovery, independent reviewer pinning and current security limits.
+
 ## Public cached map tiles
 
 This is the MVT artifact endpoint contract, not an instruction to replace the

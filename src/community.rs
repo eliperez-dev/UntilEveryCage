@@ -1,6 +1,8 @@
 //! Account-free community intake. Submitted material stays restricted; the
 //! public endpoints can only expose operator-linked rows in the live release
 //! projection, which rechecks the current privacy and publication gates.
+mod secure;
+
 use crate::{v2_error, ApiState};
 use axum::{
     extract::rejection::{JsonRejection, PathRejection, QueryRejection},
@@ -31,6 +33,7 @@ pub struct CommunityConfig {
     pub daily_intake_cap: i64,
     pub pending_cap: i64,
     operator_token: Option<String>,
+    secure: secure::Config,
 }
 
 impl CommunityConfig {
@@ -44,6 +47,7 @@ impl CommunityConfig {
             daily_intake_cap: 0,
             pending_cap: 0,
             operator_token: None,
+            secure: secure::Config::disabled(),
         }
     }
 
@@ -88,13 +92,14 @@ impl CommunityConfig {
             daily_intake_cap,
             pending_cap,
             operator_token: Some(operator_token),
+            secure: secure::Config::disabled(),
         })
     }
 
     /// Parse configuration once at startup. The disabled default needs no
     /// secrets. Production additionally requires a separate restricted pool,
     /// validated by the binary before it binds.
-    pub fn from_env(_mode: &str) -> Result<Self, String> {
+    pub fn from_env(mode: &str) -> Result<Self, String> {
         fn bool_env(name: &str, default: bool) -> Result<bool, String> {
             match std::env::var(name) {
                 Err(std::env::VarError::NotPresent) => Ok(default),
@@ -120,6 +125,9 @@ impl CommunityConfig {
         let enabled = bool_env("UEC_COMMUNITY_ENABLED", false)?;
         let public_enabled = bool_env("UEC_COMMUNITY_PUBLIC_ENABLED", false)?;
         if !enabled {
+            if std::env::var("UEC_COMMUNITY_SECURE_ENABLED").is_ok_and(|value| value != "false") {
+                return Err("encrypted inbox requires enabled community intake".into());
+            }
             if public_enabled {
                 return Err("public community claims require enabled intake".into());
             }
@@ -133,7 +141,7 @@ impl CommunityConfig {
         let token = std::env::var("UEC_COMMUNITY_OPERATOR_TOKEN").map_err(|_| {
             "UEC_COMMUNITY_OPERATOR_TOKEN is required when community intake is enabled".to_string()
         })?;
-        Self::local_pilot(
+        let mut config = Self::local_pilot(
             public_enabled,
             retention_days,
             contact_retention_days,
@@ -141,12 +149,15 @@ impl CommunityConfig {
             daily_intake_cap,
             pending_cap,
             token,
-        )
+        )?;
+        config.secure = secure::Config::from_env(mode)?;
+        Ok(config)
     }
 }
 
 pub fn routes(config: CommunityConfig) -> Router<ApiState> {
     Router::new()
+        .merge(secure::routes())
         .route("/api/community/capabilities", get(capabilities))
         .route("/api/community/submissions", post(create_submission))
         .route("/api/community/status", post(submission_status))
@@ -527,7 +538,19 @@ async fn create_submission(
     {
         return unavailable();
     }
-    let counts = tx.query_one("SELECT count(*) FILTER (WHERE created_at >= current_date)::bigint, count(*) FILTER (WHERE status IN ('received','held'))::bigint FROM uec.community_submissions", &[]).await;
+    let counts_sql = if cs.config.secure.enabled {
+        "SELECT sum(daily)::bigint, sum(pending)::bigint FROM (
+          SELECT count(*) FILTER (WHERE created_at >= current_date) AS daily,
+                 count(*) FILTER (WHERE status IN ('received','held')) AS pending
+          FROM uec.community_submissions
+          UNION ALL
+          SELECT count(*) FILTER (WHERE created_at >= current_date),
+                 count(*) FILTER (WHERE status IN ('received','in_review','needs_information') AND expires_at>now())
+          FROM uec.community_secure_inboxes) counts"
+    } else {
+        "SELECT count(*) FILTER (WHERE created_at >= current_date)::bigint, count(*) FILTER (WHERE status IN ('received','held'))::bigint FROM uec.community_submissions"
+    };
+    let counts = tx.query_one(counts_sql, &[]).await;
     let Ok(counts) = counts else {
         return unavailable();
     };
@@ -1205,6 +1228,7 @@ mod tests {
             daily_intake_cap: 5,
             pending_cap: 25,
             operator_token: Some("operator-secret-which-is-not-a-receipt".into()),
+            secure: secure::Config::disabled(),
         };
         let mut headers = HeaderMap::new();
         headers.insert(

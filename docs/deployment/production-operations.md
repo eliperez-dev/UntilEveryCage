@@ -53,6 +53,29 @@ reject a community URL authenticated as the serving role.
 
 ### Restricted community runtime role
 
+The encrypted inbox is a separate, default-off **local experiment**. Do not set
+`UEC_COMMUNITY_SECURE_ENABLED=true` on Render: production startup rejects it.
+Migration `099_community_encrypted_inbox.sql` adds restricted tables only and
+does not enable a feature or publish data. For an assigned disposable loopback
+test copy, configure the normal pilot plus `UEC_COMMUNITY_SECURE_ENABLED=true`,
+`UEC_COMMUNITY_SECURE_REVIEWER_PUBLIC_KEY` (public armor only) and
+`UEC_COMMUNITY_SECURE_REVIEWER_FINGERPRINT` (full lowercase fingerprint).
+Independently configure the same trusted pin in the test client; a key and
+fingerprint returned together by the relay are not an independent trust source.
+
+Before any future restricted-role enablement, provision and verify only:
+`SELECT,INSERT,UPDATE,DELETE` on `uec.community_secure_inboxes`,
+`SELECT,INSERT,DELETE` on `uec.community_secure_messages`, and
+`SELECT,INSERT` on `uec.community_secure_events`. Inbox deletion cascades its
+events; direct event/message updates are rejected. Do not grant the serving
+role these privileges. These grants have not been applied to Render.
+Operator-authenticated `POST /api/private/community/secure/maintenance` returns
+aggregate `expired`/`purged` counts. Ciphertext is erased on receipt expiry;
+removed-case metadata/events are purged after configured retention days.
+Schedule a caller before claiming idle enforcement. This is separate from
+legacy maintenance. No reviewer private key, recovery file or recovery secret
+belongs in the runtime, database or deployment secret store. Email is disabled.
+
 Bug reports use the same restricted intake role and retention/capacity settings.
 Apply `075_bug_report_intake.sql` before deploying bug-report support. This adds
 the `bug` submission kind without changing the five record-contribution types;
