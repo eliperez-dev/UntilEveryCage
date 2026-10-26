@@ -23,6 +23,8 @@
 </button>
 
 <style>
-  .theme-toggle { display:grid; place-items:center; flex:none; width:2.1rem; height:2.1rem; min-height:2.1rem; aspect-ratio:1; padding:0; border:1px solid #536158; background:#1a201c; color:#f1efe8; cursor:pointer; }
-  .theme-toggle svg { width:1rem; height:1rem; fill:none; stroke:currentColor; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
+  .theme-toggle { display:grid; place-items:center; flex:none; width:2.75rem; height:2.75rem; min-height:2.75rem; aspect-ratio:1; padding:0; border:1px solid transparent; border-radius:0; background:var(--ui-surface); color:var(--ui-ink); cursor:pointer; }
+  .theme-toggle:hover { background:var(--ui-hover); }
+  .theme-toggle:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+  .theme-toggle svg { width:1.0625rem; height:1.0625rem; fill:none; stroke:currentColor; stroke-width:1.5; stroke-linecap:round; stroke-linejoin:round; }
 </style>

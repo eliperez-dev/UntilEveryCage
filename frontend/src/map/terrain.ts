@@ -1,4 +1,4 @@
-/** Public, keyless Terrarium DEM provider used only while the camera is tilted. */
+/** Public Terrarium DEM: loaded on first tilt, then retained through overhead views. */
 export const TERRAIN_SOURCE_ID = 'mapterhorn-terrain';
 export const TERRAIN_SOURCE = Object.freeze({
   type: 'raster-dem' as const,

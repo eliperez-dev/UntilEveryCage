@@ -29,6 +29,18 @@ Loading the explorer does not fetch facility records. Public reads still check
 release eligibility and current suppression; a private preview does not make
 data downloadable. No public bulk-package route is implemented.
 
+`GET /api/v2/map/matches` returns all matching mapped facility IDs for a pinned
+`release_id`, using the location list's exact search/filter predicates and live
+publication gates in one repeatable-read snapshot. It accepts the same discovery
+filters, including bbox or radius, but rejects pagination parameters. The JSON
+`data.facility_ids` array contains unique UUIDs; `meta` identifies the profile,
+release, canonical manifest and suppression generation, plus `total_count`
+(including unmapped results) and `mapped_count`. No names, coordinates, query
+text or source payloads are returned. Responses use `Cache-Control: no-store`;
+clients must validate the identity against their map feed. More than 75,000
+matching mapped IDs returns `413` rather than a partial mask. Existing location
+and map-feed response defaults are unchanged.
+
 Researchers may request `GET /api/v2/locations.csv?profile=official` (or another explicit supported profile). Without `limit`, the export returns every eligible row in the selected release/profile. Supplying `limit=1..1000` explicitly opts into the first deterministic UUID-ordered page; `X-UEC-Export-Total-Count`, `X-UEC-Export-Returned-Count`, and `X-UEC-Export-Truncated` disclose the current eligible total and whether the explicit bound omitted rows. It uses deterministic CSV columns and escaping, contains only the selected public projection, and includes `release_profile`, `release_id`, and `manifest_sha256` on every row plus matching response headers. Community exports retain their unreviewed/not-approved warning. It is unavailable when no eligible release with a manifest exists; it never exposes raw evidence or restricted records. `release_id` pins the export to an eligible promoted or retained historical release in the selected profile. CSV does not apply discovery filters or cursor pagination; use paginated location JSON for filtered queries.
 
 `GET /api/v2/locations/{facility_id}/aphis-report-links` rechecks the selected

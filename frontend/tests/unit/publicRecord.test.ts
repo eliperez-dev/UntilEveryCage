@@ -12,7 +12,7 @@ describe('public record detail facts', () => {
     expect(component).not.toContain('Source volume categories');
     expect(component).toContain(".join(', ')");
     expect(component).toContain('record.sourceFacts.speciesSlaughtered');
-    expect(component).toContain('location.sourceFacts?.processingActivities');
+    expect(component).toContain('<ClassificationSummary {record} />');
   });
 
   it('uses a concise precision and method row instead of a repeated limitation wall', () => {

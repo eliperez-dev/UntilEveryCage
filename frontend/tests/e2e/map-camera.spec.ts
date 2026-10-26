@@ -1,4 +1,488 @@
 import { expect, test } from '@playwright/test';
+import releaseManifest from '../fixtures/release-map/manifest.json' with { type: 'json' };
+
+const cameraFixtureId = '223e4567-e89b-42d3-a456-426614174000';
+const cameraFixturePoint: [number, number] = [4.45, 50.95];
+async function installPublicCameraFixture(page: import('@playwright/test').Page) {
+  const releaseId = 'synthetic-release-2026-09';
+  const requests = { manifests: 0, feeds: 0 };
+  await page.route(url => url.pathname === '/api/v2/releases/manifest', route => { requests.manifests++; return route.fulfill({ status: 200, json: releaseManifest }); });
+  await page.route(url => url.pathname === '/api/v2/map/feed', route => { requests.feeds++; return route.fulfill({ status: 200, json: {
+    api_version: 'v2', data: { type: 'FeatureCollection', features: [{ type: 'Feature', id: cameraFixtureId,
+      geometry: { type: 'Point', coordinates: cameraFixturePoint }, properties: { facility_id: cameraFixtureId,
+        source_id: 'fixture.source', category_key: 'slaughter', category_keys: ['slaughter'], precision: 'approximate', weight: 1 } }] },
+    meta: { profile: 'official', release_id: releaseId, manifest_sha256: 'a'.repeat(64), suppression_generation: 7,
+      feature_count: 1, public_record_count: 1, unmapped_count: 0, release_label: 'Synthetic camera fixture', dataset_version: 'synthetic-test' },
+  } }); });
+  await page.route(url => url.pathname === '/api/v2/locations', route => route.fulfill({ status: 200, json: {
+    api_version: 'v2', data: [{ facility_id: cameraFixtureId, canonical_name: 'Synthetic camera fixture', country_code: 'BE', city: 'Synthetic place',
+      category: 'slaughter', publication_profile: 'official', factual_review_status: 'reviewed', privacy_screening_status: 'passed',
+      project_approval: 'approved', reviewer_role: null, publication_warning: null, display_precision: 'approximate',
+      latitude: cameraFixturePoint[1], longitude: cameraFixturePoint[0], first_observed_at: null, last_observed_at: null, observation_count: 1,
+      lifecycle_status: 'active_observed', source_type: 'official', source_rights_status: 'cleared', provenance_source: null,
+      provenance_source_id: 'fixture.source', provenance_source_name: 'Synthetic source', provenance_source_url: 'https://example.test/source',
+      provenance_retrieved_at: '2026-01-01T00:00:00Z', release_id: releaseId, release_ruleset_version: 'rules-v1' }],
+    meta: { profile: 'official', release_id: releaseId, ruleset_version: 'rules-v1',
+      coverage_note: 'Synthetic camera fixture.', next_cursor: null, total_count: 1 },
+  } }));
+  await page.route(url => url.pathname === '/api/v2/discovery/facets', route => route.fulfill({ status: 200, json: {
+    api_version: 'v2', data: { dimensions: {} }, meta: { profile: 'official', release_id: releaseId, ruleset_version: 'rules-v1' },
+  } }));
+  return requests;
+}
+
+async function clickCameraFixturePin(page: import('@playwright/test').Page) {
+  await expect(page.getByText('No records match this search and these filters.', { exact: true })).toBeHidden();
+  await expect.poll(() => page.evaluate(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    return map?.getLayer('approx-reference-pins') && map.queryRenderedFeatures({ layers: ['approx-reference-pins'] }).length > 0;
+  })).toBe(true);
+  const point = await page.evaluate(coordinate => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    const pixel = map.project(coordinate), box = map.getCanvas().getBoundingClientRect();
+    return { x: box.x + pixel.x, y: box.y + pixel.y - 14 };
+  }, cameraFixturePoint);
+  await page.mouse.click(point.x, point.y);
+  await expect.poll(() => new URL(page.url()).hash).toContain(`selected=${cameraFixtureId}`);
+}
+
+async function mockCameraRaster(page: import('@playwright/test').Page) {
+  const body = Buffer.from(await page.evaluate(() => {
+    const canvas = document.createElement('canvas'); canvas.width = canvas.height = 256;
+    const context = canvas.getContext('2d')!; context.fillStyle = '#252b28'; context.fillRect(0, 0, 256, 256);
+    return canvas.toDataURL('image/png').split(',')[1]!;
+  }), 'base64');
+  await page.route('https://tile.openstreetmap.org/**', route => route.fulfill({ contentType: 'image/png', body }));
+  await page.route('https://server.arcgisonline.com/**', route => route.fulfill({ contentType: 'image/png', body }));
+  return body;
+}
+
+test('a reloaded public map reports its cached projection and uses one loading message', async ({ page }) => {
+  const requests = await installPublicCameraFixture(page); await mockCameraRaster(page);
+  await page.addInitScript(() => {
+    const samples: string[] = []; (window as any).__syntheticLoadingLabels = samples;
+    new MutationObserver(() => {
+      const label = document.querySelector('.startup-status > span')?.textContent;
+      if (label && samples.at(-1) !== label) samples.push(label);
+    }).observe(document, { childList: true, subtree: true, characterData: true });
+  });
+  await page.goto('./#/map?release_id=synthetic-release-2026-09&lat=50.95&lon=4.45&z=13');
+  await page.waitForFunction(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.isSourceLoaded('locations'));
+  await page.getByRole('button', { name: 'Tools', exact: true }).click();
+  await page.getByRole('checkbox', { name: 'Enable debug menu', exact: true }).check();
+  await page.getByRole('button', { name: 'Close Tools', exact: true }).click();
+  await page.getByRole('button', { name: 'Debug menu', exact: true }).click();
+  const renderer = page.locator('#map-diagnostics summary').filter({ hasText: 'Renderer & timing' });
+  await renderer.click();
+  const metric = (name: string) => page.locator('#map-diagnostics dt').filter({ hasText: new RegExp(`^${name}$`) }).locator('..').locator('dd');
+  await expect(metric('Cache')).toHaveText(/^(miss|hit) · 1 entries$/);
+  const decoded = await metric('Decoded projection').textContent();
+  expect(decoded).not.toBe('Unavailable');
+  const feedRequests = requests.feeds;
+  await page.reload();
+  await page.waitForFunction(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.isSourceLoaded('locations'));
+  await page.getByRole('button', { name: 'Tools', exact: true }).click();
+  await page.getByRole('checkbox', { name: 'Enable debug menu', exact: true }).check();
+  await page.getByRole('button', { name: 'Close Tools', exact: true }).click();
+  await page.getByRole('button', { name: 'Debug menu', exact: true }).click(); await renderer.click();
+  await expect(metric('Cache')).toHaveText(/^hit · 1 entries$/);
+  await expect(metric('Decoded projection')).toHaveText(decoded!);
+  expect(requests.feeds).toBe(feedRequests);
+  const labels = await page.evaluate(() => (window as any).__syntheticLoadingLabels as string[]);
+  expect(labels.length).toBeGreaterThan(0);
+  expect(labels.every(label => !label.includes('step '))).toBe(true);
+  expect(labels.every(label => ['Loading map…', 'Restoring cached map…', 'First time loading. This may take a while…'].includes(label))).toBe(true);
+});
+
+test('world preload controls change actual cached zoom coverage, budget, layers and clear/reset behavior', async ({ page }) => {
+  test.setTimeout(60_000);
+  await installPublicCameraFixture(page); await mockCameraRaster(page);
+  await page.goto('./#/map?release_id=synthetic-release-2026-09&lat=50.95&lon=4.45&z=13');
+  await page.waitForFunction(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    return map?.getSource('locations') && map.isSourceLoaded('locations') && map.isStyleLoaded();
+  });
+  await page.getByRole('button', { name: 'Tools', exact: true }).click();
+  await page.getByRole('checkbox', { name: 'Enable debug menu', exact: true }).check();
+  await page.getByRole('button', { name: 'Close Tools', exact: true }).click();
+  await page.getByRole('button', { name: 'Debug menu', exact: true }).click();
+  const debug = page.getByRole('complementary', { name: 'Debug menu', exact: true });
+  await debug.locator('details.cache-controls > summary').click();
+  const preload = debug.getByLabel('Preload world map', { exact: true });
+  await preload.uncheck();
+  await expect(debug.locator('#debug-world-zoom')).toBeDisabled();
+  await debug.getByRole('button', { name: 'Clear world map cache', exact: true }).click();
+  const stored = () => page.evaluate(async () => {
+    const cache = await caches.open('uec-world-baseline-v1');
+    return await Promise.all((await cache.keys()).map(async key => ({
+      file: new URL(key.url).pathname.split('/').at(-1)!, bytes: (await (await cache.match(key))!.arrayBuffer()).byteLength,
+    })));
+  });
+  await expect.poll(async () => (await stored()).length).toBe(0);
+  // Switch to one complete world zoom before restoring full coverage.
+  await preload.check();
+  await debug.locator('#debug-world-zoom').press('Home');
+  await debug.locator('#debug-world-budget').press('Home');
+  await expect(debug.locator('#debug-world-zoom')).toHaveValue('0');
+  await expect(debug.locator('#debug-world-budget')).toHaveValue('8');
+  await expect.poll(async () => (await stored()).map(entry => entry.file).sort()).toEqual([
+    'satellite-z0.b3a69656302c.bin', 'streets-z0.d8e74839926b.bin',
+  ]);
+  const low = await stored();
+  expect(low.reduce((sum, entry) => sum + entry.bytes, 0)).toBe(5772 + 66795);
+  await debug.locator('#debug-baseline-opacity').press('Home');
+  await expect.poll(() => page.evaluate(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    return ['world-land', 'world-streets-land', 'world-streets-water'].map(id => map.getPaintProperty(id, 'fill-opacity'));
+  })).toEqual([0, 0, 0]);
+  await debug.getByRole('button', { name: 'Reset cache controls', exact: true }).click();
+  await expect(debug.locator('#debug-world-zoom')).toHaveValue('5');
+  await expect(debug.locator('#debug-world-budget')).toHaveValue('24');
+  await expect.poll(async () => (await stored()).length, { timeout: 20_000 }).toBe(12);
+  expect((await stored()).reduce((sum, entry) => sum + entry.bytes, 0)).toBeLessThanOrEqual(24 * 1048576);
+  await preload.uncheck();
+  await debug.getByRole('button', { name: 'Clear world map cache', exact: true }).click();
+  await expect.poll(async () => (await stored()).length).toBe(0);
+  const original = await page.evaluate(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    return { tiles: map.getStyle().sources.base.tiles[0], opacity: map.getPaintProperty('world-streets-land', 'fill-opacity') };
+  });
+  expect(original.tiles).toContain('openstreetmap.org'); expect(original.opacity).toBe(1);
+});
+
+for (const viewport of [{ width: 1280, height: 720 }, { width: 390, height: 844 }]) {
+  test(`debug header and close remain unobscured with collapsed search at ${viewport.width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize(viewport);
+    await installPublicCameraFixture(page); await mockCameraRaster(page);
+    await page.goto('./#/map?release_id=synthetic-release-2026-09&lat=50.95&lon=4.45&z=13');
+    await expect(page.getByRole('button', { name: /Search map/ })).toBeVisible();
+    await page.getByRole('button', { name: 'Tools', exact: true }).click();
+    await page.getByRole('checkbox', { name: 'Enable debug menu', exact: true }).check();
+    await page.getByRole('button', { name: 'Close Tools', exact: true }).click();
+    await page.getByRole('button', { name: 'Debug menu', exact: true }).click();
+    await expect(page.getByRole('button', { name: /Search map/ })).toBeHidden();
+    for (const target of [page.locator('#map-diagnostics > header strong'), page.getByRole('button', { name: 'Close debug menu', exact: true })]) {
+      await expect(target).toBeVisible();
+      expect(await target.evaluate(node => {
+        const box = node.getBoundingClientRect();
+        const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+        return hit === node || Boolean(hit && node.contains(hit));
+      })).toBe(true);
+    }
+    await page.screenshot({ path: testInfo.outputPath(`debug-header-${viewport.width}.png`) });
+    await page.getByRole('button', { name: 'Close debug menu', exact: true }).click();
+    await expect(page.getByRole('button', { name: /Search map/ })).toBeVisible();
+  });
+}
+
+test('raster detail for common geographic points stays stable across fixed-camera bearings', async ({ browser, baseURL }) => {
+  test.setTimeout(90_000);
+  const levels: number[][] = [];
+  const points = [[4.45, 50.95], [4.18, 50.95], [4.45, 50.72]];
+  for (const bearing of [0, 90, 180, 270]) {
+    const context = await browser.newContext({ baseURL: baseURL!, viewport: { width: 1280, height: 720 } });
+    try {
+      const page = await context.newPage();
+      await installPublicCameraFixture(page); await mockCameraRaster(page); await installTerrainFixture(page);
+      await page.goto(`./#/map?release_id=synthetic-release-2026-09&lat=50.95&lon=4.45&z=8.3&pitch=45&bearing=${bearing}`);
+      await page.waitForFunction(() => {
+        const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+        return map?.getLayer('clusters') && map.isSourceLoaded('base') && map.isSourceLoaded('mapterhorn-terrain');
+      });
+      // Reload the style after the viewport has its final size. Initial hidden
+      // container requests can otherwise conceal the steady-state LOD choice.
+      const tiles = await page.evaluate(async () => {
+        const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__, current = map.getStyle();
+        const seen: Array<{ z: number; x: number; y: number }> = [];
+        const record = (event: any) => { if (event.sourceId === 'base' && event.coord?.canonical) { const { z, x, y } = event.coord.canonical; seen.push({ z, x, y }); } };
+        map.on('sourcedata', record);
+        const idle = new Promise<void>(resolve => map.once('idle', resolve));
+        map.setStyle({ version: 8, sources: { base: current.sources.base, transport: current.sources.transport },
+          layers: current.layers.filter((layer: { id: string }) => layer.id === 'base' || layer.id === 'transport') }, { diff: false });
+        await idle; map.off('sourcedata', record); return seen;
+      });
+      expect(await page.evaluate(coordinates => {
+        const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__, canvas = map.getCanvas();
+        return coordinates.every(coordinate => { const point = map.project(coordinate); return point.x > 0 && point.x < canvas.clientWidth && point.y > 0 && point.y < canvas.clientHeight; });
+      }, points)).toBe(true);
+      levels.push(points.map(([longitude, latitude]) => Math.max(...tiles.filter(tile => {
+        const x = Math.floor((longitude! + 180) / 360 * 2 ** tile.z);
+        const y = Math.floor((1 - Math.asinh(Math.tan(latitude! * Math.PI / 180)) / Math.PI) / 2 * 2 ** tile.z);
+        return tile.x === x && tile.y === y;
+      }).map(tile => tile.z))));
+    } finally { await context.close(); }
+  }
+  expect(levels.every(level => level.every(Number.isFinite))).toBe(true);
+  expect(levels, 'Actual raster tile zoom at common points stays at camera zoom plus the 256px tile offset').toEqual(Array.from({ length: 4 }, () => points.map(() => 9)));
+});
+
+test('bearing rotation keeps common-area cluster memberships at one level without rebuilding the index', async ({ page }) => {
+  test.setTimeout(60_000);
+  await installPublicCameraFixture(page); await mockCameraRaster(page); await installTerrainFixture(page);
+  let feeds = 0;
+  const features = Array.from({ length: 3000 }, (_, i) => {
+    const id = `123e4567-e89b-42d3-a456-${i.toString(16).padStart(12, '0')}`;
+    return { type: 'Feature', id, geometry: { type: 'Point', coordinates: [4.45 + (i % 60 - 30) * .03, 50.95 + (Math.floor(i / 60) - 25) * .03] },
+      properties: { facility_id: id, source_id: 'fixture.source', category_key: 'slaughter', category_keys: ['slaughter'], precision: 'source_reported', weight: 1 } };
+  });
+  await page.route(url => url.pathname === '/api/v2/map/feed', route => { feeds++; return route.fulfill({ json: {
+    api_version: 'v2', data: { type: 'FeatureCollection', features }, meta: { profile: 'official', release_id: 'synthetic-release-2026-09',
+      manifest_sha256: 'a'.repeat(64), suppression_generation: 7, feature_count: 3000, public_record_count: 3000,
+      unmapped_count: 0, release_label: 'Synthetic rotation fixture', dataset_version: 'synthetic-test' },
+  } }); });
+  await page.goto('./#/map?release_id=synthetic-release-2026-09&lat=50.95&lon=4.45&z=8.3&pitch=45');
+  await page.waitForFunction(() => { const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__; return map?.getLayer('clusters') && map.isSourceLoaded('locations'); });
+  await page.getByRole('button', { name: 'Tools', exact: true }).click();
+  await page.getByRole('checkbox', { name: 'Enable debug menu', exact: true }).check();
+  await page.getByRole('button', { name: 'Close Tools', exact: true }).click();
+  await page.getByRole('button', { name: 'Debug menu', exact: true }).click();
+  await page.locator('#map-diagnostics summary').filter({ hasText: 'Renderer & timing' }).click();
+  const counter = page.locator('#map-diagnostics dt').filter({ hasText: /^Index updates$/ }).locator('..').locator('dd');
+  const updates = await counter.textContent();
+  async function clustersAt(bearing: number) {
+    await page.evaluate(bearing => new Promise<void>(resolve => { const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__; map.once('idle', () => resolve()); map.jumpTo({ center: [4.45, 50.95], zoom: 8.3, pitch: 45, bearing }); map.triggerRepaint(); }), bearing);
+    await page.waitForFunction(() => { const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__; return !map.isMoving() && map.isSourceLoaded('locations'); });
+    return page.evaluate(() => {
+      const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+      return [...new Set(map.queryRenderedFeatures({ layers: ['clusters'] }).filter((f: any) => Math.abs(f.geometry.coordinates[0] - 4.45) < .65 && Math.abs(f.geometry.coordinates[1] - 50.95) < .5)
+        .map((f: any) => `${f.properties.cluster_id}:${f.properties.representedCount}`))].sort();
+    });
+  }
+  const initial = await clustersAt(0); expect(initial.length).toBeGreaterThan(0);
+  for (const bearing of [90, 180, 270, 0]) expect(await clustersAt(bearing)).toEqual(initial);
+  await expect(counter).toHaveText(updates!); expect(feeds).toBe(1);
+});
+
+test('a 3D search flight centers a facility on sloping terrain after elevation tiles settle', async ({ page }) => {
+  test.setTimeout(60_000);
+  await installPublicCameraFixture(page); await mockCameraRaster(page);
+  const dem = new Map<string, Buffer>();
+  await page.route('https://tiles.mapterhorn.com/**', async route => {
+    const path = new URL(route.request().url()).pathname.split('/').filter(Boolean), z = Number(path[0]), x = Number(path[1]);
+    const key = `${z}/${x}`;
+    let body = dem.get(key);
+    if (!body) {
+      const encoded = await page.evaluate(({ z, x }) => {
+        const canvas = document.createElement('canvas'); canvas.width = canvas.height = 512;
+        const context = canvas.getContext('2d')!, image = context.createImageData(512, 512);
+        for (let px = 0; px < 512; px++) {
+          const longitude = ((x + (px + .5) / 512) / 2 ** z) * 360 - 180;
+          const elevation = Math.round(Math.min(1500, Math.max(0, (longitude - 4.2) * 4000)) * 256 + 32768 * 256);
+          for (let py = 0; py < 512; py++) { const offset = (py * 512 + px) * 4; image.data[offset] = elevation >> 16; image.data[offset + 1] = elevation >> 8 & 255; image.data[offset + 2] = elevation & 255; image.data[offset + 3] = 255; }
+        }
+        context.putImageData(image, 0, 0); return canvas.toDataURL('image/png').split(',')[1]!;
+      }, { z, x });
+      body = Buffer.from(encoded, 'base64'); dem.set(key, body);
+    }
+    await route.fulfill({ contentType: 'image/png', body });
+  });
+  await page.goto('./#/map?release_id=synthetic-release-2026-09&lat=50.95&lon=4.1&z=13&pitch=45&bearing=23');
+  await page.waitForFunction(() => { const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__; return map?.getTerrain() && map.isSourceLoaded('mapterhorn-terrain') && map.getLayer('approx-reference-pins'); });
+  await page.getByRole('button', { name: /Search map/ }).click();
+  await page.locator('.record-list button').filter({ hasText: 'Synthetic camera fixture' }).click();
+  await expect.poll(() => new URL(page.url()).hash).toContain(`selected=${cameraFixtureId}`);
+  await page.waitForFunction(() => { const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__; return !map.isMoving() && map.isSourceLoaded('mapterhorn-terrain'); });
+  const result = await page.evaluate(coordinate => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__, point = map.project(coordinate), canvas = map.getCanvas();
+    return { drift: Math.hypot(point.x - canvas.clientWidth / 2, point.y - canvas.clientHeight / 2),
+      elevation: map.queryTerrainElevation(coordinate), cameraElevation: map.getCenterElevation(), center: map.getCenter().toArray(), pitch: map.getPitch(), bearing: map.getBearing() };
+  }, cameraFixturePoint);
+  expect(result.elevation).toBeGreaterThan(900);
+  expect(result.drift, JSON.stringify(result)).toBeLessThan(1);
+  expect(result.pitch).toBe(45); expect(result.bearing).toBe(23);
+  // A nearby pin click crosses a smaller elevation difference on the same slope.
+  await page.evaluate(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__, center = [4.445, 50.95];
+    map.jumpTo({ center, elevation: map.queryTerrainElevation(center) });
+  });
+  await page.keyboard.press('Escape');
+  await clickCameraFixturePin(page);
+  await expect.poll(() => page.evaluate(coordinate => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    if (map.isMoving() || !map.isSourceLoaded('mapterhorn-terrain')) return Infinity;
+    const point = map.project(coordinate), canvas = map.getCanvas();
+    return Math.hypot(point.x - canvas.clientWidth / 2, point.y - canvas.clientHeight / 2);
+  }, cameraFixturePoint)).toBeLessThan(1);
+});
+
+test('cluster bodies render on cold and warm public maps through satellite, 3D and 2D', async ({ page }, testInfo) => {
+  test.setTimeout(60_000);
+  await installPublicCameraFixture(page);
+  await installTerrainFixture(page);
+  const features = Array.from({ length: 3000 }, (_, i) => {
+    const id = `123e4567-e89b-42d3-a456-${i.toString(16).padStart(12, '0')}`;
+    return { type: 'Feature', id, geometry: { type: 'Point', coordinates: [4.45 + i % 60 * 0.0001, 50.95 + Math.floor(i / 60) * 0.0001] },
+      properties: { facility_id: id, source_id: 'fixture.source', category_key: 'slaughter', category_keys: ['slaughter'], precision: 'source_reported', weight: 1 } };
+  });
+  await page.route(url => url.pathname === '/api/v2/map/feed', route => route.fulfill({ json: {
+    api_version: 'v2', data: { type: 'FeatureCollection', features }, meta: { profile: 'official', release_id: 'synthetic-release-2026-09',
+      manifest_sha256: 'a'.repeat(64), suppression_generation: 7, feature_count: 3000, public_record_count: 3000,
+      unmapped_count: 0, release_label: 'Synthetic cluster fixture', dataset_version: 'synthetic-test' },
+  } }));
+  const raster = await page.evaluate(() => {
+    const canvas = document.createElement('canvas'); canvas.width = canvas.height = 256;
+    const context = canvas.getContext('2d')!; context.fillStyle = '#252b28'; context.fillRect(0, 0, 256, 256);
+    return canvas.toDataURL('image/png').split(',')[1]!;
+  });
+  const tile = Buffer.from(raster, 'base64');
+  await page.route('https://tile.openstreetmap.org/**', route => route.fulfill({ status: 200, contentType: 'image/png', body: tile }));
+  await page.route('https://server.arcgisonline.com/**', route => route.fulfill({ status: 200, contentType: 'image/png', body: tile }));
+  async function expectClusterBody(stage: string) {
+    await expect.poll(() => page.evaluate(() => {
+      const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+      return Boolean(map?.getLayer('clusters') && map.queryRenderedFeatures({ layers: ['clusters'] }).some((f: any) => f.properties.representedCount === 3000));
+    })).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`cluster-${stage}.png`) });
+    expect(await page.evaluate(() => ['cluster-low', 'cluster-mid', 'cluster-high', 'cluster-very-high']
+      .map(id => (window as any).__UEC_LOCAL_PREVIEW_MAP__.hasImage(id)))).toEqual([true, true, true, true]);
+    const color = await page.evaluate(() => new Promise<number[]>(resolve => {
+      const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+      map.once('render', () => {
+        const feature = map.queryRenderedFeatures({ layers: ['clusters'] }).find((f: any) => f.properties.representedCount === 3000);
+        const point = map.project(feature.geometry.coordinates), canvas = map.getCanvas();
+        const gl = canvas.getContext('webgl2'), pixel = new Uint8Array(4), ratio = canvas.width / canvas.clientWidth;
+        // Sample the filled body below the count text, inside its 15 px radius.
+        gl.readPixels(Math.round((point.x + 10) * ratio), Math.round(canvas.height - (point.y + 10) * ratio), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+        resolve(Array.from(pixel));
+      });
+      map.triggerRepaint();
+    }));
+    expect(color[0]! - color[1]!).toBeGreaterThan(30);
+    expect(color[0]).toBeGreaterThan(100);
+  }
+  await page.goto('./#/map?release_id=synthetic-release-2026-09&lat=50.9525&lon=4.453&z=8');
+  await expectClusterBody('cold');
+  await page.reload();
+  await expectClusterBody('warm');
+  const tools = page.getByRole('button', { name: 'Tools', exact: true }); await tools.click();
+  await page.getByLabel('Map style').selectOption('satellite');
+  await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getStyle().sources.base.tiles[0])).toContain('World_Imagery');
+  await expectClusterBody('satellite');
+  const toggle = page.locator('#shared-tools-menu .map-camera-toggle'); await toggle.click();
+  await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getPitch())).toBe(45);
+  await expectClusterBody('3d'); await toggle.click();
+  await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getPitch())).toBe(0);
+  await expectClusterBody('2d');
+  await page.evaluate(async () => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__, current = map.getStyle();
+    const loaded = new Promise<void>(resolve => map.once('style.load', resolve));
+    map.setStyle({ version: 8, sources: { base: current.sources.base, transport: current.sources.transport },
+      layers: current.layers.filter((layer: { id: string }) => layer.id === 'base' || layer.id === 'transport') }, { diff: false });
+    await loaded;
+  });
+  await expectClusterBody('style-reload');
+});
+
+test('one approximate-pin click draws and dismisses its area while raster tiles remain pending', async ({ page }) => {
+  test.setTimeout(45_000);
+  await installPublicCameraFixture(page);
+  const tile = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/F2sAAAAASUVORK5CYII=', 'base64');
+  let hold = false, pending = 0, release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  await page.route('https://tile.openstreetmap.org/**', async route => {
+    if (hold) { pending++; await gate; }
+    await route.fulfill({ status: 200, contentType: 'image/png', body: tile });
+  });
+  try {
+    await page.goto('./#/map?release_id=synthetic-release-2026-09&lat=50.95&lon=4.45&z=13');
+    await page.waitForFunction(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.isStyleLoaded());
+    await expect.poll(() => page.evaluate(() => {
+      const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+      return Boolean(map?.getLayer('approx-reference-pins') && map.queryRenderedFeatures({ layers: ['approx-reference-pins'] }).length);
+    })).toBe(true);
+    hold = true;
+    await page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.jumpTo({ zoom: 16 }));
+    await expect.poll(() => pending).toBeGreaterThan(0);
+    await clickCameraFixturePin(page);
+    await expect.poll(() => page.evaluate(async () => {
+      const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+      return { styleReady: map.isStyleLoaded(), areas: (await map.getSource('approximate-reference-area').getData()).features.length };
+    })).toEqual({ styleReady: false, areas: 1 });
+    await page.keyboard.press('Escape');
+    await expect.poll(() => page.evaluate(async () => (await (window as any).__UEC_LOCAL_PREVIEW_MAP__.getSource('approximate-reference-area').getData()).features.length)).toBe(0);
+  } finally { release(); }
+});
+
+test('delayed high-elevation terrain keeps the selected geographic focus anchored through 3D and 2D', async ({ page }) => {
+  test.setTimeout(60_000);
+  await installPublicCameraFixture(page);
+  const tile = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/F2sAAAAASUVORK5CYII=', 'base64');
+  await page.route('https://tile.openstreetmap.org/**', route => route.fulfill({ status: 200, contentType: 'image/png', body: tile }));
+  const elevationTile = await page.evaluate(() => {
+    const canvas = document.createElement('canvas'); canvas.width = canvas.height = 512;
+    const context = canvas.getContext('2d')!;
+    context.fillStyle = 'rgb(131,232,0)'; // Terrarium: exactly 1,000 metres.
+    context.fillRect(0, 0, 512, 512); return canvas.toDataURL('image/png').split(',')[1];
+  });
+  let demRequests = 0, release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  await page.route('https://tiles.mapterhorn.com/**', async route => {
+    demRequests++; await gate;
+    await route.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from(elevationTile!, 'base64') });
+  });
+  try {
+    await page.goto('./#/map?release_id=synthetic-release-2026-09&lat=50.95&lon=4.45&z=13&bearing=23');
+    await page.waitForFunction(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.isStyleLoaded());
+    expect(demRequests).toBe(0);
+    await clickCameraFixturePin(page);
+    await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.isMoving())).toBe(false);
+    const tools = page.getByRole('button', { name: 'Tools', exact: true }); await tools.click();
+    const toggle = page.locator('#shared-tools-menu .map-camera-toggle');
+    await toggle.click();
+    await expect.poll(() => demRequests).toBeGreaterThan(0);
+    // Load elevation while overhead, before tilting, so no late height jump is visible.
+    await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.isMoving())).toBe(false);
+    await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getPitch())).toBe(0);
+    release();
+    await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getPitch())).toBe(45);
+    const camera = await page.evaluate(() => {
+      const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+      return { zoom: map.getZoom(), bearing: map.getBearing() };
+    });
+    const assertFocus = async () => {
+      await expect.poll(() => page.evaluate(({ coordinate, previous }) => {
+        const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__, pixel = map.project(coordinate), box = map.getCanvas().getBoundingClientRect();
+        return Math.max(Math.abs(pixel.x - box.width / 2), Math.abs(pixel.y - box.height / 2), Math.abs(map.getZoom() - previous.zoom), Math.abs(map.getBearing() - previous.bearing));
+      }, { coordinate: cameraFixturePoint, previous: camera })).toBeLessThan(1);
+    };
+    await assertFocus(); await toggle.click();
+    await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getPitch())).toBe(0);
+    await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getTerrain())).toMatchObject({ source: 'mapterhorn-terrain', exaggeration: 1 });
+    await assertFocus(); await toggle.click();
+    await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getPitch())).toBe(45);
+    await assertFocus();
+  } finally { release(); }
+});
+
+test('returning from About revalidates the release and reuses the live canvas and cluster index', async ({ page }) => {
+  test.setTimeout(45_000);
+  const requests = await installPublicCameraFixture(page);
+  const tile = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/F2sAAAAASUVORK5CYII=', 'base64');
+  await page.route('https://tile.openstreetmap.org/**', route => route.fulfill({ status: 200, contentType: 'image/png', body: tile }));
+  await page.goto('./#/map?release_id=synthetic-release-2026-09&lat=50.95&lon=4.45&z=13&bearing=23');
+  await page.getByRole('button', { name: /Search map/ }).click();
+  await page.locator('.record-list button').filter({ hasText: 'Synthetic camera fixture' }).click();
+  await expect.poll(() => new URL(page.url()).hash).toContain(`selected=${cameraFixtureId}`);
+  const tools = page.getByRole('button', { name: 'Tools', exact: true }); await tools.click();
+  await page.getByRole('checkbox', { name: 'Enable debug menu', exact: true }).check();
+  await page.getByRole('button', { name: 'Close Tools', exact: true }).click();
+  await page.getByRole('button', { name: 'Debug menu', exact: true }).click();
+  await page.locator('#map-diagnostics summary').filter({ hasText: 'Renderer & timing' }).click();
+  const counter = page.locator('#map-diagnostics dt').filter({ hasText: /^Index updates$/ }).locator('..').locator('dd');
+  await expect(counter).toHaveText(/^\d+$/);
+  const indexUpdates = await counter.textContent(), manifestRequests = requests.manifests, feedRequests = requests.feeds;
+  const canvas = await page.locator('.maplibregl-canvas').elementHandle();
+  await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'About', exact: true }).click();
+  await expect(page).toHaveURL(/#\/about/);
+  await page.goBack();
+  await expect(page.locator('.maplibregl-canvas')).toBeVisible();
+  await expect.poll(() => requests.manifests).toBeGreaterThan(manifestRequests);
+  expect(await canvas!.evaluate(node => node === document.querySelector('.maplibregl-canvas'))).toBe(true);
+  await expect(counter).toHaveText(indexUpdates!);
+  expect(requests.feeds).toBe(feedRequests);
+  expect(new URL(page.url()).hash).toContain(`selected=${cameraFixtureId}`);
+  expect(new URL(page.url()).hash).toContain('bearing=23');
+});
 
 async function installTerrainFixture(page: import('@playwright/test').Page) {
   const tileData = await page.evaluate(() => {
@@ -54,7 +538,8 @@ test('camera tilt, map style, and URL state preserve the map view without compas
   await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getPitch())).toBe(31);
   await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getBearing())).toBe(24);
   const nav = page.getByRole('navigation', { name: 'Primary' });
-  const hrefParams = new URLSearchParams((await nav.getByRole('link', { name: 'Database', exact: true }).getAttribute('href'))?.split('?')[1]);
+  const aboutHref = await nav.getByRole('link', { name:'About', exact:true }).getAttribute('href');
+  const hrefParams = new URLSearchParams(new URLSearchParams(aboutHref?.split('?')[1]).get('map')?.split('?')[1]);
   expect(hrefParams.get('pitch')).toBe('31');
   expect(hrefParams.get('bearing')).toBe('24');
   const mapHrefParams = new URLSearchParams((await nav.getByRole('link', { name: 'Map', exact: true }).getAttribute('href'))?.split('?')[1]);
@@ -268,18 +753,10 @@ test('a directly loaded selected URL survives reload and closes without restorin
 
 test('cold shared 3D URLs restore terrain after a style reload and browser Back', async ({ page }) => {
   await installTerrainFixture(page);
-  await page.route(url => new URL(url.href).pathname === '/api/v2/locations', route => route.fulfill({
-    status: 200, contentType: 'application/json', body: JSON.stringify({
-      api_version: 'v2', data: [], meta: { profile: 'official', release_id: 'synthetic-camera-nav', ruleset_version: 'synthetic',
-        next_cursor: null, total_count: 0, coverage_note: 'Synthetic navigation fixture.' },
-    }),
-  }));
-  await page.route(url => new URL(url.href).pathname === '/api/v2/discovery/facets', route => route.fulfill({
-    status: 200, contentType: 'application/json', body: JSON.stringify({
-      api_version: 'v2', data: { dimensions: {} }, meta: { profile: 'official', release_id: 'synthetic-camera-nav', ruleset_version: 'synthetic' },
-    }),
-  }));
-  await page.goto('./#/map?f1a=field&scenario=dense&lat=38&lon=-96&z=4&pitch=45&bearing=18');
+  await installPublicCameraFixture(page);
+  const tile = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/F2sAAAAASUVORK5CYII=', 'base64');
+  await page.route('https://tile.openstreetmap.org/**', route => route.fulfill({ status: 200, contentType: 'image/png', body: tile }));
+  await page.goto('./#/map?release_id=synthetic-release-2026-09&lat=50.95&lon=4.45&z=13&pitch=45&bearing=18');
   const map = page.getByLabel('Map showing records');
   await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getPitch())).toBe(45);
   await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getTerrain())).toMatchObject({ source: 'mapterhorn-terrain', exaggeration: 1 });
@@ -300,14 +777,14 @@ test('cold shared 3D URLs restore terrain after a style reload and browser Back'
   await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getTerrain())).toMatchObject({ source: 'mapterhorn-terrain', exaggeration: 1 });
   await expect.poll(() => page.evaluate(() => Boolean((window as any).__UEC_LOCAL_PREVIEW_MAP__?.getSource('mapterhorn-terrain')))).toBe(true);
 
-  const databaseHref = await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Database', exact: true }).getAttribute('href');
-  const params = new URLSearchParams(databaseHref?.split('?')[1]);
+  const aboutHref = await page.getByRole('navigation', { name:'Primary' }).getByRole('link', { name:'About', exact:true }).getAttribute('href');
+  const params = new URLSearchParams(new URLSearchParams(aboutHref?.split('?')[1]).get('map')?.split('?')[1]);
   expect(params.get('pitch')).toBe('45');
   expect(params.get('bearing')).toBe('18');
   expect(params.has('f1a')).toBe(false);
   expect(params.has('scenario')).toBe(false);
-  await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Database', exact: true }).click();
-  await expect(page).toHaveURL(/#\/database\?/);
+  await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'About', exact: true }).click();
+  await expect(page).toHaveURL(/#\/about\?/);
   await page.goBack();
   await expect(page).toHaveURL(/pitch=45.*bearing=18/);
   await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getTerrain())).toMatchObject({ source: 'mapterhorn-terrain', exaggeration: 1 });

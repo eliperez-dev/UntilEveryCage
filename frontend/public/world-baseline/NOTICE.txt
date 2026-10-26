@@ -1,0 +1,29 @@
+Local low-zoom world baselines
+
+Streets: Protomaps daily basemap, 2026-10-25, unmodified vector tiles z0-5.
+Source: https://build.protomaps.com/20261025.pmtiles
+Download/reproduction: https://docs.protomaps.com/basemaps/downloads
+Data and redistributed subset: Open Database License (ODbL) 1.0.
+Copyright OpenStreetMap contributors and other Protomaps data contributors.
+https://www.openstreetmap.org/copyright
+https://opendatacommons.org/licenses/odbl/1-0/
+https://github.com/protomaps/basemaps/blob/main/LICENSE_DATA.md
+Repackaged without changing tile content; the local tile table identifies
+the corresponding cumulative Hilbert tile IDs. No facility data is included.
+Reproduce with: node frontend/scripts/buildWorldStreets.mjs
+
+Satellite: NASA Blue Marble Next Generation, August 2004 composite.
+Source: https://assets.science.nasa.gov/content/dam/science/esd/eo/images/bmng/bmng-base/august/world.200408.3x5400x2700.jpg
+https://science.nasa.gov/earth/earth-observatory/blue-marble-next-generation/base-map/
+Use guidelines: https://www.nasa.gov/nasa-brand-center/images-and-media/
+NASA imagery is acknowledged; no NASA endorsement is implied.
+The 5400x2700 source is reprojected from geographic coordinates to Web
+Mercator, cropped to +/-85.05112878 degrees latitude, and tiled at z0-5.
+Image preparation: frontend/scripts/build_world_satellite.py (Pillow).
+This historical composite provides a loading fallback, not current imagery.
+
+Labels use locally rendered system sans-serif glyphs. No font downloads.
+
+Manifests in frontend/src/map/assets include SHA-256 checksums for each
+content-addressed local bundle. Each bundle packs compressed individual
+tiles; the manifests supply offsets, lengths, and cumulative Hilbert IDs.

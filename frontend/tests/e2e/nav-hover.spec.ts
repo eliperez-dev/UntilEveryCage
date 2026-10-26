@@ -22,32 +22,31 @@ async function isolate(context: BrowserContext) {
 
 test.beforeEach(async ({ context }) => isolate(context));
 
-test('the masthead exposes six direct destinations and Tools', async ({ page }) => {
+test('the masthead exposes four direct destinations and Tools', async ({ page }) => {
   await page.goto('./#/about');
   const nav = page.getByRole('navigation', { name: 'Primary' });
-  await expect(nav.getByRole('link')).toHaveText(['Map', 'Database', 'API', 'Contribute', 'About', 'FAQ']);
+  await expect(nav.getByRole('link')).toHaveText(['Map', 'Data', 'Contribute', 'About']);
   await expect(page.getByRole('button', { name: 'Tools', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: /Show (About|Database) pages/ })).toHaveCount(0);
   await expect(page.locator('#shared-about-nav, #shared-database-nav')).toHaveCount(0);
-  await nav.getByRole('link', { name: 'API', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'API and data access' })).toBeVisible();
+  await nav.getByRole('link', { name: 'Data', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Data' })).toBeVisible();
   await nav.getByRole('link', { name: 'About', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'About Until Every Cage is Empty' })).toBeVisible();
-  await nav.getByRole('link', { name: 'FAQ', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Frequently asked questions' })).toBeVisible();
 });
 
 test('direct links retain native keyboard and browser navigation', async ({ page, context, browserName, channel }, testInfo) => {
   const mapContext = '#/map?lat=44.5&lon=8.1&z=5&basemap=satellite&release_id=synthetic-release';
   await page.goto(`./#/about/faq?map=${encodeURIComponent(mapContext)}`);
-  const database = page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Database', exact: true });
-  await database.focus();
+  const api = page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Data', exact: true });
+  await api.focus();
   await page.keyboard.press('Enter');
-  await expect(page.getByRole('heading', { name: 'Browse records', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Data', exact: true })).toBeVisible();
   await page.goBack();
   await expect(page.getByRole('heading', { name: 'Frequently asked questions', exact: true })).toBeVisible();
   await page.goForward();
-  await expect(page.getByRole('heading', { name: 'Browse records', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Data', exact: true })).toBeVisible();
   const about = page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'About', exact: true });
   let popup: Page | undefined;
   const pageErrors: string[] = [];
@@ -103,12 +102,12 @@ test('compact direct navigation remains usable on a narrow touch screen', async 
   await isolate(context);
   const page = await context.newPage();
   await page.goto('./#/about');
-  for (const label of ['Map', 'Database', 'API', 'Contribute', 'About', 'FAQ']) {
+  for (const label of ['Map', 'Data', 'Contribute', 'About']) {
     await expect(page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: label, exact: true })).toBeVisible();
   }
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'API', exact: true }).tap();
-  await expect(page.getByRole('heading', { name: 'API and data access' })).toBeVisible();
+  await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Data', exact: true }).tap();
+  await expect(page.getByRole('heading', { name: 'Data' })).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await context.close();
 });

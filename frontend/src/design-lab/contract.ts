@@ -24,6 +24,9 @@ export type LabRecord = Readonly<{
   sourceFacts?: import('../domain/location').LocationSourceFacts | undefined;
 }>;
 export type ViewportBounds = Readonly<{ west: number; south: number; east: number; north: number }>;
+export type SearchScope = null
+  | Readonly<{ kind: 'area'; bounds: ViewportBounds }>
+  | Readonly<{ kind: 'radius'; label: string; latitude: number; longitude: number; radiusKm: number }>;
 export type Viewport = Readonly<{ centerLat: number; centerLon: number; zoom: number; pitch?: number; bearing?: number }>;
 export type MapDiagnostics = Readonly<{
   zoom: number; currentTiles: number; readyTiles: number; cacheEntries: number; cacheCapacity: number;
@@ -37,13 +40,20 @@ export type LabState = Readonly<{
   sourceId: string | null;
   expandedCluster: string | null; aggregateMemberIds: readonly string[] | null; basemap: Basemap; listOpen: boolean; viewport: Viewport;
   filters: LabFilters;
+  searchScope: SearchScope;
+  /** Memory-only camera to use in links while the live view follows device location. */
+  navigationViewport?: Viewport;
 }>;
 export type LabAction =
   | { type: 'direction'; value: Direction } | { type: 'scenario'; value: Scenario }
   | { type: 'query'; value: string } | { type: 'select'; value: string | null } | { type: 'source'; value: string | null }
   | { type: 'cluster'; value: string | null } | { type: 'aggregate'; value: readonly string[] | null } | { type: 'basemap'; value: Basemap }
   | { type: 'list'; value: boolean } | { type: 'viewport'; value: Viewport }
-  | { type: 'filters'; value: LabFilters } | { type: 'reset-filters' };
+  | { type: 'private-camera'; value: Viewport }
+  | { type: 'filters'; value: LabFilters } | { type: 'reset-filters' }
+  | { type: 'scope'; value: SearchScope }
+  | { type: 'search'; value: { query: string; filters: LabFilters } }
+  | { type: 'results' } | { type: 'close-workspace' };
 
 export interface DirectionViewProps {
   state: LabState;
@@ -62,6 +72,10 @@ export interface DirectionViewProps {
   mapStatus?: 'idle' | 'loading' | 'ready' | 'empty' | 'error' | 'unauthorized';
   mapError?: string;
   mapTruncated?: boolean;
+  mapMatchingIds?: readonly string[] | null;
+  mapMatchesStatus?: 'idle' | 'loading' | 'ready' | 'error';
+  mapMatchesError?: string;
+  onRetryMapMatches?(): void;
   mapDiagnostics?: MapDiagnostics;
   onMapTiming?(timing: MapTiming): void;
   detailRecord?: LabRecord | null;
@@ -84,7 +98,7 @@ export interface DirectionViewProps {
 
 export const DEFAULT_LAB_STATE: LabState = Object.freeze({
   direction: 'field', scenario: 'default', query: '', selectedId: null, sourceId: null,
-  expandedCluster: null, aggregateMemberIds: null, basemap: 'vector', listOpen: false,
+  expandedCluster: null, aggregateMemberIds: null, basemap: 'vector', listOpen: false, searchScope: null,
   viewport: Object.freeze({ centerLat: 45, centerLon: 5, zoom: 2 }),
   filters: Object.freeze({ categories: Object.freeze([]), precisions: Object.freeze([]), countries: Object.freeze([]), sources: Object.freeze([]), activities: Object.freeze([]) }),
 });

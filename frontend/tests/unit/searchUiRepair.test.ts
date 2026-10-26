@@ -22,18 +22,19 @@ describe('search UI repair contract', () => {
   });
 
   it('keeps filters keyboard-operable and gives each control an accessible reading target', () => {
-    expect(field).toContain('<details class="filters">');
-    expect(field).toMatch(/<summary>\{tr\('Filters', \$language\)\}/);
+    expect(field).toContain('<details class="filters" bind:this={$filterDisclosure}');
+    expect(field).toMatch(/<summary><svg[\s\S]*?<\/svg>\{tr\('Filters', \$language\)\}/);
     expect(field).toMatch(/<fieldset><legend>Country<\/legend>/);
-    expect(field).toMatch(/<fieldset><legend>Source<\/legend>/);
-    expect(field).toMatch(/<fieldset><legend>Activity category<\/legend>/);
+    expect(field).toMatch(/<fieldset class="source-options"><legend>Source<\/legend>/);
+    expect(field).toMatch(/<fieldset><legend>\{tr\('Activity category', \$language\)\}<\/legend>/);
     expect(field).toMatch(/<label><input type="checkbox"/);
-    expect(field).toContain('min-height: 2rem');
+    expect(field).toContain('min-height: 2.75rem');
   });
 
   it('offers the single clear action whenever a query, source, or filter is active', () => {
     expect(field).toContain('(state.query.trim() ? 1 : 0)');
     expect(field).toContain('(state.sourceId ? 1 : 0)');
-    expect(field).toContain('dispatch({ type: "reset-filters" })');
+    expect(field).toContain('onclick={clearSearch}');
+    expect(field).toContain("dispatch({ type: 'reset-filters' });");
   });
 });

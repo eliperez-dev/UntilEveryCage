@@ -98,7 +98,9 @@ jobs:
       - name: Facility detail browser regressions (synthetic projections)
         run: npx playwright test tests/e2e/facility-detail-presentation.spec.ts --project=chromium --workers=1
       - name: Map and launch browsing regressions (synthetic projections)
-        run: npx playwright test tests/e2e/map-camera.spec.ts tests/e2e/tools-map-view-selection.spec.ts tests/e2e/public-database-parallel-facets.spec.ts tests/e2e/nav-hover.spec.ts tests/e2e/public-api-help.spec.ts --project=chromium --workers=1
+        run: npx playwright test tests/e2e/map-camera.spec.ts tests/e2e/tools-map-view-selection.spec.ts tests/e2e/navigation-consolidation.spec.ts tests/e2e/landing.spec.ts tests/e2e/nav-hover.spec.ts tests/e2e/public-api-help.spec.ts --project=chromium --workers=1
+      - name: Map persistence and lifecycle regressions (synthetic projections)
+        run: npx playwright test tests/e2e/persistent-cluster-index.spec.ts tests/e2e/map-tile-cache.spec.ts tests/e2e/native-cluster-motion.spec.ts tests/e2e/world-baseline.spec.ts tests/e2e/public-map-keepalive.spec.ts --project=chromium --workers=1
       - name: Language and theme regressions (sanitized fixtures)
         run: npx playwright test tests/e2e/language-switch.spec.ts tests/e2e/theme.spec.ts tests/e2e/spanish-map-control-layout.spec.ts --project=chromium --project=firefox --project=webkit --workers=2
       - name: Community pilot browser proof (synthetic only)

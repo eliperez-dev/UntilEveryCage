@@ -1,12 +1,14 @@
 import { test, expect } from '@playwright/test';
+import { installEmptyPublicMap } from '../fixtures/empty-public-map';
 
 test('Spanish selection changes primary and map controls without changing route state and persists after reload', async ({ page }) => {
+  await installEmptyPublicMap(page, 'synthetic-release');
   await page.goto('./#/map?scenario=default&lat=38&lon=-96&z=4&release_id=synthetic-release&source=us.fsis&category=Processing&precision=exact&country=US&source_filter=us.fsis&activity=slaughter&selected=synthetic-record-1&focus=selected');
-  await expect(page.getByRole('button', { name: 'Search map' })).toBeVisible();
-  await page.getByRole('button', { name: 'Search map' }).click();
   await expect(page.getByText('Search records', { exact: true })).toBeVisible();
   const stateBeforeSwitch = page.url().split('#')[1];
   const languageControl = async () => {
+    // The shell header can appear before the lazy map module is mounted.
+    await expect(page.getByRole('navigation', { name: /^(Map navigation|Navegación del mapa)$/ })).toBeVisible();
     await page.getByRole('button', { name: /^(Tools|Herramientas)$/ }).click();
     return page.getByLabel(/^(Language|Idioma)$/);
   };
@@ -44,13 +46,14 @@ test('Spanish renders the localized FAQ while retaining the English manifest whe
   await expect(page.locator('.manifesto')).toContainText('The violence inflicted on these animals is not accidental');
 });
 
-test('public database filters and the bug contribution form expose Spanish controls', async ({ page }) => {
-  await page.goto('./#/database');
+test('map search and the bug contribution form expose Spanish controls', async ({ page }) => {
+  await installEmptyPublicMap(page, 'synthetic-release');
+  await page.goto('./#/map?list=open');
+  await expect(page.getByRole('combobox', { name: 'Search across public release records' })).toBeVisible();
   await page.getByRole('button', { name: 'Tools' }).click();
   await page.getByLabel('Language').selectOption('es');
-  await expect(page.getByRole('heading', { name: 'Consultar registros' })).toBeVisible();
-  await expect(page.getByLabel('Buscar registros')).toBeVisible();
-  await expect(page.getByLabel('País')).toBeVisible();
+  await expect(page.getByRole('combobox', { name: 'Buscar en los registros de la versión pública' })).toBeVisible();
+  await expect(page.getByRole('button', { name:'Cerrar el panel' })).toBeVisible();
   await page.goto('./#/contribute?type=bug');
   await expect(page.getByLabel('¿Qué ocurrió?')).toBeVisible();
   await expect(page.getByLabel('Pasos para reproducirlo')).toBeVisible();

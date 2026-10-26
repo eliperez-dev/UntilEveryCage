@@ -3,6 +3,26 @@ import { DEFAULT_LAB_STATE } from '../../src/design-lab/contract';
 import { decodeLabHash, encodeLabHash, encodeMapNavigationHash, reduceLabState } from '../../src/design-lab/state';
 
 describe('design-lab state repairs', () => {
+  it('keeps device-derived camera movement out of public links through later actions', () => {
+    const start = decodeLabHash('#/map?lat=38&lon=-96&z=4');
+    const device = reduceLabState(start, { type: 'private-camera', value: { centerLat: 12.345678, centerLon: 98.765432, zoom: 12 } });
+    const panned = reduceLabState(device, { type: 'viewport', value: { centerLat: 12.35, centerLon: 98.77, zoom: 13 } });
+    const searched = reduceLabState(panned, { type: 'query', value: 'synthetic query' });
+    const selected = reduceLabState(searched, { type: 'select', value: 'synthetic-facility' });
+    const closed = reduceLabState(selected, { type: 'close-workspace' });
+    expect(closed.viewport).toEqual(panned.viewport);
+    expect(decodeLabHash(encodeLabHash(closed, false, true)).viewport).toEqual(start.viewport);
+    expect(encodeLabHash(selected, false, true)).toContain('selected=synthetic-facility');
+    expect(encodeLabHash(closed, false, true)).not.toMatch(/12\.35|98\.77|synthetic.query|navigationViewport/);
+    const again = reduceLabState(device, { type: 'private-camera', value: { centerLat: 3, centerLon: 4, zoom: 10 } });
+    expect(again.navigationViewport).toEqual(start.viewport);
+  });
+
+  it('rejects invalid device camera values without changing the navigation camera', () => {
+    for (const viewport of [{ centerLat: NaN, centerLon: 0, zoom: 12 }, { centerLat: 91, centerLon: 0, zoom: 12 }, { centerLat: 0, centerLon: 181, zoom: 12 }, { centerLat: 0, centerLon: 0, zoom: 20 }]) {
+      expect(reduceLabState(DEFAULT_LAB_STATE, { type: 'private-camera', value: viewport })).toBe(DEFAULT_LAB_STATE);
+    }
+  });
   it('decodes a retired muted basemap link as Street and never re-emits it', () => {
     const state = decodeLabHash('#/map?basemap=muted&lat=51&lon=-1&z=8');
 

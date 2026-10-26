@@ -51,7 +51,7 @@ describe('normal shell content', () => {
     expect(picker).not.toContain('rotate(-45deg)');
   });
 
-  it('keeps the supplied manifesto, counter component, and concise FAQ separate', () => {
+  it('keeps the supplied manifesto and counter while embedding the concise FAQ in About', () => {
     expect(about).toContain('About Until Every Cage is Empty');
     expect(about).toContain('The Architecture of Silence');
     expect(about).toContain("{tr('Until Every Cage is Empty', $language)}</h2>");
@@ -101,8 +101,6 @@ describe('normal shell content', () => {
     expect(masthead).toContain('Right-mouse to rotate / Left-mouse to pan');
     expect(masthead).toContain('.map-view-controls');
     expect(mapSurface).not.toContain('class="map-controls-wrap"');
-    expect(field).toContain('top: 0.65rem;');
-    expect(field).toContain('left: 0.65rem;');
     expect(footer).toContain('Final Nail');
     expect(footer).toContain('<div class="application-version-slot"><ApplicationVersion /></div>');
     expect(footer).not.toContain('v1.5.1');

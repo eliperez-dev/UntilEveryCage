@@ -40,7 +40,10 @@ describe('MapSurface layer contract', () => {
 
   it('keeps transport below location overlays and delegates zoom visibility to tiles', () => {
     const style = createBaseStyle('satellite') as { layers: { id: string }[] };
-    expect(style.layers.map((layer) => layer.id)).toEqual(['base', 'transport']);
+    const layerIds = style.layers.map(layer => layer.id);
+    expect(layerIds.indexOf('world-streets-roads')).toBeLessThan(layerIds.indexOf('base'));
+    expect(layerIds.indexOf('world-satellite')).toBeLessThan(layerIds.indexOf('base'));
+    expect(layerIds.indexOf('transport')).toBeGreaterThan(layerIds.indexOf('base'));
     const layers: any[] = [];
     const sources: Record<string, any> = {};
     addMvtLocationLayers({

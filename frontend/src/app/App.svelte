@@ -1,11 +1,10 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { mapHrefFromHash, parseRoute, safeMapHref, type RouteState } from './routeState';
+  import { canonicalRouteHref, mapHrefFromHash, parseRoute, safeMapHref, type RouteState } from './routeState';
+  import LandingPage from './LandingPage.svelte';
   import AboutPage from './AboutPage.svelte';
-  import FaqPage from './FaqPage.svelte';
   import ContributePage from './ContributePage.svelte';
   import ProjectFooter from './ProjectFooter.svelte';
-  import PublicDatabase from './PublicDatabase.svelte';
   import PublicRecord from './PublicRecord.svelte';
   let ApiPage = $state<typeof import('./ApiPage.svelte').default | null>(null);
   let apiModule: Promise<typeof import('./ApiPage.svelte')> | null = null;
@@ -21,14 +20,17 @@
   let CommunityContributions = $state<typeof import('./CommunityContributions.svelte').default | null>(null);
   let communityModule: Promise<typeof import('./CommunityContributions.svelte')> | null = null;
   let reviewMode = $state(false);
+  let publicMapVisited = $state(false);
+  let publicMapActivation = $state(0);
+  let wasPublicMap = false;
   let verifiedReleaseLabel = $state<string | null>(null);
 
-  let route = $state<RouteState>(parseRoute(window.location.hash, SECURE_INBOX_LOCAL));
+  let route = $state<RouteState>(parseRoute(window.location.hash, false, SECURE_INBOX_LOCAL));
   let routeGeneration = 0;
   let loading = $state(true);
   let loadError = $state('');
   let returnMapHref = $derived.by(() => {
-    if (route.kind === 'about' || route.kind === 'contribute' || route.kind === 'bug-report' || route.kind === 'community' || route.kind === 'api' || route.kind === 'faq' || route.kind === 'downloads' || route.kind === 'database' || route.kind === 'record') return safeMapHref(route.returnMapHref) ?? mapHrefFromHash(window.location.hash, route.kind === 'database' || route.kind === 'record' ? route.releaseId : undefined);
+    if (route.kind === 'about' || route.kind === 'contribute' || route.kind === 'bug-report' || route.kind === 'community' || route.kind === 'api' || route.kind === 'downloads' || route.kind === 'database' || route.kind === 'record') return safeMapHref(route.returnMapHref) ?? mapHrefFromHash(window.location.hash, route.kind === 'database' || route.kind === 'record' ? route.releaseId : undefined);
     return mapHrefFromHash(window.location.hash, route.kind === 'map' ? route.releaseId : undefined);
   });
   let databaseHref = $derived.by(() => {
@@ -39,7 +41,12 @@
   const syncRoute = () => {
     const generation = ++routeGeneration;
     try {
-      route = parseRoute(window.location.hash, SECURE_INBOX_LOCAL);
+      const query = new URLSearchParams(window.location.hash.split('?')[1] ?? '');
+      const serverDataMode = document.querySelector<HTMLMetaElement>('meta[name="uec-local-data-mode"]')?.content ?? null;
+      const privateDatabase = import.meta.env.DEV && !query.has('profile') && !query.has('release_id') && (query.has('f1a') || serverDataMode === 'candidate-preview');
+      const canonicalHref = canonicalRouteHref(window.location.hash, privateDatabase);
+      if (canonicalHref && canonicalHref !== window.location.hash) window.history.replaceState(null, '', canonicalHref);
+      route = parseRoute(window.location.hash, privateDatabase, SECURE_INBOX_LOCAL);
       if (import.meta.env.DEV && import.meta.env.VITE_SECURE_INBOX_EXPERIMENT === 'true') {
         if (route.kind === 'secure-inbox' && !SecureInbox) void import('./contributions/secure/SecureInbox.svelte')
           .then(module => { if (generation === routeGeneration) SecureInbox = module.default; })
@@ -70,10 +77,15 @@
         });
         loading = true;
       }
-      const query = new URLSearchParams(window.location.hash.split('?')[1] ?? '');
-      const serverDataMode = document.querySelector<HTMLMetaElement>('meta[name="uec-local-data-mode"]')?.content ?? null;
       const explicitPublicRoute = (route.kind === 'record' || route.kind === 'database') && (query.has('profile') || query.has('release_id'));
       reviewMode = import.meta.env.DEV && !explicitPublicRoute && (query.has('f1a') || (serverDataMode === 'candidate-preview' && (route.kind === 'map' || route.kind === 'database' || route.kind === 'record')) || (serverDataMode === 'real-preview' && route.kind === 'map'));
+      const publicMap = route.kind === 'map' && !reviewMode;
+      if (reviewMode) publicMapVisited = false;
+      if (publicMap) {
+        publicMapVisited = true;
+        if (!wasPublicMap) publicMapActivation++;
+      }
+      wasPublicMap = publicMap;
       if (generation !== routeGeneration) return;
       if (route.kind !== 'community' || route.page === 'form') loading = false;
       loadError = '';
@@ -96,11 +108,19 @@
 
 <svelte:head>
   <title>Until Every Cage</title>
-  <meta name="description" content="Until Every Cage map and research index." />
+  <meta name="description" content="Behind closed doors, animals are bred, confined, experimented on and killed. Until Every Cage maps the industries responsible." />
 </svelte:head>
 
-{#if route.kind === 'map' && DesignLab}
-  <DesignLab />
+{#if DesignLab && publicMapVisited && !reviewMode}
+  <div class="retained-public-map" hidden={route.kind !== 'map'} inert={route.kind !== 'map'}>
+    <DesignLab active={route.kind === 'map'} activationId={publicMapActivation} />
+  </div>
+{/if}
+
+{#if route.kind === 'landing'}
+  <LandingPage mapHref={returnMapHref} />
+{:else if route.kind === 'map' && DesignLab}
+  {#if reviewMode}<DesignLab />{/if}
 {:else if reviewMode && route.kind === 'database' && DatabaseResearch}
   <DatabaseResearch />
 {:else if reviewMode && route.kind === 'record' && RecordPage}
@@ -109,7 +129,7 @@
   <main class="review-loading" aria-live="polite"><p role="status">Preparing the private-preview workspace…</p><small>The map module and its local data boundary are loading.</small></main>
 {:else}
 <div class="shell">
-  <PreviewMasthead publicReleaseLabel={publicReleaseLabel(verifiedReleaseLabel)} current={route.kind === 'about' ? 'about' : route.kind === 'faq' ? 'faq' : route.kind === 'contribute' || route.kind === 'bug-report' || route.kind === 'community' || route.kind === 'secure-inbox' || route.kind === 'secure-review' ? 'contribute' : route.kind === 'api' || route.kind === 'downloads' ? 'api' : route.kind === 'database' || route.kind === 'record' ? 'database' : 'map'} mapHref={returnMapHref} {databaseHref} />
+  <PreviewMasthead publicReleaseLabel={publicReleaseLabel(verifiedReleaseLabel)} current={route.kind === 'about' ? 'about' : route.kind === 'contribute' || route.kind === 'bug-report' || route.kind === 'community' || route.kind === 'secure-inbox' || route.kind === 'secure-review' ? 'contribute' : route.kind === 'api' || route.kind === 'downloads' ? 'api' : 'map'} mapHref={returnMapHref} {databaseHref} />
 
   <main id="main-content" class="shell-content" tabindex="-1">
     {#if loading}
@@ -127,9 +147,7 @@
         <a href="#/map">{tr('Return to the map', $language)}</a>
       </section>
     {:else if route.kind === 'about'}
-      <AboutPage />
-    {:else if route.kind === 'faq'}
-      <FaqPage returnMapHref={returnMapHref} section={route.section} />
+      <AboutPage {returnMapHref} section={route.section} />
     {:else if route.kind === 'api' || route.kind === 'downloads'}
       {#if ApiPage}<ApiPage selectedReleaseId={new URLSearchParams(route.returnMapHref?.split('?')[1] ?? '').get('release_id')} />{:else}<p class="state" role="status">{tr('Loading API reference…', $language)}</p>{/if}
     {:else if route.kind === 'contribute' || route.kind === 'bug-report' || (route.kind === 'community' && route.page === 'form')}
@@ -140,8 +158,6 @@
       {#if SecureReview}<SecureReview />{:else}<p class="state" role="status">{tr('Opening encrypted review…', $language)}</p>{/if}
     {:else if route.kind === 'map'}
       <p class="state" role="status">{tr('Preparing the map…', $language)}</p>
-    {:else if route.kind === 'database'}
-      <PublicDatabase {...(route.releaseId ? { releaseId: route.releaseId } : {})} returnMapHref={returnMapHref} onrelease={label => verifiedReleaseLabel = label} />
     {:else if route.kind === 'record'}
       <PublicRecord id={route.facilityId} profile={route.profile ?? 'official'} releaseId={route.releaseId} returnMapHref={returnMapHref} onrelease={label => verifiedReleaseLabel = label} />
     {:else if route.kind === 'community'}
@@ -157,6 +173,7 @@
 {/if}
 
 <style>
+  .retained-public-map[hidden] { display: none; }
   .review-loading{display:grid;place-content:center;min-height:100dvh;padding:2rem;background:#171a18;color:#f1efe8;font:1rem system-ui;text-align:center}
   .review-loading small{margin-top:.55rem;color:#b9c1b7;font-size:.76rem}
   .shell{max-width:none;padding:0}.shell-content{padding:0}.shell-content > :global(section:not(.contribute-page):not(.about-page):not(.community-page):not(.help-page):not(.api-page):not(.downloads-page):not(.faq-page):not(.public-database):not(.public-record)){padding:1.5rem}

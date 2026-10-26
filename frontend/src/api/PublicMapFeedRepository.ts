@@ -132,7 +132,18 @@ export function parsePublicMapFeed(payload: unknown, profile: LocalProfile, rele
 }
 
 const PUBLIC_CACHE_NAME = 'uec-public-map-projection-v2';
-const PUBLIC_CACHE_MAX_ENTRIES = 3;
+const PROJECTION_BYTES_HEADER = 'x-uec-projection-bytes';
+const PROJECTION_METRIC_HEADER = 'x-uec-projection-metric';
+const PROJECTION_METRIC_VERSION = '1';
+function cachedProjectionBytes(response: Response): number | undefined {
+  if (response.headers.get(PROJECTION_METRIC_HEADER) !== PROJECTION_METRIC_VERSION) return undefined;
+  const value = Number(response.headers.get(PROJECTION_BYTES_HEADER));
+  return Number.isSafeInteger(value) && value > 0 && value <= 256 * 1048576 ? value : undefined;
+}
+function markDecodedFeed(): void {
+  // Aggregate phase timing only; never attach source rows or request context.
+  try { globalThis.performance?.mark?.('uec-public-map-feed-decoded'); } catch { /* Timing is optional. */ }
+}
 const inFlight = new Map<string, Promise<PublicMapFeed>>();
 const cacheKey = (identity: PublicReleaseIdentity, profile: LocalProfile) => {
   const path = `/__uec_public_map_cache__/${encodeURIComponent(profile)}/${encodeURIComponent(identity.releaseId)}/${identity.manifestSha256}/${identity.suppressionGeneration}`;
@@ -151,7 +162,9 @@ export async function publicMapCacheEntryCount(): Promise<number> {
 
 async function trimPublicMapCache(cache: Cache, keep: Request): Promise<void> {
   const keys = await cache.keys();
-  for (const key of keys.slice(0, Math.max(0, keys.length - PUBLIC_CACHE_MAX_ENTRIES))) if (key.url !== keep.url) await cache.delete(key);
+  // Retain only the active projection, including when a restriction changes
+  // without a new release. Historical releases can be fetched again explicitly.
+  for (const key of keys) if (key.url !== keep.url) await cache.delete(key);
 }
 
 function abortIsolated<T>(shared: Promise<T>, signal?: AbortSignal): Promise<T> {
@@ -177,16 +190,22 @@ export function createPublicMapFeedRepository(fetcher: typeof fetch = globalThis
       if (existing) return abortIsolated(existing, signal);
       const work = (async (): Promise<PublicMapFeed> => {
       let projectionCache: Cache | undefined;
-      if (globalThis.caches) {
+      try { if (globalThis.caches) {
         projectionCache = await caches.open(PUBLIC_CACHE_NAME);
         const cached = await projectionCache.match(key);
         if (cached) {
           try {
             const parsed = parsePublicMapFeed(await cached.json(), profile, releaseId);
-            return { ...parsed, meta: { ...parsed.meta, cacheStatus: 'hit', decodedBytes: new TextEncoder().encode(JSON.stringify(parsed.collection)).byteLength } };
+            if (parsed.meta.manifestSha256 !== current.manifestSha256 || parsed.meta.suppressionGeneration !== current.suppressionGeneration) throw new PublicMapFeedError();
+            markDecodedFeed();
+            await trimPublicMapCache(projectionCache, key);
+            // Reuse the once-measured diagnostic. Older entries can load with
+            // this optional metric unavailable, without reserializing all points.
+            const decodedBytes = cachedProjectionBytes(cached);
+            return { ...parsed, meta: { ...parsed.meta, cacheStatus: 'hit', ...(decodedBytes === undefined ? {} : { decodedBytes }) } };
           } catch { await projectionCache.delete(key); }
         }
-      }
+      } } catch { projectionCache = undefined; }
       const params = new URLSearchParams({ profile, release_id: releaseId, format: 'compact' });
       let response: Response;
       try { response = await fetcher.call(globalThis, `/api/v2/map/feed?${params}`, { method: 'GET', cache: 'no-store', credentials: 'omit', headers: { Accept: 'application/json' } }); }
@@ -196,16 +215,22 @@ export function createPublicMapFeedRepository(fetcher: typeof fetch = globalThis
         const payload = await response.json();
         const parsed = parsePublicMapFeed(payload, profile, releaseId);
         if (parsed.meta.manifestSha256 !== current.manifestSha256 || parsed.meta.suppressionGeneration !== current.suppressionGeneration) throw new PublicMapFeedError('The public map feed changed while it was loading.');
+        markDecodedFeed();
+        const decodedBytes = new TextEncoder().encode(JSON.stringify(parsed.collection)).byteLength;
         if (projectionCache) {
-          await projectionCache.put(key, new Response(JSON.stringify(payload), { headers: { 'content-type': 'application/json' } }));
-          await trimPublicMapCache(projectionCache, key);
+          try {
+            await projectionCache.put(key, new Response(JSON.stringify(payload), { headers: { 'content-type': 'application/json',
+              [PROJECTION_BYTES_HEADER]: String(decodedBytes), [PROJECTION_METRIC_HEADER]: PROJECTION_METRIC_VERSION } }));
+            await trimPublicMapCache(projectionCache, key);
+          } catch { projectionCache = undefined; }
         }
-        return { ...parsed, meta: { ...parsed.meta, cacheStatus: projectionCache ? 'miss' : 'unavailable', decodedBytes: new TextEncoder().encode(JSON.stringify(parsed.collection)).byteLength } };
+        return { ...parsed, meta: { ...parsed.meta, cacheStatus: projectionCache ? 'miss' : 'unavailable', decodedBytes } };
       }
       catch (error) { if (error instanceof PublicMapFeedError) throw error; throw new PublicMapFeedError('The public map feed returned invalid JSON.'); }
       })();
       inFlight.set(flightKey, work);
-      void work.finally(() => { if (inFlight.get(flightKey) === work) inFlight.delete(flightKey); });
+      const settled = () => { if (inFlight.get(flightKey) === work) inFlight.delete(flightKey); };
+      void work.then(settled, settled);
       return abortIsolated(work, signal);
     },
   };

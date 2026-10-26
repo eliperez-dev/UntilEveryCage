@@ -30,19 +30,46 @@ API schemas own supported fields. They are not additional roadmaps.
 
 - Compact, serious, data-driven interface. No unsolicited redesign, oversized
   cards, decorative labels, glow, filler or large empty spaces.
-- One centered navigation group: `Map Database API | Contribute About FAQ`.
-  Brand/logo left, Tools right; all six destinations remain usable on mobile.
+- The shared header and map use the approved landing-inspired typography and
+  restrained surfaces: neutral near-black (`#141414`) in Dark and warm cream
+  (`#f2f0e8`) in Light. Keep category pins, clusters and map imagery independent
+  of interface theme. Preserve all existing controls and workflow behavior.
+- One centered navigation group: `Map Data | Contribute About`.
+  Brand/logo left, Tools right; all four destinations remain usable on mobile.
   No old hover-subpage navigation, disabled account placeholder or extra header strip.
 - Release selection/history and diagnostics belong in Tools, not a separate
   header Release button. Display dataset dates; retain immutable IDs internally.
   Application semver comes from the backend Rust crate, not a frontend constant.
-- Map is the default discovery surface; Database is the compact research table.
+- The default `/` and `#/` route is the separate outreach landing page. Preserve
+  the approved `HIDDEN IN / PLAIN SIGHT.` layout, short copy, documentary pig/cow
+  imagery, cream map-preview section and direct `Open the map` links to `#/map`.
+  Use the same shared four-link header, theme control and Tools as the other pages;
+  landing does not mark a navigation destination active.
+  Its still-image motion has pause/resume and a static reduced-motion fallback.
+  The map stays lazy until opened. Map search replaces the separate Database page;
+  old public Database links open map results. FAQ content lives within About;
+  old FAQ links retain their section and map context. API and downloads remain
+  available, including a download link from map search.
   Existing informational/download routes remain compatible aliases.
-- Keep Search map on the map. Map View controls belong in the header Tools
-  menu on desktop and mobile, not in a floating map box or a second toolbar.
+- Keep Search map on the map. Street/Satellite and 2D/3D remain in header Tools.
+  A compact map navigation toolbar groups compass/reset north, zoom, Your
+  location and Search this area, with expandable pan/rotate controls.
+  The collapsed Search map control sits flush against the map's top-left,
+  directly below the shared header.
   Preserve the compact controls, theme styles and 44px touch targets.
 - Resize applicable panels by dragging edges, not plus/minus width buttons.
   Do not change panel layout without the maintainer's specific approval.
+- The map stage fills the space below the header, including when navigation
+  wraps. On desktop Search opens a resizable left workspace at one-third width;
+  the map occupies the remaining two-thirds and really resizes, retaining selected-location
+  focus. Search, filters, results and facility detail share that workspace.
+  Back to results restores the list and its scroll position. Mobile uses a
+  bottom search sheet and fullscreen detail. Below Search, keep Filters with its
+  sliders icon and the result count on one compact row. Keep detail dense and
+  readable, with a prominent outlined `Open facility page` action directly
+  below the facility name.
+  Keep checkbox multi-selection, totals/pagination, evidence and relationship
+  controls. Public category filters reuse their existing semantic color swatches.
 
 ## Map
 
@@ -51,7 +78,9 @@ API schemas own supported fields. They are not additional roadmaps.
   Processing is grey; do not invent approval for an undocumented palette.
   Preserve current category meanings until the maintainer agrees a change.
 - Default cluster radius is 50 px and the camera-zoom cutoff is 9.0. Preserve
-  explicit debug overrides. Clusters group geographically, not into a
+  explicit debug overrides. Automatic clustering also stops below 2,800 matching
+  mapped facilities, preserving the V1 population threshold. Panning does not
+  toggle clustering or rebuild the index. Clusters group geographically, not into a
   visible square grid. Exact and approximate records participate in clustering;
   do not make areas disappear between zoom levels or clear valid markers while
   replacement data/index work settles.
@@ -62,9 +91,13 @@ API schemas own supported fields. They are not additional roadmaps.
   Use supported source extent where available. No permanent approximation legend.
 - Street/Satellite selector and adjacent 2D/3D toggle form one compact Map View
   group inside Tools. Any desktop gesture hint stays under these options inside
-  Tools. No floating Map View, separate hint banner or white MapLibre
-  compass/pitch control on the main map.
+  Tools. Keep the map navigation toolbar in the map column, above mobile sheets
+  and attribution; no separate gesture banner or default white MapLibre controls.
 - Native terrain is lazy, true-scale and has a usable flat fallback.
+  Initial 2D does not request elevation. The first 3D activation waits for
+  elevation before tilting; returning to 2D keeps healthy loaded terrain and
+  changes the viewing angle, preserving geographic focus. Terrain failures
+  clear elevation and leave a usable flat map.
   Keep provider attribution; changing style/camera must not rebuild facility data.
 - Clicking a real pin, PNG, cluster or search result must work on cold load.
   Pin selection, detail opening and camera focus must work with Search map
@@ -85,6 +118,19 @@ API schemas own supported fields. They are not additional roadmaps.
   usable loading/error states without a map-covering loading popup.
 - Debounce/cancel stale requests; preserve input and pagination semantics.
   OR within a filter dimension, AND between dimensions.
+- Public map pins follow the complete query/filter match set, not the loaded
+  results page. The release-pinned `/api/v2/map/matches` read-only route shares
+  list predicates and returns mapped facility IDs with manifest/restriction
+  identity. Pending or failed matching requests never show unfiltered pins;
+  failed requests offer Retry. Unmapped matches remain in the results.
+- Search supports removable filter chips, keyboard facet suggestions, country
+  phrases such as `slaughterhouses in Spain`, a fixed Search this area snapshot,
+  and city navigation with an explicit nearby-radius search. A city centre is
+  never presented as a facility location. Panning does not silently change an
+  area search. Free text and spatial scopes stay out of public URLs/history.
+  Saved searches are removed. Do not load or write old saved-search storage,
+  and do not create automatic search history. Filters wrap into multiple
+  columns when space allows, with full readable source labels.
 - Browse-record links open the full facility page directly. Do not restore
   the intermediate database preview panel.
 - API offers full-release CSV, explicitly bounded exports, paginated JSON and
@@ -94,7 +140,9 @@ API schemas own supported fields. They are not additional roadmaps.
 ## Facility details and connections
 
 - Full page order: facility name and chain-icon Copy facility link action;
-  Location facts; single-record map; activities and remaining facts.
+  category and classification overview; Location facts; single-record map;
+  remaining facts. The map panel uses the same overview before Location,
+  with Open facility page directly beneath the name.
   No separate copy-record-ID button or repeated Record Evidence heading.
 - Copy actions show a brief checkmark only after the clipboard write succeeds,
   with a localized live-region status. Failure shows an X and accessible status;
@@ -106,8 +154,13 @@ API schemas own supported fields. They are not additional roadmaps.
 - Single-record previews use the existing providers/pins: source/exact
   satellite zoom 15; approximate street zoom 9. Do not fetch the global point
   projection for these previews or invent an address from a locality.
-- Show the broad category once, then distinct human-readable activities.
-  Source classification is inline, not a disclosure. Format underscores and
+- Show the category pin and short text label in search rows and expanded detail.
+  Summarize classification with deterministic wording from existing source
+  fields and affirmative activities, using the same presenter on the panel
+  and full record. Preserve exact source classification and all supporting
+  activities in labeled detail. APHIS registration classes take precedence
+  over generic fallback taxonomy in summaries; do not turn registration into
+  an assertion about operations at the displayed location. Format underscores and
   technical activity labels; retain original values in data. Show all
   affirmative species/activities and supported slaughter/product estimates.
   Use `animals`, not `head`, in presentation.
@@ -237,12 +290,13 @@ and required public unreviewed-community context.
   Credit `Counter Adapted from ADAPTT.`, linking ADAPTT to
   `https://www.adaptt.org/`. Retain project/support/code links and distinct
   software/data licences; do not restore obsolete country/version claims.
-- FAQ explains the data path, contribution questions and support. Its current
+- About's questions section explains the data path, contributions and support. Its current
   data-path paragraph is: "Government datasets are collected, cleaned and
   standardized, with links back to their sources. Address lookups add
   coordinates, and matching connects related records. Dated releases supply
   the map, search and downloads through a Rust API."
-- No duplicate Common questions block on About or tutorial video in Help.
+- Keep one questions section on About, without a duplicate Common questions
+  block or tutorial video in Help.
 
 ## Boundaries and acceptance
 
@@ -250,6 +304,17 @@ Release/profile eligibility and current restrictions apply to UI, APIs, caches,
 history and exports. Never expose private routes/tokens/raw evidence in the
 public bundle. Keep community submissions separate from curated records.
 Device location is optional and is not persisted by default.
+Request it only after Your location is clicked. Keep its live camera in memory;
+links and browser history retain the prior public camera, including subsequent
+zoom/pan and navigation actions.
+
+Debug controls operate in memory with Reset defaults. Show current renderer,
+release identity, aggregate list/map matching state, meaningful timings and
+layout dimensions; hide inactive renderer controls and label unavailable
+metrics. Clustering supports Auto/On/Off. Layout width, result spacing/type and
+pin scale tune the actual current UI. Diagnostic copying uses an explicit
+allowlist of aggregate/version/timing/settings data, excluding raw queries,
+facility IDs/names, coordinates, request URLs, tokens and payloads.
 
 Maintain keyboard access, visible focus, reduced motion, screen-reader labels
 and usable narrow/zoomed layouts. Test the actual public built route and real
@@ -269,6 +334,107 @@ selection does not also appear in Tools. Dark is the default; explicit language
 and theme choices persist as nonsensitive browser preferences. Initialize the theme
 before rendering, tolerate unavailable storage, and keep maps, category pins
 and cluster colors independent of interface theme. Verify translated controls
-at narrow widths in both themes. Persistent cluster-index reuse is deferred;
-cached point data is not a persisted cluster index. Do not reopen map-engine
-selection or redesign approved visual behavior.
+at narrow widths in both themes. The persistent map-projection cache retains
+one release/profile/manifest/restriction identity, replacing older copies after
+successful validation. A separate IndexedDB slot retains the built public
+cluster hierarchy across browser reloads, up to 64 MiB by default. Its hash
+includes release/profile/manifest/restriction identity, complete matched point
+content, clustering options and pinned engine/codec versions. Restoring
+reattaches validated KD trees to a native empty shell without reclustering.
+Snapshots reference point properties in the validated current input and pack
+projected coordinates and KD/numeric data as binary buffers, avoiding a second
+copy of the full facility object graph. The complete input-content hash must
+match before these references can be restored. Incompatible inputs retain the
+JSON/lossless-gzip fallback within the same 64 MiB budget; decoding is bounded
+before parsing and native-tree validation. Compatible existing gzip snapshots
+remain reusable; the encoding upgrade does not force a rebuild. Debug diagnostics include the stored size
+and a bounded failure reason. Restoring still incurs storage,
+parsing and validation work; skipping the build does not guarantee lower total
+startup time on every dataset or device.
+Large validated public point collections cross the native worker boundary as
+a JSON-string envelope, avoiding recursive serialization of the full object
+graph. The original main-thread source data and native queries remain intact.
+This adapter is guarded against the pinned engine version and source-parameter
+method; unsupported values and private/device views use native transport.
+Storage failure, corrupt data or an incompatible snapshot falls back to a new
+build. The cold build displays “First time loading. This may take a while…”;
+cached reloads restore the existing hierarchy with one concise restoring label,
+without repeating numbered startup steps. Projection-cache status and byte
+metrics come from public feed metadata. Projection byte measurements are saved
+with newly cached feeds; older entries may show an unmeasured value rather than
+serializing the entire feed again just for a diagnostic. Cache Storage failures use validated
+network data rather than preventing the map from loading. Private preview and
+device-derived search views do not persist indexes, raw queries or camera data.
+Public in-app navigation keeps one hidden, inert map and its built worker index in memory.
+Returning rechecks the selected release's manifest and restriction identity
+before revealing it; changed identities replace the projection, and failed
+validation clears the retained data and offers Retry. Private preview maps
+are not retained. Changed matching membership or clustering options rebuild
+clusters so counts and membership match the search. Do not reopen
+map-engine selection or redesign approved visual behavior.
+
+Viewed raster tiles use a shared provider-URL-hashed Cache Storage LRU, capped
+at 512 entries/32 MiB by default. Reuse honors provider expiry and a seven-day
+maximum age cap. If CORS does not expose an absolute freshness deadline, as
+with the current Esri response headers, the browser's HTTP cache remains
+responsible for reuse; do not invent a renewed TTL or prefetch worldwide tiles.
+Private preview/device-camera views bypass this extra persistence, including
+late writes. Native decoded-tile retention defaults to 128 tiles per source.
+Detailed raster tiles use a 180 ms native fade on flat maps. Debug tunes this
+from 0–400 ms and resets to 180 ms. MapLibre disables raster fades with terrain;
+the control shows that limitation. Basemap candidates and local overview imagery
+remain opaque, and candidate coverage stays until the new base fade completes.
+
+A bundled Natural Earth v5.1.2 1:110m land outline renders beneath raster tiles.
+This small public-domain reference asset contains no facility or personal data;
+its source URL and original checksum are recorded in `baseMapStyle.ts`.
+It remains the final world-outline fallback. A separate self-hosted overview
+provides real worldwide roads, boundaries and place labels from Protomaps,
+plus NASA Blue Marble satellite imagery, at zooms 0–5. Local per-zoom bundles
+total about 16.12 MiB through zoom 5 or 6.41 MiB through zoom 4, excluding the
+small manifest files. Labels use local system fonts. These are overview baselines; the existing OSM
+and Esri providers continue to supply detailed/current map tiles above them.
+Sources, licenses, checksums and reproduction scripts are recorded in
+`frontend/public/world-baseline/NOTICE.txt` and the local manifests. Provider,
+OpenStreetMap, NASA and Natural Earth attribution remain visible.
+
+World bundles use a separate content-addressed cache with a 30-day lifetime.
+Background warming begins after the map is ready and idle: desktop defaults
+to zoom 5 within 24 MiB; mobile defaults to zoom 4 within 12 MiB. Data Saver
+skips automatic warming. Navigation, deactivation and settings changes cancel
+pending warming; private/device-camera views do not initiate it. Demand tile
+requests can read small local byte ranges before a whole bundle is ready.
+Street overview layers stop at zoom 6. Satellite imagery stays underneath
+detail at higher camera zooms while its source remains capped at zoom 5,
+providing a coarse image during detailed-tile gaps in both flat and terrain
+views. Opening a detailed map uses small demand byte ranges rather than
+downloading complete world bundles. Missing storage still permits normal
+map loading. Cache settings and diagnostics stay aggregate and coordinate-free.
+
+Debug Cache controls tune index/tile persistence, byte/entry budgets, tile TTL
+cap, native RAM retention and the world-outline opacity. Changes are in memory
+with Reset defaults and separate Clear built index/Clear viewed tiles actions.
+World overview controls separately tune preload, maximum zoom and byte budget,
+and clear/reset its cache. The preview-opacity slider affects all overview layers.
+The TTL control can shorten provider freshness, never extend it. Metrics
+distinguish source updates from actual cache builds/restores and report tile
+hits, misses, evictions and HTTP-cache delegation.
+
+Facility clusters and basemap raster LOD use camera zoom rather than bearing or
+distance to individual tiles. Rotation at a fixed center and zoom keeps the
+same cluster hierarchy and raster resolution; newly visible tiles may still
+load. Terrain retains adaptive LOD. Selection flights settle the camera at the
+target's terrain elevation once its DEM is ready, preserving zoom, bearing and
+pitch. Manual movement cancels this pending selection adjustment.
+
+Native cluster splits and merges use one short, geographically anchored canvas
+crossfade per continuous zoom gesture, with existing pin/cluster artwork and
+read-only native child queries. Marks stay at their own map locations; camera
+zoom supplies the separation. The overlay keeps following the camera until
+native marks repaint, avoiding repeated pullbacks and a frozen handoff.
+The default is 210 ms and at most 200 animated marks in total. Debug
+controls tune duration from 0–400 ms (0 disables it) and the mark cap from
+50–300. Pan and bearing-only rotation remain native. Reduced motion, dense
+views, child lookups slower than 100 ms, and camera/style/data changes skip or
+cancel the transition immediately. Animation never changes source data or
+rebuilds the cluster index; native marks retain selection behavior.

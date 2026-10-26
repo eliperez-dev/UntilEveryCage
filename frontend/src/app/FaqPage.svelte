@@ -1,6 +1,6 @@
 <script lang="ts">
   import { language, tr } from './language';
-  let { section, returnMapHref = '#/map' }: { section?: 'technology' | 'records' | 'contributions' | 'help' | undefined; returnMapHref?: string } = $props();
+  let { section, returnMapHref = '#/map', embedded = false }: { embedded?: boolean; section?: 'questions' | 'technology' | 'records' | 'contributions' | 'help' | undefined; returnMapHref?: string } = $props();
   const context = $derived(returnMapHref !== '#/map' ? `?map=${encodeURIComponent(returnMapHref)}` : '');
   const route = (path: string) => `#/${path}${context ? `${path.includes('?') ? '&' : '?'}map=${encodeURIComponent(returnMapHref)}` : ''}`;
   $effect(() => {
@@ -8,9 +8,9 @@
     if (id) requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ block: 'start' }));
   });
 </script>
-<svelte:head><title>FAQ · Until Every Cage</title><meta name="description" content="How the data reaches the map, contributions, and help for Until Every Cage." /></svelte:head>
-<article class="faq-page" aria-labelledby="faq-title">
-  <h1 id="faq-title">{tr('Frequently asked questions', $language)}</h1>
+<svelte:head>{#if !embedded}<title>FAQ · Until Every Cage</title><meta name="description" content="How the data reaches the map, contributions, and help for Until Every Cage." />{/if}</svelte:head>
+<section id="questions" class="faq-page" class:embedded aria-labelledby="faq-title">
+  {#if embedded}<h2 id="faq-title" class="faq-heading">{tr('Frequently asked questions', $language)}</h2>{:else}<h1 id="faq-title">{tr('Frequently asked questions', $language)}</h1>{/if}
   <section id="technology" aria-labelledby="technology-title">
     <span id="records" aria-hidden="true"></span>
     <h2 id="technology-title">{tr('How the data reaches the map', $language)}</h2>
@@ -27,7 +27,8 @@
     <p>{tr('For a website problem,', $language)} <a href={route('contribute/bug')}>{tr('report a bug', $language)}</a> {tr('or', $language)} <a href="mailto:untileverycageproject@protonmail.com">{tr('contact the project', $language)}</a>.</p>
     <p>{tr('Code contributions and issues are on', $language)} <a href="https://github.com/eliperez-dev/UntilEveryCage" target="_blank" rel="noreferrer">GitHub</a>. {tr('You can also join', $language)} <a href="https://discord.gg/wbdTHzAZ4b" target="_blank" rel="noreferrer">{tr('project Discord', $language)}</a> {tr('or', $language)} <a href="https://ko-fi.com/untileverycageisempty" target="_blank" rel="noreferrer">{tr('support the project', $language)}</a>.</p>
   </section>
-</article>
+</section>
 <style>
+  .faq-page.embedded{width:100%;margin:2rem 0 0;padding:2rem 0 0;border-top:1px solid var(--ui-line)}.faq-heading{margin:0 0 1.2rem;font:500 1.7rem/1.2 Georgia,serif;letter-spacing:-.02em}
   .faq-page{width:min(100% - 3rem,48rem);margin:auto;padding:1.5rem 0 2.5rem;color:var(--ink);font:.9rem/1.55 system-ui,sans-serif}section{scroll-margin-top:1rem;margin:0 0 1.6rem}h1{margin:0 0 1.2rem;font:500 2rem/1.2 Georgia,serif;letter-spacing:-.02em}h2{margin:0 0 .55rem;font:600 1.12rem/1.35 system-ui,sans-serif}p{margin:0 0 .7rem;color:var(--ink-muted)}a{color:var(--link);text-underline-offset:.2em;overflow-wrap:anywhere}@media(max-width:40rem){.faq-page{width:calc(100% - 2rem);padding-top:1.2rem}h1{font-size:1.7rem}}
 </style>

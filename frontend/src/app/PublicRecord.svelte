@@ -7,8 +7,9 @@
   import { precisionPresentation } from '../features/locations/precisionPresentation';
   import { publicReleaseLabel } from '../features/locations/releasePresentation';
   import RecordConnections from './RecordConnections.svelte';
-  import { categoryPresentation } from '../features/locations/categoryPresentation';
-  import { sourceClassificationLabels } from '../features/locations/sourceClassification';
+  import CategoryBadge from '../features/locations/CategoryBadge.svelte';
+  import ClassificationSummary from '../features/locations/ClassificationSummary.svelte';
+  import { affirmativeSourceEntries } from '../features/locations/classificationSummary';
   import LocationPreview from './LocationPreview.svelte';
   import { locationPreviewZoom } from '../features/locations/locationPreview';
   let copyFeedback = $state<'copied' | 'failed' | ''>('');
@@ -31,19 +32,6 @@
   const precision = $derived(precisionPresentation(record?.evidence?.displayPrecision));
   const humanLabel = (value: string) => value.replaceAll(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/\b(nrte|rte)\b/gi, acronym => acronym.toUpperCase()).replace(/^./, letter => letter.toLocaleUpperCase());
   const translatedGenerated = (value: string) => tr(humanLabel(value), $language);
-  const category = (location: Location) => location.taxonomy?.primaryCategories.map(key => tr(categoryPresentation(key).label, $language)).join(', ') || (location.category === 'unclassified' ? tr('Category not provided', $language) : translatedGenerated(location.category));
-  const flagActivities = (location: Location, localizeGenerated = true) => affirmativeEntries(location.sourceFacts?.processingActivities).map(([key, value]) => `${localizeGenerated ? translatedGenerated(key) : humanLabel(key)}${typeof value === 'string' && !/^(?:yes|true|1)$/i.test(value.trim()) ? `: ${localizeGenerated ? translatedGenerated(value) : humanLabel(value)}` : ''}`);
-  const activityLabels = (location: Location) => [...new Set([
-    ...(location.taxonomy?.leafActivities.map(activity => translatedGenerated(activity.label)) ?? []), ...flagActivities(location),
-  ])];
-  const isSummaryActivity = (location: Location, label: string) => location.taxonomy?.primaryCategories.some(key => tr(categoryPresentation(key).label, $language).toLocaleLowerCase() === label.toLocaleLowerCase()) ||
-    (location.taxonomy?.primaryCategories.includes('processing_and_preparation') && label.toLocaleLowerCase() === tr('Processing', $language).toLocaleLowerCase() && activityLabels(location).some(other => other.toLocaleLowerCase() !== tr('Processing', $language).toLocaleLowerCase()));
-  const detailActivity = (location: Location) => activityLabels(location).filter(label => !isSummaryActivity(location, label)).join(', ');
-  const sourceClassifications = (location: Location) => sourceClassificationLabels(
-    [location.sourceFacts?.nativeActivityLabel, location.sourceFacts?.nativeActivityCode],
-    location.taxonomy?.assignments ?? [],
-    [...(location.taxonomy?.leafActivities.map(activity => humanLabel(activity.label)) ?? []), ...flagActivities(location, false)],
-  );
   const geocodingConfidence = (location: Location) => {
     const raw = location.evidence?.geometryProvenance?.confidence;
     const score = raw?.trim() ? Number(raw) : NaN;
@@ -56,7 +44,7 @@
   };
   const sourceFlag = (value: string | boolean) => value === true ? tr('Yes', $language) : typeof value === 'string' ? translatedGenerated(value) : null;
   const sourceFlagLabel = (key: string) => translatedGenerated(key);
-  const affirmativeEntries = (flags: Readonly<Record<string, string | boolean>> | undefined) => flags ? Object.entries(flags).filter(([, value]) => value !== false).sort(([left], [right]) => left.localeCompare(right)) : [];
+  const affirmativeEntries = affirmativeSourceEntries;
   const formattedRangeLocalized = (range: DerivedSourceVolumeRange) => {
     const number = (value: number) => new Intl.NumberFormat('en-US').format(value);
     if (range.bounds === 'exclusive_upper' && range.upper !== null) return `${tr('Less than', $language)} ${number(range.upper)}`;
@@ -90,6 +78,11 @@
 <section class="public-record" aria-label="Public record">
   {#if profile === 'community'}<p class="warning"><strong>Unreviewed community claim: not verified by Until Every Cage.</strong> Privacy screening is not factual review or project approval. Community counts are separate.</p>{/if}
   {#if busy}<p role="status">{tr('Loading record…', $language)}</p>{:else if error}<h1>Record unavailable</h1><p role="alert">{error}</p><button type="button" onclick={() => retry += 1}>Retry</button><p><a href="#/database">Browse records</a></p>{:else if record}<h1>{record.name} <button class="share" type="button" aria-label={tr('Copy facility link', $language)} title={tr('Copy facility link', $language)} onclick={copyRecordLink}><svg aria-hidden="true" viewBox="0 0 24 24">{#if copyFeedback === 'copied'}<path d="m5 12 4 4L19 6"/>{:else if copyFeedback === 'failed'}<path d="M6 6l12 12M18 6 6 18"/>{:else}<path d="M10 13a5 5 0 0 0 7.1 0l3-3A5 5 0 0 0 13 2.9l-1.7 1.7m2.7 6.4a5 5 0 0 0-7.1 0l-3 3A5 5 0 0 0 11 21.1l1.7-1.7"/>{/if}</svg></button><span class="sr-only" role="status" aria-live="polite">{copyFeedback === 'copied' ? tr('Link copied', $language) : copyFeedback === 'failed' ? tr('Could not copy facility link', $language) : ''}</span></h1>
+    <section class="classification-overview" aria-labelledby="activities-heading">
+      <h2 id="activities-heading" class="sr-only">{tr('Activities and classification', $language)}</h2>
+      <div class="record-category"><CategoryBadge {record} /></div>
+      <ClassificationSummary {record} />
+    </section>
     <section aria-labelledby="location-heading">
       <h2 id="location-heading">{tr('Location', $language)}</h2>
       <dl>
@@ -103,12 +96,6 @@
       {#if openMapHref}<p class="map-action"><a href={openMapHref}>{tr('Open in Map', $language)}</a></p>{/if}
     </section>
     {#if record.lat !== null && record.lon !== null}<LocationPreview latitude={record.lat} longitude={record.lon} precision={record.evidence?.displayPrecision ?? 'unmapped'} category={record.taxonomy?.primaryCategories[0] ?? record.category} />{/if}
-    <section aria-labelledby="activities-heading">
-      <h2 id="activities-heading">{tr('Activities and classification', $language)}</h2>
-      <p class="activity">{category(record)}</p>
-      {#if detailActivity(record)}<dl><div><dt>{tr('Activities', $language)}</dt><dd>{detailActivity(record)}</dd></div></dl>{/if}
-      {#if sourceClassifications(record).length}<p class="classification">{sourceClassifications(record).join(' · ')}</p>{/if}
-    </section>
     {#if record.sourceFacts}
       <section class="source-facts" aria-labelledby="source-facts-heading">
         <h2 id="source-facts-heading">{tr('Source facts', $language)}</h2>
@@ -137,7 +124,7 @@
   h1 { margin: 0 0 .75rem; font: 500 2rem/1.2 Georgia, serif; overflow-wrap: anywhere; }
   h2 { margin: 1.5rem 0 0; font: 600 1.05rem/1.3 Georgia, serif; }
   p { color: #c6d0c5; }
-  .classification { margin: .35rem 0; }
+  .record-category { margin: .25rem 0; }
   dl { margin: 1.25rem 0; }
   .source-facts dl { margin: .4rem 0; }
   dl div { display: grid; grid-template-columns: 9rem minmax(0, 1fr); gap: 1rem; padding: .55rem 0; border-bottom: 1px solid #3c4640; }

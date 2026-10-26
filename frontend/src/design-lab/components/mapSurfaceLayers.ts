@@ -103,6 +103,13 @@ function geodesicReferenceArea(
   };
 }
 
+/** An explicitly chosen city radius, separate from location uncertainty. */
+export function createSearchRadiusArea(scope: Readonly<{ latitude: number; longitude: number; radiusKm: number }> | null) {
+  if (!scope) return emptyReferenceAreas();
+  const area = geodesicReferenceArea('search-radius', 'scope', scope.longitude, scope.latitude, scope.radiusKm);
+  return area ? { type: 'FeatureCollection' as const, features: [area] } : emptyReferenceAreas();
+}
+
 /** Return at most one fixed-radius area, only for the selected public approximate point. */
 export function createSelectedApproximateReferenceArea(
   features: readonly any[],

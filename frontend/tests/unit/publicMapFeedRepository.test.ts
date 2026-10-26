@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { clearPublicMapCache, createPublicMapFeedRepository, parsePublicMapFeed, publicMapCacheEntryCount } from '../../src/api/PublicMapFeedRepository';
 
 const id = '11111111-1111-4111-8111-111111111111';
@@ -63,7 +63,82 @@ describe('public map compact feed', () => {
     await expect(createPublicMapFeedRepository(fetcher).load('official','v0',undefined,identity)).resolves.toMatchObject({meta:{cacheStatus:'hit'}});
     await createPublicMapFeedRepository(fetcher).load('official','v0',undefined,{...identity,suppressionGeneration:8});
     expect(calls).toBe(2);
+    expect(await publicMapCacheEntryCount()).toBe(1);
+    expect([...entries.keys()][0]).toMatch(/\/8$/);
     await clearPublicMapCache(); expect(await publicMapCacheEntryCount()).toBe(0);
     Object.defineProperty(globalThis, 'caches', { configurable: true, value: original });
+  });
+  it.each(['open', 'write'])('loads validated network data when projection storage fails on %s', async failure => {
+    const original = (globalThis as { caches?: unknown }).caches;
+    const fail = async () => { throw new Error('Storage unavailable'); };
+    Object.defineProperty(globalThis, 'caches', { configurable: true, value: { open: failure === 'open' ? fail : async () => ({ match: async () => undefined, put: fail }) } });
+    const payload = { api_version: 'v2', data: { format: 'compact-v1', dictionaries: {
+      source_ids: ['source'], category_keys: ['slaughter'], precisions: ['exact'],
+    }, features: [[id, 1, 2, 0, 0, [0], 0]] }, meta };
+    const identity = { releaseId: 'v0', manifestSha256: 'a'.repeat(64), suppressionGeneration: 7 };
+    try {
+      const repo = createPublicMapFeedRepository((async () => new Response(JSON.stringify(payload))) as typeof fetch);
+      await expect(repo.load('official', 'v0', undefined, identity)).resolves.toMatchObject({ meta: { cacheStatus: 'unavailable', featureCount: 1 } });
+    } finally { Object.defineProperty(globalThis, 'caches', { configurable: true, value: original }); }
+  });
+  it.each([true, false])('restores cached feeds without serializing all points again (measured metadata: %s)', async hasMetadata => {
+    const original = (globalThis as { caches?: unknown }).caches;
+    const entries = new Map<string, Response>();
+    const cache = { match: async (key: Request) => entries.get(key.url)?.clone(),
+      put: async (key: Request, value: Response) => { entries.set(key.url, value.clone()); },
+      keys: async () => [...entries.keys()].map(url => new Request(url)), delete: async (key: Request) => entries.delete(key.url) };
+    Object.defineProperty(globalThis, 'caches', { configurable: true, value: { open: async () => cache } });
+    const payload = { api_version: 'v2', data: { format: 'compact-v1', dictionaries: {
+      source_ids: ['source'], category_keys: ['slaughter'], precisions: ['exact'],
+    }, features: [[id, 1, 2, 0, 0, [0], 0]] }, meta };
+    const identity = { releaseId: 'v0', manifestSha256: 'a'.repeat(64), suppressionGeneration: 7 };
+    const fetcher = vi.fn(async () => new Response(JSON.stringify(payload)));
+    let stringify: ReturnType<typeof vi.spyOn> | undefined;
+    try {
+      const repo = createPublicMapFeedRepository(fetcher as typeof fetch);
+      const cold = await repo.load('official', 'v0', undefined, identity);
+      expect(cold.meta.decodedBytes).toBeGreaterThan(0);
+      if (!hasMetadata) {
+        for (const [key, response] of entries) entries.set(key, new Response(await response.text(), { headers: { 'content-type': 'application/json' } }));
+      }
+      stringify = vi.spyOn(JSON, 'stringify');
+      const warm = await repo.load('official', 'v0', undefined, identity);
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      expect(warm.meta.cacheStatus).toBe('hit');
+      expect(warm.collection).toEqual(cold.collection);
+      expect(warm.meta.decodedBytes).toBe(hasMetadata ? cold.meta.decodedBytes : undefined);
+      expect(stringify.mock.calls.some(([value]) => value?.type === 'FeatureCollection')).toBe(false);
+    } finally {
+      stringify?.mockRestore();
+      Object.defineProperty(globalThis, 'caches', { configurable: true, value: original });
+    }
+  });
+  it('replaces the previous release and rejects cached payloads with a mismatched identity', async () => {
+    const original = (globalThis as { caches?: unknown }).caches;
+    const entries = new Map<string, Response>();
+    const cache = { match: async (key: Request) => entries.get(key.url)?.clone(), put: async (key: Request, value: Response) => { entries.set(key.url, value.clone()); }, keys: async () => [...entries.keys()].map(url => new Request(url)), delete: async (key: Request) => entries.delete(key.url) };
+    Object.defineProperty(globalThis, 'caches', { configurable: true, value: { open: async () => cache } });
+    const payload = (releaseId: string, generation = 7) => ({ api_version: 'v2', data: { format: 'compact-v1', dictionaries: { source_ids: ['source'], category_keys: ['slaughter'], precisions: ['exact'] }, features: [[id, 1, 2, 0, 0, [0], 0]] }, meta: { ...meta, release_id: releaseId, suppression_generation: generation } });
+    let calls = 0;
+    const fetcher = (async (input: string | URL | Request) => {
+      calls++;
+      const releaseId = new URL(String(input), 'https://example.test').searchParams.get('release_id')!;
+      return new Response(JSON.stringify(payload(releaseId)));
+    }) as typeof fetch;
+    try {
+      const repo = createPublicMapFeedRepository(fetcher);
+      const identity = { releaseId: 'v0', manifestSha256: 'a'.repeat(64), suppressionGeneration: 7 };
+      await repo.load('official', 'v0', undefined, identity);
+      await repo.load('official', 'v1', undefined, { ...identity, releaseId: 'v1' });
+      expect(entries.size).toBe(1);
+      const key = [...entries.keys()][0]!;
+      expect(key).toContain('/v1/');
+      entries.set(key, new Response(JSON.stringify(payload('v1', 6))));
+      await expect(repo.load('official', 'v1', undefined, { ...identity, releaseId: 'v1' })).resolves.toMatchObject({ meta: { suppressionGeneration: 7, cacheStatus: 'miss' } });
+      expect(calls).toBe(3);
+      expect(entries.size).toBe(1);
+    } finally {
+      Object.defineProperty(globalThis, 'caches', { configurable: true, value: original });
+    }
   });
 });

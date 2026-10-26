@@ -91,6 +91,16 @@ describe('real-preview native clustering layers', () => {
     expect(changes.find(change => change[1] === 'circle-stroke-opacity')?.[2]).toEqual(['case', ['==', ['get', 'key'], 'synthetic-key'], 0.96, 0]);
   });
 
+  it('scales visible facility symbols and matching shadows without rebuilding the source', () => {
+    const changes: Array<[string, string, unknown]> = [];
+    const map = { getLayer: () => ({}), setPaintProperty() {}, setLayoutProperty: (id: string, property: string, value: unknown) => changes.push([id, property, value]) };
+    applyRealPreviewVisualSettings(map as any, { referenceRadiusKm: 0.25, referenceOpacity: 0.22, coordinateRadius: 7, pinScale: 1.4, showReferenceLabels: false });
+    expect(changes).toContainEqual(['v1-source-pins', 'icon-size', 0.7]);
+    expect(changes).toContainEqual(['v1-source-shadows', 'icon-size', 1.4]);
+    expect(changes).toContainEqual(['approx-reference-pins', 'icon-size', 0.7]);
+    expect(changes).toContainEqual(['approx-reference-shadows', 'icon-size', 1.4]);
+  });
+
   it('keeps approximate singleton markers visible in either exact-pin presentation mode', async () => {
     expect(REAL_PREVIEW_LAYER_IDS).toContain('approx-reference-pins');
     const changes: Array<[string, string, unknown]> = [];

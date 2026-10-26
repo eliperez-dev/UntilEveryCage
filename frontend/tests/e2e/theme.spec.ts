@@ -155,7 +155,7 @@ test('masthead theme toggle is square, directly before Tools, and outside the To
 const viewports = [{ name: 'desktop', width: 1280, height: 900 }, { name: 'mobile', width: 390, height: 844 }] as const;
 const publicViews = [
   { route: `./#/map?release_id=${release}`, surface: '.map-view-tools', label: 'map controls' },
-  { route: './#/database', surface: '.public-database', label: 'database' },
+  { route: './#/map?list=open', surface: '.results', label: 'map search' },
   { route: `./#/records/${id}?release_id=${release}`, surface: '.public-record', label: 'full facility detail' },
   { route: './#/contribute/bug', surface: '.intake', label: 'contribute form' },
   { route: './#/about', surface: '.about-page', label: 'About' },

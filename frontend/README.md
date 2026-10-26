@@ -6,6 +6,7 @@ The production client is Svelte 5/TypeScript with MapLibre, served by Rust/Axum.
 
 ## Routes and data modes
 
+- `/` and `#/`: outreach landing; Open the map leads to the separate map route.
 - `#/map`: map and selected facility detail.
 - `#/database`: search and paginated records; links open full pages.
 - `#/records/:id`: full facility page; old location routes remain aliases.
@@ -18,6 +19,11 @@ Public-release mode uses eligible published projections. Private real-preview
 mode is a separately configured loopback workflow; tokens stay server-side in
 the Vite proxy. A fixture/local-artifact run is not public or fresh-source E2E.
 Do not silently substitute synthetic records when real-data acceptance is required.
+
+Set `UEC_COMMUNITY_API_ORIGIN` in the Vite server environment to route
+`/api/community` and `/api/private/community` to a separate contribution service while `VITE_API_ORIGIN`
+serves the remaining API. The override applies to dev and preview, stays
+server-side, and leaves existing routing unchanged when unset.
 
 The canonical OpenAPI/schema files are served under `reference/` and bundled
 with the self-hosted Swagger notices. Do not maintain copied specs in `public/`.

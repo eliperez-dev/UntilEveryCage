@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
+  import { language, tr } from '../app/language';
   import { writable } from 'svelte/store';
   import type { LabAction, LabRecord, LabState, MapDiagnostics } from './contract';
   import { decodeLabHash, encodeLabHash, reduceLabState } from './state';
@@ -7,7 +8,8 @@
   import { createRealPreviewRepository, mapRealPreviewCandidate, RealPreviewError, type RealPreviewCounts, type RealPreviewFacet } from '../api/RealPreviewRepository';
   import { LocalLocationRepository } from '../api/LocalLocationRepository';
   import { FacetsRepository } from '../api/FacetsRepository';
-  import { isTaxonomyPrimaryKey } from '../domain/taxonomy';
+  import { PublicMapMatchesRepository } from '../api/PublicMapMatchesRepository';
+  import { publicSearchFilters } from '../features/search/powerSearch';
   import { PublicReleaseRepository, type PublicReleaseIdentity } from '../api/PublicReleaseRepository';
   import { TestReleaseRepository, type CandidateFacets } from '../api/TestReleaseRepository';
   import { TestReleaseDetailRepository } from '../api/TestReleaseDetailRepository';
@@ -17,9 +19,17 @@
   import type { PublicMapFeed } from '../api/PublicMapFeedRepository';
   import { selectDesignLabDataMode, shouldScheduleListLoad } from './dataMode';
   import Field from './variants/field/Field.svelte';
+  import PreviewMasthead from '../app/PreviewMasthead.svelte';
+  import { createMapResumeGuard, releaseIdentityKey } from './mapResume';
+
+  let { active = true, activationId = 0 }: { active?: boolean; activationId?: number } = $props();
+  let mounted = $state(false);
+  let verifiedActivation = $state(-1);
+  let resumeStatus = $state<'checking' | 'ready' | 'error'>('checking');
+  const resumeGuard = createMapResumeGuard();
 
   let labState = $state<LabState>(decodeLabHash(typeof location === 'undefined' ? '' : location.hash));
-  let pendingSelectionDismissalCamera: Pick<LabState, 'viewport' | 'basemap'> | null = null;
+  let pendingSelectionDismissalCamera: Pick<LabState, 'viewport' | 'navigationViewport' | 'basemap' | 'listOpen' | 'filters'> | null = null;
   const serverMode = typeof document === 'undefined' ? null : document.querySelector<HTMLMetaElement>('meta[name="uec-local-data-mode"]')?.content ?? null;
   // A configured candidate server is itself the explicit local preview
   // boundary. Requiring an extra hash flag here accidentally sent the map to
@@ -27,12 +37,21 @@
   // candidate workspace.
   const privatePreview = (typeof location !== 'undefined' && new URLSearchParams(location.hash.split('?')[1] ?? '').has('f1a')) || serverMode === 'candidate-preview';
   const mode = selectDesignLabDataMode(import.meta.env.DEV, serverMode, privatePreview);
+  const dataActive = $derived(active && (mode !== 'public-release' || (resumeStatus === 'ready' && verifiedActivation === activationId)));
   // Fixture projections run only in the synthetic mode.
   let syntheticRecords = $state<readonly LabRecord[]>([]);
   let labSentinel = $state<string | undefined>();
   const model = $derived(createLabViewModel(mode === 'synthetic' ? syntheticRecords : [], labState));
   const repository = createRealPreviewRepository();
   const publicLocationRepository = new LocalLocationRepository();
+  const publicMapMatchesRepository = new PublicMapMatchesRepository();
+  let mapMatchingIds = $state<readonly string[] | null>(null);
+  let mapMatchesStatus = $state<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  let mapMatchesError = $state('');
+  let mapMatchesAttempt = $state(0);
+  let matchesAbort: AbortController | undefined;
+  let matchesTimer: ReturnType<typeof setTimeout> | undefined;
+  let observedMatchKey: string | undefined;
   const publicFacetsRepository = new FacetsRepository();
   const publicReleaseRepository = new PublicReleaseRepository();
   const releaseFromHash = () => {
@@ -54,6 +73,7 @@
     ...($activePublicReleaseId ? [{ id: $activePublicReleaseId, label: publicReleaseLabel($activePublicReleaseId)! }] : []),
     ...($v0ArchiveVerified && $activePublicReleaseId !== V0_ARCHIVE_RELEASE_ID ? [{ id: V0_ARCHIVE_RELEASE_ID, label: publicReleaseLabel(V0_ARCHIVE_RELEASE_ID)! }] : []),
   ]);
+  const resumeMapHref = $derived(`${encodeLabHash(labState, false, true)}${$pinnedPublicReleaseId ? `&release_id=${encodeURIComponent($pinnedPublicReleaseId)}` : ''}`);
   function selectPublicRelease(releaseId: string) {
     const hash = new URL(location.href).hash;
     const [path, rawQuery = ''] = hash.split('?');
@@ -140,18 +160,18 @@
   let aggregateLoading = $state(false);
   let aggregateError = $state('');
   let mapDiagnostics = $state<MapDiagnostics>({ zoom: 0, currentTiles: 0, readyTiles: 0, cacheEntries: 0, cacheCapacity: 0, cacheHits: 0, cacheMisses: 0, inFlight: 0, lastFetchMs: null, renderedRecords: 0, sourceId: null, truncated: false, sourceMaterializeMs: null, clusterReadyMs: null, zoomSettleMs: null });
+  const mapReadyToShow = $derived(mode !== 'public-release' || dataActive);
   // This is intentionally memory-only. Private preview rows and credentials never reach
   // browser persistence; the repository continues to issue no-store network requests.
 
   function dispatch(action: LabAction) {
     // The map can emit a final viewport event while a link is navigating away.
-    // Never let that event replace the destination record/database route.
-    // The empty hash is the app's canonical default map route. Direct website
-    // loads therefore need the same map-state updates as an explicit #/map URL.
-    if (location.hash && !location.hash.startsWith('#/map')) return;
+    // Never let that event replace the landing or another destination route.
+    if (location.hash.split('?')[0] !== '#/map') return;
     const wasSelected = labState.selectedId !== null;
-    const dismissalCamera = action.type === 'select' && !action.value && history.state?.uecMapSelection
-      ? { viewport: labState.viewport, basemap: labState.basemap }
+    const dismissSelection = wasSelected && ((action.type === 'select' && !action.value) || action.type === 'results' || action.type === 'close-workspace');
+    const dismissalCamera = dismissSelection && history.state?.uecMapSelection
+      ? { viewport: labState.viewport, ...(labState.navigationViewport ? { navigationViewport: labState.navigationViewport } : {}), basemap: labState.basemap, listOpen: action.type === 'results' ? true : action.type === 'close-workspace' ? false : labState.listOpen, filters: labState.filters }
       : null;
     labState = reduceLabState(labState, action);
     const nextHash = `${encodeLabHash(labState, mode === 'real-preview', mode === 'public-release')}${$pinnedPublicReleaseId ? `&release_id=${encodeURIComponent($pinnedPublicReleaseId)}` : ''}`;
@@ -159,13 +179,13 @@
       // Selection is a navigable map state: Back dismisses the dossier. Other
       // frequent map updates (especially viewport movement) stay replace-only.
       history.pushState({ ...history.state, uecMapSelection: true }, '', nextHash);
-    } else if (action.type === 'select' && !action.value && history.state?.uecMapSelection) {
+    } else if (dismissSelection && history.state?.uecMapSelection) {
       // Return to the preceding unselected map entry, carrying the camera and
       // style from the selected entry so the map does not jump back on close.
       pendingSelectionDismissalCamera = dismissalCamera;
       history.back();
     } else {
-      history.replaceState(history.state, '', nextHash);
+      history.replaceState(wasSelected && !labState.selectedId ? { ...history.state, uecMapSelection: false } : history.state, '', nextHash);
     }
   }
 
@@ -174,6 +194,7 @@
   }
 
   async function loadPage(query: string, reset: boolean) {
+    if (!dataActive) return;
     if (mode === 'public-release' && !$publicReleaseId) return;
     listAbort?.abort();
     const controller = new AbortController();
@@ -186,10 +207,9 @@
     try {
       if (mode === 'public-release') {
         if (!$publicReleaseId) return;
-        const categoryKeys = labState.filters.categories.filter(isTaxonomyPrimaryKey);
-        const sourceIds = [...new Set([...(labState.sourceId ? [labState.sourceId] : []), ...labState.filters.sources])];
-        const page = await publicLocationRepository.list('official', { ...(query.trim() ? { q: query.trim() } : {}), category_keys: categoryKeys, country_code: labState.filters.countries.join(',') || undefined, source_id: sourceIds.join(',') || undefined, display_precision: labState.filters.precisions.join(',') || undefined, cursor: reset ? undefined : nextCursor ?? undefined, limit: 100 }, controller.signal, $publicReleaseId);
-        if (controller.signal.aborted) return;
+        const requestedIdentity = $publicReleaseIdentity;
+        const page = await publicLocationRepository.list('official', { ...publicSearchFilters({ ...labState, query }), cursor: reset ? undefined : nextCursor ?? undefined, limit: 100 }, controller.signal, $publicReleaseId);
+        if (controller.signal.aborted || requestedIdentity !== $publicReleaseIdentity) return;
         const mapped = page.locations.map(mapPublicLocation);
         apiRecords = reset ? mapped : [...new Map([...apiRecords, ...mapped].map(record => [record.id, record])).values()];
         nextCursor = page.nextCursor;
@@ -265,7 +285,8 @@
   let observedListKey: string | undefined;
   let searchTimer: ReturnType<typeof setTimeout> | undefined;
   $effect(() => {
-    const listKey = `${labState.query}\u0000${sourceId ?? ''}\u0000${labState.filters.categories.join(',')}\u0000${labState.filters.precisions.join(',')}\u0000${labState.filters.countries.join(',')}\u0000${labState.filters.sources.join(',')}\u0000${labState.filters.activities.join(',')}\u0000${mode === 'public-release' ? $publicReleaseIdentity ?? '' : ''}`;
+    if (!dataActive) return;
+    const listKey = `${labState.query}\u0000${sourceId ?? ''}\u0000${labState.filters.categories.join(',')}\u0000${labState.filters.precisions.join(',')}\u0000${labState.filters.countries.join(',')}\u0000${labState.filters.sources.join(',')}\u0000${labState.filters.activities.join(',')}\u0000${JSON.stringify(labState.searchScope)}\u0000${mode === 'public-release' ? $publicReleaseIdentity ?? '' : ''}`;
     if (shouldScheduleListLoad(mode, $publicReleaseId, observedListKey, listKey)) {
       observedListKey = listKey;
       if (searchTimer) clearTimeout(searchTimer);
@@ -280,9 +301,58 @@
   });
 
 
+  // The compact feed has no searchable names. Query/scope matching comes from
+  // one authoritative all-ID response, never from the currently loaded list page.
+  $effect(() => {
+    if (!dataActive) return;
+    const required = mode === 'public-release' && (!!labState.query.trim() || labState.searchScope !== null);
+    const identity = $publicReleaseManifestIdentity;
+    if (!required) {
+      if (matchesTimer) clearTimeout(matchesTimer);
+      matchesAbort?.abort(); observedMatchKey = undefined;
+      mapMatchingIds = null; mapMatchesStatus = 'idle'; mapMatchesError = '';
+      return;
+    }
+    if (!identity) {
+      if (matchesTimer) clearTimeout(matchesTimer);
+      matchesAbort?.abort(); observedMatchKey = undefined;
+      mapMatchingIds = []; mapMatchesStatus = 'loading'; mapMatchesError = '';
+      return;
+    }
+    let filters: import('../api/LocalLocationRepository').LocationFilters;
+    try { filters = publicSearchFilters(labState); }
+    catch {
+      if (matchesTimer) clearTimeout(matchesTimer);
+      matchesAbort?.abort(); observedMatchKey = undefined;
+      mapMatchingIds = []; mapMatchesStatus = 'error'; mapMatchesError = 'The selected search area is invalid.';
+      return;
+    }
+    // This comparison is transient request coordination, never a search cache.
+    const requestKey = JSON.stringify([identity.releaseId, identity.manifestSha256, identity.suppressionGeneration, filters, mapMatchesAttempt]);
+    if (requestKey === observedMatchKey) return;
+    observedMatchKey = requestKey;
+    if (matchesTimer) clearTimeout(matchesTimer);
+    matchesAbort?.abort();
+    const controller = new AbortController();
+    matchesAbort = controller;
+    mapMatchingIds = []; mapMatchesStatus = 'loading'; mapMatchesError = '';
+    matchesTimer = setTimeout(() => {
+      void publicMapMatchesRepository.get(filters, identity, controller.signal).then(matches => {
+        if (controller.signal.aborted || matchesAbort !== controller || $publicReleaseManifestIdentity?.releaseId !== identity.releaseId || $publicReleaseManifestIdentity.manifestSha256 !== identity.manifestSha256 || $publicReleaseManifestIdentity.suppressionGeneration !== identity.suppressionGeneration) return;
+        mapMatchingIds = matches.facilityIds;
+        mapMatchesStatus = 'ready';
+      }).catch(() => {
+        if (controller.signal.aborted || matchesAbort !== controller) return;
+        mapMatchingIds = []; mapMatchesStatus = 'error';
+        mapMatchesError = 'Matching map locations could not be loaded. Try again.';
+      });
+    }, 180);
+  });
+
+
   let observedSelection: string | null | undefined;
-  $effect(() => { if (mode !== 'synthetic' && (mode !== 'public-release' || !!$publicReleaseId) && observedSelection !== `${mode === 'public-release' ? $publicReleaseId : mode}:${labState.selectedId ?? ''}`) {
-    observedSelection = `${mode === 'public-release' ? $publicReleaseId : mode}:${labState.selectedId ?? ''}`;
+  $effect(() => { if (dataActive && mode !== 'synthetic' && (mode !== 'public-release' || !!$publicReleaseId) && observedSelection !== `${mode === 'public-release' ? $publicReleaseIdentity : mode}:${labState.selectedId ?? ''}`) {
+    observedSelection = `${mode === 'public-release' ? $publicReleaseIdentity : mode}:${labState.selectedId ?? ''}`;
     detailAbort?.abort();
     if (!labState.selectedId) { detailRecord = null; detailStatus = 'ready'; detailError = ''; }
     else {
@@ -315,12 +385,13 @@
     }
     const sync = () => {
       if (location.hash.startsWith('#/map')) {
-        const decoded = decodeLabHash(location.hash);
+        const decodedHash = decodeLabHash(location.hash);
+        const decoded = { ...decodedHash, query: new URLSearchParams(location.hash.split('?')[1] ?? '').has('q') ? decodedHash.query : labState.query, searchScope: labState.searchScope, ...(labState.navigationViewport ? { navigationViewport: labState.navigationViewport, viewport: labState.viewport } : {}) };
         // Browser Back and the dossier close button both leave a selected
         // history entry. Preserve its final camera/style over the older URL.
         const camera = pendingSelectionDismissalCamera
           ?? (labState.selectedId && !decoded.selectedId
-            ? { viewport: labState.viewport, basemap: labState.basemap }
+            ? { viewport: labState.viewport, ...(labState.navigationViewport ? { navigationViewport: labState.navigationViewport } : {}), basemap: labState.basemap }
             : null);
         pendingSelectionDismissalCamera = null;
         labState = camera ? { ...decoded, ...camera } : decoded;
@@ -340,44 +411,46 @@
     let summaryAbort: AbortController | undefined;
     if (mode === 'public-release') {
       summaryAbort = new AbortController();
-      void publicReleaseRepository.current('official', summaryAbort.signal).then(active => {
-        if (!summaryAbort?.signal.aborted) $activePublicReleaseId = active?.releaseId ?? null;
-      }).catch(() => { if (!summaryAbort?.signal.aborted) $activePublicReleaseId = null; });
-      void publicReleaseRepository.current('official', summaryAbort.signal, $pinnedPublicReleaseId).then(current => {
-        if (!summaryAbort?.signal.aborted) {
-          $publicReleaseId = current?.releaseId ?? null;
-          $publicReleaseManifestIdentity = current;
-          $publicReleaseIdentity = current ? `${current.releaseId}:${current.manifestSha256}:${current.suppressionGeneration}` : null;
-          $dataStatus = current ? 'loading' : 'error';
-          $dataError = current ? '' : $pinnedPublicReleaseId ? 'Selected release unavailable.' : 'No verified public release is available.';
-        }
-      }).catch(() => { if (!summaryAbort?.signal.aborted) { $dataStatus = 'error'; $dataError = 'The public release could not be checked.'; } });
+      const invalidate = () => {
+        $publicReleaseId = null; $publicReleaseManifestIdentity = null; $publicReleaseIdentity = null; $publicMapMeta = null;
+        apiRecords = []; nextCursor = null; candidateTotalCount = null; detailRecord = null; aggregateMemberRecords = [];
+        mapMatchingIds = []; mapMatchesStatus = 'loading'; observedMatchKey = undefined;
+        listAbort?.abort(); matchesAbort?.abort(); detailAbort?.abort(); publicFacetAbort?.abort(); referenceAbort?.abort();
+        observedListKey = undefined; observedSelection = undefined; publicFacetRelease = null; candidateFacets = null;
+      };
+      const checkRelease = () => {
+        if (!active || summaryAbort?.signal.aborted) return;
+        const requestedActivation = activationId;
+        if (verifiedActivation !== requestedActivation) resumeStatus = 'checking';
+        void resumeGuard.verify(async signal => {
+          const latest = await publicReleaseRepository.current('official', signal);
+          const current = $pinnedPublicReleaseId ? await publicReleaseRepository.current('official', signal, $pinnedPublicReleaseId) : latest;
+          if (!current) throw new Error('Selected release unavailable');
+          return { latest, current };
+        }, ({ latest, current }) => {
+          if (!active || activationId !== requestedActivation) return;
+          $activePublicReleaseId = latest?.releaseId ?? null;
+          const identity = releaseIdentityKey(current);
+          if (identity !== $publicReleaseIdentity) {
+            invalidate();
+            $publicReleaseId = current.releaseId;
+            $publicReleaseManifestIdentity = current;
+            $publicReleaseIdentity = identity;
+            $dataStatus = 'loading'; $dataError = ''; listRefreshing = false;
+          }
+          verifiedActivation = requestedActivation; resumeStatus = 'ready';
+        }, () => {
+          invalidate();
+          verifiedActivation = -1; resumeStatus = 'error';
+          $dataStatus = 'error'; $dataError = 'The public release could not be checked.';
+        });
+      };
+      refreshPinnedPublicRelease = checkRelease;
       void publicReleaseRepository.current('official', summaryAbort.signal, V0_ARCHIVE_RELEASE_ID).then(archive => {
         if (!summaryAbort?.signal.aborted) $v0ArchiveVerified = archive?.releaseId === V0_ARCHIVE_RELEASE_ID;
       }).catch(() => { if (!summaryAbort?.signal.aborted) $v0ArchiveVerified = false; });
-      const checkRelease = async () => {
-        try {
-          const active = await publicReleaseRepository.current('official', summaryAbort?.signal);
-          if (summaryAbort?.signal.aborted) return;
-          $activePublicReleaseId = active?.releaseId ?? null;
-          const current = $pinnedPublicReleaseId ? await publicReleaseRepository.current('official', summaryAbort?.signal, $pinnedPublicReleaseId) : active;
-          if (summaryAbort?.signal.aborted) return;
-          const identity = current ? `${current.releaseId}:${current.manifestSha256}:${current.suppressionGeneration}` : null;
-          if (identity !== $publicReleaseIdentity) {
-            $publicReleaseId = current?.releaseId ?? null;
-            $publicReleaseManifestIdentity = current;
-            $publicReleaseIdentity = identity;
-            apiRecords = []; nextCursor = null; candidateTotalCount = null; listRefreshing = false; $publicMapMeta = null;
-            observedSelection = undefined;
-            $dataStatus = current ? 'loading' : 'error';
-            $dataError = current ? '' : $pinnedPublicReleaseId ? 'Selected release unavailable.' : 'No verified public release is available.';
-          }
-        } catch { /* The map feed and record APIs report current request failures. */ }
-      };
-      refreshPinnedPublicRelease = () => { void checkRelease(); };
-      const timer = setInterval(() => { if (!document.hidden) void checkRelease(); }, 60_000);
-      document.addEventListener('visibilitychange', () => { if (!document.hidden) void checkRelease(); }, { signal: summaryAbort.signal });
-      // The abort signal removes the listener; the local timer is cleared below.
+      const timer = setInterval(() => { if (active && !document.hidden) checkRelease(); }, 60_000);
+      document.addEventListener('visibilitychange', () => { if (active && !document.hidden) checkRelease(); }, { signal: summaryAbort.signal });
       (summaryAbort as AbortController & { releaseTimer?: ReturnType<typeof setInterval> }).releaseTimer = timer;
     } else if (mode === 'candidate-preview') {
       summaryAbort = new AbortController();
@@ -387,10 +460,15 @@
       void repository.counts(summaryAbort.signal).then(value => { if (!summaryAbort?.signal.aborted) counts = value; }).catch(() => { /* The primary list surface reports request failures. */ });
       void repository.facets(summaryAbort.signal).then(value => { if (!summaryAbort?.signal.aborted) { facets = value; facetsStatus = 'ready'; } }).catch(error => { if (!summaryAbort?.signal.aborted) facetsStatus = errorState(error); });
     }
+    mounted = true;
     return () => {
+      mounted = false;
+      resumeGuard.pause();
       removeEventListener('hashchange', sync);
       removeEventListener('popstate', sync);
       if (searchTimer) clearTimeout(searchTimer);
+      if (matchesTimer) clearTimeout(matchesTimer);
+      matchesAbort?.abort();
       summaryAbort?.abort();
       refreshPinnedPublicRelease = undefined;
       const releaseTimer = (summaryAbort as (AbortController & { releaseTimer?: ReturnType<typeof setInterval> }) | undefined)?.releaseTimer;
@@ -398,14 +476,34 @@
       listAbort?.abort(); referenceAbort?.abort(); detailAbort?.abort(); publicFacetAbort?.abort();
     };
   });
+  $effect(() => {
+    if (!mounted || mode !== 'public-release') return;
+    activationId;
+    if (active) {
+      untrack(() => refreshPinnedPublicRelease?.());
+    } else {
+      resumeGuard.pause(); verifiedActivation = -1;
+      if (searchTimer) clearTimeout(searchTimer);
+      if (matchesTimer) clearTimeout(matchesTimer);
+      if (listRefreshing || pageLoading || facetsStatus === 'loading') observedListKey = undefined;
+      if (detailStatus === 'loading') observedSelection = undefined;
+      if (mapMatchesStatus === 'loading') observedMatchKey = undefined;
+      listAbort?.abort(); matchesAbort?.abort(); detailAbort?.abort(); publicFacetAbort?.abort(); referenceAbort?.abort();
+      listRefreshing = false; pageLoading = false;
+    }
+  });
 </script>
-<svelte:head><title>Until Every Cage: Map</title></svelte:head>
+<svelte:head>{#if active}<title>Until Every Cage: Map</title>{/if}</svelte:head>
 <div class="lab" data-review-sentinel={mode === 'synthetic' ? labSentinel : undefined} data-direction="field" data-scenario={labState.scenario} data-data-mode={mode}>
   <div class="map-preview"><h1 class="sr-only">Investigative map</h1>
-    <Field state={labState} {coverageOpen} records={mode !== 'synthetic' ? apiRecords : model.listRecords} mapRecords={mode !== 'synthetic' ? [] : model.mapRecords} {mode} publicReleaseId={$publicReleaseId} selectedPublicReleaseId={$publicReleaseId ?? $pinnedPublicReleaseId ?? null} publicReleaseIdentity={$publicReleaseIdentity} publicReleaseManifestIdentity={$publicReleaseManifestIdentity} publicMapMeta={$publicMapMeta} releaseOptions={publicReleaseOptions} onreleasechange={selectPublicRelease} onMapFeedMeta={(meta) => { $publicMapMeta = meta; }}
-      dataStatus={$dataStatus} dataError={$dataError} {listRefreshing}
+    {#if active && resumeStatus === 'error'}<div class="resume-error-header"><PreviewMasthead current="map" mapHref={resumeMapHref} /></div>{/if}
+    {#if active && !mapReadyToShow}<div class="resume-status" aria-live="polite">{#if resumeStatus === 'error'}<p role="alert">{tr('The public release could not be checked.', $language)}</p><button type="button" onclick={() => refreshPinnedPublicRelease?.()}>{tr('Retry', $language)}</button>{:else}<p role="status">{tr('Preparing the map…', $language)}</p>{/if}</div>{/if}
+    <div class="retained-map-content" hidden={!mapReadyToShow} inert={!mapReadyToShow}>
+    <Field active={dataActive} state={labState} {coverageOpen} records={mode !== 'synthetic' ? apiRecords : model.listRecords} mapRecords={mode !== 'synthetic' ? [] : model.mapRecords} {mode} publicReleaseId={$publicReleaseId} selectedPublicReleaseId={$publicReleaseId ?? $pinnedPublicReleaseId ?? null} publicReleaseIdentity={$publicReleaseIdentity} publicReleaseManifestIdentity={$publicReleaseManifestIdentity} publicMapMeta={$publicMapMeta} releaseOptions={publicReleaseOptions} onreleasechange={selectPublicRelease} onMapFeedMeta={(meta) => { $publicMapMeta = meta; }}
+      dataStatus={$dataStatus} dataError={$dataError} {listRefreshing} {mapMatchingIds} {mapMatchesStatus} {mapMatchesError} onRetryMapMatches={() => mapMatchesAttempt += 1}
       {detailRecord} {detailStatus} {detailError} {nextCursor} {pageLoading}
       {facets} {facetsStatus} {candidateFacets} {candidateTotalCount} {mapDiagnostics} {aggregateMemberRecords} {aggregateNextCursor} {aggregateLoading} {aggregateError} onMapTiming={timing=>{sourceMaterializeMs=timing.sourceMaterializeMs;clusterReadyMs=timing.clusterReadyMs;if(timing.zoomSettleMs!==undefined)zoomSettleMs=timing.zoomSettleMs;}} onLoadMore={() => void loadPage(labState.query, false)} onMapReference={(key, refSourceId) => void loadReference(key, true, refSourceId)} onLoadMoreAggregate={() => { if (aggregateReferenceKey) void loadReference(aggregateReferenceKey, false); }} {dispatch}/>
+    </div>
     {#if mode === 'real-preview' && counts}
       <aside class:expanded={coverageOpen} class="private-counts" aria-label="Map information">
         <button type="button" aria-expanded={coverageOpen} aria-controls="coverage-details" disabled={labState.listOpen} title={labState.listOpen ? 'Close Search to inspect map information' : undefined} onclick={() => coverageOpen = !coverageOpen}>
@@ -427,6 +525,11 @@
   </div>
 </div>
 <style>
+  .retained-map-content[hidden] { display: block; visibility: hidden; }
+  .retained-map-content { height: 100%; }
+  .resume-status { position: absolute; z-index: 5; inset: 0; display: grid; place-content: center; padding: 2rem; background: var(--page, #141414); color: var(--ink, #f2f0e8); text-align: center; }
+  .resume-status button { min-height: 2.75rem; padding: .6rem 1rem; border: 1px solid currentColor; color: inherit; background: transparent; }
+  .resume-error-header { position: relative; z-index: 6; }
   .lab, .map-preview { height: 100dvh; overflow: hidden; }
   .sr-only { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
   .private-counts {

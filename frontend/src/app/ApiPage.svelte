@@ -103,9 +103,9 @@
     return () => { disposed = true; shadow.removeEventListener('change', watchProfile); shadow.removeEventListener('input', watchProfile); instance?.unmount?.(); shadow.replaceChildren(); };
   });
 </script>
-<svelte:head><title>API and data access · Until Every Cage</title></svelte:head>
+<svelte:head><title>{tr('Data', $language)} · Until Every Cage</title></svelte:head>
 <section class="api-page" aria-labelledby="api-title">
-  <h1 id="api-title">{tr('API and data access', $language)}</h1>
+  <h1 id="api-title">{tr('Data', $language)}</h1>
   <p>{tr('Download the complete selected public release as CSV, or use paginated JSON to browse records. Downloads cover the selected release, not only the current map or database results.', $language)}</p>
   <div class="release-access">
     <label>{tr('Dataset', $language)}<select bind:value={profile}><option value="official">{tr('Project dataset', $language)}</option>{#if communityReleaseAvailable}<option value="community">{tr('Community submissions', $language)}</option>{/if}</select></label>

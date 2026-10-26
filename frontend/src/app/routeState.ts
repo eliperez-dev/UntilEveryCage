@@ -1,10 +1,13 @@
+import { TAXONOMY_PRIMARY_KEYS } from '../domain/taxonomy';
+
+export type AboutSection = 'overview' | 'sources' | 'questions' | 'technology' | 'records' | 'contributions' | 'help';
 export type ContributionType = 'facility' | 'evidence' | 'correction' | 'duplicate' | 'privacy_removal' | 'bug';
 export type RouteState =
+  | Readonly<{ kind: 'landing' }>
   | Readonly<{ kind: 'map'; releaseId?: string }>
   | Readonly<{ kind: 'database'; releaseId?: string; returnMapHref?: string }>
-  | Readonly<{ kind: 'about'; section: 'overview' | 'sources'; returnMapHref?: string }>
+  | Readonly<{ kind: 'about'; section: AboutSection; returnMapHref?: string }>
   | Readonly<{ kind: 'downloads'; returnMapHref?: string }>
-  | Readonly<{ kind: 'faq'; section?: 'technology' | 'records' | 'contributions' | 'help'; returnMapHref?: string }>
   | Readonly<{ kind: 'api'; returnMapHref?: string }>
   | Readonly<{ kind: 'contribute'; formKind?: ContributionType; targetRecordId?: string; returnMapHref?: string }>
   | Readonly<{ kind: 'bug-report'; returnMapHref?: string }>
@@ -33,6 +36,14 @@ export function mapHrefFromParams(params: URLSearchParams, releaseOverride?: str
   const basemap = params.get('basemap');
   if (basemap === 'satellite' || basemap === 'vector') safe.set('basemap', basemap);
   if (params.get('list') === 'open') safe.set('list', 'open');
+  const categories = new Set<string>(TAXONOMY_PRIMARY_KEYS);
+  for (const value of new Set(params.getAll('category'))) if (categories.has(value)) safe.append('category', value);
+  for (const value of new Set(params.getAll('precision'))) if (['exact', 'source_reported', 'approximate', 'city', 'coarse', 'unmapped'].includes(value)) safe.append('precision', value);
+  for (const value of new Set(params.getAll('country').map(value => value.toUpperCase()))) if (/^[A-Z]{2}$/.test(value)) safe.append('country', value);
+  for (const value of new Set(params.getAll('source_filter'))) if (/^[A-Za-z0-9._-]{1,160}$/.test(value)) safe.append('source_filter', value);
+  for (const value of new Set(params.getAll('activity'))) if (/^[A-Za-z0-9 _.-]{1,240}$/.test(value)) safe.append('activity', value);
+  const source = params.get('source');
+  if (source && /^[A-Za-z0-9.-]{1,80}$/.test(source)) safe.set('source', source);
   const selected = selectedOverride;
   if (selected && /^[a-z0-9-]{1,80}$/i.test(selected)) safe.set('selected', selected);
   const releaseId = releaseOverride ?? params.get('release_id') ?? undefined;
@@ -49,32 +60,57 @@ export function mapHrefFromHash(hash: string, releaseOverride?: string): string 
   return mapHrefFromParams(new URLSearchParams(hash.split('?')[1] ?? ''), releaseOverride);
 }
 
-export function parseRoute(hash: string, allowLocalSecure = false): RouteState {
+export function databaseMapHref(hash: string): string {
+  const params = new URLSearchParams(hash.split('?')[1] ?? '');
+  const context = safeMapHref(params.get('map'));
+  const merged = new URLSearchParams(context?.split('?')[1] ?? '');
+  // Explicit bookmark parameters take precedence over nested map context.
+  for (const key of new Set(params.keys())) {
+    if (key === 'map') continue;
+    merged.delete(key);
+    for (const value of params.getAll(key)) merged.append(key, value);
+  }
+  merged.set('list', 'open');
+  return mapHrefFromParams(merged);
+}
+
+export function canonicalRouteHref(hash: string, allowPrivateDatabase = false): string | undefined {
+  const path = (hash.startsWith('#') ? hash.slice(1) : hash).split('?')[0];
+  if (path === '/database' && !allowPrivateDatabase) return databaseMapHref(hash);
+  if (['/faq', '/about/faq', '/about/help', '/about/sources', '/methodology'].includes(path ?? '')) {
+    const route = parseRoute(hash);
+    if (route.kind === 'about') return serializeRoute(route);
+  }
+  return undefined;
+}
+
+export function parseRoute(hash: string, allowPrivateDatabase = false, allowLocalSecure = false): RouteState {
   const raw = hash.startsWith('#') ? hash.slice(1) : hash;
   const [pathPart] = raw.split('?');
-  const path = pathPart || '/map';
+  const path = pathPart || '/';
   const params = new URLSearchParams(raw.split('?')[1] ?? '');
   const requestedMapHref = params.get('map');
   const returnMapHref = safeMapHref(requestedMapHref);
 
-  // Private credentials remain in the local fragment, not the route object.
+  if (path === '/') return { kind: 'landing' };
+  // Credentials stay in the local fragment, never in a shared route object.
   if (allowLocalSecure && (path === '/secure-inbox' || path === '/secure-review')) return { kind: path.slice(1) as 'secure-inbox' | 'secure-review' };
-
-  if (path === '/' || path === '/map') { const releaseId = params.get('release_id'); return { kind: 'map', ...(releaseId && /^[A-Za-z0-9._-]{1,160}$/.test(releaseId) ? { releaseId } : {}) }; }
+  if (path === '/map') { const releaseId = params.get('release_id'); return { kind: 'map', ...(releaseId && /^[A-Za-z0-9._-]{1,160}$/.test(releaseId) ? { releaseId } : {}) }; }
   if (path === '/database') {
+    if (!allowPrivateDatabase) return parseRoute(databaseMapHref(hash));
     const releaseId = params.get('release_id');
     const validReleaseId = releaseId && /^[A-Za-z0-9._-]{1,160}$/.test(releaseId) ? releaseId : undefined;
     const requestedContext = safeMapHref(requestedMapHref) ?? mapHrefFromHash(hash, validReleaseId);
     const mapContext = mapHrefFromParams(new URLSearchParams(requestedContext.split('?')[1] ?? ''), validReleaseId);
     return { kind: 'database', ...(validReleaseId ? { releaseId: validReleaseId } : {}), returnMapHref: mapContext };
   }
-  if (path === '/methodology' || path === '/about/sources') return { kind: 'faq', section: 'technology', ...(returnMapHref ? { returnMapHref } : {}) };
-  if (path === '/about' || path === '/about/manifesto') return { kind: 'about', section: params.get('section') === 'sources' ? 'sources' : 'overview', ...(returnMapHref ? { returnMapHref } : {}) };
+  if (path === '/methodology' || path === '/about/sources') return { kind: 'about', section: 'technology', ...(returnMapHref ? { returnMapHref } : {}) };
+  if (path === '/about' || path === '/about/manifesto') return { kind: 'about', section: ['sources', 'questions', 'technology', 'records', 'contributions', 'help'].includes(params.get('section') ?? '') ? params.get('section') as AboutSection : 'overview', ...(returnMapHref ? { returnMapHref } : {}) };
   if (path === '/database/downloads') return { kind: 'downloads', ...(returnMapHref ? { returnMapHref } : {}) };
-  if (path === '/faq') { const section = params.get('section'); return { kind: 'faq', ...(section && ['technology', 'records', 'contributions', 'help'].includes(section) ? { section: section as 'technology' | 'records' | 'contributions' | 'help' } : {}), ...(returnMapHref ? { returnMapHref } : {}) }; }
-  if (path === '/about/faq') return { kind: 'faq', section: 'records', ...(returnMapHref ? { returnMapHref } : {}) };
+  if (path === '/faq') { const section = params.get('section'); return { kind: 'about', section: section && ['technology', 'records', 'contributions', 'help'].includes(section) ? section as AboutSection : 'questions', ...(returnMapHref ? { returnMapHref } : {}) }; }
+  if (path === '/about/faq') return { kind: 'about', section: 'records', ...(returnMapHref ? { returnMapHref } : {}) };
   if (path === '/database/api' || path === '/about/api') return { kind: 'api', ...(returnMapHref ? { returnMapHref } : {}) };
-  if (path === '/about/help') return { kind: 'faq', section: 'help', ...(returnMapHref ? { returnMapHref } : {}) };
+  if (path === '/about/help') return { kind: 'about', section: 'help', ...(returnMapHref ? { returnMapHref } : {}) };
   if (path === '/contribute/bug') return { kind: 'bug-report', ...(returnMapHref ? { returnMapHref } : {}) };
   if (path === '/contribute') {
     const targetRecordId = params.get('target');
@@ -112,12 +148,12 @@ export function parseRoute(hash: string, allowLocalSecure = false): RouteState {
 }
 
 export function serializeRoute(route: RoutableState): string {
+  if (route.kind === 'landing') return '#/';
   if (route.kind === 'secure-inbox' || route.kind === 'secure-review') return `#/${route.kind}`;
   if (route.kind === 'map') return `#/map${route.releaseId ? `?release_id=${encodeURIComponent(route.releaseId)}` : ''}`;
   if (route.kind === 'database') { const params = new URLSearchParams({ ...(route.releaseId ? { release_id: route.releaseId } : {}), ...(route.returnMapHref ? { map: route.returnMapHref } : {}) }); return `#/database${params.size ? `?${params}` : ''}`; }
-  if (route.kind === 'about') return `#/about${route.section === 'sources' ? '?section=sources' : ''}${route.returnMapHref ? `${route.section === 'sources' ? '&' : '?'}map=${encodeURIComponent(route.returnMapHref)}` : ''}`;
+  if (route.kind === 'about') { const params = new URLSearchParams({ ...(route.section !== 'overview' ? { section: route.section } : {}), ...(route.returnMapHref ? { map: route.returnMapHref } : {}) }); return `#/about${params.size ? `?${params}` : ''}`; }
   if (route.kind === 'downloads') return `#/database/downloads${route.returnMapHref ? `?map=${encodeURIComponent(route.returnMapHref)}` : ''}`;
-  if (route.kind === 'faq') { const params = new URLSearchParams({ ...(route.section ? { section: route.section } : {}), ...(route.returnMapHref ? { map: route.returnMapHref } : {}) }); return `#/faq${params.size ? `?${params}` : ''}`; }
   if (route.kind === 'api') return `#/database/api${route.returnMapHref ? `?map=${encodeURIComponent(route.returnMapHref)}` : ''}`;
   if (route.kind === 'contribute') return `#/contribute${route.formKind || route.targetRecordId || route.returnMapHref ? `?${new URLSearchParams({ ...(route.formKind ? { type: route.formKind } : {}), ...(route.targetRecordId ? { target: route.targetRecordId } : {}), ...(route.returnMapHref ? { map: route.returnMapHref } : {}) })}` : ''}`;
   if (route.kind === 'bug-report') return `#/contribute/bug${route.returnMapHref ? `?map=${encodeURIComponent(route.returnMapHref)}` : ''}`;

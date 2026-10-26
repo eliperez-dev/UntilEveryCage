@@ -27,18 +27,18 @@ describe('real private preview map projection', () => {
   });
 
   it('emits MapLibre workers through Vite worker URLs so sibling worker modules are retained', () => {
-    expect(component).toContain('maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url');
-    expect(pinPicker).toContain('maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url');
+    expect(component).toContain('persistentMapWorker.ts?worker&url');
+    expect(pinPicker).toContain('persistentMapWorker.ts?worker&url');
   });
 
   it('reacts to verified release metadata and forwards its manifest identity to the map feed', () => {
     expect(designLab).toContain("const publicReleaseId = writable<string | null>(null);");
     expect(designLab).toContain("const activePublicReleaseId = writable<string | null>(null);");
     expect(designLab).toContain("const dataStatus = writable<'loading' | 'ready' | 'empty' | 'error' | 'unauthorized'>('loading');");
-    expect(designLab).toContain("$dataError = current ? '' : $pinnedPublicReleaseId ? 'Selected release unavailable.'");
+    expect(designLab).toContain("if (!current) throw new Error('Selected release unavailable');");
     expect(designLab).toContain('...untrack(() => mapDiagnostics)');
     expect(designLab).toContain('publicReleaseLabel($activePublicReleaseId)');
-    expect(designLab).toContain("'Selected release unavailable.'");
+    expect(designLab).toContain("verifiedActivation = -1; resumeStatus = 'error';");
     expect(field).toContain('selectedReleaseId={mode === "public-release" ? selectedPublicReleaseId : null}');
     expect(field).toContain('mode === "public-release" && dataStatus === "error"');
     expect(masthead).toContain('Selected release unavailable');

@@ -41,8 +41,8 @@ test('production bundle opens a real v0 pin on cold and warm loads', async ({ pa
   await expect(releaseDetails).not.toContainText('v0-candidate-');
   await page.getByRole('button', { name: 'Release', exact: true }).click();
 
-  await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Database', exact: true }).click();
-  await expect(page.locator('#main-content')).toBeVisible();
+  await page.getByRole('button', { name:'Search map' }).click();
+  await expect(page.getByRole('complementary', { name:'Search, filters, and results' })).toBeVisible();
   await expect(page.getByText(/Results are eligible public facility projection rows/)).toHaveCount(0);
   await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Contribute', exact: true }).click();
   await expect(page.getByText('Contribution forms aren’t available here', { exact: true })).toHaveCount(0);
