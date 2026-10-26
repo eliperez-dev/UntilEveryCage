@@ -12,6 +12,9 @@
   import PreviewMasthead from './PreviewMasthead.svelte';
   import { publicReleaseLabel } from '../features/locations/releasePresentation';
   import { language, tr } from './language';
+  import { SECURE_INBOX_LOCAL } from '../features/contributions/secureInboxMode';
+  let SecureInbox = $state<typeof import('./contributions/secure/SecureInbox.svelte').default | null>(null);
+  let SecureReview = $state<typeof import('./contributions/secure/SecureReview.svelte').default | null>(null);
   let DesignLab = $state<typeof import('../design-lab/DesignLab.svelte').default | null>(null);
   let DatabaseResearch = $state<typeof import('./DatabaseResearch.svelte').default | null>(null);
   let RecordPage = $state<typeof import('./RecordPage.svelte').default | null>(null);
@@ -20,7 +23,7 @@
   let reviewMode = $state(false);
   let verifiedReleaseLabel = $state<string | null>(null);
 
-  let route = $state<RouteState>({ kind: 'map' });
+  let route = $state<RouteState>(parseRoute(window.location.hash, SECURE_INBOX_LOCAL));
   let routeGeneration = 0;
   let loading = $state(true);
   let loadError = $state('');
@@ -36,7 +39,15 @@
   const syncRoute = () => {
     const generation = ++routeGeneration;
     try {
-      route = parseRoute(window.location.hash);
+      route = parseRoute(window.location.hash, SECURE_INBOX_LOCAL);
+      if (import.meta.env.DEV && import.meta.env.VITE_SECURE_INBOX_EXPERIMENT === 'true') {
+        if (route.kind === 'secure-inbox' && !SecureInbox) void import('./contributions/secure/SecureInbox.svelte')
+          .then(module => { if (generation === routeGeneration) SecureInbox = module.default; })
+          .catch(() => { if (generation === routeGeneration) loadError = 'The encrypted inbox could not be opened.'; });
+        if (route.kind === 'secure-review' && !SecureReview) void import('./contributions/secure/SecureReview.svelte')
+          .then(module => { if (generation === routeGeneration) SecureReview = module.default; })
+          .catch(() => { if (generation === routeGeneration) loadError = 'The encrypted review page could not be opened.'; });
+      }
       if (route.kind === 'map' && !DesignLab) {
         void import('../design-lab/DesignLab.svelte').then(module => { if (generation === routeGeneration) DesignLab = module.default; }).catch(() => { if (generation === routeGeneration) loadError = 'The public map could not be opened.'; });
       }
@@ -44,7 +55,7 @@
         apiModule ??= import('./ApiPage.svelte');
         void apiModule.then(module => { if (generation === routeGeneration) ApiPage = module.default; }).catch(() => { apiModule = null; if (generation === routeGeneration) loadError = 'The API page could not be opened.'; });
       }
-      if (route.kind === 'community' && !CommunityContributions) {
+      if (route.kind === 'community' && route.page !== 'form' && !CommunityContributions) {
         communityModule ??= import('./CommunityContributions.svelte');
         void communityModule.then(module => {
           if (generation !== routeGeneration) return;
@@ -64,7 +75,7 @@
       const explicitPublicRoute = (route.kind === 'record' || route.kind === 'database') && (query.has('profile') || query.has('release_id'));
       reviewMode = import.meta.env.DEV && !explicitPublicRoute && (query.has('f1a') || (serverDataMode === 'candidate-preview' && (route.kind === 'map' || route.kind === 'database' || route.kind === 'record')) || (serverDataMode === 'real-preview' && route.kind === 'map'));
       if (generation !== routeGeneration) return;
-      if (route.kind !== 'community') loading = false;
+      if (route.kind !== 'community' || route.page === 'form') loading = false;
       loadError = '';
     } catch {
       loading = false;
@@ -98,7 +109,7 @@
   <main class="review-loading" aria-live="polite"><p role="status">Preparing the private-preview workspace…</p><small>The map module and its local data boundary are loading.</small></main>
 {:else}
 <div class="shell">
-  <PreviewMasthead publicReleaseLabel={publicReleaseLabel(verifiedReleaseLabel)} current={route.kind === 'about' ? 'about' : route.kind === 'faq' ? 'faq' : route.kind === 'contribute' || route.kind === 'bug-report' || route.kind === 'community' ? 'contribute' : route.kind === 'api' || route.kind === 'downloads' ? 'api' : route.kind === 'database' || route.kind === 'record' ? 'database' : 'map'} mapHref={returnMapHref} {databaseHref} />
+  <PreviewMasthead publicReleaseLabel={publicReleaseLabel(verifiedReleaseLabel)} current={route.kind === 'about' ? 'about' : route.kind === 'faq' ? 'faq' : route.kind === 'contribute' || route.kind === 'bug-report' || route.kind === 'community' || route.kind === 'secure-inbox' || route.kind === 'secure-review' ? 'contribute' : route.kind === 'api' || route.kind === 'downloads' ? 'api' : route.kind === 'database' || route.kind === 'record' ? 'database' : 'map'} mapHref={returnMapHref} {databaseHref} />
 
   <main id="main-content" class="shell-content" tabindex="-1">
     {#if loading}
@@ -121,10 +132,12 @@
       <FaqPage returnMapHref={returnMapHref} section={route.section} />
     {:else if route.kind === 'api' || route.kind === 'downloads'}
       {#if ApiPage}<ApiPage selectedReleaseId={new URLSearchParams(route.returnMapHref?.split('?')[1] ?? '').get('release_id')} />{:else}<p class="state" role="status">{tr('Loading API reference…', $language)}</p>{/if}
-    {:else if route.kind === 'contribute'}
-      <ContributePage formKind={route.formKind ?? 'facility'} targetRecordId={route.targetRecordId ?? ''} returnMapHref={route.returnMapHref ?? '#/map'} />
-    {:else if route.kind === 'bug-report'}
-      <ContributePage formKind="bug" returnMapHref={route.returnMapHref ?? '#/map'} />
+    {:else if route.kind === 'contribute' || route.kind === 'bug-report' || (route.kind === 'community' && route.page === 'form')}
+      <ContributePage formKind={route.kind === 'bug-report' ? 'bug' : route.formKind ?? 'facility'} targetRecordId={route.kind === 'bug-report' ? '' : route.targetRecordId ?? ''} returnMapHref={route.returnMapHref ?? '#/map'} />
+    {:else if SECURE_INBOX_LOCAL && route.kind === 'secure-inbox'}
+      {#if SecureInbox}<SecureInbox />{:else}<p class="state" role="status">{tr('Opening encrypted inbox…', $language)}</p>{/if}
+    {:else if SECURE_INBOX_LOCAL && route.kind === 'secure-review'}
+      {#if SecureReview}<SecureReview />{:else}<p class="state" role="status">{tr('Opening encrypted review…', $language)}</p>{/if}
     {:else if route.kind === 'map'}
       <p class="state" role="status">{tr('Preparing the map…', $language)}</p>
     {:else if route.kind === 'database'}
@@ -132,9 +145,7 @@
     {:else if route.kind === 'record'}
       <PublicRecord id={route.facilityId} profile={route.profile ?? 'official'} releaseId={route.releaseId} returnMapHref={returnMapHref} onrelease={label => verifiedReleaseLabel = label} />
     {:else if route.kind === 'community'}
-      {#if route.page === 'form'}
-        <ContributePage formKind={route.formKind ?? 'facility'} targetRecordId={route.targetRecordId ?? ''} returnMapHref={route.returnMapHref ?? '#/map'} />
-      {:else if CommunityContributions}
+      {#if CommunityContributions}
         <CommunityContributions page={route.page} formKind={route.formKind ?? 'facility'} targetRecordId={route.targetRecordId ?? ''} claimId={route.claimId ?? ''} releaseId={route.releaseId ?? ''} returnMapHref={route.returnMapHref ?? '#/map'} />
       {:else}
         <p class="state" role="status">{tr('Preparing the community pilot…', $language)}</p>

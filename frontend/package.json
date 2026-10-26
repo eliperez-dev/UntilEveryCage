@@ -29,7 +29,9 @@
     "svelte-check": "^4.1.4",
     "typescript": "^5.7.2",
     "vite": "^6.0.7",
-    "vitest": "^2.1.8"
+    "vitest": "^2.1.8",
+    "openpgp": "6.3.2",
+    "@openpgp/web-stream-tools": "0.3.1"
   },
   "dependencies": {
     "@axe-core/playwright": "^4.10.2",

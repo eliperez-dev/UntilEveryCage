@@ -2,6 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { mapHrefFromHash, mapHrefFromParams, parseRoute, safeMapHref, serializeRoute } from '../../src/app/routeState';
 
 describe('routeState', () => {
+  it('exposes local secure routes only under the explicit development gate without retaining credentials', () => {
+    const fragment = '#/secure-inbox?case_id=18c6ef3a-28cd-4c8e-a9bb-3951f45f210d&access_secret=' + '2'.repeat(64);
+    expect(parseRoute(fragment).kind).toBe('not-found');
+    expect(parseRoute(fragment, true)).toEqual({ kind: 'secure-inbox' });
+    expect(parseRoute('#/secure-review', true)).toEqual({ kind: 'secure-review' });
+    expect(serializeRoute({ kind: 'secure-inbox' })).toBe('#/secure-inbox');
+    expect(mapHrefFromHash(fragment)).toBe('#/map');
+  });
   it('defaults the root and empty hash to the map', () => {
     expect(parseRoute('')).toEqual({ kind: 'map' });
     expect(parseRoute('#/')).toEqual({ kind: 'map' });

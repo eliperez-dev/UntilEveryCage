@@ -136,11 +136,26 @@ API schemas own supported fields. They are not additional roadmaps.
 
 ## Contribution behavior
 
-Contribute opens Add a facility; visible task links switch among facility,
-evidence, correction, duplicate and privacy/removal. Bug reports save into the
-system and return confirmation/tracking, never an email draft.
-Existing-record actions preselect their target. Reuse normal category pins
-and taxonomy choices in location intake.
+Contribute opens Add a facility. Three main tasks are Add a facility, Update a
+record and Report a problem; Update groups correction, evidence and duplicate.
+Keep Privacy/removal directly accessible and Track submission near the page
+heading. Preserve older task URLs and target/return-map context. Bug reports
+save into the system and return confirmation/tracking, never an email draft.
+Use short task-specific forms, with optional location/classification details
+behind a disclosure. Preserve the existing structured fields, category pins,
+precision choices and location picker. Existing-record actions preselect their
+target; allow bounded public facility search or a pasted record link/ID.
+An unavailable public record must not prevent a valid privacy request.
+
+Keep unfinished drafts in page memory across task switches, never browser
+storage, query strings or logs. Successful submission replaces the form with
+its actual receipt, private tracking link and a copy action with accurate
+success/failure feedback. A submission reference alone does not grant access.
+Tracking shows only returned states and facts: privacy screening is not factual
+approval, and removing intake does not establish removal of its public target.
+Do not show simulated decisions, unsupported reply/email controls or an E2EE
+claim. New messaging and notification features require the actual backend
+capability and verified transport before appearing in the public flow.
 
 Use one Track submission link, with its capability in the fragment and status
 credentials sent in a POST body. Accounts, uploads, automated email and receipt
@@ -148,6 +163,60 @@ recovery are not implemented. Public community browsing is offered only for an
 eligible published community release; intake never automatically changes the
 curated map, graph or counts. The [contribution contract](../governance/user-submitted-data.md)
 and [production runbook](../deployment/production-operations.md) own operational details.
+Maintainers access `#/contribution-review` with the contribution service's
+operator token. In split-service local previews, public intake/status and
+private review requests must use the same contribution service; the normal
+public data API remains separate.
+
+### Local encrypted inbox
+
+The encrypted intake and two-way reviewer inbox are an opt-in development
+experiment. `VITE_SECURE_INBOX_EXPERIMENT=true` requires Vite development mode;
+production builds exclude the SDK and encrypted API client. Pin the full public
+reviewer fingerprint independently through `VITE_SECURE_REVIEWER_FINGERPRINT`.
+`UEC_SECURE_COMMUNITY_API_ORIGIN` can proxy only the secure endpoints to a
+loopback HTTP API, ahead of the normal contribution/data proxies. This option
+is local to the Vite process. The backend capability must also be enabled and
+match the configured key; failure does not fall back to plaintext intake.
+
+The local Contribute flow encrypts the structured draft and signs it with a
+per-case contributor key. OpenPGP.js 6.3.2 encrypts each message for the contributor
+and reviewer. Only ciphertext, public keys and relay metadata reach the service.
+Both public keys are parsed and their full fingerprints checked locally. Signed
+message context binds the protocol, case, message, author, classification and
+both fingerprints. Decryption is buffered and bounded; all messages must pass
+signature/context checks before the view receives submission text.
+
+`#/secure-inbox` supports verified messages, encrypted replies and processing
+status. `#/secure-review` supports metadata queue access, local reviewer-key
+unlock, verified messages, encrypted replies and explicit status/removal actions.
+Operator tokens, private keys, drafts and decrypted text stay in memory. Inbox
+access secrets travel in POST bodies and private URL fragments, never query
+parameters sent to the server. Removing an inbox revokes intake access; it does
+not remove its public map target or publish a decision into the dataset.
+
+The receipt downloads a local encrypted `.asc` recovery file and supplies a
+separate random recovery key. Both are needed to reopen on another device.
+The file contains the contributor private key, case access and observed-history
+checkpoint under SDK password encryption and a self-signature. It is never
+uploaded by the interface. The reviewer key uses the same local encrypted-file
+pattern. Browser storage does not retain keys or recovery secrets. API retries
+reuse the exact prepared identifiers and ciphertext.
+
+Identical authenticated history rereads are allowed. Acknowledged outgoing
+replies are pinned before refreshing. Missing previously observed or acknowledged
+messages, reordered history or a conflicting message ID fail verification and
+clear displayed text. This checkpoint does not prove freshness across an older
+recovery backup or authenticate relay status/timestamps. There are no attachment,
+automatic publication or email-alert controls. This local implementation is not
+a production E2EE guarantee; activation and operational requirements belong to
+the contribution contract and production runbook linked above.
+
+Focused checks are `secureInbox.test.ts`, `secureCommunityRepository.test.ts`
+and the secure cases in `communityProxy.test.ts`. The real relay and browser
+journeys are opt-in through `UEC_SECURE_RELAY_INTEGRATION=true` and
+`UEC_SECURE_RELAY_BROWSER=true`, using an owned disposable database and synthetic
+submissions. Local fixture material belongs only in ignored `target/` paths.
 
 ## Exact copy and informational pages
 

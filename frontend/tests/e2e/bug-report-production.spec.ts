@@ -15,6 +15,7 @@ test('a bug report is saved, available to operators and privately trackable', as
   try {
     await page.goto('/#/contribute/bug');
     await page.getByLabel('What happened?').fill(report.description);
+    await page.getByText('Additional details (optional)', { exact: true }).click();
     await page.getByLabel('What did you expect?').fill(report.expected_behavior);
     await page.getByLabel('Steps to reproduce').fill(report.reproduction_steps);
     await page.getByLabel('Page link (optional)').fill(report.page_url);
@@ -25,8 +26,8 @@ test('a bug report is saved, available to operators and privately trackable', as
     const accepted = await response.json();
     expect(accepted.status).toBe('received');
     receipt = { submission_id: accepted.submission_id, receipt_secret: accepted.receipt_secret };
-    await expect(page.getByRole('status')).toContainText('Report saved.');
-    await expect(page.getByRole('button', { name: 'Sent', exact: true })).toBeDisabled();
+    await expect(page.getByText('Report saved.', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Send report', exact: true })).toHaveCount(0);
     const queueResponse = await request.get('/api/private/community/submissions?status=received&limit=50', { headers: { Authorization: `Bearer ${operator}` } });
     expect(queueResponse.ok()).toBe(true);
     const queue = await queueResponse.json();

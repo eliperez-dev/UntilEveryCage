@@ -27,11 +27,11 @@ test('all contribution types, including bug reports, submit and track through th
   const tag = `acceptance-${Date.now()}`;
   const owned: Array<{ id: string; secret: string }> = [];
   const routes: Array<{ path: string; fill: (index: number) => Promise<void>; submitLabel: string; trackingLabel: string }> = [
-    { path: 'facility', fill: async index => { await page.getByLabel('Facility name').fill(`${tag}-facility-${index}`); await page.getByLabel('Primary activity (optional)').selectOption('slaughter'); }, submitLabel: 'Send for review', trackingLabel: 'Track submission' },
-    { path: 'evidence', fill: async () => { await page.getByLabel('Record link or ID').fill(firstId); await page.getByLabel('What did you find?').fill(`${tag} evidence`); }, submitLabel: 'Send for review', trackingLabel: 'Track submission' },
-    { path: 'correction', fill: async () => { await page.getByLabel('Record ID').fill(firstId); await page.getByLabel('What should be corrected?').fill(`${tag} correction`); }, submitLabel: 'Send for review', trackingLabel: 'Track submission' },
-    { path: 'duplicate', fill: async () => { await page.getByLabel('Record ID', { exact: true }).fill(firstId); await page.getByLabel('Possible duplicate record ID').fill(secondId); }, submitLabel: 'Send for review', trackingLabel: 'Track submission' },
-    { path: 'privacy-removal', fill: async () => { await page.getByLabel('Record ID').fill(firstId); await page.getByLabel('What should we review?').fill(`${tag} privacy review`); }, submitLabel: 'Send for review', trackingLabel: 'Track submission' },
+    { path: 'facility', fill: async index => { await page.getByLabel('Facility name').fill(`${tag}-facility-${index}`); await page.getByText('Additional details (optional)', { exact: true }).click(); await page.getByLabel('Primary activity (optional)').selectOption('slaughter'); }, submitLabel: 'Send for review', trackingLabel: 'Track submission' },
+    { path: 'evidence', fill: async () => { await page.locator('#intake-target').fill(firstId); await page.getByLabel('What did you find?').fill(`${tag} evidence`); }, submitLabel: 'Send for review', trackingLabel: 'Track submission' },
+    { path: 'correction', fill: async () => { await page.locator('#intake-target').fill(firstId); await page.getByLabel('What should be corrected?').fill(`${tag} correction`); }, submitLabel: 'Send for review', trackingLabel: 'Track submission' },
+    { path: 'duplicate', fill: async () => { await page.locator('#intake-target').fill(firstId); await page.locator('#intake-duplicate').fill(secondId); }, submitLabel: 'Send for review', trackingLabel: 'Track submission' },
+    { path: 'privacy-removal', fill: async () => { await page.locator('#intake-target').fill(firstId); await page.getByLabel('What should we review?').fill(`${tag} privacy review`); }, submitLabel: 'Send for review', trackingLabel: 'Track submission' },
     { path: 'bug', fill: async () => { await page.getByLabel('What happened?').fill(`${tag} bug report`); await page.getByLabel('Steps to reproduce').fill('Synthetic acceptance steps'); }, submitLabel: 'Send report', trackingLabel: 'Track report' },
   ];
   const headingByPath: Record<string, string> = {
