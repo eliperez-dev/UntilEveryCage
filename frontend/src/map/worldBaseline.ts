@@ -87,6 +87,18 @@ export async function clearWorldBaselineCache(): Promise<void> {
   try { await caches.delete(WORLD_BASELINE_CACHE_NAME); } catch { /* Memory remains usable without storage. */ }
   emit('idle');
 }
+async function persist(asset: Asset, data: Uint8Array, epoch: number): Promise<void> {
+  try {
+    const cache = await caches.open(WORLD_BASELINE_CACHE_NAME), url = urlFor(asset);
+    const stored = await cache.match(url), date = Number(stored?.headers.get('x-uec-world-stored'));
+    if (stored && Number.isFinite(date) && date > 0 && date + TTL > Date.now()) return;
+    if (!eligible() || epoch !== generation) return;
+    await cache.put(url, new Response(new Uint8Array(data), { headers: { 'x-uec-world-stored': String(Date.now()), 'content-type': 'application/octet-stream' } }));
+    // A newer warmer may use the same immutable asset. An older write must
+    // not delete that valid entry merely because the settings changed.
+    if (!eligible() || !plan().some(current => current.file === asset.file)) await cache.delete(url);
+  } catch { /* A blocked disk cache does not discard the usable RAM copy. */ }
+}
 export async function warmWorldBaseline(): Promise<void> {
   const saveData = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData;
   if (!eligible() || saveData || document.hidden) { emit('paused'); return; }
@@ -97,7 +109,9 @@ export async function warmWorldBaseline(): Promise<void> {
     await trim();
     for (const asset of plan()) {
       controller.signal.throwIfAborted();
-      if (await lookup(asset)) continue;
+      const cached = await lookup(asset);
+      // A canceled warmer may have filled RAM before its disk write finished.
+      if (cached) { await persist(asset, cached, epoch); continue; }
       if (!eligible() || epoch !== generation) break;
       diagnostic.requests++; emit('warming');
       const response = await fetch(urlFor(asset), { signal: controller.signal, cache: 'default', credentials: 'omit' });
@@ -106,13 +120,7 @@ export async function warmWorldBaseline(): Promise<void> {
       if (data.byteLength !== asset.bytes || await sha(data) !== asset.sha256) throw new Error('World baseline integrity failed');
       if (!eligible() || epoch !== generation) break;
       loaded.set(asset.file, data);
-      try {
-        const cache = await caches.open(WORLD_BASELINE_CACHE_NAME);
-        if (eligible() && epoch === generation) {
-          await cache.put(urlFor(asset), new Response(data, { headers: { 'x-uec-world-stored': String(Date.now()), 'content-type': 'application/octet-stream' } }));
-          if (!eligible() || epoch !== generation) await cache.delete(urlFor(asset));
-        }
-      } catch { /* A blocked disk cache does not discard the usable RAM copy. */ }
+      await persist(asset, data, epoch);
       emit('warming');
     }
     if (epoch === generation) emit(plan().every(asset => loaded.has(asset.file)) ? 'ready' : 'partial');
