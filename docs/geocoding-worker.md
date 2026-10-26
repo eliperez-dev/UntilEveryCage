@@ -205,6 +205,21 @@ underlying source credits. Their [storage policy](https://help.locationiq.com/su
 allows retained response output but limits reusable request-response caching.
 Provider transfer authorization remains source- and destination-specific.
 
+To inspect street-spelling recovery candidates from retained German LocationIQ
+responses without a key or more requests:
+
+```powershell
+python pipeline/scripts/diagnostics/audit-germany-retained-geocodes.py
+```
+
+The command requires the assigned local test database and a verified v0 baseline,
+uses a read-only transaction, and prints aggregate counts only. It compares the
+current matcher with German street-suffix and umlaut/digraph normalization while
+retaining house-number, postcode, locality, state and uniqueness checks. It does
+not promote points or change old results. A recovery count is an audit candidate,
+not an accepted geocode. The live adapter and independent database matcher remain
+unchanged until a versioned reconciliation is implemented and checked.
+
 Supply `GEOAPIFY_API_KEY` through the private environment/secret store, then use
 the optional worker profile:
 

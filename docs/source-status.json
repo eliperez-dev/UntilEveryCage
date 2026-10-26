@@ -671,6 +671,18 @@
           },
           "provider_day_budget": {"date_utc": "2026-10-26", "reserved_requests": 5000, "daily_limit": 5000, "quota_exhausted": true},
           "display_cache_and_audited_view_parity_failures": 0,
+          "retained_response_street_audit": {
+            "rule": "german-street-spelling-audit-v1",
+            "records_examined": 3674,
+            "street_spelling_recovery_candidates": 136,
+            "ambiguous_after_street_normalization": 649,
+            "still_requires_review": 2888,
+            "source_context_changed_or_invalid": 1,
+            "provider_calls": 0,
+            "database_writes": 0,
+            "points_promoted": 0,
+            "scope": "Latest retained LocationIQ review result per eligible currently unmapped German candidate; advisory read-only replay, not accepted points. Current source context and v0 baseline were checked."
+          },
           "transfer_authorization": "Maintainer authorized continuing through the remaining daily credits, prioritizing unqueried German business addresses and retrying previous-provider misses. Only street address, postcode, locality, state and country are sent; no names or contacts. Results remain local for the next release.",
           "balance_endpoint_http_status": 403,
           "verification": "All 1,286 accepted results match provider provenance and the candidate display cache; the audited display view has zero cache disagreements. Both worker phases completed with no active jobs or open transactions. Fifteen staged retry jobs remain queued without requests. v0 baseline is unchanged. The local daily ledger is exhausted at 5,000 reservations; its one pre-HTTP reservation remains conservative. The account balance endpoint remains unavailable, so no independently refreshed dashboard balance is claimed."
@@ -699,9 +711,10 @@
         "pipeline/migrations/097_germany_audited_candidate_cache_alignment.sql",
         "pipeline/migrations/098_locationiq_private_enrichment.sql",
         "pipeline/geocoding/locationiq.py",
-        "pipeline/scripts/stages/activate-locationiq-preview.py"
+        "pipeline/scripts/stages/activate-locationiq-preview.py",
+        "pipeline/scripts/diagnostics/audit-germany-retained-geocodes.py"
       ],
-      "next_action": "Prepare the measured 15,755-record source cohort with 2,809 address points and 12,946 unmapped records. Today's LocationIQ allowance is exhausted; do not raise or reset its ledger. Preserve 15 queued retries for a future allowance and keep new-address and prior-provider retry cohorts separate. Investigate street abbreviations and locality differences using retained responses without new requests or accepting road-only matches. Exact public BKG locality batch joining remains unverified. Preserve native labels, activities and source dates in the dated release."
+      "next_action": "Prepare the measured 15,755-record source cohort with 2,809 address points and 12,946 unmapped records. The 2026-10-26 UTC LocationIQ allowance is exhausted; do not raise or reset its ledger. Preserve 15 queued retries for a future allowance and keep new-address and prior-provider retry cohorts separate. The read-only street audit found 136 potential recoveries, not yet promoted; implement versioned reconciliation with independent database checks before counting them as mapped. Validate locality differences separately without accepting road-only matches. Exact public BKG locality batch joining remains unverified. Preserve native labels, activities and source dates in the dated release."
     },
     {"source_id":"ca.ontario.meat-plants","metadata":"verified","acquisition":"verified","runtime_health":"not_run","publication_eligibility":"blocked","e2e_verified":true,"last_verified_run":{"verified_at_utc":"2026-10-02T01:55:47.890787Z","parsed":460,"accepted_private_candidates":460,"quarantined":0,"mapped":0,"unmapped":460,"numeric_coordinates_persisted":0,"taxonomy_assignment_sets":460,"taxonomy_assignment_rows":1021,"public_rows":0,"idempotent_replay":true},"preview_eligible":true,"included_in_active_preview_database":true,"evidence":["data/manifests/ontario-private-e2e-20261002.json","pipeline/preview-enabled-sources.json","scripts/real_preview.py","scripts/certify_real_preview.py","docs/countries/canada/meat-plants-pipeline.md","pipeline/sources/canada/adapter.py","pipeline/sources/canada/acquire.py","pipeline/sources/canada/refresh.py","pipeline/source_registry.json"],"next_action":"One-time strict private E2E passed and exact certified run imported to the retained private preview (460 current-source candidates); list/search/detail pass, but all remain unmapped because source coordinates/address remain withheld pending privacy/location review. Zero map pins/public rows. Ontario only; freshness/completeness are not guaranteed. Do not publish without separate review/approval."},
     {"source_id":"ca.cfia.federal-meat","metadata":"verified","acquisition":"verified","runtime_health":"unknown","publication_eligibility":"blocked","e2e_verified":true,"last_verified_run":{"verified_at_utc":"2026-10-01T03:54:16Z","parsed":874,"accepted_private_candidates":858,"quarantined":16,"mapped":0,"unmapped":858},"preview_eligible":true,"included_in_active_preview_database":false,"evidence":["docs/country-recon-ca.md","docs/countries/canada/meat-plants-pipeline.md","pipeline/sources/canada/adapter.py","pipeline/sources/canada/acquire.py","pipeline/sources/canada/refresh.py","pipeline/sources/canada/geocode_queue.py","pipeline/sources/canada/fixtures/cfia.csv","pipeline/preview-enabled-sources.json","scripts/real_preview.py","scripts/certify_real_preview.py","pipeline/common/review_packet.py","pipeline/source_registry.json"],"next_action":"Latest strict private-preview E2E verified 2026-10-01T03:54:16Z: 874 parsed, 858 accepted private candidates, 16 quarantined, 0 mapped and 858 unmapped. Configured for private preview but not present in the active preview DB; the one-time isolated E2E used a disposable DB. A temporary restricted geocode queue was removed and no external request was made. Effective date/Last-Modified is absent; completeness, privacy clearance, recurring health, and publication remain unresolved."},
