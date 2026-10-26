@@ -182,8 +182,10 @@ python pipeline/scripts/stages/activate-locationiq-preview.py --limit 24 --run-w
 
 This uses the existing jobs, leases, retries and request ledger, with a separate
 LocationIQ budget of 5,000 requests/day and a shared minimum interval of 1.05
-seconds (the free plan also limits usage to 60 requests/minute). Accepted points
-are not overwritten. Authentication and rate-limit failures stop the batch.
+seconds (the free plan also limits usage to 60 requests/minute). Previously
+unqueried addresses take priority over unresolved results from another provider.
+Accepted address points are not overwritten or re-queried by the other provider.
+Authentication and rate-limit failures stop the batch.
 There is no cross-provider request-response cache. Other sources are not
 automatically enabled by adding a token.
 

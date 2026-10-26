@@ -14,6 +14,7 @@ import psycopg
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 from pipeline.geocoding.private_profiles import profile_by_id
+from pipeline.geocoding.locationiq import LocationIqAdapter
 
 PROFILE = "locationiq-de-bltu"
 DATABASE = "uec_launch_sources_test_20261025"
@@ -67,11 +68,17 @@ def activate(database_url: str, *, limit: int = 24):
                   WHERE target.candidate_id=candidate.candidate_id AND target.snapshot_sha256=candidate.snapshot_sha256)
               AND NOT EXISTS (SELECT 1 FROM real_preview.enrichment_state_events state
                   WHERE state.candidate_id=candidate.candidate_id AND state.state_code='restricted')
-            ORDER BY candidate.candidate_id LIMIT %s FOR UPDATE OF candidate SKIP LOCKED
+            ORDER BY EXISTS (SELECT 1 FROM uec.geocode_results result
+                WHERE result.source_record_id=original.source_record_id AND result.provider_id='geoapify'),
+                candidate.candidate_id LIMIT %s FOR UPDATE OF candidate SKIP LOCKED
         """, (limit,)).fetchall()
         job_ids = []
+        rejected_queries = 0
         for candidate, snapshot, source_key, source_record, street, postal, city, region in rows:
             query = ", ".join(part.strip() for part in (street, postal, city, region, "Germany") if part and part.strip())
+            if LocationIqAdapter._parse_query(query) is None:
+                rejected_queries += 1
+                continue
             job = connection.execute("""INSERT INTO uec.geocode_jobs(source_record_id,provider_id,query)
                 VALUES(%s,'locationiq',%s) ON CONFLICT(source_record_id,provider_id,query) DO NOTHING
                 RETURNING job_id""", (source_record, query)).fetchone()
@@ -91,7 +98,8 @@ def activate(database_url: str, *, limit: int = 24):
                 (candidate_id,snapshot_sha256,source_id,source_record_key,state_code,reason_code)
                 VALUES(%s,%s,'de.locations',%s,'queued','locationiq_de_bltu_fallback')""", (candidate,snapshot,source_key))
             job_ids.append(job_id)
-        return {"provider":"locationiq","source":"de.locations","jobs_staged":len(job_ids),"provider_calls":0}, tuple(job_ids)
+        return {"provider":"locationiq","source":"de.locations","jobs_staged":len(job_ids),
+                "invalid_query_formats_skipped":rejected_queries,"provider_calls":0}, tuple(job_ids)
 
 
 def main() -> int:

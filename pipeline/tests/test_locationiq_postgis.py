@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import unittest
 from unittest.mock import patch
+from urllib.parse import urlsplit
 
 import psycopg
 
@@ -15,7 +16,8 @@ ROOT = Path(__file__).resolve().parents[2]
 MIGRATION = ROOT / "pipeline/migrations/098_locationiq_private_enrichment.sql"
 
 
-@unittest.skipUnless(os.environ.get("UEC_DATABASE_URL"), "assigned disposable real-data database required")
+@unittest.skipUnless(urlsplit(os.environ.get("UEC_DATABASE_URL", "")).path.strip("/") == "uec_launch_sources_test_20261025",
+                     "assigned disposable real-data database required")
 class LocationIqPostgisTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -81,9 +83,10 @@ class LocationIqPostgisTests(unittest.TestCase):
         before = self.connection.execute("SELECT count(*) FROM uec.geocode_jobs WHERE provider_id='locationiq'").fetchone()[0]
         with patch.object(activation.psycopg,"connect",return_value=RollbackConnection()):
             summary, jobs = activation.activate(os.environ["UEC_DATABASE_URL"],limit=24)
-        self.assertEqual(summary["jobs_staged"],24)
+        self.assertEqual(summary["jobs_staged"]+summary["invalid_query_formats_skipped"],24)
+        self.assertGreater(summary["jobs_staged"],0)
         self.assertEqual(summary["provider_calls"],0)
-        self.assertEqual(len(set(jobs)),24)
+        self.assertEqual(len(set(jobs)),summary["jobs_staged"])
         after = self.connection.execute("SELECT count(*) FROM uec.geocode_jobs WHERE provider_id='locationiq'").fetchone()[0]
         self.assertEqual(before,after)
 

@@ -36,6 +36,12 @@ class LocationIqIntegrationTests(unittest.TestCase):
                 WORKER.run("postgresql://synthetic","locationiq",options.pop("limit"),0,1,**options)
             connect.assert_not_called()
 
+    def test_primary_resume_skips_current_address_points_from_another_provider(self):
+        source = (ROOT / "pipeline/scripts/stages/geocode-worker.py").read_text(encoding="utf-8")
+        self.assertIn("result.status='accepted' AND result.provider_id<>job.provider_id",source)
+        self.assertIn("evidence.display_precision='provider_address_point_high_confidence'",source)
+        self.assertIn("evidence.display_geometry_source=candidate.display_geometry_source",source)
+
     def test_authentication_or_provider_limit_stops_the_batch(self):
         for acceptance in ("authentication_rejected","provider_rate_limited"):
             connection = Mock()

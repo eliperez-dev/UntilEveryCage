@@ -574,8 +574,8 @@
         "taxonomy_crosswalk_version": "de-bltu-source-crosswalk-v1",
         "taxonomy_assignment_sets": 15755,
         "source_addresses_retained_privately": true,
-        "private_map_visible_candidates": 1523,
-        "unmapped_candidates": 14232,
+        "private_map_visible_candidates": 1526,
+        "unmapped_candidates": 14229,
         "retained_business_street_addresses": 15731,
         "local_address_queue_entries": 15731,
         "records_without_business_street_address": 24,
@@ -588,12 +588,15 @@
           "all_files_sha256_verified": true
         },
         "durable_provider_jobs_created": 15731,
-        "geocoding_provider": "Geoapify private profile geoapify-de-bltu",
-        "external_provider_requests": 3424,
+        "geocoding_provider": "Geoapify private profile geoapify-de-bltu; LocationIQ fallback pilot locationiq-de-bltu",
+        "external_provider_requests": 3447,
+        "external_provider_requests_scope": "3,424 Geoapify requests and 23 outbound LocationIQ geocoding requests; LocationIQ reserved 24 requests conservatively, including one query rejected locally before HTTP",
         "geocoding_results": {
           "accepted_provider_results": 1579,
           "review_required_provider_results": 1845,
-          "context_matched_display_candidates": 1523,
+          "context_matched_display_candidates": 1526,
+          "geoapify_context_matched_display_candidates": 1523,
+          "provider_result_counts_scope": "Accepted/review counts below describe Geoapify; LocationIQ pilot outcomes are recorded separately",
           "old_accepted_results_withheld_by_context_audit": 54,
           "new_batch_jobs": 3000,
           "new_batch_display_candidates": 1327,
@@ -606,13 +609,13 @@
         "private_database": "uec_launch_sources_test_20261025",
         "idempotent_replay_verified": true,
         "idempotency_evidence": "Same-handoff replay ledger reports idempotent_replay=true and unchanged source counts; the original immutable source_preview_runs row remains false.",
-        "api_acceptance": "Earlier API acceptance verified all 1,091 map reference groups against 1,093 eligible SQL candidate IDs, with no-store and unauthenticated rejection. Subsequent worker results increased the SQL display count to 1,523; the earlier API membership digest below applies only to that earlier 1,093-record checkpoint.",
+        "api_acceptance": "Earlier API acceptance verified all 1,091 map reference groups against 1,093 eligible SQL candidate IDs, with no-store and unauthenticated rejection. Subsequent worker results increased the SQL display count to 1,526; the earlier API membership digest below applies only to that earlier 1,093-record checkpoint.",
         "refresh_command": "python scripts/real_preview.py refresh --source de.locations",
         "effective_date": "unknown",
         "adapter_version": "de-bltu-private-v2",
         "current_implementation_adapter_version": "de-bltu-private-v3",
         "context_audit": {
-          "matched": 1523,
+          "matched": 1526,
           "confidence_or_precision_mismatch": 174,
           "locality_mismatch": 47,
           "postcode_mismatch": 6,
@@ -630,11 +633,20 @@
         },
         "locationiq_fallback": {
           "profile_id": "locationiq-de-bltu",
-          "status": "local_integration_tested_live_pilot_pending_transfer_authorization",
+          "status": "authorized_live_pilot_completed_local_results_only",
           "pilot_limit": 24,
-          "live_geocoding_requests": 0,
+          "records_processed": 24,
+          "live_geocoding_requests": 23,
+          "request_reservations": 24,
+          "accepted_display_points": 3,
+          "review_required": 20,
+          "unresolved": 1,
+          "locally_rejected_query_formats": 1,
+          "prior_geoapify_results": {"review_required": 17, "accepted_but_unmapped": 7},
+          "display_cache_and_audited_view_parity_failures": 0,
+          "transfer_authorization": "User explicitly authorized address, postcode, locality, state and country for up to 24 German business records; no names or contacts",
           "balance_endpoint_http_status": 403,
-          "verification": "Offline adapter/profile/worker checks and rollback-only real-database staging passed; no external address transfer has occurred"
+          "verification": "Pilot completed; 3 accepted results match provider provenance, candidate display cache and context-audited view. v0 baseline unchanged. All 24 inputs had prior unresolved-for-display Geoapify outcomes, so this is not a representative provider-wide success rate. No further live requests are authorized by this bounded pilot."
         },
         "context_validation_migrations": [
           "095_germany_geocoding_context",
@@ -662,7 +674,7 @@
         "pipeline/geocoding/locationiq.py",
         "pipeline/scripts/stages/activate-locationiq-preview.py"
       ],
-      "next_action": "Prepare the measured 15,755-record source cohort with 1,523 address points and 14,232 unmapped records. Continue the 12,305 queued jobs and 2 retryable jobs within provider allowances; run the bounded LocationIQ pilot only after explicit transfer authorization. Exact public BKG locality batch joining remains unverified; no guessed coarse fallback was installed. Preserve native labels, activities and source dates in the dated release."
+      "next_action": "Prepare the measured 15,755-record source cohort with 1,526 address points and 14,229 unmapped records. LocationIQ pilot is complete; a larger transfer needs authorization. Prioritize unqueried addresses in future fallback batches and investigate street abbreviations/locality differences using retained evidence, without accepting road-only matches. Exact public BKG locality batch joining remains unverified. Preserve native labels, activities and source dates in the dated release."
     },
     {"source_id":"ca.ontario.meat-plants","metadata":"verified","acquisition":"verified","runtime_health":"not_run","publication_eligibility":"blocked","e2e_verified":true,"last_verified_run":{"verified_at_utc":"2026-10-02T01:55:47.890787Z","parsed":460,"accepted_private_candidates":460,"quarantined":0,"mapped":0,"unmapped":460,"numeric_coordinates_persisted":0,"taxonomy_assignment_sets":460,"taxonomy_assignment_rows":1021,"public_rows":0,"idempotent_replay":true},"preview_eligible":true,"included_in_active_preview_database":true,"evidence":["data/manifests/ontario-private-e2e-20261002.json","pipeline/preview-enabled-sources.json","scripts/real_preview.py","scripts/certify_real_preview.py","docs/countries/canada/meat-plants-pipeline.md","pipeline/sources/canada/adapter.py","pipeline/sources/canada/acquire.py","pipeline/sources/canada/refresh.py","pipeline/source_registry.json"],"next_action":"One-time strict private E2E passed and exact certified run imported to the retained private preview (460 current-source candidates); list/search/detail pass, but all remain unmapped because source coordinates/address remain withheld pending privacy/location review. Zero map pins/public rows. Ontario only; freshness/completeness are not guaranteed. Do not publish without separate review/approval."},
     {"source_id":"ca.cfia.federal-meat","metadata":"verified","acquisition":"verified","runtime_health":"unknown","publication_eligibility":"blocked","e2e_verified":true,"last_verified_run":{"verified_at_utc":"2026-10-01T03:54:16Z","parsed":874,"accepted_private_candidates":858,"quarantined":16,"mapped":0,"unmapped":858},"preview_eligible":true,"included_in_active_preview_database":false,"evidence":["docs/country-recon-ca.md","docs/countries/canada/meat-plants-pipeline.md","pipeline/sources/canada/adapter.py","pipeline/sources/canada/acquire.py","pipeline/sources/canada/refresh.py","pipeline/sources/canada/geocode_queue.py","pipeline/sources/canada/fixtures/cfia.csv","pipeline/preview-enabled-sources.json","scripts/real_preview.py","scripts/certify_real_preview.py","pipeline/common/review_packet.py","pipeline/source_registry.json"],"next_action":"Latest strict private-preview E2E verified 2026-10-01T03:54:16Z: 874 parsed, 858 accepted private candidates, 16 quarantined, 0 mapped and 858 unmapped. Configured for private preview but not present in the active preview DB; the one-time isolated E2E used a disposable DB. A temporary restricted geocode queue was removed and no external request was made. Effective date/Last-Modified is absent; completeness, privacy clearance, recurring health, and publication remain unresolved."},

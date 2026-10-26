@@ -114,6 +114,16 @@ def _claim_job(
                           AND target.source_id=%s AND candidate.source_id=%s
                           AND candidate.country_code=%s
                           AND target.snapshot_sha256=candidate.snapshot_sha256
+                          AND NOT EXISTS (
+                              SELECT 1 FROM real_preview.geocode_display_evidence evidence
+                              JOIN uec.geocode_results result USING (geocode_result_id)
+                              WHERE evidence.candidate_id=candidate.candidate_id
+                                AND result.status='accepted' AND result.provider_id<>job.provider_id
+                                AND evidence.display_precision='provider_address_point_high_confidence'
+                                AND evidence.display_latitude=candidate.display_latitude
+                                AND evidence.display_longitude=candidate.display_longitude
+                                AND evidence.display_geometry_source=candidate.display_geometry_source
+                          )
                           AND candidate.snapshot_sha256=COALESCE(
                               (SELECT run.snapshot_sha256 FROM real_preview.source_preview_runs run
                                WHERE run.source_id=%s
