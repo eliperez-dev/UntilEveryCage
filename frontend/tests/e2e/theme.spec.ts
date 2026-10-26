@@ -157,7 +157,7 @@ const publicViews = [
   { route: `./#/map?release_id=${release}`, surface: '.map-view-tools', label: 'map controls' },
   { route: './#/database', surface: '.public-database', label: 'database' },
   { route: `./#/records/${id}?release_id=${release}`, surface: '.public-record', label: 'full facility detail' },
-  { route: './#/contribute/bug', surface: '.bug-page', label: 'contribute form' },
+  { route: './#/contribute/bug', surface: '.intake', label: 'contribute form' },
   { route: './#/about', surface: '.about-page', label: 'About' },
   { route: './#/faq', surface: '.faq-page', label: 'FAQ' },
   { route: './#/database/api', surface: '.api-page', label: 'API' },
