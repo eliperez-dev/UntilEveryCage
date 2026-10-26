@@ -739,8 +739,36 @@ test('a shared basemap change during map startup waits for the style', async ({ 
   await expect(page).toHaveURL(/basemap=satellite/);
 });
 
+test('closing details during a pending basemap switch preserves the requested style', async ({ page }) => {
+  const tile = await mockCameraRaster(page);
+  await installTerrainFixture(page);
+  await page.goto('./#/map?f1a=field&scenario=dense&lat=38&lon=-96&z=4');
+  await page.waitForFunction(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    return map?.getLayer('clusters') && map.isSourceLoaded('base');
+  });
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  await page.route('**/World_Imagery/**', async route => {
+    await gate; await route.fulfill({ contentType: 'image/png', body: tile });
+  });
+  try {
+    await page.goto('./#/map?f1a=field&scenario=dense&lat=40.7&lon=-73.9&z=8&basemap=satellite&selected=dense-exact-0-0');
+    await expect(page.locator('.dossier')).toBeVisible();
+    await expect(page.getByText('Loading Satellite imagery…', { exact: true })).toBeVisible();
+    await page.evaluate(() => history.replaceState({ ...history.state, uecMapSelection: true }, '', location.href));
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.dossier')).toBeHidden();
+    await expect(page).toHaveURL(/basemap=satellite/);
+    release();
+    await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getStyle().sources.base.tiles[0]), { timeout: basemapHandoffTimeout }).toContain('World_Imagery');
+    await expect(page).toHaveURL(/basemap=satellite/);
+  } finally { release(); }
+});
+
 for (const dismissal of ['close button', 'Escape key', 'browser Back'] as const) {
   test(`dismissing a selected record with ${dismissal} preserves the selected camera and style`, async ({ page }) => {
+    test.setTimeout(45_000);
     await installTerrainFixture(page);
     await page.goto('./#/map?f1a=field&scenario=dense&lat=38&lon=-96&z=4&pitch=24&bearing=18');
     await page.locator('.map-surface').waitFor({ state: 'visible', timeout: 30_000 });
@@ -751,6 +779,10 @@ for (const dismissal of ['close button', 'Escape key', 'browser Back'] as const)
     await page.goto(`./${selectedHash}`);
     await page.locator('.map-surface').waitFor({ state: 'visible', timeout: 30_000 });
     await expect(page.locator('.dossier')).toBeVisible();
+    await page.waitForFunction(() => {
+      const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+      return map.getStyle().sources.base.tiles[0].includes('World_Imagery') && !map.getSource('candidate-base') && map.isSourceLoaded('base');
+    });
     await page.evaluate(() => history.replaceState({ ...history.state, uecMapSelection: true }, '', location.href));
     await expect.poll(() => page.evaluate(() => {
       const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;

@@ -5,6 +5,12 @@ async function installWorldFixture(page: import('@playwright/test').Page) {
   const transparent = Buffer.from(await page.evaluate(() => document.createElement('canvas').toDataURL('image/png').split(',')[1]!), 'base64');
   await page.route('https://tile.openstreetmap.org/**', route => route.fulfill({ contentType: 'image/png', body: transparent }));
   await page.route('https://server.arcgisonline.com/**', route => route.fulfill({ contentType: 'image/png', body: transparent }));
+  const elevation = Buffer.from(await page.evaluate(() => {
+    const canvas = document.createElement('canvas'); canvas.width = canvas.height = 512;
+    const context = canvas.getContext('2d')!; context.fillStyle = 'rgb(128,0,0)'; context.fillRect(0, 0, 512, 512);
+    return canvas.toDataURL('image/png').split(',')[1]!;
+  }), 'base64');
+  await page.route('https://tiles.mapterhorn.com/**', route => route.fulfill({ contentType: 'image/png', body: elevation }));
   await page.route(url => url.pathname === '/api/v2/releases/manifest', route => route.fulfill({ json: releaseManifest }));
   await page.route(url => url.pathname === '/api/v2/map/feed', route => route.fulfill({ json: {
     api_version: 'v2', data: { type: 'FeatureCollection', features: [] }, meta: {
