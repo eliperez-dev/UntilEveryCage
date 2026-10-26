@@ -1,4 +1,17 @@
 import { expect, test, type Page } from '@playwright/test';
+test('the default public app exposes no local encrypted-inbox routes or SDK requests', async ({ page }) => {
+  const secureRequests: string[] = [];
+  page.on('request', request => {
+    const url = new URL(request.url());
+    if (/\/community\/secure\/|openpgp|SecureInbox|SecureReview|SecureContributionFlow/.test(url.pathname)) secureRequests.push(url.pathname);
+  });
+  await page.route('**/api/**', route => route.fulfill({ status: 404, contentType: 'application/json', body: '{}' }));
+  for (const route of ['#/secure-inbox', '#/secure-review']) {
+    await page.goto(route);
+    await expect(page.getByRole('heading', { name: 'Page not found', exact: true })).toBeVisible();
+  }
+  expect(secureRequests).toEqual([]);
+});
 const id = '18c6ef3a-28cd-4c8e-a9bb-3951f45f210d';
 const recordId = '27d7ef4b-39de-4d9f-bacc-4062f560321e';
 const secondId = '38e8af5c-40ef-4e0a-adbd-5173f671432f';
