@@ -2,8 +2,9 @@
 
 This document owns source research and field interpretation. Current counts and
 readiness live only in [source-status.json](source-status.json). Private retrieval
-and processing have a scoped [terms record](../pipeline/sources/germany/terms-review.json);
-public redistribution rights remain unresolved.
+and processing have a scoped [terms record](../pipeline/sources/germany/terms-review.json).
+The federal open-data catalogue lists a source-specific reuse licence for BLtU;
+that evidence is separate from the project's artifact- and release-scoped decision.
 
 ## Source identity and scope
 
@@ -14,9 +15,10 @@ lists are continuously updated. See the [BVL scope page](https://www.bvl.bund.de
 
 The [BVL data portal](https://gis.bvl.bund.de/datenportal/) describes the data as
 authority-provided material, says tabular data can be exported as CSV or Excel, and
-identifies BVL/BKG attribution notices for portal geodata. The portal’s export
-capability supports a reproducible acquisition design, but it does not by itself
-establish permission to redistribute the exported establishment records.
+identifies BVL/BKG attribution notices for portal geodata. The export capability
+supports reproducible acquisition, but does not itself state reuse terms for
+establishment records; the separate BLtU-specific catalogue licence is described
+below.
 
 The stable entry route is [BVL BLtU](https://www.bvl.bund.de/bltu); the BVL portal supports selecting and exporting the current general or category list. Session-bound export URLs must be captured as run-specific provenance, not checked in as a source URL.
 
@@ -27,23 +29,33 @@ CSV; V2 must not reuse those behaviors without a reviewed, deterministic replace
 
 ## Terms and risk decision
 
-The official pages located for this assessment document public access and export, but
-do not present a clear license or redistribution grant for the establishment-record
-export. The private acquisition authorization does not settle source permissions
-or public redistribution. Establish:
+The federal BLE/BMELH open-data catalogue entry [“Zugelassene
+Lebensmittelbetriebe”](https://www.landwirtschaftsdaten.de/detailansicht.html?cHash=228583357d36cd394966d7398546ee2b&tx_epadpsearch_showdetails%5Baction%5D=show&tx_epadpsearch_showdetails%5Bcontroller%5D=Search&tx_epadpsearch_showdetails%5Bgeodata%5D=187)
+links the [BLtU database](http://www.bvl.bund.de/bltu), names BVL, Ref. 115 as
+publisher, and lists [Datenlizenz Deutschland Namensnennung 2.0
+(DL-DE BY 2.0)](https://www.govdata.de/dl-de/by-2-0). The catalogue record reports
+its last change as 2021-06-07. The licence permits commercial and non-commercial
+reuse, including copying, editing, distribution, and combining data. Where supplied
+by the data provider, the attribution includes the provider name, the licence name
+and link, and the dataset URI; changes must be identified. See the [GovData
+attribution FAQ](https://www.govdata.de/informationen/faq). This BLtU-specific
+catalogue entry is distinct from the BVL portal's separate BVL/BKG geodata credits.
 
-1. whether automated retrieval is permitted, including rate/frequency limits;
-2. whether local research retention of the raw export is permitted;
-3. whether transformed establishment records may be redistributed in a public
-   non-commercial project under the project’s data license/attribution model; and
-4. required attribution, notices, update/deletion obligations, and any restrictions
-   on address, approval-number, or activity/species fields.
+The catalogue detail URL was fetched over HTTPS on 2026-10-25, but currently serves
+a generic BMELH open-data landing page; the saved HTML does not contain the BLtU
+record. The catalogue search result still exposes the record and its BLtU resource
+link. The row-free capture hashes and this limitation are recorded in the private
+evidence receipt at
+`D:\\UntilEveryCage-Operations\\source-captures\\bltu-terms-catalogue-20261025\\bltu-catalogue-terms-evidence.json`.
 
-This is a terms uncertainty, not a claim that the source prohibits use. Retain the
-stable landing route, session navigation, exact private export URL, response
-metadata, bytes and checksum. Acquisition is not publication authorization.
-Privacy/safety review is separately required because facility addresses can overlap
-with residences or identify individuals; source origin does not resolve that risk.
+The scoped private [terms record](../pipeline/sources/germany/terms-review.json)
+authorizes bounded retrieval and private staging only; it is not itself the source
+licence or a public-release decision. The catalogue licence does not establish the
+export's effective date, resolve facility-address privacy, or approve any project
+release. Record the exact source-artifact/release decision and attribution before
+promotion; assess addresses separately because they can overlap residences or
+identify individuals. Keep the stable BLtU route, session navigation, per-run export
+URL, response metadata, bytes, and checksum as acquisition provenance.
 
 ## 2026-10-25 public export verification
 
@@ -63,32 +75,35 @@ otherwise valid rows among those exclusions. The adapter now retains all flags w
 column positions and values, carries the native street field privately, and
 marks unknown taxonomy as unresolved rather than
 discarding structurally valid observations. Column-count anomalies and malformed
-CSV rows remain quarantined. SH and CP are the only mapped broad categories; other source
-flags remain native/unresolved. Coordinates are unknown and geocoding is disabled.
+CSV rows remain quarantined. The pinned BLtU taxonomy crosswalk maps supported
+activity flags while retaining every native flag; unsupported flags stay unresolved.
+BLtU supplies no coordinates; later private provider
+enrichment is separate from source acquisition and is summarized below.
 The shared private importer and authenticated list/detail routes retain the
 normalized evidence. Authenticated detail can return the source business address;
 collection/map routes and public releases do not gain address access from this work.
 The source inventory distinguishes import acceptance from actual map readiness.
 
-The shared refresh runner has also completed this live acquisition into a private
-candidate handoff. Local provider-neutral address staging is distinct from public
-release review: the source's `pending-review` privacy label is retained unchanged
-and does not alone withhold a business address from the local queue. Only explicit
-source address restrictions/withheld or known-residential evidence is excluded.
-An address-queue entry requires a nonempty source street address; city/country-only
-queries are counted separately rather than treated as street addresses.
-No source coordinates were supplied. Germany has no enabled private Geoapify
-source profile, so queue entries remain pending provider configuration; no durable
-provider jobs or external provider calls were created. This is not a claim that
-addresses were privacy-screened, publicly releasable, or map-ready.
+The shared refresh runner also staged the live acquisition privately. A separate,
+bounded Geoapify enrichment path has since been exercised under a private Germany
+source profile. The [canonical source inventory](source-status.json) owns its current
+request, acceptance, display, and unmapped counts. Migration 095 aligns German
+address normalization and requires matching postcode, locality and available state
+context. An append-only audit excludes older provider points that fail those checks.
+Provider results
+and remaining address work are private evidence, not evidence that addresses were
+privacy-screened, publicly releasable, or map-ready. No source coordinates were
+supplied.
 
 ## Metadata evidence boundary
 
-Any user-supplied JSON describing this source must be treated as a lead until tied to
-the actual BLtU resource. In particular, `http://dcat-ap.de` identifies a metadata
-profile/specification, not a dataset license, and `https://bund.de` is a placeholder,
-not the BLtU resource URI. A DL-DE record for another BVL dataset cannot be inherited
-by BLtU without dataset-specific evidence.
+The DL-DE BY 2.0 evidence above is the federal catalogue's BLtU-specific entry and
+resource link; do not substitute a licence record for another BVL dataset. Direct
+retrieval of the catalogue detail page now returns generic landing-page HTML, so the
+private capture is not a copy of the catalogue record itself. Preserve this evidence
+limitation along with the indexed entry and its listed 2021-06-07 catalogue-change
+date. The BLtU export's displayed application/list version `1.0.35 [10/2023]` is not
+an effective date for the captured rows.
 
 ## Private/test-only implementation
 
@@ -117,11 +132,12 @@ unresolved coordinates, suspicious identity changes, and source disappearance mu
 remain explicit review outcomes. The shared command can import private candidates;
 geocoding, release promotion and publication are not implied by acquisition approval.
 
-## Unresolved inquiry questions
+## Remaining source questions
 
-The retired inquiry document was an unsent draft, not permission received.
-For BLtU specifically, establish the exact dataset licence/metadata URL,
-permitted periodic export route/rate, artifact retention and redistribution
-conditions, attribution, treatment of addresses/activity fields and publisher
-correction/withdrawal obligations. Do not borrow licence metadata from another
-BVL product or mistake the pesticide API for an animal-facility register.
+The export's effective date remains unknown, and the catalogue entry's last-change
+date predates the observed 2026 capture. BVL describes the lists as continuously
+updated, but the exact effective date for a particular download must not be inferred
+from the application version. Preserve each run's retrieval time, response metadata,
+and checksum. Privacy, source-field interpretation, and the project's release-scoped
+decision remain separate from the catalogue licence. Do not mistake the pesticide
+API or another BVL product's terms for the BLtU resource.

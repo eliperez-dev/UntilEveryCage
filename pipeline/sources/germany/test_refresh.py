@@ -18,7 +18,7 @@ ROOT = Path(__file__).parent
 
 
 class GermanyRefreshTests(unittest.TestCase):
-    def test_local_artifact_fixture_is_source_owned_and_unknown_activity_is_retained(self):
+    def test_local_artifact_fixture_preserves_supported_game_handling_activity(self):
         from .refresh import GermanyRefreshAdapter
 
         self.assertTrue(GermanyRefreshAdapter.fixture_path.is_file())
@@ -27,7 +27,7 @@ class GermanyRefreshTests(unittest.TestCase):
         self.assertEqual(len(parsed["accepted"]), 2)
         self.assertEqual(len(parsed["quarantined"]), 1)
 
-        # Add one native activity flag outside the adapter's supported map.
+        # GHE is supported by the pinned official activity crosswalk.
         lines = content.decode("utf-8-sig").splitlines()
         headers = lines[0].split(";")
         values = lines[1].split(";")
@@ -37,7 +37,8 @@ class GermanyRefreshTests(unittest.TestCase):
         result = BltuAdapter().parse_bytes(with_unknown)
         row = result["accepted"][0]
         self.assertIn("GHE", row["normalized"]["activity_codes"])
-        self.assertEqual(row["normalized"]["classification_state"], "unresolved")
+        self.assertEqual(row["normalized"]["classification_state"], "mapped")
+        self.assertIn("processing", row["normalized"]["activity_categories"])
 
     def test_row_free_acquisition_sidecar_is_verified_and_preserved(self):
         raw = ROOT.parent.parent / "germany" / "fixtures" / "synthetic_bltu.csv"
@@ -83,7 +84,7 @@ class GermanyRefreshTests(unittest.TestCase):
             catalog = RefreshCatalog()
             runner = RefreshRunner(catalog)
             self.assertEqual(type(catalog.adapters["de.locations"].adapter).__name__, "GermanyRefreshAdapter")
-            self.assertIsNone(profile_for_source("de.locations"))
+            self.assertEqual(profile_for_source("de.locations")["profile_id"], "geoapify-de-bltu")
             request = RefreshRequest(
                 source_ids=("de.locations",), mode="live-acquisition",
                 output_root=Path(directory) / "runs", retries=0,
@@ -104,7 +105,7 @@ class GermanyRefreshTests(unittest.TestCase):
                              + queue["records_withheld_explicit_restriction"])
             self.assertGreater(queue["records_queued"], 0)
             self.assertEqual(queue["records_withheld_explicit_restriction"], 0)
-            self.assertEqual(queue["provider_review_state"], "not_configured")
+            self.assertEqual(queue["provider_review_state"], "separate_private_profile")
             self.assertFalse(queue["durable_db_jobs"])
             self.assertFalse(queue["external_provider_called"])
 

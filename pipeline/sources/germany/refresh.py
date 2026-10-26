@@ -121,10 +121,10 @@ class GermanyRefreshAdapter:
                 "records_with_source_coordinates": sum(
                     1 for row in queue_candidates if _has_source_coordinates_for_queue(row)),
                 "records_without_usable_address": missing_street_address + queue["records_without_usable_address"],
-                "provider_review_state": "not_configured",
+                "provider_review_state": "separate_private_profile",
                 "durable_db_jobs": False,
                 "external_provider_called": False,
-                "privacy_policy": "The source privacy label is unchanged. Local address-only staging excludes explicit restricted/withheld/residential evidence; public privacy review remains pending and no provider is enabled.",
+                "privacy_policy": "The source privacy label is unchanged. Local address staging excludes explicit restricted/withheld/residential evidence. The separate private Geoapify profile is not called during acquisition.",
             })
             atomic_json(queue_metadata_path, queue_metadata)
             result["report"]["geocode_queue"] = {key: queue_metadata[key] for key in (
@@ -136,10 +136,10 @@ class GermanyRefreshAdapter:
 
 
 REVIEW_BLOCKERS = {
-    "terms": ["BVL documents public access/export but dataset-specific reuse and redistribution terms remain pending named human confirmation."],
-    "privacy": ["Facility addresses may overlap residences or identify people; address and coordinate publication review is pending and geocoding remains disabled."],
+    "terms": ["Record BVL attribution and DL-DE BY 2.0 licence evidence for the dated cohort; see docs/germany-source-assessment.md."],
+    "privacy": ["Publication review is separate from private address enrichment; source acquisition never calls the external geocoder."],
     "completeness": ["BLtU is the continuously updated 853/2004 approved-establishment list, not a census of all animal-agriculture facilities; export effective date is unknown until captured."],
-    "classification": ["Only the pinned SH/CP activity mapping is accepted; other activity flags are retained as native evidence and remain unresolved, while species/activity interpretation stays source-scoped."],
+    "classification": ["Use the pinned BLtU taxonomy crosswalk and preserve all native activity flags; unresolved flags remain source evidence."],
     "coverage": ["The portal export URL is session/request-specific; a selected current general-list export and its schema must be evidenced per run."],
 }
 
@@ -202,10 +202,10 @@ def refresh(*, run_dir: str | Path, raw_path: str | Path | None = None, fetch: b
             lifecycle["manifest"],
             source_scope=lifecycle["manifest"]["coverage"],
             checks=("review candidate-handoff/normalized/records.jsonl in restricted staging", "confirm the BVL export request/session evidence", "confirm no public release or API promotion"),
-            blockers=("candidate is private and human-gated", "dataset-specific reuse and address/coordinate review pending"),
+            blockers=("candidate is private", "dated-cohort publication review pending"),
         )
     manifest = lifecycle.get("manifest") or {}
-    report = {"source_id": CONFIG["source_id"], "source_url": artifact.source_url, "portal_url": CONFIG["portal_url"], "retrieved_at_utc": artifact.retrieved_at_utc, "sha256": artifact.sha256, "byte_size": artifact.byte_size, "input_rows": manifest.get("input_rows"), "normalized_rows": manifest.get("normalized_rows"), "quarantined_rows": manifest.get("quarantined_rows"), "schema_status": manifest.get("schema_status"), "schema_fingerprint": manifest.get("schema_fingerprint"), "drift_alarms": [], "disappearance_semantics": "not-observed; never inferred as closure", "geocoding": "disabled", "release_state": "not-created", "publication_state": "private-candidate", "publication_eligibility": "blocked", "lifecycle_status": lifecycle.get("status"), "lifecycle_run_dir": lifecycle.get("run_dir")}
+    report = {"source_id": CONFIG["source_id"], "source_url": artifact.source_url, "portal_url": CONFIG["portal_url"], "retrieved_at_utc": artifact.retrieved_at_utc, "sha256": artifact.sha256, "byte_size": artifact.byte_size, "input_rows": manifest.get("input_rows"), "normalized_rows": manifest.get("normalized_rows"), "quarantined_rows": manifest.get("quarantined_rows"), "schema_status": manifest.get("schema_status"), "schema_fingerprint": manifest.get("schema_fingerprint"), "drift_alarms": [], "disappearance_semantics": "not-observed; never inferred as closure", "geocoding": CONFIG["geocoding"], "release_state": "not-created", "publication_state": "private-candidate", "publication_eligibility": "blocked", "lifecycle_status": lifecycle.get("status"), "lifecycle_run_dir": lifecycle.get("run_dir")}
     atomic_json(Path(run_dir) / "refresh.json", report)
     return {"report": report, "lifecycle": lifecycle}
 

@@ -4,9 +4,9 @@
   "acquisition_url": "https://bltu.bvl.bund.de/bltu/app/process/bvl-btl_p_veroeffentlichung?execution=e6s1",
   "export_control": "CSV export from the public Generalliste page",
   "portal_url": "https://gis.bvl.bund.de/datenportal/",
-  "adapter_version": "de-bltu-private-v2",
+  "adapter_version": "de-bltu-private-v3",
   "schema_version": "de-bltu-csv-v2",
   "coverage": "BVL BLtU list of German establishments approved under Regulation (EC) 853/2004; export selected from the BVL portal",
-  "terms": "Public access and CSV export are documented by BVL; private research acquisition is implemented. Dataset-specific retention, attribution, and redistribution terms remain under review",
-  "geocoding": "disabled"
+  "terms": "The federal Landwirtschaftsdaten catalogue identifies the BLtU resource under Datenlizenz Deutschland Namensnennung 2.0. Attribute BVL, link the resource and licence, and identify changes; see docs/germany-source-assessment.md for the dated catalogue evidence and live-route limitation. Release decisions remain artifact scoped.",
+  "geocoding": "queued_separately_no_provider_calls_during_acquisition"
 }

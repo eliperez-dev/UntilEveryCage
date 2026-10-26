@@ -95,6 +95,9 @@ try {
   $phase = 'country adapter tests'
   python -m unittest -q pipeline.germany.test_adapter pipeline.germany.test_orchestrator pipeline.common.test_delta pipeline.common.test_orchestrator pipeline.common.test_registry pipeline.contracts.test_adapter_contract pipeline.contracts.test_candidate_handoff pipeline.sources.denmark.test_adapter pipeline.sources.uk.fsa_approved.test_adapter pipeline.sources.uk.fsa_approved.test_handoff pipeline.sources.uk.fss_approved.test_adapter pipeline.sources.uk.fss_approved.test_handoff pipeline.sources.uk.approved.test_compose
   if ($LASTEXITCODE -ne 0) { throw "Country adapter tests failed (exit $LASTEXITCODE)." }
+  # Keep the live country implementations covered, not only the legacy DE adapter.
+  python -m unittest -q pipeline.sources.germany.test_acquire pipeline.sources.germany.test_refresh pipeline.sources.germany.test_adapter pipeline.sources.germany.test_geocoding pipeline.sources.spain_rgseaa.test_adapter pipeline.sources.spain_rgseaa.test_location_enrichment pipeline.sources.spain_rgseaa.test_map_activation
+  if ($LASTEXITCODE -ne 0) { throw "Live Germany/Spain adapter tests failed (exit $LASTEXITCODE)." }
 }
 finally {
   Remove-Item Env:UEC_RUN_RIGHTS_DB -ErrorAction SilentlyContinue

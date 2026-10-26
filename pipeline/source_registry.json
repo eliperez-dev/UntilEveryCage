@@ -94,12 +94,12 @@
       "url": "https://www.bvl.bund.de/bltu",
       "access_method": "bounded HTTPS session navigation to the public BLtU general-list CSV export, or preserved artifact replay",
       "cadence": "unknown",
-      "attribution_licensing_notes": "Public access and CSV export are documented by BVL. Private acquisition is authorized for project research; dataset-specific retention, attribution, and redistribution rights remain unresolved.",
+      "attribution_licensing_notes": "The federal Landwirtschaftsdaten catalogue identifies BLtU under Datenlizenz Deutschland Namensnennung 2.0: attribute BVL, link the licence/resource and identify changes. Its dated metadata and current generic-route limitation are documented in docs/germany-source-assessment.md; cohort publication decisions remain separate.",
       "adapter_status": "implemented_partial",
       "expected_artifact_schema": "BLtU general-list cp1252 CSV with 50 live columns, repeated activity-code columns, current approval number, establishment name, state, address, and activity flags",
-      "adapter_version": "de-bltu-private-v2",
+      "adapter_version": "de-bltu-private-v3",
       "schema_version": "de-bltu-csv-v2",
-      "blockers": ["Export effective date is unknown; BVL displays application/list version 1.0.35 [10/2023]. Keep addresses private pending privacy review. Source taxonomy remains partly unresolved; dataset-specific retention, attribution, redistribution, and project approval remain pending. No public release."]
+      "blockers": ["Export effective date is unknown; application/list version 1.0.35 [10/2023] is not the dataset date. Preserve declared activity fields and distinguish locality references from address matches. Dated-cohort review and attribution must be complete before release inclusion."]
     },
     {
       "source_id": "dk.smiley",

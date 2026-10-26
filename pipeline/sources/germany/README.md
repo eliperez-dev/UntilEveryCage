@@ -11,15 +11,16 @@ python -m pipeline.sources.germany.refresh --fetch --run-dir <private/run> --out
 ```
 
 Live mode requires `pipeline/sources/germany/terms-review.json`. That record
-authorizes private acquisition under the project task scope only; it does not
-resolve BVL reuse rights or allow publication.
+authorizes private acquisition under the project task scope only. The source
+assessment records BLtU's DL-DE BY 2.0 catalogue evidence and attribution;
+publication still uses the dated-cohort review.
 
 Preserved artifacts may still be replayed with `--raw <private/bltu-export.csv>`.
 
 The typed adapter preserves repeated activity columns and source evidence,
 quarantines schema and mapping anomalies, emits shared health evidence, and
-cannot create a release. Address/coordinate review, BVL reuse terms, and human
-publication approval remain blocked.
+cannot create a release. Address/coordinate and dated-cohort publication review
+remain separate from source acquisition.
 
 ## Private location enrichment and taxonomy
 
@@ -30,14 +31,17 @@ target the disposable `uec_launch_sources_test_20261025` database only. Keep its
 connection URL and `GEOAPIFY_API_KEY` in process memory, never command arguments.
 
 ```text
-python pipeline/scripts/stages/activate-de-bltu-geoapify.py --limit 24
-python pipeline/scripts/stages/geocode-worker.py --provider geoapify --private-source-profile geoapify-de-bltu --limit 24 --max-attempts 2 --retries 1 --daily-budget 3000
+python pipeline/scripts/stages/activate-de-bltu-geoapify.py --limit 1000 --offset 0
+python pipeline/scripts/stages/geocode-worker.py --provider geoapify --private-source-profile geoapify-de-bltu --limit 1000 --max-attempts 2 --retries 1 --daily-budget 3000
 python -m pipeline.sources.germany.reproject_taxonomy --apply
 ```
 
 The activator creates durable jobs/targets without provider calls. Later finite
 batches support `--offset`; the worker shares the existing daily reservation
-ledger with other sources. Its initial queued event has attempt number 1, so
+ledger with other sources. German address matches require postcode, locality and
+available state context, not only a matching street line. Migration 095 audits
+retained results without rewriting them and excludes mismatched display points.
+Its initial queued event has attempt number 1, so
 `--max-attempts 1` will select no jobs in this profile. A larger command-line
 budget does not raise an already-created ledger limit: an authorized operator
 must reconcile that existing daily limit without resetting used reservations.

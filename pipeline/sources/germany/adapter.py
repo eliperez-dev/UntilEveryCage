@@ -4,6 +4,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+import re
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -33,6 +34,17 @@ CITY_INDEX = 3
 ACTIVITY_START = 7
 ACTIVITY_END = 44
 ACTIVITY_MAP = {code: rule["leaf_activity"] for code, rule in TAXONOMY_CONFIG["rules"].items()}
+
+
+def parse_ort(value: object) -> tuple[str | None, str | None]:
+    """Split BVL's native Ort field into its five-digit postcode and locality."""
+    if not isinstance(value, str):
+        return None, None
+    text = " ".join(value.split())
+    match = re.fullmatch(r"(\d{5})\s+(.+)", text)
+    if not match:
+        return None, text or None
+    return match.group(1), match.group(2).strip() or None
 
 
 def _source_columns(headers: list[str], values: list[str]) -> list[dict[str, str]]:
@@ -85,6 +97,8 @@ class BltuAdapter:
             has_current_id = len(values) > CURRENT_ID_INDEX and bool(values[CURRENT_ID_INDEX].strip())
             current_id = (values[CURRENT_ID_INDEX].strip() if has_current_id else (values[4].strip() if len(values) > 4 else ""))
             name = values[NAME_INDEX].strip() if len(values) > NAME_INDEX else ""
+            ort = values[CITY_INDEX].strip() if len(values) > CITY_INDEX else ""
+            postal_code, locality = parse_ort(ort)
             if not current_id:
                 reasons.append("missing_current_approval_id")
             elif id_counts[current_id] > 1:
@@ -104,7 +118,9 @@ class BltuAdapter:
             for category in mapped:
                 categories[category] += 1
             activity_flags = [{"column_index": index, "code": headers[index], "value": values[index].strip()} for index in range(ACTIVITY_START, min(ACTIVITY_END, len(values))) if values[index].strip()]
-            record = {"source_id": self.source_id, "source_row": line, "source_record_key": f"{current_id or 'unknown'}|{line}", "source_values": source, "normalized": {"establishment_id": current_id or None, "approval_number": current_id or None, "approval_number_kind": "current" if has_current_id else "legacy", "name": name or None, "trading_name": name or None, "country_code": "DE", "nation": "Germany", "state": values[STATE_INDEX].strip() if len(values) > STATE_INDEX else None, "city": values[CITY_INDEX].strip() if len(values) > CITY_INDEX else None, "address": values[STREET_INDEX].strip() if len(values) > STREET_INDEX and values[STREET_INDEX].strip() else None, "address_state": "source-present-pending-privacy-review" if len(values) > STREET_INDEX and values[STREET_INDEX].strip() else "unknown", "activity_codes": tuple(activity_codes), "activity_flags": tuple(activity_flags), "activity_categories": mapped, "source_activity_categories": tuple(activity_codes), "classification_state": "mapped" if mapped and not any(code not in ACTIVITY_MAP for code in activity_codes) else "unresolved", "coordinates": None, "coordinate_state": "unknown", "coordinate_precision": "not-supplied", "privacy_gate": "pending-review", "coordinate_gate": "review_required", "publication_gate": "blocked"}}
+            address = values[STREET_INDEX].strip() if len(values) > STREET_INDEX and values[STREET_INDEX].strip() else None
+            state = values[STATE_INDEX].strip() if len(values) > STATE_INDEX else None
+            record = {"source_id": self.source_id, "source_row": line, "source_record_key": f"{current_id or 'unknown'}|{line}", "source_values": source, "normalized": {"establishment_id": current_id or None, "approval_number": current_id or None, "approval_number_kind": "current" if has_current_id else "legacy", "name": name or None, "trading_name": name or None, "country_code": "DE", "nation": "Germany", "state": state, "city": locality, "postal_code": postal_code, "address": address, "private_location_evidence": {"address": address, "city": locality, "postal_code": postal_code, "region": state, "country_code": "DE"}, "address_state": "source-present-pending-privacy-review" if address else "unknown", "activity_codes": tuple(activity_codes), "activity_flags": tuple(activity_flags), "activity_categories": mapped, "source_activity_categories": tuple(activity_codes), "classification_state": "mapped" if mapped and not any(code not in ACTIVITY_MAP for code in activity_codes) else "unresolved", "coordinates": None, "coordinate_state": "unknown", "coordinate_precision": "not-supplied", "privacy_gate": "pending-review", "coordinate_gate": "review_required", "publication_gate": "blocked"}}
             if reasons:
                 unique = tuple(dict.fromkeys(reasons))
                 for reason in unique:
@@ -130,7 +146,7 @@ class BltuAdapter:
         _, normalized_sha, _ = atomic_jsonl(root / "normalized" / "records.jsonl", result["accepted"])
         atomic_jsonl(root / "quarantined" / "records.jsonl", result["quarantined"])
         manifest = private_manifest(source_id=self.source_id, adapter_version=self.adapter_version, schema_version=self.schema_version, artifact=artifact, input_rows=result["input_rows"], normalized_rows=len(result["accepted"]), quarantined_rows=len(result["quarantined"]), normalized_sha256=normalized_sha, parsed_sha256=parsed_sha, anomaly_counts=result["anomaly_counts"])
-        manifest.update({"country_code": "DE", "coverage": CONFIG["coverage"], "geocoding": "disabled", "schema_status": result["schema_status"], "schema_fingerprint": result["schema_fingerprint"], "encoding": result["encoding"], "row_length_counts": result["row_length_counts"], "coverage_counts": result["coverage_counts"], "release_gate": "restricted_pending_terms", "effective_date": artifact.effective_date or "unknown"})
+        manifest.update({"country_code": "DE", "coverage": CONFIG["coverage"], "geocoding": CONFIG["geocoding"], "schema_status": result["schema_status"], "schema_fingerprint": result["schema_fingerprint"], "encoding": result["encoding"], "row_length_counts": result["row_length_counts"], "coverage_counts": result["coverage_counts"], "release_gate": "restricted_pending_terms", "effective_date": artifact.effective_date or "unknown"})
         atomic_json(root / "manifest.json", manifest)
         return manifest
 

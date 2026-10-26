@@ -72,6 +72,66 @@ class GeoapifyAdapterTests(unittest.TestCase):
     def us_aphis_adapter(**kwargs):
         return geoapify.GeoapifyAdapter(country_code="us", private_source_profile=True, locality_only=True, **kwargs)
 
+    @staticmethod
+    def germany_private_adapter(**kwargs):
+        return geoapify.GeoapifyAdapter(country_code="de", private_source_profile=True, **kwargs)
+
+    def test_germany_address_requires_exact_postcode_locality_and_state_context(self):
+        query = "Hauptstraße 1, 10115, Berlin, BE, Germany"
+
+        def feature(postcode="10115", city="Berlin", state="BE", country="de"):
+            return {"geometry": {"type": "Point", "coordinates": [13.4, 52.5]},
+                    "properties": {"place_id": "synthetic-de", "result_type": "building",
+                                   "country_code": country, "address_line1": "Hauptstraße 1",
+                                   "postcode": postcode, "city": city, "state_code": state,
+                                   "rank": {"confidence": 0.96}}}
+
+        def resolve(item):
+            adapter = self.germany_private_adapter(
+                api_key="test-secret",
+                opener=unittest.mock.Mock(return_value=FakeResponse({"features": [item]})),
+            )
+            return adapter.geocode(query)
+
+        accepted = resolve(feature())
+        self.assertEqual(accepted.status, "accepted")
+        self.assertEqual(accepted.acceptance, "high_confidence_address_match")
+        for item in (feature(postcode="10117"), feature(city="Potsdam"),
+                     feature(state="BB"), feature(country="at"),
+                     feature(postcode=""), feature(city="")):
+            with self.subTest(context=item["properties"]):
+                rejected = resolve(item)
+                self.assertEqual(rejected.status, "review_required")
+                self.assertIsNone(rejected.latitude)
+
+    def test_germany_casefold_preserves_strasse_alias_and_rejects_different_locality(self):
+        query = "Kirchstraße 1, 14712, Rathenow, BB, Germany"
+        good = {"geometry": {"coordinates": [12.3, 52.6]}, "properties": {
+            "result_type": "building", "country_code": "de", "address_line1": "Kirchstrasse 1",
+            "postcode": "14712", "city": "RATHENOW", "state": "Brandenburg",
+            "rank": {"confidence": 0.95}}}
+        adapter = self.germany_private_adapter(
+            api_key="test-secret", opener=unittest.mock.Mock(return_value=FakeResponse({"features": [good]})))
+        self.assertEqual(adapter.geocode(query).status, "accepted")
+        wrong_town = json.loads(json.dumps(good))
+        wrong_town["properties"]["city"] = "Premnitz"
+        rejected = self.germany_private_adapter(
+            api_key="test-secret", opener=unittest.mock.Mock(return_value=FakeResponse({"features": [wrong_town]}))).geocode(query)
+        self.assertEqual(rejected.status, "review_required")
+        self.assertIsNone(rejected.latitude)
+
+    def test_germany_reuses_retained_combined_ort_query_and_provider_locality_alias(self):
+        prior_query = "Kirchstraße 1, 14712 Rathenow, Germany"
+        feature = {"geometry": {"coordinates": [12.3, 52.6]}, "properties": {
+            "result_type": "building", "country_code": "de", "address_line1": "Kirchstrasse 1",
+            "postcode": "14712", "town": "Rathenow", "state_code": "BB",
+            "rank": {"confidence": 0.95}}}
+        result = self.germany_private_adapter(
+            api_key="test-secret", opener=unittest.mock.Mock(return_value=FakeResponse({"features": [feature]}))
+        ).geocode(prior_query)
+        self.assertEqual(result.status, "accepted")
+        self.assertEqual(result.acceptance, "high_confidence_address_match")
+
     def test_key_is_required(self):
         with patch.dict("os.environ", {}, clear=True):
             with self.assertRaisesRegex(ValueError, "GEOAPIFY_API_KEY"):

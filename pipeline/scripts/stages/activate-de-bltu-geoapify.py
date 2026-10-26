@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Queue 24 current Germany BLtU street-address candidates for private Geoapify.
+"""Queue current Germany BLtU street-address candidates for private Geoapify.
 
 This stages durable worker jobs only. It performs no provider requests and
 never includes establishment names in the query.
@@ -16,11 +16,11 @@ import psycopg
 
 SOURCE_ID = "de.locations"
 PROFILE_ID = "geoapify-de-bltu"
-PILOT_SIZE = 24
+DEFAULT_BATCH_SIZE = 500
 DEFAULT_ARTIFACT = Path(r"D:\UntilEveryCage-Operations\source-captures\de-launch-20261025\accepted-shared-run-worker-target\runs\refresh-a9a6a0d172343491\sources\de.locations\acquisition\preview-de-locations-7b148310-cb9e-4f9f-bde3-a11a3a167b0e\bltu-general-list.csv")
 
 
-def activate(database_url: str, *, limit: int = PILOT_SIZE, offset: int = 0,
+def activate(database_url: str, *, limit: int = DEFAULT_BATCH_SIZE, offset: int = 0,
              artifact_path: str | Path = DEFAULT_ARTIFACT) -> dict[str, int]:
     if limit < 1 or offset < 0:
         raise ValueError("invalid DE batch limit or offset")
@@ -43,8 +43,11 @@ def activate(database_url: str, *, limit: int = PILOT_SIZE, offset: int = 0,
                       candidate.country_code,manifest.source_artifact_sha256,
                       manifest.source_url,manifest.retrieved_at,
                       private_location.location_evidence->>'address' AS street,
-                      private_location.location_evidence->>'postal_code' AS postal_code,
-                      COALESCE(private_location.location_evidence->>'city',candidate.city) AS city
+                      COALESCE(private_location.location_evidence->>'city',candidate.city) AS city,
+                      COALESCE(private_location.location_evidence->>'postal_code',
+                               (regexp_match(COALESCE(private_location.location_evidence->>'city',candidate.city),
+                                             '^([0-9]{5})[[:space:]]+'))[1]) AS postal_code,
+                      private_location.location_evidence->>'region' AS region
                  FROM real_preview.candidates candidate
                  JOIN latest ON latest.snapshot_sha256=candidate.snapshot_sha256
                  JOIN real_preview.candidate_private_location_evidence private_location
@@ -56,6 +59,9 @@ def activate(database_url: str, *, limit: int = PILOT_SIZE, offset: int = 0,
                    AND candidate.location_class <> 'numeric_source_coordinate'
                    AND NULLIF(BTRIM(private_location.location_evidence->>'address'),'') IS NOT NULL
                    AND NULLIF(BTRIM(COALESCE(private_location.location_evidence->>'city',candidate.city)),'') IS NOT NULL
+                   AND COALESCE(private_location.location_evidence->>'postal_code',
+                                (regexp_match(COALESCE(private_location.location_evidence->>'city',candidate.city),
+                                              '^([0-9]{5})[[:space:]]+'))[1]) ~ '^[0-9]{5}$'
                  ORDER BY candidate.candidate_id
                  LIMIT %s OFFSET %s""",
             (SOURCE_ID, SOURCE_ID, SOURCE_ID, limit, offset),
@@ -64,8 +70,11 @@ def activate(database_url: str, *, limit: int = PILOT_SIZE, offset: int = 0,
             raise RuntimeError("DE Geoapify batch has no eligible current-snapshot street-address candidates")
 
         queued = targets = already = 0
-        for candidate_id, snapshot, source_id, source_key, country, artifact_sha, source_url, retrieved, street, postal, city in rows:
-            if source_id != SOURCE_ID or country != "DE" or not street or not city:
+        for candidate_id, snapshot, source_id, source_key, country, artifact_sha, source_url, retrieved, street, raw_city, postal, region in rows:
+            city = raw_city
+            if isinstance(city, str) and len(city) >= 6 and city[:5].isdigit() and city[5].isspace():
+                city = city[6:].strip()
+            if source_id != SOURCE_ID or country != "DE" or not street or not city or not postal or len(postal) != 5:
                 raise RuntimeError("DE Geoapify candidate scope validation failed")
             if artifact_digest != artifact_sha:
                 raise RuntimeError("DE preserved source artifact checksum does not match current manifest")
@@ -95,7 +104,20 @@ def activate(database_url: str, *, limit: int = PILOT_SIZE, offset: int = 0,
             if connection.execute("SELECT 1 FROM uec.public_access_restricted WHERE source_record_id=%s", (source_record_id,)).fetchone():
                 raise RuntimeError("DE Geoapify candidate is restricted")
 
-            query = ", ".join(part.strip() for part in (street, postal, city, "Germany") if part and part.strip())
+            query = ", ".join(part.strip() for part in (street, postal, city, region, "Germany") if part and part.strip())
+            retained_job = connection.execute(
+                """SELECT job.job_id,job.query FROM uec.geocode_jobs job
+                   JOIN real_preview.geocode_targets target ON target.job_id=job.job_id
+                   JOIN uec.geocode_job_events queued ON queued.job_id=job.job_id AND queued.event_type='queued'
+                    AND queued.details->>'processing_mode'='private_geoapify_source_profile'
+                    AND queued.details->>'profile_id'=%s
+                   WHERE target.candidate_id=%s AND target.snapshot_sha256=%s
+                     AND job.source_record_id=%s AND job.provider_id='geoapify'
+                   ORDER BY target.created_at,job.created_at LIMIT 1""",
+                (PROFILE_ID, candidate_id, snapshot, source_record_id),
+            ).fetchone()
+            if retained_job:
+                query = retained_job[1]
             job = connection.execute(
                 """INSERT INTO uec.geocode_jobs(source_record_id,provider_id,query)
                    VALUES (%s,'geoapify',%s)
@@ -151,8 +173,8 @@ def activate(database_url: str, *, limit: int = PILOT_SIZE, offset: int = 0,
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--database-url", default=os.environ.get("UEC_DATABASE_URL"))
-    parser.add_argument("--limit", type=int, default=PILOT_SIZE,
-                        help="finite candidate batch size (default: approved 24-record pilot)")
+    parser.add_argument("--limit", type=int, default=DEFAULT_BATCH_SIZE,
+                        help="finite candidate batch size (default: 500)")
     parser.add_argument("--offset", type=int, default=0,
                         help="candidate-order offset for later finite batches")
     args = parser.parse_args()

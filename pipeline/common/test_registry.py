@@ -21,7 +21,7 @@ class RegistryTests(unittest.TestCase):
                              (country, adapter_version, schema_version))
             self.assertTrue(entry["live_callable"])
             self.assertEqual(entry["operational_classification"], "live")
-        separate_geocoding = {"nl.nvwa.approved-food", "es.locations"}
+        separate_geocoding = {"nl.nvwa.approved-food", "es.locations", "de.locations"}
         for source_id, entry in by_source.items():
             with self.subTest(source_id=source_id):
                 self.assertEqual(

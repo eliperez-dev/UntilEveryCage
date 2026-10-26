@@ -6,13 +6,18 @@ from pathlib import Path
 
 from pipeline.common.orchestrator import run_private_lifecycle
 from pipeline.contracts.adapter_contract import SourceArtifact
-from .adapter import BltuAdapter
+from .adapter import BltuAdapter, parse_ort
 
 
 ROOT = Path(__file__).parent
 
 
 class GermanyPrivateAdapterTests(unittest.TestCase):
+    def test_ort_field_splits_five_digit_postcode_and_preserves_locality(self):
+        self.assertEqual(parse_ort(" 76316   Malsch "), ("76316", "Malsch"))
+        self.assertEqual(parse_ort("Berlin"), (None, "Berlin"))
+        self.assertEqual(parse_ort(""), (None, None))
+
     def test_bltu_preserves_native_flags_and_address_privately(self):
         raw = ROOT.parent.parent / "germany" / "fixtures" / "synthetic_bltu.csv"
         adapter = BltuAdapter()
@@ -22,6 +27,8 @@ class GermanyPrivateAdapterTests(unittest.TestCase):
         self.assertTrue(set(normalized["activity_categories"]) <= {"slaughter", "cutting", "processing",
                                                                     "logistics_and_storage"})
         self.assertIsNotNone(normalized["address"])
+        self.assertIsNone(normalized["private_location_evidence"]["postal_code"])
+        self.assertIsNone(normalized["private_location_evidence"].get("establishment_name"))
         self.assertIn(normalized["activity_flags"][0]["code"], {"SH", "CP"})
         self.assertIsNone(normalized["coordinates"])
         self.assertGreaterEqual(len(result["quarantined"]), 1)

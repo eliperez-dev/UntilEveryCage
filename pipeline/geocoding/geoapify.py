@@ -176,7 +176,8 @@ class GeoapifyAdapter:
             if not normalized_address and isinstance(candidate_street, str) and isinstance(candidate_house, (str, int)):
                 normalized_address = self._normalize(f"{candidate_house} {candidate_street}")
             if (not self.locality_only and candidate_type in {"building", "amenity"}
-                    and parts and normalized_address == parts[0]):
+                    and parts and normalized_address == parts[0]
+                    and (self.country_code != "de" or self._germany_context_matches(candidate_props, parts))):
                 viable.append((candidate, "high_confidence_address_match"))
             elif candidate_type == "city" and self.allow_locality_match:
                 locality = candidate_props.get("city")
@@ -191,7 +192,27 @@ class GeoapifyAdapter:
                                      and locality == parts[0] and province == parts[1])
                 else:
                     state_matches = (not self.locality_only or (len(parts) > 1 and state == parts[1]))
-                if locality and locality in locality_parts and state_matches:
+                if self.country_code == "de":
+                    postcode = candidate_props.get("postcode")
+                    query_postcode = parts[1] if len(parts) > 1 else ""
+                    embedded = re.fullmatch(r"(\d{5})\s+(.+)", query_postcode)
+                    if embedded:
+                        query_postcode, query_locality = embedded.group(1), self._normalize(embedded.group(2))
+                    else:
+                        query_locality = parts[2] if len(parts) > 2 else ""
+                    candidate_localities = self._germany_localities(candidate_props)
+                    state_matches = bool(
+                        re.fullmatch(r"\d{5}", query_postcode)
+                        and isinstance(postcode, str)
+                        and re.sub(r"\s+", "", postcode) == query_postcode
+                        and query_locality
+                        and query_locality in candidate_localities
+                    )
+                if self.country_code == "de":
+                    locality_matches = bool(query_locality and query_locality in self._germany_localities(candidate_props))
+                else:
+                    locality_matches = bool(locality and locality in locality_parts)
+                if locality_matches and state_matches:
                     viable.append((candidate, "approximate_locality_match"))
         if self.strict_matching:
             if len(viable) != 1:
@@ -263,6 +284,7 @@ class GeoapifyAdapter:
             and confidence >= self.minimum_rank_confidence
             and query_parts
             and normalized_address == query_parts[0]
+            and (self.country_code != "de" or self._germany_context_matches(properties, query_parts))
         ):
             return GeocodeOutcome(
                 "accepted", "high_confidence_address_match", float(latitude), float(longitude),
@@ -280,7 +302,10 @@ class GeoapifyAdapter:
             and confidence is not None
             and confidence >= self.minimum_rank_confidence
             and locality
-            and locality in (query_parts if self.locality_only else query_parts[1:])
+            and (locality in (query_parts if self.locality_only else query_parts[1:])
+                 or (self.country_code == "de" and query_parts[2:3]
+                     and self._normalize(query_parts[2]) in self._germany_localities(properties)))
+            and (self.country_code != "de" or self._germany_context_matches(properties, query_parts))
             and (not self.locality_only or self.municipality_only
                  or (len(query_parts) > 1 and state == query_parts[1]))
             and (not self.municipality_only or
@@ -297,6 +322,54 @@ class GeoapifyAdapter:
             None, precision, "geoapify_forward", False,
             {"error": "address_or_locality_match_not_supported"},
         )
+
+    @staticmethod
+    def _germany_context_matches(properties: dict, query_parts: list[str]) -> bool:
+        """Require postcode and locality agreement for German address points."""
+        if len(query_parts) < 2:
+            return False
+        query_postcode = query_parts[1]
+        embedded = re.fullmatch(r"(\d{5})\s+(.+)", query_postcode)
+        if embedded:
+            query_postcode, query_locality = embedded.group(1), GeoapifyAdapter._normalize(embedded.group(2))
+        else:
+            query_locality = query_parts[2] if len(query_parts) > 2 else ""
+        if not re.fullmatch(r"\d{5}", query_postcode):
+            return False
+        provider_postcode = properties.get("postcode")
+        if not isinstance(provider_postcode, str):
+            return False
+        if re.sub(r"\s+", "", provider_postcode) != query_postcode:
+            return False
+        if not query_locality or query_locality not in GeoapifyAdapter._germany_localities(properties):
+            return False
+        provider_state = properties.get("state_code") or properties.get("state")
+        query_state = query_parts[-2] if len(query_parts) >= 5 and query_parts[-1] == "germany" else ""
+        if query_state and isinstance(provider_state, str) and provider_state.strip():
+            if GeoapifyAdapter._germany_state_code(provider_state) != GeoapifyAdapter._germany_state_code(query_state):
+                return False
+        return True
+
+    @staticmethod
+    def _germany_localities(properties: dict) -> set[str]:
+        return {GeoapifyAdapter._normalize(value) for key in ("city", "town", "municipality", "village")
+                if isinstance((value := properties.get(key)), str) and value.strip()}
+
+    @staticmethod
+    def _germany_state_code(value: str | None) -> str:
+        if not isinstance(value, str):
+            return ""
+        state_codes = {
+            "baden wurttemberg": "bw", "bayern": "by", "berlin": "be", "brandenburg": "bb",
+            "bremen": "hb", "hamburg": "hh", "hessen": "he", "mecklenburg vorpommern": "mv",
+            "niedersachsen": "ni", "nordrhein westfalen": "nw", "rheinland pfalz": "rp",
+            "saarland": "sl", "sachsen": "sn", "sachsen anhalt": "st", "schleswig holstein": "sh",
+            "thuringen": "th",
+        }
+        normalized = GeoapifyAdapter._normalize(value)
+        if normalized.startswith("de "):
+            normalized = normalized[3:]
+        return state_codes.get(normalized, normalized)
 
     @staticmethod
     def _normalize(value: str) -> str:
