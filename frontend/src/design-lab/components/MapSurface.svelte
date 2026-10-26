@@ -174,8 +174,7 @@
   let syncing = false;
   let activeFlight = false;
   let handledFlightId = 0;
-  let focusedFlightSelectionId: string | null = null;
-  let focusedFlightCenter: [number, number] | null = null;
+  let selectionFocus: { id: string; center: [number, number] } | null = null;
   let pendingSelectionFocus: [number, number] | null = null;
   let settlingSelectionFocus = false;
   let interactionsBound = false;
@@ -422,6 +421,10 @@
         terrainError = "Terrain tiles are unavailable. The map is shown flat.";
         return;
       }
+      if (selectionFocus?.id === mapState.selectedId) {
+        pendingSelectionFocus = selectionFocus.center;
+        settlePendingSelectionFocus();
+      }
     }
     // Keep healthy terrain in overhead mode once activated. Removing it would
     // reset the camera elevation to sea level and change the geographic focus.
@@ -461,6 +464,7 @@
   /** A source can report loaded after an error, so tile failures reject the handoff. */
   function waitForRaster(instance: MapLibreMap, sourceId: string): Promise<void> {
     return new Promise((resolve, reject) => {
+      let settled = false;
       const timeout = setTimeout(() => finish(false), 10000);
       const onError = (event: any) => {
         if (event?.sourceId === sourceId) finish(false);
@@ -470,6 +474,8 @@
           finish(true);
       };
       function finish(ok: boolean) {
+        if (settled) return;
+        settled = true;
         clearTimeout(timeout);
         instance.off("error", onError);
         instance.off("sourcedata", onData);
@@ -477,6 +483,7 @@
       }
       instance.on("error", onError);
       instance.on("sourcedata", onData);
+      if (instance.isSourceLoaded(sourceId)) finish(true);
     });
   }
   async function applyBasemapTiles(basemap: Basemap) {
@@ -796,7 +803,7 @@
   }
   $effect(() => {
     mapState.selectedId;
-    if (!mapState.selectedId) pendingSelectionFocus = null;
+    if (!mapState.selectedId) { pendingSelectionFocus = null; selectionFocus = null; }
     syncSelectionOverlayWhenReady(map, updateVisualSettings);
   });
   $effect(() => {
@@ -1337,6 +1344,12 @@
   });
   function bindInteractions() {
     if (!map) return;
+    const focusRecord = (id: string, center: [number, number]) => {
+      if (!map || !center.every(Number.isFinite)) return;
+      selectionFocus = { id, center };
+      pendingSelectionFocus = center;
+      map.easeTo({ center, duration: 380, easing: (t) => 1 - Math.pow(1 - t, 3), essential: false });
+    };
     const inspectReference = (key: unknown, count: unknown, sourceId?: unknown) => {
       if (typeof key !== "string" || !/^[a-f0-9]{32}$/i.test(key)) return false;
       selectedReferenceKey = key;
@@ -1360,7 +1373,7 @@
         const coordinates = feature?.geometry?.coordinates;
         if (map && Array.isArray(coordinates) && coordinates.length >= 2) {
           const center: [number, number] = [Number(coordinates[0]), Number(coordinates[1])];
-          if (center.every(Number.isFinite)) { pendingSelectionFocus = center; map.easeTo({ center, duration: 380, easing: (t) => 1 - Math.pow(1 - t, 3), essential: false }); }
+          focusRecord(key, center);
         }
         onselect(key);
       };
@@ -1479,7 +1492,7 @@
           const coordinates = event.features?.[0]?.geometry?.coordinates;
           if (map && Array.isArray(coordinates) && coordinates.length >= 2) {
             const center: [number, number] = [Number(coordinates[0]), Number(coordinates[1])];
-            if (center.every(Number.isFinite)) { pendingSelectionFocus = center; map.easeTo({ center, duration: 380, easing: (t) => 1 - Math.pow(1 - t, 3), essential: false }); }
+            focusRecord(id, center);
           }
           onselect(id);
         }
@@ -1520,7 +1533,7 @@
           const coordinates = event.features?.[0]?.geometry?.coordinates;
           if (map && Array.isArray(coordinates) && coordinates.length >= 2) {
             const center: [number, number] = [Number(coordinates[0]), Number(coordinates[1])];
-            if (center.every(Number.isFinite)) { pendingSelectionFocus = center; map.easeTo({ center, duration: 380, easing: (t) => 1 - Math.pow(1 - t, 3), essential: false }); }
+            focusRecord(id, center);
           }
           onselect(id);
         }
@@ -1639,15 +1652,7 @@
         previousWidth = width; previousHeight = height;
         nativeMotionController?.cancel();
         if (resumePending) { instance.resize(); return; }
-        const selectedId = mapState.selectedId;
-        const point = selectedId ? nativeFullCollection?.features.find(feature => feature.properties.facility_id === selectedId || feature.properties.id === selectedId) : undefined;
-        const record = selectedId ? records.find(item => item.id === selectedId) : undefined;
-        const selectedCenter: [number, number] | null = point
-          ? point.geometry.coordinates
-          : record?.longitude !== null && record?.longitude !== undefined && record.latitude !== null
-            ? [record.longitude, record.latitude]
-            : selectedId && focusedFlightSelectionId === selectedId ? focusedFlightCenter : null;
-        resizeWorkspaceMap(instance, selectedCenter, activeFlight);
+        resizeWorkspaceMap(instance, selectionFocus?.id === mapState.selectedId ? selectionFocus.center : null, activeFlight);
         if (diagnosticsOpen) sampleDebugDimensions();
         publishBounds();
       });
@@ -1723,7 +1728,7 @@
     });
     instance.on("movestart", (event: any) => {
       nativeMotionController?.cancel();
-      if (event?.originalEvent) pendingSelectionFocus = null;
+      if (event?.originalEvent) { pendingSelectionFocus = null; selectionFocus = null; }
       if (event?.originalEvent && terrainPending) {
         terrainViewGeneration++; terrainViewAbort?.abort(); terrainPending = false;
       }
@@ -1920,6 +1925,7 @@
       return;
     syncing = true;
     pendingSelectionFocus = null;
+    selectionFocus = null;
     map.jumpTo({
       center: [viewport.centerLon, viewport.centerLat],
       zoom: viewport.zoom,
@@ -1932,8 +1938,7 @@
     const target = flightTarget;
     if (!active || !map || !target || target.id === handledFlightId) return;
     handledFlightId = target.id;
-    focusedFlightSelectionId = mapState.selectedId;
-    focusedFlightCenter = [target.longitude, target.latitude];
+    selectionFocus = mapState.selectedId ? { id: mapState.selectedId, center: [target.longitude, target.latitude] } : null;
     pendingSelectionFocus = [target.longitude, target.latitude];
     activeFlight = true;
     const camera = { center: [target.longitude, target.latitude] as [number, number], zoom: target.zoom };

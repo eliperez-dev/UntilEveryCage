@@ -22,6 +22,12 @@ serially or assign each shared path to exactly one agent. If ownership overlaps
 or a shared interface must change, stop the conflicting edits and have the
 coordinator resolve the boundary before work continues.
 
+Agree on boundaries once, then work independently. Use one completion handoff;
+exchange further messages only for a concrete blocker or contract change.
+Exactly one coordinator owns integration, final testing, CI, deployment and
+cleanup. Workers stop overlapping edits after handoff. Keep messages brief and
+use plain language rather than compressed technical shorthand.
+
 Include the actual worktree root, runnable installed interpreters, and exact
 test database name/container in the assignment. A container's `POSTGRES_DB`
 default is not the assigned test database. Verify `current_database()` and the

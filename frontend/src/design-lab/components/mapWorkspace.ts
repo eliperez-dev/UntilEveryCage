@@ -31,11 +31,11 @@ export function maskPublicMapMatches(
 /** A layout change only resizes the existing renderer; it does not touch data. */
 export function resizeWorkspaceMap(
   map: { resize(): unknown; jumpTo(camera: { center: [number, number] }): unknown },
-  selectedCenter: [number, number] | null,
+  activeSelectionCenter: [number, number] | null,
   flying: boolean,
 ): void {
   map.resize();
-  // Do not interrupt a search-selection flight. Its target already addresses
-  // the center of the newly sized map container.
-  if (selectedCenter && !flying) map.jumpTo({ center: selectedCenter });
+  // Only an explicit selection flight owns a focus. A selected shared URL or
+  // a manually panned camera must not be recentered when the panel resizes.
+  if (activeSelectionCenter && !flying) map.jumpTo({ center: activeSelectionCenter });
 }

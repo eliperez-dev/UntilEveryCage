@@ -61,8 +61,8 @@ API schemas own supported fields. They are not additional roadmaps.
   Do not change panel layout without the maintainer's specific approval.
 - The map stage fills the space below the header, including when navigation
   wraps. On desktop Search opens a resizable left workspace at one-third width;
-  the map occupies the remaining two-thirds and really resizes, retaining selected-location
-  focus. Search, filters, results and facility detail share that workspace.
+  the map occupies the remaining two-thirds and really resizes, retaining the current
+  camera rather than recentering an existing selection. Search, filters, results and facility detail share that workspace.
   Back to results restores the list and its scroll position. Mobile uses a
   bottom search sheet and fullscreen detail. Below Search, keep Filters with its
   sliders icon and the result count on one compact row. Keep detail dense and

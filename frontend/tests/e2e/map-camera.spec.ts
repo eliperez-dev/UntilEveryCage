@@ -195,12 +195,21 @@ test('raster detail for common geographic points stays stable across fixed-camer
       const tiles = await page.evaluate(async () => {
         const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__, current = map.getStyle();
         const seen: Array<{ z: number; x: number; y: number }> = [];
-        const record = (event: any) => { if (event.sourceId === 'base' && event.coord?.canonical) { const { z, x, y } = event.coord.canonical; seen.push({ z, x, y }); } };
+        let finish: () => void;
+        const loaded = new Promise<void>((resolve, reject) => {
+          const timeout = setTimeout(() => reject(new Error('Base raster did not finish loading')), 15_000);
+          finish = () => { clearTimeout(timeout); resolve(); };
+        });
+        const record = (event: any) => {
+          if (event.sourceId === 'base' && event.coord?.canonical) {
+            const { z, x, y } = event.coord.canonical; seen.push({ z, x, y });
+            if (map.isSourceLoaded('base')) finish();
+          }
+        };
         map.on('sourcedata', record);
-        const idle = new Promise<void>(resolve => map.once('idle', resolve));
         map.setStyle({ version: 8, sources: { base: current.sources.base, transport: current.sources.transport },
           layers: current.layers.filter((layer: { id: string }) => layer.id === 'base' || layer.id === 'transport') }, { diff: false });
-        await idle; map.off('sourcedata', record); return seen;
+        try { await loaded; return seen; } finally { map.off('sourcedata', record); }
       });
       expect(await page.evaluate(coordinates => {
         const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__, canvas = map.getCanvas();
@@ -360,7 +369,8 @@ test('cluster bodies render on cold and warm public maps through satellite, 3D a
   await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getStyle().sources.base.tiles[0])).toContain('World_Imagery');
   await expectClusterBody('satellite');
   const toggle = page.locator('#shared-tools-menu .map-camera-toggle'); await toggle.click();
-  await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getPitch())).toBe(45);
+  // The first tilt waits for the bounded DEM request before animating.
+  await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getPitch()), { timeout: 12_000 }).toBe(45);
   await expectClusterBody('3d'); await toggle.click();
   await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getPitch())).toBe(0);
   await expectClusterBody('2d');

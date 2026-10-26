@@ -47,21 +47,26 @@ describe('map workspace population', () => {
 });
 
 describe('map workspace resize', () => {
-  it('centers the selected location in the resized renderer without touching sources', () => {
+  it('resizes without replacing a shared or manually panned camera or touching sources', () => {
     const map = { resize: vi.fn(), jumpTo: vi.fn(), getSource: vi.fn(), addSource: vi.fn() };
-    resizeWorkspaceMap(map, [0, 51], false);
+    resizeWorkspaceMap(map, null, false);
     expect(map.resize).toHaveBeenCalledOnce();
-    expect(map.jumpTo).toHaveBeenCalledWith({ center: [0, 51] });
+    expect(map.jumpTo).not.toHaveBeenCalled();
     expect(map.getSource).not.toHaveBeenCalled();
     expect(map.addSource).not.toHaveBeenCalled();
   });
 
-  it('preserves an active selection flight or a camera without selection', () => {
+  it('leaves repeated panel layout changes to the existing renderer', () => {
     const map = { resize: vi.fn(), jumpTo: vi.fn() };
     resizeWorkspaceMap(map, [0, 51], true);
     resizeWorkspaceMap(map, null, false);
     expect(map.resize).toHaveBeenCalledTimes(2);
     expect(map.jumpTo).not.toHaveBeenCalled();
+  });
+  it('keeps an explicitly selected pin centered after its flight has finished', () => {
+    const map = { resize: vi.fn(), jumpTo: vi.fn() };
+    resizeWorkspaceMap(map, [0, 51], false);
+    expect(map.jumpTo).toHaveBeenCalledWith({ center: [0, 51] });
   });
 });
 
