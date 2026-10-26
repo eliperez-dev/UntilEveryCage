@@ -288,6 +288,16 @@ class SecureRelayAcceptance(unittest.TestCase):
             self.assertEqual(db.execute("SELECT count(*) FROM uec.community_secure_events WHERE case_id=%s", (identifier,)).fetchone()[0], 0)
 
 
+class SecureRelaySkipPolicy(unittest.TestCase):
+    def test_only_named_real_v0_acceptance_cases_may_skip(self):
+        from pipeline.tests.run_unittest import ALLOWED_SKIPPED_TESTS, ALLOWED_SKIP_REASONS
+        reason = "assigned disposable v0 URL required"
+        self.assertNotIn(reason, ALLOWED_SKIP_REASONS)
+        for method in unittest.defaultTestLoader.getTestCaseNames(SecureRelayAcceptance):
+            for prefix in ("", "pipeline.tests."):
+                self.assertIn((f"{prefix}e2e.test_secure_community.SecureRelayAcceptance.{method}", reason), ALLOWED_SKIPPED_TESTS)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--prepare", action="store_true")

@@ -125,6 +125,25 @@ ALLOWED_SKIPPED_TESTS.update(
     for prefix in ("", "pipeline.tests.")
 )
 
+# These six acceptance cases require the approved disposable V0 copy. Their
+# exact local run is mandatory; public CI contains only synthetic fixtures.
+# Do not add the reason globally: an unrelated/new skip must still fail CI.
+ALLOWED_SKIPPED_TESTS.update(
+    (
+        f"{prefix}e2e.test_secure_community.SecureRelayAcceptance.{method}",
+        "assigned disposable v0 URL required",
+    )
+    for prefix in ("", "pipeline.tests.")
+    for method in (
+        "test_all_kinds_ciphertext_only_isolated_and_idempotent",
+        "test_invalid_plaintext_fields_size_expiry_and_legacy",
+        "test_proposed_runtime_grants_cannot_read_source_or_rewrite_evidence",
+        "test_replies_status_removal_and_bounded_history",
+        "test_secure_and_legacy_share_daily_admission_cap",
+        "test_v0_unchanged_and_evidence_updates_forbidden",
+    )
+)
+
 
 def main():
     parser = argparse.ArgumentParser()
