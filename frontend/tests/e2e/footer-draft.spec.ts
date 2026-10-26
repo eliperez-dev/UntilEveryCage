@@ -52,11 +52,11 @@ test('the disclosure and credits preserve data context and appear once per non-m
   await expect(footer.getByRole('link', { name: 'GitHub', exact: true })).toBeFocused();
   await page.screenshot({ path: '../target/footer-copy-desktop-1440.png', fullPage: true });
   await data.click();
-  await expect(page.getByRole('heading', { name: 'API and data access', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Data', exact: true })).toBeVisible();
   await expect(footer).toHaveCount(1);
   expect(new URL(page.url()).hash).toContain(`map=${encodeURIComponent(map)}`);
   await expect(page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Map', exact: true })).toHaveAttribute('href', map);
-  for (const route of ['about', 'about/sources', 'contribute/bug', 'database', 'records/synthetic-record']) {
+  for (const route of ['about', 'about/sources', 'contribute/bug', 'records/synthetic-record']) {
     await page.goto(`./#/${route}`); await expect(footer).toHaveCount(1);
   }
   await page.goto('./#/map'); await expect(footer).toHaveCount(0);
@@ -81,7 +81,7 @@ test('touch disclosure wraps readably at 375px and 320px and data terms remain u
     if (width === 375) await page.screenshot({ path: '../target/footer-copy-touch-375.png', fullPage: false });
   }
   await footer.getByRole('link', { name: 'Data reuse terms' }).tap();
-  await expect(page.getByRole('heading', { name: 'API and data access', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Data', exact: true })).toBeVisible();
   await expect(footer).toHaveCount(1);
   await context.close();
 });

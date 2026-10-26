@@ -5,7 +5,8 @@ test('the default public app exposes no local encrypted-inbox routes or SDK requ
     const url = new URL(request.url());
     if (/\/community\/secure\/|openpgp|SecureInbox|SecureReview|SecureContributionFlow/.test(url.pathname)) secureRequests.push(url.pathname);
   });
-  await page.route('**/api/**', route => route.fulfill({ status: 404, contentType: 'application/json', body: '{}' }));
+  await page.route('**/api/**', route => new URL(route.request().url()).pathname.startsWith('/api/')
+    ? route.fulfill({ status: 404, contentType: 'application/json', body: '{}' }) : route.fallback());
   for (const route of ['#/secure-inbox', '#/secure-review']) {
     await page.goto(route);
     await expect(page.getByRole('heading', { name: 'Page not found', exact: true })).toBeVisible();
@@ -207,5 +208,3 @@ test('community claims are opt-in, scoped to the current profile, and prominentl
   await expect(page.getByRole('link', { name: 'View released record data (JSON)' })).toBeVisible();
   await expect(page.locator('.claim-detail').getByText(claimWarning, { exact: true })).toBeVisible();
 });
-
-

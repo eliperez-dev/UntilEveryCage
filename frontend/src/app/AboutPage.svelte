@@ -1,4 +1,7 @@
 <script lang="ts">
+  import FaqPage from './FaqPage.svelte';
+  import type { AboutSection } from './routeState';
+  let { section = 'overview', returnMapHref = '#/map' }: { section?: AboutSection; returnMapHref?: string } = $props();
   import AnimalKillCounter from './AnimalKillCounter.svelte';
   import { language, tr } from './language';
   const logo = `${import.meta.env.BASE_URL}assets/icon.png`;
@@ -42,6 +45,7 @@
     </section>
     <aside class="about-counter-slot" aria-label="Animal counter"><AnimalKillCounter /></aside>
   </div>
+  <FaqPage embedded {returnMapHref} section={section === 'overview' || section === 'sources' ? undefined : section} />
 </article>
 <style>
   .about-page{width:min(100% - 3rem,72rem);margin:auto;padding:1.5rem 0 2.5rem;color:var(--ink);font:.9rem/1.55 system-ui,sans-serif}

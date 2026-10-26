@@ -18,9 +18,9 @@ test('direct API and About destinations preserve safe map context and section al
   await expect(page.getByRole('button',{name:'Account menu'})).toHaveCount(0);
   await expect(page.getByRole('button',{name:'Tools',exact:true})).toBeVisible();
   const nav = page.getByRole('navigation', { name: 'Primary' });
-  await expect(nav.getByRole('link')).toHaveText(['Map','Database','API','Contribute','About','FAQ']);
-  await nav.getByRole('link',{name:'API',exact:true}).click();
-  await expect(page.getByRole('heading',{name:'API and data access',exact:true})).toBeVisible();
+  await expect(nav.getByRole('link')).toHaveText(['Map','Data','Contribute','About']);
+  await nav.getByRole('link',{name:'Data',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'Data',exact:true})).toBeVisible();
   expect(new URL(page.url()).hash).toContain('map=%23%2Fmap%3Flat%3D44.5%26lon%3D8.1%26z%3D5%26release_id%3Drelease-2026-10');
   await page.goto('./#/about/faq');
   await expect(page.getByRole('heading',{name:'Frequently asked questions',exact:true})).toBeVisible();
@@ -53,12 +53,15 @@ test('private Database category filtering reaches the repository and resets pagi
   await expect(page.getByRole('button',{name:'Synthetic first record',exact:true})).toBeVisible();
 });
 
-test('public Database uses public routes and reports unavailable releases without invented totals', async ({ page }) => {
-  await isolate(page,true); const privateReads: string[] = []; page.on('request',request => { if (new URL(request.url()).pathname.startsWith('/dev/')) privateReads.push(request.url()); });
-  await page.goto('./#/database'); await expect(page.getByRole('heading',{name:'Browse records'})).toBeVisible();
-  await expect(page.getByText('No eligible public release is available yet.',{exact:true})).toBeVisible();
-  await expect(page.getByRole('complementary',{name:'Selected record'})).toHaveCount(0);
-  expect(privateReads).toEqual([]);
+test('retired public Database entries stay within public map routes', async ({ page }) => {
+  await isolate(page,true);
+  let privateReads = 0;
+  page.on('request', request => { if (new URL(request.url()).pathname.startsWith('/dev/')) privateReads++; });
+  await page.goto('./#/database');
+  await expect.poll(() => new URL(page.url()).hash.split('?')[0]).toBe('#/map');
+  await expect(page.getByRole('complementary', { name:'Search, filters, and results' })).toBeVisible();
+  await expect(page.locator('.public-database')).toHaveCount(0);
+  expect(privateReads).toBe(0);
 });
 
 test('public record navigation reads the selected release and unavailable records stay empty', async ({ page }) => {
@@ -67,8 +70,7 @@ test('public record navigation reads the selected release and unavailable record
   await page.route('**/api/v2/locations?**',route => route.fulfill({contentType:'application/json',body:JSON.stringify({api_version:'v2',data:[wire],meta:{release_id:'synthetic-release',ruleset_version:'synthetic-rules',profile:'official',next_cursor:null,coverage_note:'Synthetic release only.'}})}));
   await page.route(`**/api/v2/locations/${id}?**`,route => { reads.push(new URL(route.request().url())); return route.fulfill({contentType:'application/json',body:JSON.stringify({api_version:'v2',data:wire,meta:{release_id:'synthetic-release',ruleset_version:'synthetic-rules',profile:'official',release_created_at:'2026-01-01T00:00:00Z'}})}); });
   const mapContext = '#/map?lat=44.5&lon=8.1&z=5&pitch=32&bearing=-12&basemap=satellite&release_id=synthetic-release';
-  await page.goto(`./#/database?release_id=synthetic-release&map=${encodeURIComponent(mapContext)}`);
-  await page.getByRole('link',{name:'Synthetic public record',exact:true}).click();
+  await page.goto(`./#/records/${id}?release_id=synthetic-release&map=${encodeURIComponent(mapContext)}`);
   await expect(page.getByRole('region',{name:'Public record'}).getByRole('heading',{name:/Synthetic public record/})).toBeVisible();
   expect(reads[0]!.searchParams.get('release_id')).toBe('synthetic-release'); expect(reads[0]!.searchParams.get('profile')).toBe('official');
   expect(new URL(page.url()).hash).toContain(encodeURIComponent(mapContext));
@@ -152,35 +154,36 @@ test('Downloads distinguishes no release from a service failure and keeps its sp
 test('optional email is private and receipt copying, fallback, and status work without persistence', async ({ page }) => {
   test.skip(process.env.VITE_COMMUNITY_PILOT !== 'true','Requires local intake UI.');
   await isolate(page,true);
+  await page.route('**/api/community/capabilities', route => route.fulfill({contentType:'application/json',body:JSON.stringify({enabled:true,types:['facility','evidence','correction','duplicate','privacy_removal']})}));
   await page.addInitScript(() => { Object.defineProperty(navigator,'clipboard',{value:{writeText:async(value:string) => { (window as unknown as {syntheticCopy:string}).syntheticCopy=value; }},configurable:true}); });
   let submitted: Record<string,unknown> | undefined; let statusBody: Record<string,unknown> | undefined;
   await page.route('**/api/community/submissions', async route => { submitted=route.request().postDataJSON(); await route.fulfill({status:201,contentType:'application/json',body:JSON.stringify({submission_id:id,receipt_secret:secret,status:'received',contact_email:email})}); });
   await page.route('**/api/community/status', async route => { statusBody=route.request().postDataJSON(); await route.fulfill({contentType:'application/json',body:JSON.stringify({submission_id:id,status:'screened',contact_email:email})}); });
   await page.goto('./#/contribute?type=evidence');
-  await page.getByLabel('Record link or ID',{exact:true}).fill(second); await page.getByLabel('What did you find?').fill('Synthetic evidence');
-  await page.getByLabel('Email (optional)',{exact:true}).fill(email); await page.getByLabel(/I have permission/).check();
+  await page.getByRole('textbox',{name:'Facility',exact:true}).fill(second); await page.getByLabel(/What did you find/).fill('Synthetic evidence');
+  await page.getByText('Add follow-up contact (optional)',{exact:true}).click();
+  await page.getByLabel('Email for follow-up (optional)',{exact:true}).fill(email); await page.getByLabel(/I have permission/).check();
   await page.getByRole('button',{name:'Send for review'}).click();
   await expect(page.getByRole('heading',{name:'Contribution received'})).toBeVisible();
   expect(submitted!.contact_email).toBe(email);
   await expect(page.getByText(email,{exact:true})).toHaveCount(0);
-  await page.getByRole('button',{name:'Copy submission id',exact:true}).click();
-  await expect(page.getByText('Submission ID copied.',{exact:true})).toBeVisible();
-  expect(await page.evaluate(() => (window as unknown as {syntheticCopy:string}).syntheticCopy)).toBe(id);
+  await page.getByRole('button',{name:'Copy tracking link',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Copied',exact:true})).toBeVisible();
+  expect(await page.evaluate(() => (window as unknown as {syntheticCopy:string}).syntheticCopy)).toContain(`#/contribution-status?submission_id=${id}&receipt_secret=${secret}`);
   await page.evaluate(() => Object.defineProperty(navigator,'clipboard',{value:{writeText:async() => {throw new Error('synthetic unavailable');}},configurable:true}));
-  await page.getByRole('button',{name:'Copy private receipt',exact:true}).click();
-  const receipt=page.getByLabel('Private receipt',{exact:true}); await expect(receipt).toBeFocused();
-  expect(await receipt.evaluate(element => (element as HTMLInputElement).selectionEnd!-(element as HTMLInputElement).selectionStart!)).toBe(secret.length);
+  await page.getByRole('button',{name:'Copied',exact:true}).click();
+  await expect(page.getByRole('alert')).toContainText('The link could not be copied.');
   expect(page.url()).not.toContain(secret); expect(page.url()).not.toContain(email);
   expect(await page.evaluate(() => JSON.stringify({...localStorage,...sessionStorage}))).not.toContain(email);
   expect(await page.evaluate(() => JSON.stringify({...localStorage,...sessionStorage}))).not.toContain(secret);
-  await page.getByRole('link',{name:'Check contribution status',exact:true}).click();
-  await page.getByLabel('Submission ID',{exact:true}).fill(id); await page.getByLabel('Private receipt',{exact:true}).fill(secret);
-  await page.getByRole('button',{name:'Check status',exact:true}).click();
+  await page.getByRole('link',{name:'Track submission',exact:false}).click();
   await expect(page.getByRole('heading',{name:'Privacy screened',exact:true})).toBeVisible();
   await expect(page.getByText(/This does not verify the facts or approve publication/)).toBeVisible();
   expect(statusBody).toEqual({submission_id:id,receipt_secret:secret});
+  expect(new URL(page.url()).search).not.toContain(secret);
   await page.getByRole('link',{name:'Contribute',exact:true}).click();
-  await expect(page.getByLabel('Email (optional)',{exact:true})).toHaveValue('');
+  await page.getByText('Add follow-up contact (optional)',{exact:true}).click();
+  await expect(page.getByLabel('Email for follow-up (optional)',{exact:true})).toHaveValue('');
   await expect(page.getByLabel('Private receipt',{exact:true})).toHaveCount(0);
 });
 

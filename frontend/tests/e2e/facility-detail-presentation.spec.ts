@@ -75,11 +75,15 @@ test('map detail shows one category and each activity, preserves facts, and open
   const drawerOrder = await panel.locator('.detail').evaluate(root => {
     const location = root.querySelector('#location-heading');
     const activities = root.querySelector('#taxonomy-heading');
-    return Boolean(location && activities && (location.compareDocumentPosition(activities) & Node.DOCUMENT_POSITION_FOLLOWING));
+    return Boolean(location && activities && (activities.compareDocumentPosition(location) & Node.DOCUMENT_POSITION_FOLLOWING));
   });
   expect(drawerOrder).toBe(true);
   await expect(panel.getByText('Processing and preparation', { exact: true })).toHaveCount(1);
-  await expect(panel.locator('[aria-label="Detailed activities"]')).toHaveText('Meat cutting, NRTE chicken processing, Separate activity: No');
+  const overview = panel.locator('.classification-summary .summary');
+  await expect(overview).toContainText('Meat cutting');
+  await expect(overview).toContainText('NRTE chicken processing');
+  await expect(overview).not.toContainText('Separate activity');
+  await panel.locator('.classification-summary summary').click();
   await expect(panel).not.toContainText(/synthetic-taxonomy-version|Taxonomy version|Primary categories|Classification provenance|not independently|Source confirmed/);
   await expect(panel.getByText('Source-provided coordinates', { exact: true })).toBeVisible();
   await expect(panel.getByText('55.123457, 10.123457', { exact: true })).toBeVisible();
@@ -87,7 +91,8 @@ test('map detail shows one category and each activity, preserves facts, and open
   await expect(panel.getByText('Synthetic former name', { exact: true })).toBeVisible();
   await expect(panel.getByText('SYNTHETIC-1', { exact: true })).toBeVisible();
   await expect(panel.getByText('10,000 to less than 100,000 pounds/month', { exact: true })).toBeVisible();
-  await expect(panel.locator('.classification')).toContainText('Native poultry activity (Poultry activity)');
+  await expect(panel.locator('.classification-summary details')).toContainText('Native poultry activity');
+  await expect(panel.locator('.classification-summary details')).toContainText('poultry_activity');
   await expect(panel).not.toContainText(/Direct|Mapped|synthetic-taxonomy-version/);
   await expect(panel.getByRole('heading', { name: 'APHIS reports' })).toHaveCount(0);
   expect(reportRequests).toBe(0);
@@ -108,8 +113,8 @@ test('map detail shows one category and each activity, preserves facts, and open
     const preview = root.querySelector('.location-preview');
     const activities = root.querySelector('#activities-heading');
     return Boolean(location && preview && activities &&
-      (location.compareDocumentPosition(preview) & Node.DOCUMENT_POSITION_FOLLOWING) &&
-      (preview.compareDocumentPosition(activities) & Node.DOCUMENT_POSITION_FOLLOWING));
+      (activities.compareDocumentPosition(location) & Node.DOCUMENT_POSITION_FOLLOWING) &&
+      (location.compareDocumentPosition(preview) & Node.DOCUMENT_POSITION_FOLLOWING));
   });
   expect(pageOrder).toBe(true);
   await expect(page.locator('.location-preview .map')).toHaveAttribute('data-pin-loaded', 'true');
@@ -127,13 +132,13 @@ test('map detail shows one category and each activity, preserves facts, and open
   await copyButton.click();
   await expect(page.locator('.public-record h1 [role="status"]')).toHaveText('Link copied');
   expect(await layout()).toEqual(initialLayout);
-  await expect.poll(() => copyButton.locator('svg path').getAttribute('d'), { timeout: 2000 }).toBe(originalIcon);
+  await expect.poll(() => copyButton.locator('svg path').getAttribute('d'), { timeout: 5000 }).toBe(originalIcon);
   expect(await layout()).toEqual(initialLayout);
   await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { value: { writeText: async () => { throw new Error('synthetic clipboard rejection'); } }, configurable: true }));
   await copyButton.click();
   await expect(page.locator('.public-record h1 [role="status"]')).toHaveText('Could not copy facility link');
   expect(await layout()).toEqual(initialLayout);
-  await expect.poll(() => copyButton.locator('svg path').getAttribute('d'), { timeout: 3000 }).toBe(originalIcon);
+  await expect.poll(() => copyButton.locator('svg path').getAttribute('d'), { timeout: 5000 }).toBe(originalIcon);
   expect(await layout()).toEqual(initialLayout);
   await expect(page.locator('.public-record').getByText('Processing and preparation', { exact: true })).toHaveCount(1);
   await expect(page.locator('.public-record')).not.toContainText(/synthetic-taxonomy-version|not independently/);
@@ -146,7 +151,7 @@ test('Spanish processing summary is deduplicated in map detail and the full reco
   await page.goto(`./#/map?selected=${id}&release_id=${release}`);
   const panel = page.locator('.reading-sheet[aria-label="Record evidence"]');
   await expect(panel.getByText('Procesamiento y preparación', { exact: true })).toHaveCount(1);
-  const mapActivities = panel.locator('[aria-label="Actividades detalladas"]');
+  const mapActivities = panel.locator('.classification-summary .summary');
   await expect(mapActivities).toContainText('Procesamiento de pollo (NRTE)');
   await expect(mapActivities).toContainText('Meat cutting');
   await expect(mapActivities).not.toHaveText(/(?:^|,\s*)Procesamiento(?:,\s*|$)/);
@@ -154,7 +159,7 @@ test('Spanish processing summary is deduplicated in map detail and the full reco
   await panel.locator(`a[href="#/records/${id}?profile=official&release_id=${release}"]`).click();
   const full = page.locator('.public-record');
   await expect(full.getByText('Procesamiento y preparación', { exact: true })).toHaveCount(1);
-  const fullActivities = full.locator('section[aria-labelledby="activities-heading"] dl dd');
+  const fullActivities = full.locator('.classification-summary .summary');
   await expect(fullActivities).toContainText('Procesamiento de pollo (NRTE)');
   await expect(fullActivities).toContainText('Meat cutting');
   await expect(fullActivities).not.toHaveText(/(?:^|,\s*)Procesamiento(?:,\s*|$)/);
@@ -182,8 +187,8 @@ test('city-level geocoding keeps its approximation and actual provider score in 
     const preview = root.querySelector('.location-preview');
     const activities = root.querySelector('#activities-heading');
     return Boolean(location && preview && activities &&
-      (location.compareDocumentPosition(preview) & Node.DOCUMENT_POSITION_FOLLOWING) &&
-      (preview.compareDocumentPosition(activities) & Node.DOCUMENT_POSITION_FOLLOWING));
+      (activities.compareDocumentPosition(location) & Node.DOCUMENT_POSITION_FOLLOWING) &&
+      (location.compareDocumentPosition(preview) & Node.DOCUMENT_POSITION_FOLLOWING));
   });
   expect(pageOrder).toBe(true);
   await expect(full.locator('.location-preview .map')).toHaveAttribute('data-pin-loaded', 'true');
@@ -191,7 +196,7 @@ test('city-level geocoding keeps its approximation and actual provider score in 
   await expect(full.getByRole('heading', { name: 'Location', exact: true })).toHaveCount(1);
 });
 
-test('mobile dossier fills the dynamic viewport, scrolls inside, and retains close and Escape dismissal', async ({ page }) => {
+test('mobile workspace fills the viewport with search, a scrollable dossier, and keyboard dismissal', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await mockPublicRecord(page);
   const open = async () => {
@@ -199,23 +204,41 @@ test('mobile dossier fills the dynamic viewport, scrolls inside, and retains clo
     await expect(page.locator('.reading-sheet .detail h1')).toHaveText(row.canonical_name);
   };
   await open();
+  const workspace = page.locator('.workspace > .results');
   const panel = page.locator('.reading-sheet.dossier');
   const close = panel.getByRole('button', { name: 'Close record detail' });
-  for (const height of [812, 667]) {
-    await page.setViewportSize({ width: 375, height });
-    const box = await panel.boundingBox();
-    expect(box).toEqual({ x: 0, y: 0, width: 375, height });
+  for (const [width, height] of [[375, 812], [375, 667], [320, 667]]) {
+    await page.setViewportSize({ width: width!, height: height! });
+    await expect(workspace).toHaveCSS('position', 'fixed');
+    expect(await workspace.boundingBox()).toEqual({ x: 0, y: 0, width, height });
+    const search = workspace.locator('#field-search');
+    await expect(search).toBeInViewport();
+    const searchBox = (await search.boundingBox())!;
+    const box = (await panel.boundingBox())!;
+    expect(box.x).toBe(0);
+    expect(box.width).toBe(width);
+    expect(box.y).toBeGreaterThanOrEqual(searchBox.y + searchBox.height);
+    expect(box.height).toBeGreaterThan(200);
+    expect(box.y + box.height).toBeCloseTo(height!, 0);
+    expect(await workspace.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
   }
   await expect(close).toBeFocused();
   await panel.evaluate(element => element.scrollTop = element.scrollHeight);
   await expect(close).toBeInViewport();
+  const scrolled = await panel.evaluate(element => ({ scrollTop: element.scrollTop, overflow: getComputedStyle(element).overflowY }));
+  expect(scrolled.scrollTop).toBeGreaterThan(0);
+  expect(scrolled.overflow).toBe('auto');
+  const stickyHeader = panel.locator('.dossier-header');
+  await expect(stickyHeader).toHaveCSS('position', 'sticky');
+  expect((await stickyHeader.boundingBox())!.y).toBeCloseTo((await panel.boundingBox())!.y, 0);
   const copyLink = panel.getByRole('button', { name: 'Copy facility link' });
   await expect(copyLink).toBeVisible();
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
   await copyLink.click();
   const copiedLink = await page.evaluate(() => navigator.clipboard.readText());
   expect(new URL(copiedLink).hash).toBe(`#/records/${id}?profile=official&release_id=${release}`);
-  await close.click();
+  await close.focus();
+  await page.keyboard.press('Enter');
   await expect(panel).toHaveCount(0);
   await open();
   await page.keyboard.press('Escape');

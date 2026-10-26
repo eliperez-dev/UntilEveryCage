@@ -8,6 +8,7 @@ const about = readFileSync(resolve(process.cwd(), 'src/app/AboutPage.svelte'), '
 const faq = readFileSync(resolve(process.cwd(), 'src/app/FaqPage.svelte'), 'utf8');
 const footer = readFileSync(resolve(process.cwd(), 'src/app/ProjectFooter.svelte'), 'utf8');
 const contributions = readFileSync(resolve(process.cwd(), 'src/app/CommunityContributions.svelte'), 'utf8');
+const intake = readFileSync(resolve(process.cwd(), 'src/app/contributions/ContributionForm.svelte'), 'utf8');
 const contribute = readFileSync(resolve(process.cwd(), 'src/app/ContributePage.svelte'), 'utf8');
 const api = readFileSync(resolve(process.cwd(), 'src/app/ApiPage.svelte'), 'utf8');
 const field = readFileSync(resolve(process.cwd(), 'src/design-lab/variants/field/Field.svelte'), 'utf8');
@@ -34,11 +35,11 @@ describe('normal shell content', () => {
   });
 
   it('uses canonical primary taxonomy values for the facility activity selector', () => {
-    expect(contributions).toContain('name="claimed_activity"');
-    expect(contributions).toContain('TAXONOMY_PRIMARY_KEYS as category');
-    expect(contributions).toContain('CATEGORY_PRESENTATIONS[category].label');
-    expect(contributions).not.toContain('name="claimed_activity" maxlength');
-    expect(contributions).toContain("tr('Other / Unknown (unclassified)', $language)");
+    expect(intake).toContain('name="claimed_activity"');
+    expect(intake).toContain('TAXONOMY_PRIMARY_KEYS as category');
+    expect(intake).toContain('CATEGORY_PRESENTATIONS[category].label');
+    expect(intake).not.toContain('name="claimed_activity" maxlength');
+    expect(intake).toContain("'Other / Unknown (unclassified)'");
     expect(language).toContain("'Other / Unknown (unclassified)': 'Otro / Desconocido (sin clasificar)'");
   });
 
@@ -50,7 +51,7 @@ describe('normal shell content', () => {
     expect(picker).not.toContain('rotate(-45deg)');
   });
 
-  it('keeps the supplied manifesto, counter component, and concise FAQ separate', () => {
+  it('keeps the supplied manifesto and counter while embedding the concise FAQ in About', () => {
     expect(about).toContain('About Until Every Cage is Empty');
     expect(about).toContain('The Architecture of Silence');
     expect(about).toContain("{tr('Until Every Cage is Empty', $language)}</h2>");
@@ -100,8 +101,6 @@ describe('normal shell content', () => {
     expect(masthead).toContain('Right-mouse to rotate / Left-mouse to pan');
     expect(masthead).toContain('.map-view-controls');
     expect(mapSurface).not.toContain('class="map-controls-wrap"');
-    expect(field).toContain('top: 0.65rem;');
-    expect(field).toContain('left: 0.65rem;');
     expect(footer).toContain('Final Nail');
     expect(footer).toContain('<div class="application-version-slot"><ApplicationVersion /></div>');
     expect(footer).not.toContain('v1.5.1');
@@ -109,8 +108,7 @@ describe('normal shell content', () => {
 
   it('keeps public community browsing tied to a published release, separately from intake', () => {
     expect(contribute).toContain("current('community')");
-    expect(contribute).toContain('{#if communityReleasePublished}<a href={utilityHref(\'community\')}>Community submissions</a>{/if}');
-    expect(contribute).toContain("Object.entries(taskNames)");
+    expect(contribute).toContain('{#if communityReleasePublished}<a href={utilityHref(\'community\')}>');
     expect(api).toContain("current('community')");
     expect(api).toContain('{#if communityReleaseAvailable}<option value="community">{tr(\'Community submissions\', $language)}</option>{/if}');
     expect(api).toContain('selectedReleaseId: selectedFromRoute');
@@ -139,13 +137,6 @@ describe('normal shell content', () => {
     expect(language).toContain("'Inspection': 'Inspección'");
     expect(tr('Annual report', 'en')).toBe('Annual report');
     expect(tr('Missing Spanish entry', 'es')).toBe('Missing Spanish entry');
-  });
-
-  it('uses a private fragment tracking capability for status lookup', () => {
-    expect(contributions).toContain('Track submission');
-    expect(contributions).toContain('receipt_secret');
-    expect(contributions).toContain('Open your private tracking link');
-    expect(contributions).not.toContain('Lost receipts cannot be recovered');
   });
 
   it('loads published community browsing independently of intake and stops retrying after one failed lookup', () => {

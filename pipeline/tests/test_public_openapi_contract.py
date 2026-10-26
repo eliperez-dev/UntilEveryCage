@@ -14,6 +14,7 @@ PUBLIC_PATHS = {
     "/api/v2/locations/{facility_id}/aphis-report-links",
     "/api/v2/locations.csv",
     "/api/v2/map/feed",
+    "/api/v2/map/matches",
     "/api/v2/releases/manifest",
     "/api/v2/discovery/filters",
     "/api/v2/discovery/facets",
@@ -55,9 +56,9 @@ class PublicOpenApiContractTests(unittest.TestCase):
 
     @staticmethod
     def handler(source, name):
-        start = source.index("pub async fn " + name + "(")
+        start = source.index("async fn " + name + "(")
         remaining = source[start:]
-        end = re.search(r"\n(?:pub async fn |#\[derive|#\[cfg)", remaining)
+        end = re.search(r"\n(?:(?:pub )?async fn |#\[derive|#\[cfg)", remaining)
         return remaining[:end.start()] if end else remaining
 
     @staticmethod
@@ -126,8 +127,12 @@ class PublicOpenApiContractTests(unittest.TestCase):
     def test_effective_location_and_facets_queries_follow_handlers(self):
         location_queries = self.query_names("/api/v2/locations")
         self.assertEqual(location_queries, self.fields(self.rust, "V2LocationParams"))
-        body = self.handler(self.rust, "get_v2_locations_handler")
+        body = self.handler(self.rust, "get_v2_locations_response")
         self.assertTrue(location_queries <= set(re.findall(r"params\s*\.\s*(\w+)", body)))
+        self.assertIn("get_v2_locations_response(state, params, false)", self.handler(self.rust, "get_v2_locations_handler"))
+        matches = self.handler(self.rust, "get_v2_map_matches_handler")
+        self.assertIn("get_v2_locations_response(state, params, true)", matches)
+        self.assertEqual(self.query_names("/api/v2/map/matches"), location_queries - {"limit", "offset", "cursor"})
         facets = self.handler(self.rust, "get_v2_facets_handler")
         applied = set(re.findall(r"params\s*\.\s*(\w+)", facets))
         self.assertEqual(self.query_names("/api/v2/discovery/facets"), applied)
@@ -235,7 +240,7 @@ class PublicOpenApiContractTests(unittest.TestCase):
         internal = self.spec["components"]["responses"]["Internal"]
         self.assertIn("text/plain", internal["content"])
         self.assertIn("No eligible unpinned release", self.spec["paths"]["/api/v2/locations"]["get"]["description"])
-        for path in PUBLIC_PATHS - {"/api/v2/locations", "/api/v2/discovery/filters", "/api/v2/map/feed"}:
+        for path in PUBLIC_PATHS - {"/api/v2/locations", "/api/v2/discovery/filters", "/api/v2/map/feed", "/api/v2/map/matches"}:
             self.assertIn("404", self.spec["paths"][path]["get"]["responses"])
         self.assertIn("410", self.spec["paths"]["/api/v2/map/feed"]["get"]["responses"])
         self.assertIn("does not announce a public release", self.spec["info"]["description"])

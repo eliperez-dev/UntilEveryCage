@@ -3,8 +3,8 @@ import releaseManifest from '../fixtures/release-map/manifest.json' with { type:
 
 const exactId = '123e4567-e89b-42d3-a456-426614174000';
 const approximateId = '223e4567-e89b-42d3-a456-426614174000';
-const fastSearchId = '323e4567-e89b-42d3-a456-426614174000';
-const slowSearchId = '423e4567-e89b-42d3-a456-426614174000';
+const fastSearchId = exactId;
+const slowSearchId = approximateId;
 const releaseId = 'synthetic-release-2026-09';
 const exactPoint: [number, number] = [4.35, 50.85];
 const approximatePoint: [number, number] = [4.45, 50.95];
@@ -17,8 +17,10 @@ function testManifest() {
   return value;
 }
 
-test('cold root and warmed reload keep map controls and exact/approximate points interactive', async ({ page, browserName }) => {
+test('cold landing entry and warmed reload keep map controls and exact/approximate points interactive', async ({ page, browserName }) => {
+  test.setTimeout(60_000);
   test.skip(browserName !== 'chromium', 'The cache-backed map lifecycle regression runs in Chromium.');
+  await page.setViewportSize({ width: 1280, height: 900 });
 
   const feed = {
     api_version: 'v2',
@@ -51,6 +53,17 @@ test('cold root and warmed reload keep map controls and exact/approximate points
   let releaseSlowList!: () => void;
   let slowListStarted!: () => void;
   const slowListEntered = new Promise<void>(resolve => { slowListStarted = resolve; });
+  let slowListFinished!: () => void;
+  const slowListCompleted = new Promise<void>(resolve => { slowListFinished = resolve; });
+  let releaseSlowMatches!: () => void;
+  let slowMatchesStarted!: () => void;
+  const slowMatchesEntered = new Promise<void>(resolve => { slowMatchesStarted = resolve; });
+  let slowMatchesFinished!: () => void;
+  const slowMatchesCompleted = new Promise<void>(resolve => { slowMatchesFinished = resolve; });
+  const matchingResponse = (ids: string[]) => ({ api_version: 'v2', data: { facility_ids: ids }, meta: {
+    profile: 'official', release_id: releaseId, manifest_sha256: 'a'.repeat(64), suppression_generation: 7,
+    total_count: ids.length, mapped_count: ids.length,
+  } });
   let feedRequests = 0;
   const tile = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/F2sAAAAASUVORK5CYII=', 'base64');
   await page.route('https://tile.openstreetmap.org/**', route => route.fulfill({ status: 200, contentType: 'image/png', body: tile }));
@@ -67,10 +80,25 @@ test('cold root and warmed reload keep map controls and exact/approximate points
       await new Promise<void>(resolve => { releaseSlowList = resolve; });
       try { await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(listResponse([slowSearchRow])) }); }
       catch { /* The latest query intentionally aborts this stale response. */ }
+      finally { slowListFinished(); }
       return;
     }
-    const rows = q === 'fast' ? [fastSearchRow] : listRows;
+    const rows = q === 'fast' ? [fastSearchRow] : q === 'no-match' ? [] : listRows;
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(listResponse(rows, rows.length)) });
+  });
+  await page.route(url => new URL(url.href).pathname === '/api/v2/map/matches', async route => {
+    const q = new URL(route.request().url()).searchParams.get('q');
+    if (q === 'slow') {
+      slowMatchesStarted();
+      await new Promise<void>(resolve => { releaseSlowMatches = resolve; });
+      try { await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(matchingResponse([slowSearchId])) }); }
+      catch { /* The newer query aborts this stale ID-mask response. */ }
+      finally { slowMatchesFinished(); }
+      return;
+    }
+    if (q === 'map-error') { await route.fulfill({ status: 503, contentType: 'application/json', body: '{}' }); return; }
+    const ids = q === 'fast' ? [fastSearchId] : q === 'no-match' ? [] : [exactId, approximateId];
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(matchingResponse(ids)) });
   });
   await page.route(url => new URL(url.href).pathname === '/api/v2/discovery/facets', route => route.fulfill({
     status: 200, contentType: 'application/json',
@@ -79,11 +107,34 @@ test('cold root and warmed reload keep map controls and exact/approximate points
   await page.addInitScript(() => {
     (window as any).__coldInitialHash = location.hash;
   });
+  const expectMapIds = async (ids: string[]) => {
+    await expect.poll(() => page.evaluate(async () => {
+      const source = (window as any).__UEC_LOCAL_PREVIEW_MAP__.getSource('locations');
+      const data = await source.getData();
+      return data.features.map((feature: any) => feature.properties.facility_id).sort();
+    })).toEqual([...ids].sort());
+  };
+  const expectMapWidth = async (fraction: number) => {
+    await expect.poll(() => page.evaluate((expectedFraction) => {
+      const current = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+      const expectedWidth = document.querySelector('.workspace')!.getBoundingClientRect().width * expectedFraction;
+      const widths = [current.getCanvas().getBoundingClientRect().width, current.getContainer().getBoundingClientRect().width, document.querySelector('.map-stage')!.getBoundingClientRect().width];
+      return Math.max(...widths.map(width => Math.abs(width - expectedWidth)));
+    }, fraction)).toBeLessThan(1);
+  };
+  const expectSelectedCentered = async (point: [number, number]) => {
+    await expect.poll(() => page.evaluate((coordinate) => {
+      const current = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+      const pixel = current.project(coordinate);
+      const canvas = current.getCanvas().getBoundingClientRect();
+      return Math.hypot(pixel.x - canvas.width / 2, pixel.y - canvas.height / 2);
+    }, point)).toBeLessThan(1);
+  };
 
-  // A true direct site load starts with no hash, while App still resolves this
-  // to the public map route.
+  // A direct site load starts at the separate landing before map entry.
   await page.goto('./');
   expect(await page.evaluate(() => (window as any).__coldInitialHash)).toBe('');
+  await page.getByRole('link', { name: 'Open the map', exact: true }).first().click();
   await page.waitForFunction(() => {
     const current = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     return current?.isStyleLoaded() && current.getSource('locations');
@@ -92,19 +143,37 @@ test('cold root and warmed reload keep map controls and exact/approximate points
   const search = page.getByRole('button', { name: /Search map/ });
   await expect(search).toBeVisible();
   await search.click();
-  await expect(page.getByRole('searchbox').first()).toBeVisible();
+  await expectMapWidth(2 / 3);
+  await expect(page.getByRole('combobox', { name: 'Search across public release records' })).toBeVisible();
   await expect(page.getByText('Exact fixture record')).toBeVisible();
-  const searchBox = page.getByRole('searchbox').first();
+  const searchBox = page.getByRole('combobox', { name: 'Search across public release records' });
   await searchBox.fill('slow');
   await expect(page.getByText('Searching · showing previous results')).toBeVisible();
   await expect(page.getByText('Exact fixture record')).toBeVisible();
   await slowListEntered;
+  await slowMatchesEntered;
+  await expectMapIds([]); // Pending matching must not show all or stale pins.
   await searchBox.fill('fast');
   await expect(page.getByText('Fast fixture record')).toBeVisible();
+  await expectMapIds([fastSearchId]);
   releaseSlowList();
+  releaseSlowMatches();
+  await Promise.all([slowListCompleted, slowMatchesCompleted]);
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
   await expect(page.getByText('Slow fixture record')).toHaveCount(0);
+  await expectMapIds([fastSearchId]);
+  await searchBox.fill('no-match');
+  await expect(page.getByRole('complementary', { name: 'Search, filters, and results' }).getByText('No records match this search and these filters.')).toBeVisible();
+  await expectMapIds([]);
+  await searchBox.fill('map-error');
+  await expect(page.getByRole('complementary', { name: 'Search, filters, and results' }).getByText('Matching map locations could not be loaded. Try again.')).toBeVisible();
+  await expectMapIds([]); // A failed mask must also remain empty.
+  await searchBox.fill('');
+  await expect(page.getByText('Exact fixture record')).toBeVisible();
+  await expectMapIds([exactId, approximateId]);
   expect(new URL(page.url()).hash).toContain('list=open');
-  await page.getByRole('button', { name: 'Close search panel' }).click();
+  await page.getByRole('button', { name: 'Close workspace', exact: true }).click();
+  await expectMapWidth(1);
 
   await page.getByRole('button', { name: 'Tools' }).click();
   await page.getByLabel('Map style').selectOption('satellite');
@@ -114,8 +183,8 @@ test('cold root and warmed reload keep map controls and exact/approximate points
 
   // Destroy and recreate the map through the real route lifecycle.
   const primary = page.getByRole('navigation', { name: 'Primary' });
-  await primary.getByRole('link', { name: 'Database', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Browse records' })).toBeVisible();
+  await primary.getByRole('link', { name: 'Data', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Data' })).toBeVisible();
   await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Map' }).click();
   await page.waitForFunction(() => {
     const current = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
@@ -123,30 +192,36 @@ test('cold root and warmed reload keep map controls and exact/approximate points
   });
 
   // Reload the direct root in the same browser context: Cache Storage is now
-  // warm, but the empty-hash route and its controls must still initialize.
+  // warm, and entering through the landing must still initialize the controls.
   await page.evaluate(() => history.replaceState(history.state, '', `${location.pathname}${location.search}`));
   await page.reload();
   expect(await page.evaluate(() => (window as any).__coldInitialHash)).toBe('');
+  await page.getByRole('link', { name: 'Open the map', exact: true }).first().click();
   await page.waitForFunction(() => {
     const current = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     return current?.isStyleLoaded() && current.getSource('locations');
   });
   expect(feedRequests).toBe(1); // The second full load used the persisted public projection cache.
   await page.getByRole('button', { name: /Search map/ }).click();
-  await expect(page.getByRole('searchbox').first()).toBeVisible();
+  await expect(page.getByRole('combobox', { name: 'Search across public release records' })).toBeVisible();
   expect(new URL(page.url()).hash).toContain('list=open');
-  await page.getByRole('button', { name: 'Close search panel' }).click();
+  await page.getByRole('button', { name: 'Close workspace', exact: true }).click();
   await page.getByRole('button', { name: 'Tools' }).click();
   await page.getByLabel('Map style').selectOption('satellite');
   await expect.poll(() => new URL(page.url()).hash).toContain('basemap=satellite');
   await expect(page.locator('.startup-status')).toHaveCount(0);
 
-  // Approximate records remain members of the ordinary low-zoom clusters.
+  // Both kinds stay individually selectable below the 2,800-record threshold,
+  // even at low zoom. The threshold uses the full filtered population.
   await page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.jumpTo({ center: [4.4, 50.9], zoom: 4 }));
   await expect.poll(() => page.evaluate(() => {
     const current = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
-    return current.queryRenderedFeatures({ layers: ['clusters'] }).some((feature: any) =>
-      feature.properties?.representedCount === 2 && feature.properties?.approximateCount === 1);
+    const keys = current.queryRenderedFeatures({ layers: ['v1-source-pins', 'approx-reference-pins'] })
+      .map((feature: any) => feature.properties?.key);
+    return current.getSource('locations').getClusterOptions().cluster === false
+      && current.queryRenderedFeatures({ layers: ['clusters'] }).length === 0
+      && keys.includes('123e4567-e89b-42d3-a456-426614174000')
+      && keys.includes('223e4567-e89b-42d3-a456-426614174000');
   })).toBe(true);
 
   const moveAndCheckFeature = async (id: string, coordinate: [number, number], layer: string) => {
@@ -183,9 +258,14 @@ test('cold root and warmed reload keep map controls and exact/approximate points
 
   await moveAndCheckFeature(exactId, exactPoint, 'v1-source-pins');
   await expect.poll(() => new URL(page.url()).hash).toContain(`selected=${exactId}`);
+  await expectMapWidth(2 / 3);
+  await expectSelectedCentered(exactPoint);
   expect(await page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getSource('approximate-reference-area')._data.geojson.features)).toHaveLength(0);
   await page.getByRole('button', { name: 'Close record detail' }).click();
   await expect.poll(() => new URL(page.url()).hash).not.toContain(`selected=${exactId}`);
+  await page.getByRole('button', { name: 'Close workspace', exact: true }).click();
+  await expectMapWidth(1);
+  await expectSelectedCentered(exactPoint);
 
   await page.evaluate((point) => (window as any).__UEC_LOCAL_PREVIEW_MAP__.jumpTo({ center: point, zoom: 16 }), approximatePoint);
   await expect.poll(() => page.evaluate((id) => {
@@ -225,6 +305,9 @@ test('cold root and warmed reload keep map controls and exact/approximate points
   expect(radiusAt15_5.ring).toEqual(radiusAt15.ring);
   expect(radiusAt17.ring).toEqual(radiusAt15.ring);
   await page.getByRole('button', { name: 'Close record detail' }).click();
+  await page.getByRole('button', { name: 'Close workspace', exact: true }).click();
+  await expectMapWidth(1);
+  await expectSelectedCentered(approximatePoint);
   await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getSource('approximate-reference-area')._data.geojson.features.length)).toBe(0);
   await page.mouse.move(1, 1);
   await page.waitForTimeout(2600);
@@ -234,4 +317,63 @@ test('cold root and warmed reload keep map controls and exact/approximate points
       && !map.queryRenderedFeatures({ layers: ['approximate-reference-area-fill'] }).some((feature: any) => feature.properties.key === id);
   }, approximateId)).toBe(true);
   expect(feedRequests).toBe(1);
+
+  const navigation = page.getByRole('navigation', { name: 'Map navigation', exact: true });
+  await navigation.getByRole('button', { name: 'More map controls', exact: true }).click();
+  await navigation.getByRole('button', { name: 'Rotate right', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => Math.round((window as any).__UEC_LOCAL_PREVIEW_MAP__.getBearing()))).toBe(30);
+  await navigation.getByRole('button', { name: 'Reset north', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => Math.round((window as any).__UEC_LOCAL_PREVIEW_MAP__.getBearing()))).toBe(0);
+  await navigation.getByRole('button', { name: 'Zoom out', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getZoom())).toBe(16);
+  await navigation.getByRole('button', { name: 'More map controls', exact: true }).click();
+
+  // Synthetic browser position only. The app must never request location on load,
+  // or serialize the device-derived view into any navigation link or history URL.
+  const beforeLocate = new URLSearchParams(new URL(page.url()).hash.split('?')[1]);
+  await page.context().grantPermissions(['geolocation']);
+  await page.context().setGeolocation({ latitude: 12.345678, longitude: 98.765432 });
+  await navigation.getByRole('button', { name: 'Your location', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => {
+    const center = (window as any).__UEC_LOCAL_PREVIEW_MAP__.getCenter();
+    return Math.abs(center.lat - 12.345678) + Math.abs(center.lng - 98.765432);
+  })).toBeLessThan(.00001);
+  await navigation.getByRole('button', { name: 'Zoom out', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getZoom())).toBe(11);
+  const privateViewUrl = new URLSearchParams(new URL(page.url()).hash.split('?')[1]);
+  expect(privateViewUrl.get('lat')).toBe(beforeLocate.get('lat'));
+  expect(privateViewUrl.get('lon')).toBe(beforeLocate.get('lon'));
+  await expect(page.getByRole('button', { name: /Search map/ })).toBeVisible();
+  await page.getByRole('button', { name: /Search map/ }).click();
+  await expect(page.getByRole('button', { name: 'Saved searches', exact: true })).toHaveCount(0);
+  const links = await page.locator('a[href]').evaluateAll(elements => elements.map(element => element.getAttribute('href')).join('\n'));
+  expect(links).not.toMatch(/12\.345678|98\.765432/);
+  expect(feedRequests).toBe(1);
+
+  await page.getByRole('button', { name: 'Tools', exact: true }).click();
+  await page.getByLabel('Enable debug menu', { exact: true }).check();
+  await page.getByRole('button', { name: 'Close Tools', exact: true }).click();
+  await page.getByRole('button', { name: 'Debug menu', exact: true }).click();
+  const debug = page.getByRole('complementary', { name: 'Debug menu', exact: true });
+  await expect(debug).toBeVisible();
+  await debug.locator('#debug-panel-width').press('End');
+  await expectMapWidth(.45);
+  await debug.locator('summary').filter({ hasText: 'Map tuning' }).click();
+  await debug.locator('#cluster-mode').selectOption('off');
+  await expect(debug.locator('#cluster-mode')).toHaveValue('off');
+  await debug.locator('#pin-scale').press('End');
+  await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getLayoutProperty('v1-source-pins', 'icon-size'))).toBeCloseTo(.8);
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await debug.getByRole('button', { name: 'Copy diagnostics', exact: true }).click();
+  const copied = await page.evaluate(() => navigator.clipboard.readText());
+  const report = JSON.parse(copied);
+  expect(report.schema).toBe('uec-map-diagnostics-v1');
+  expect(report.viewport).not.toHaveProperty('centerLat');
+  expect(copied).not.toMatch(/12\.345678|98\.765432/);
+  expect(copied).not.toContain(exactId);
+  expect(report.tuning.panelWidthPercent).toBe(55);
+  await debug.getByRole('button', { name: 'Reset temporary settings', exact: true }).click();
+  await expectMapWidth(2 / 3);
+  await expect(debug.locator('#cluster-mode')).toHaveValue('auto');
+  await debug.getByRole('button', { name: 'Close debug menu', exact: true }).click();
 });

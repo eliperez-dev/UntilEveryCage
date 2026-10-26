@@ -5,8 +5,9 @@
   import LocationPreview from './LocationPreview.svelte';
   import { serializeRoute } from './routeState';
   import type { LabRecord } from '../design-lab/contract';
-  import { categoryPresentation } from '../features/locations/categoryPresentation';
-  import { sourceClassificationLabels } from '../features/locations/sourceClassification';
+  import CategoryBadge from '../features/locations/CategoryBadge.svelte';
+  import ClassificationSummary from '../features/locations/ClassificationSummary.svelte';
+  import { affirmativeSourceEntries } from '../features/locations/classificationSummary';
   import type { TaxonomyClassification } from '../domain/taxonomy';
   import type { DerivedSourceVolumeRange, LocationSourceFacts } from '../domain/location';
 
@@ -76,13 +77,19 @@
     presentation = 'rail',
     publicRelease = false,
     publicReleaseId,
+    fullRecordHref = null,
     onclose,
+    oncategoryfilter,
+    onsourcefilter,
   }: {
     record: LabRecord | RecordDetailRecord;
     presentation?: 'rail' | 'page';
     publicRelease?: boolean;
     publicReleaseId?: string | null;
+    fullRecordHref?: string | null;
     onclose?: () => void;
+    oncategoryfilter?: ((key: string) => void) | undefined;
+    onsourcefilter?: ((sourceId: string) => void) | undefined;
   } = $props();
   let copyFeedback = $state<'copied' | 'failed' | ''>('');
   let copyResetTimer: ReturnType<typeof setTimeout> | undefined;
@@ -120,7 +127,6 @@
     ),
   );
   const taxonomy = $derived('taxonomy' in record ? record.taxonomy ?? null : null);
-  const taxonomyPrimaryLabels = $derived((taxonomy?.primaryCategories ?? ['unclassified']).map(key => tr(categoryPresentation(key).label, $language)));
   const sourceId = $derived(
     value(record.sourceId, 'source_id' in record ? record.source_id : null),
   );
@@ -208,7 +214,6 @@
       'activity_source' in record ? record.activity_source : null,
     ),
   );
-  const activityDisplay = $derived(taxonomy ? taxonomyPrimaryLabels.join(', ') : displayGeneratedValue(activity));
   const sourceRecordId = $derived(
     value(
       'safeSourceRecordId' in record ? record.safeSourceRecordId : null,
@@ -227,25 +232,8 @@
       : tr(precisionLabelFor(record.coordinatePrecision?.includes('provider_address') ? record.coordinatePrecision : precision), $language),
   );
   const sourceFacts = $derived('sourceFacts' in record ? record.sourceFacts : undefined);
-  const nativeActivity = $derived(
-    sourceFacts ? humanizeValue(sourceFacts.nativeActivityLabel ?? sourceFacts.nativeActivityCode ?? null) : null,
-  );
   const speciesSlaughtered = $derived(compactSourceFacts(sourceFacts, 'speciesSlaughtered'));
-  const processingActivities = $derived(compactSourceFacts(sourceFacts, 'processingActivities'));
-  const detailedActivityLabels = $derived(uniqueLabels([
-    ...(taxonomy?.leafActivities.map(leaf => displayGeneratedValue(leaf.label)) ?? []),
-    ...sourceFactLabels(sourceFacts, 'processingActivities'),
-  ]));
-  const sourceActivityLabels = $derived(uniqueLabels([
-    ...(taxonomy?.leafActivities.map(leaf => humanizeValue(leaf.label)) ?? []),
-    ...sourceFactLabels(sourceFacts, 'processingActivities', false),
-  ]));
-  const detailedActivities = $derived(detailedActivityLabels.filter(label => !isSummaryActivity(label)).join(', '));
-  const sourceClassification = $derived(sourceClassificationLabels(
-    [sourceFacts?.nativeActivityLabel, sourceFacts?.nativeActivityCode, activitySource],
-    taxonomy?.assignments ?? [],
-    [...sourceActivityLabels, ...(taxonomy?.primaryCategories.map(key => categoryPresentation(key).label) ?? []), ...(activity ? [activity] : [])],
-  ));
+  const classificationRecord = $derived({ category: activity, taxonomy, sourceId, sourceFacts, activitySource });
 
   function humanizeValue(raw: string | null): string | null {
     if (!raw) return null;
@@ -264,19 +252,12 @@
   function sameLabel(left: string, right: string): boolean {
     return humanizeValue(left)?.toLocaleLowerCase() === humanizeValue(right)?.toLocaleLowerCase();
   }
-  function isSummaryActivity(label: string): boolean {
-    return taxonomyPrimaryLabels.some(primary => sameLabel(primary, label)) ||
-      Boolean(taxonomy?.primaryCategories.includes('processing_and_preparation') && sameLabel(label, tr('Processing', $language)) && detailedActivityLabels.some(other => !sameLabel(other, tr('Processing', $language))));
-  }
   function coordinate(value: number | null | undefined): string {
     return typeof value === 'number' ? String(Number(value.toFixed(6))) : '';
   }
-  function uniqueLabels(labels: Array<string | null>): string[] {
-    return labels.filter((label): label is string => Boolean(label)).filter((label, index, all) => all.findIndex(other => sameLabel(label, other)) === index);
-  }
   function sourceFactLabels(facts: LocationSourceFacts | undefined, field: 'speciesSlaughtered' | 'processingActivities', localizeGenerated = true): string[] {
     const entries = facts?.[field]
-      ? Object.entries(facts[field]!).filter(([, included]) => included !== false).sort(([left], [right]) => left.localeCompare(right))
+      ? affirmativeSourceEntries(facts[field])
       : [];
     return entries.map(([name, included]) => {
       const label = field === 'processingActivities' ? (localizeGenerated ? displayGeneratedValue(name) : humanizeValue(name)) ?? name : sourceFactLabel(name);
@@ -360,6 +341,12 @@
     >{tr('Close', $language)}</button>
   {/if}
   <h1 id="record-title">{name}{#if presentation === 'page' || (presentation === 'rail' && publicRelease)} <button class="share" type="button" aria-label={tr('Copy facility link', $language)} title={tr('Copy facility link', $language)} onclick={copyFacilityLink}><svg aria-hidden="true" viewBox="0 0 24 24">{#if copyFeedback === 'copied'}<path d="m5 12 4 4L19 6"/>{:else if copyFeedback === 'failed'}<path d="M6 6l12 12M18 6 6 18"/>{:else}<path d="M10 13a5 5 0 0 0 7.1 0l3-3A5 5 0 0 0 13 2.9l-1.7 1.7m2.7 6.4a5 5 0 0 0-7.1 0l-3 3A5 5 0 0 0 11 21.1l1.7-1.7"/>{/if}</svg></button><span class="sr-only" role="status" aria-live="polite">{copyFeedback === 'copied' ? tr('Link copied', $language) : copyFeedback === 'failed' ? tr('Could not copy facility link', $language) : ''}</span>{/if}</h1>
+  {#if presentation === 'rail' && fullRecordHref}<a class="open-facility" href={fullRecordHref}><span>{tr('Open facility page', $language)}</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg></a>{/if}
+  <section class="classification-overview" aria-labelledby="taxonomy-heading">
+    <h2 id="taxonomy-heading" class="sr-only">{tr('Activities and classification', $language)}</h2>
+    <div class="record-category"><CategoryBadge record={classificationRecord} onfilter={oncategoryfilter} /></div>
+    <ClassificationSummary record={classificationRecord} />
+  </section>
   {#if presentation === 'page' && import.meta.env.VITE_COMMUNITY_PILOT === 'true' && id}
     <p class="contribution-actions">{#each [['evidence','Add evidence'],['correction','Suggest a correction'],['privacy-removal','Privacy or removal']] as [type, label]}<a class="evidence-link" href={`#/contribute/${type}?target=${encodeURIComponent(id)}&map=${encodeURIComponent('#/map?f1a=field')}`}>{tr(label ?? '', $language)}</a>{/each}</p>
   {/if}
@@ -384,24 +371,11 @@
 
   {#if presentation === 'page' && hasCoordinates}<LocationPreview latitude={record.latitude!} longitude={record.longitude!} precision={precision} category={taxonomy?.primaryCategories[0] ?? activity ?? 'unclassified'} />{/if}
 
-  {#if activityDisplay || taxonomy}
-    <section class="taxonomy" aria-labelledby="taxonomy-heading">
-      <h2 id="taxonomy-heading">{tr('Activities and classification', $language)}</h2>
-      {#if activityDisplay}<p class="activity">{activityDisplay}</p>{/if}
-      {#if detailedActivities}
-        <p aria-label={tr('Detailed activities', $language)}>{detailedActivities}</p>
-      {/if}
-      {#if sourceClassification.length}<p class="classification">{sourceClassification.join(' · ')}</p>{/if}
-    </section>
-  {/if}
-
   {#if sourceFacts}
     <section aria-labelledby="source-facts-heading">
       <h2 id="source-facts-heading">{tr('Source facts', $language)}</h2>
       <dl>
-        {#if nativeActivity && !taxonomy}<div><dt>{tr('Native activity', $language)}</dt><dd>{nativeActivity}</dd></div>{/if}
         {#if speciesSlaughtered}<div><dt>{tr('Species slaughtered', $language)}</dt><dd>{speciesSlaughtered}</dd></div>{/if}
-        {#if processingActivities && !taxonomy}<div><dt>{tr('Processing activities', $language)}</dt><dd>{processingActivities}</dd></div>{/if}
         {#if slaughterRangeText}<div><dt>{tr('Estimated animals slaughtered (last 360 days)', $language)}</dt><dd>{slaughterRangeText}</dd></div>{/if}
         {#if processingRangeText}<div><dt>{tr('Estimated product volume (pounds/month)', $language)}</dt><dd>{processingRangeText}</dd></div>{/if}
         {#if sourceLocationRole === 'aphis_mailing_locality'}<div><dt>{tr('Location role', $language)}</dt><dd>{tr('APHIS mailing locality: approximate locality, not an operating-site location', $language)}</dd></div>{/if}
@@ -416,13 +390,13 @@
   {/if}
 
   {#if publicRelease && publicReleaseId && id}
-    <RecordConnections facilityId={id} releaseId={publicReleaseId} sourceId={sourceId ?? undefined} sourceFacts={sourceFacts} />
+    <RecordConnections facilityId={id} releaseId={publicReleaseId} sourceId={sourceId ?? undefined} sourceFacts={sourceFacts} rail={presentation === 'rail'} />
   {/if}
 
   <section aria-labelledby="evidence-heading">
       <h2 id="evidence-heading">{tr('Source and review', $language)}</h2>
     <dl>
-      {#if sourceName}<div><dt>{tr('Source', $language)}</dt><dd>{#if sourceUrl}<a href={sourceUrl} target="_blank" rel="noopener noreferrer">{sourceName}<span class="sr-only"> ({tr('opens in a new tab', $language)})</span></a>{:else}{sourceName}{/if}</dd></div>
+      {#if sourceName}<div><dt>{tr('Source', $language)}</dt><dd>{#if onsourcefilter && sourceId}<button class="filter-fact" type="button" onclick={() => onsourcefilter?.(sourceId)}>{sourceName}</button>{#if sourceUrl} <a class="source-reference" href={sourceUrl} target="_blank" rel="noopener noreferrer" aria-label={`${sourceName} (${tr('opens in a new tab', $language)})`}>↗</a>{/if}{:else if sourceUrl}<a href={sourceUrl} target="_blank" rel="noopener noreferrer">{sourceName}<span class="sr-only"> ({tr('opens in a new tab', $language)})</span></a>{:else}{sourceName}{/if}</dd></div>
       {:else if sourceId}<div><dt>{tr('Source ID', $language)}</dt><dd>{sourceId}</dd></div>{/if}
       {#if sourceRecordId}<div><dt>{tr('Source record', $language)}</dt><dd>{sourceRecordId}</dd></div>{/if}
       {#if sourceRecordUrl}<div><dt>{tr('Source record link', $language)}</dt><dd><a href={sourceRecordUrl} target="_blank" rel="noopener noreferrer">{tr('Open source record', $language)}<span class="sr-only"> ({tr('opens in a new tab', $language)})</span></a></dd></div>{/if}
@@ -475,16 +449,13 @@
 
   .share svg { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 
-  .activity {
-    margin: 0.25rem 0;
-    color: #d5d9d3;
-  }
+  .record-category { margin: .3rem 0 .25rem; }
 
   .identity {
     margin: 0.55rem 0 0.7rem;
   }
 
-  .taxonomy { margin-top: .8rem; }
+  .classification-overview, .detail:not(.page) .classification-overview { margin-top: 0; }
 
   section {
     margin-top: .8rem;
@@ -589,6 +560,65 @@
     font-size: clamp(1.8rem, 4vw, 2.5rem);
   }
 
+  .detail:not(.page) {
+    --ink: var(--ui-ink);
+    --muted: var(--ui-muted);
+    --line: var(--ui-line);
+    padding: 1.1rem 1.25rem;
+    background: var(--ui-raised);
+    font: .8125rem/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+
+  .detail:not(.page) h1 {
+    margin: 0 0 .85rem;
+    font: 500 1.5rem/1.15 system-ui, -apple-system, "Segoe UI", sans-serif;
+    letter-spacing: -.035em;
+    overflow-wrap: anywhere;
+  }
+
+  .detail:not(.page) .open-facility { display: flex; align-items: center; justify-content: space-between; gap: .75rem; width: 100%; min-height: 2.75rem; margin: 0 0 .95rem; padding: .55rem .8rem; border: 1px solid var(--line); color: var(--ink); background: transparent; font-size: .8125rem; font-weight: 500; text-decoration: none; }
+  .detail:not(.page) .open-facility:hover { background: var(--ui-hover); }
+  .open-facility svg { width: 1rem; height: 1rem; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+
+  .detail:not(.page) .share {
+    width: 2.25rem;
+    min-height: 2.25rem;
+    margin-left: .25rem;
+    border: 0;
+    color: var(--muted);
+    background: transparent;
+  }
+
+  .detail:not(.page) section { margin-top: .95rem; }
+  .detail:not(.page) h2 {
+    margin: 0 0 .4rem;
+    padding: 0;
+    border: 0;
+    font: 500 .875rem/1.4 system-ui, sans-serif;
+    letter-spacing: -.015em;
+  }
+  .detail:not(.page) dl { margin: 0; }
+  .detail:not(.page) dl div {
+    grid-template-columns: minmax(5rem, 30%) minmax(0, 1fr);
+    gap: .6rem;
+    padding: .22rem 0;
+    border: 0;
+  }
+  .detail:not(.page) dt { color: var(--muted); font-size: .75rem; }
+  .detail:not(.page) dd { line-height: 1.55; }
+  .detail:not(.page) dd ul { margin: 0; padding-left: 1.1rem; }
+  .detail:not(.page) a { color: var(--ink); text-underline-offset: .25rem; }
+  .detail:not(.page) section > p, .detail:not(.page) .evidence { color: var(--muted); font-size: .8125rem; }
+  .detail:not(.page) footer { margin-top: 1rem; padding-top: .7rem; }
+  .detail:not(.page) .record-id { font: .6875rem/1.5 system-ui, sans-serif; }
+  .detail:not(.page) button { border-color: var(--line); color: var(--ink); background: var(--ui-raised); }
+  .detail:not(.page) button:hover { background: var(--ui-hover); }
+  .detail:not(.page) button:focus-visible, .detail:not(.page) a:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+  .detail:not(.page) .filter-fact { min-height: 1.75rem; padding: 0; border: 0; background: transparent; text-align: left; font: inherit; }
+  .detail:not(.page) .filter-fact:hover { text-decoration: underline; text-underline-offset: .25rem; }
+  .detail:not(.page) .source-reference { display: inline-grid; place-items: center; min-width: 1.75rem; min-height: 1.75rem; text-decoration: none; }
+  @media (pointer: coarse) { .detail:not(.page) .filter-fact, .detail:not(.page) .source-reference { min-height: 2.75rem; } .detail:not(.page) .source-reference { min-width: 2.75rem; } }
+
   @media (max-width: 40rem) {
     .detail {
       border-top: 1px solid var(--line);
@@ -600,5 +630,7 @@
     }
 
     .page footer { background: #171a18; }
+    .detail:not(.page) { border: 0; padding: 1rem; }
+    .detail:not(.page) .share { width: 2.75rem; min-height: 2.75rem; }
   }
 </style>

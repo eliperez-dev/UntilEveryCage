@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { sourceClassificationLabels } from '../../src/features/locations/sourceClassification';
 
 describe('source classification presentation', () => {
+  it('does not append a class code already included as a complete phrase in its label', () => {
+    expect(sourceClassificationLabels([], [{ sourceLabel: 'Class H Intermediate Handler', sourceCode: 'Class H' }], [])).toEqual(['Class H Intermediate Handler']);
+    expect(sourceClassificationLabels([], [{ sourceLabel: 'Class HC handler', sourceCode: 'Class H' }], [])).toEqual(['Class HC handler (Class H)']);
+  });
   it('omits source terms already stated as activities but preserves distinct codes and labels', () => {
     expect(sourceClassificationLabels(
       ['NRTE Chicken Processing', 'Poultry Processing'],

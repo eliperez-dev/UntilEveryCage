@@ -132,4 +132,12 @@ describe('local encrypted inbox client', () => {
     forgetSecureSession(prepared.session.caseId); expect(getSecureSession(prepared.session.caseId)).toBeUndefined();
     expect(() => secureSessionCredentials(prepared.session)).toThrow();
   });
+  it('preserves the form character limits for accented names and non-Latin replies within the byte envelope', async () => {
+    const label = 'Á'.repeat(160), prepared = await prepareSecureSubmission({ ...input, label }, capabilities, reviewer.fingerprint);
+    const history = inbox(prepared);
+    expect((await verifySecureInbox(history, prepared.session))[0]!.draft?.label).toBe(label);
+    const text = '情'.repeat(6000), reply = await prepareSecureReply(prepared.session, text);
+    expect((await verifySecureInbox({ ...history, messages: [...history.messages, { ...reply, ordinal: 2, author: 'contributor', created_at: now }] }, prepared.session))[1]!.text).toBe(text);
+    await expect(prepareSecureSubmission({ ...input, label: label + 'Á' }, capabilities, reviewer.fingerprint)).rejects.toThrow();
+  });
 });

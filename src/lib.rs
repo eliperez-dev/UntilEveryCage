@@ -4775,6 +4775,31 @@ pub async fn get_v2_locations_handler(
     State(state): State<ApiState>,
     Query(params): Query<V2LocationParams>,
 ) -> impl IntoResponse {
+    get_v2_locations_response(state, params, false).await
+}
+
+/// An all-matches ID mask for the public map, using the list's eligible snapshot
+/// and predicates. The map never needs to crawl paginated facility records.
+pub async fn get_v2_map_matches_handler(
+    State(state): State<ApiState>,
+    Query(params): Query<V2LocationParams>,
+) -> impl IntoResponse {
+    match params.release_id.as_deref() {
+        None => return v2_error(StatusCode::BAD_REQUEST, "release_id_required", "release_id is required"),
+        Some(id) if !valid_public_release_id(id) => return v2_error(StatusCode::BAD_REQUEST, "invalid_release_id", "release_id is invalid"),
+        _ => {}
+    }
+    if params.limit.is_some() || params.offset.is_some() || params.cursor.is_some() {
+        return v2_error(StatusCode::BAD_REQUEST, "invalid_pagination", "map matches are not paginated");
+    }
+    get_v2_locations_response(state, params, true).await
+}
+
+async fn get_v2_locations_response(
+    state: ApiState,
+    params: V2LocationParams,
+    map_matches: bool,
+) -> Response<axum::body::Body> {
     if params
         .profile
         .as_deref()
@@ -5099,10 +5124,24 @@ pub async fn get_v2_locations_handler(
     } else {
         String::new()
     };
+    // Apply taxonomy before DISTINCT ON for a map mask, just as the taxonomy
+    // list path does. Filtering only the chosen observation afterwards could
+    // miss a facility whose other eligible observation matches the category.
+    let map_taxonomy_filter = if map_matches {
+        r#"AND ($20::text[] IS NULL OR EXISTS (
+            SELECT 1 FROM uec.observation_taxonomy_assignment_sets sets
+            JOIN uec.observation_taxonomy_assignments assignment ON assignment.assignment_set_id=sets.assignment_set_id
+            WHERE sets.observation_id=history.observation_id AND sets.taxonomy_version='uec-taxonomy-v1'
+              AND NOT EXISTS (SELECT 1 FROM uec.observation_taxonomy_assignment_sets newer
+                WHERE newer.observation_id=sets.observation_id AND newer.taxonomy_version=sets.taxonomy_version
+                  AND (newer.created_at,newer.assignment_set_id)>(sets.created_at,sets.assignment_set_id))
+              AND assignment.primary_key = ANY($20::text[])))"#
+    } else { "" };
     let ordinary_filtered_ctes = if search_text.is_some() {
         format!(r#"
         {search_matches_cte}, filtered AS MATERIALIZED (
-          SELECT DISTINCT ON (history.facility_id) history.facility_id, history.observation_id
+          SELECT DISTINCT ON (history.facility_id) history.facility_id, history.observation_id,
+                 (history.display_location IS NOT NULL AND history.display_precision <> 'unmapped') AS mapped
           FROM search_matches matches
           JOIN LATERAL (
             SELECT candidate.facility_id, candidate.observation_id, candidate.provenance_source_id,
@@ -5124,11 +5163,13 @@ pub async fn get_v2_locations_handler(
             AND ($7::text IS NULL OR history.provenance_origin_type = $7)
             AND ($9::double precision IS NULL OR (history.display_location && ST_MakeEnvelope($9, $10, $11, $12, 4326)::geography AND ST_Intersects(history.display_location::geometry, ST_MakeEnvelope($9, $10, $11, $12, 4326))))
             AND ($13::double precision IS NULL OR ST_DWithin(history.display_location, ST_SetSRID(ST_Point($14, $15), 4326)::geography, $13 * 1000))
+            {map_taxonomy_filter}
           ORDER BY history.facility_id, history.observation_id
         )"#)
     } else {
         format!(r#"filtered AS MATERIALIZED (
-          SELECT DISTINCT ON (history.facility_id) history.facility_id, history.observation_id
+          SELECT DISTINCT ON (history.facility_id) history.facility_id, history.observation_id,
+                 (history.display_location IS NOT NULL AND history.display_precision <> 'unmapped') AS mapped
           FROM {public_read_model} AS history
           LEFT JOIN uec.public_discovery_read_model_rows indexed
             ON indexed.release_id = history.release_id
@@ -5152,9 +5193,57 @@ pub async fn get_v2_locations_handler(
                         AND lower(concat_ws(' ', assignment.leaf_label, assignment.source_code, assignment.source_label, assignment.source_code_reference, assignment.source_label_reference)) LIKE '%' || lower($8) || '%' ESCAPE '\')))
             AND ($9::double precision IS NULL OR (history.display_location && ST_MakeEnvelope($9, $10, $11, $12, 4326)::geography AND ST_Intersects(history.display_location::geometry, ST_MakeEnvelope($9, $10, $11, $12, 4326))))
             AND ($13::double precision IS NULL OR ST_DWithin(history.display_location, ST_SetSRID(ST_Point($14, $15), 4326)::geography, $13 * 1000))
+            {map_taxonomy_filter}
           ORDER BY history.facility_id, history.observation_id
         )"#)
     };
+    if map_matches {
+        let identity = match transaction.query_opt(
+            "SELECT manifest.manifest::text, manifest.manifest_sha256, generation.generation FROM uec.release_manifests manifest CROSS JOIN uec.public_suppression_generation generation WHERE manifest.release_id=$1",
+            &[&promoted_release_id],
+        ).await {
+            Ok(Some(row)) => row,
+            _ => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "release_manifest_unavailable", "public map identity unavailable"),
+        };
+        let manifest: Value = match serde_json::from_str(identity.get::<_, String>(0).as_str()) {
+            Ok(value) => value,
+            Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "release_manifest_invalid", "release manifest integrity check failed"),
+        };
+        let manifest_sha256: String = identity.get(1);
+        if format!("{:x}", Sha256::digest(canonical_json(&manifest).as_bytes())) != manifest_sha256 {
+            return v2_error(StatusCode::SERVICE_UNAVAILABLE, "release_manifest_invalid", "release manifest integrity check failed");
+        }
+        // The list reserves parameters 16..18 for pagination. The ID projection
+        // has none; compact those slots without duplicating filter SQL.
+        let matches_ctes = ordinary_filtered_ctes.replace("$19", "$16").replace("$20", "$17");
+        let row = match transaction.query_one(&format!(r#"
+            WITH {matches_ctes}
+            SELECT count(*)::bigint,
+                   COALESCE(array_agg(facility_id ORDER BY facility_id) FILTER (WHERE mapped), ARRAY[]::uuid[])
+            FROM filtered
+        "#), &[&promoted_release_id, &params.country_code, &params.region, &params.category,
+            &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text,
+            &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude,
+            &params.source_id, &category_keys]).await {
+            Ok(row) => row,
+            Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "location_query_failed", "V2 map matches query failed"),
+        };
+        let total_count: i64 = row.get(0);
+        let facility_ids: Vec<uuid::Uuid> = row.get(1);
+        if facility_ids.len() as i64 > PUBLIC_MAP_FEED_MAX_FEATURES {
+            return v2_error(StatusCode::PAYLOAD_TOO_LARGE, "map_feed_too_large", "public map matches exceed the feature limit");
+        }
+        let generation: i64 = identity.get(2);
+        if transaction.commit().await.is_err() {
+            return v2_error(StatusCode::SERVICE_UNAVAILABLE, "database_transaction_failed", "V2 database transaction failed");
+        }
+        return ([(axum::http::header::CACHE_CONTROL, "no-store")], Json(json!({
+            "api_version": "v2", "data": {"facility_ids": facility_ids},
+            "meta": {"profile": promoted_profile, "release_id": promoted_release_id,
+                "manifest_sha256": manifest_sha256, "suppression_generation": generation,
+                "total_count": total_count, "mapped_count": facility_ids.len()}
+        }))).into_response();
+    }
     // Ordinary browsing carries its exact total from the same materialized
     // eligible-facility set used to choose the page below.
     let taxonomy_total_count: Option<i64> = if !taxonomy_filters_requested {
@@ -5702,6 +5791,26 @@ mod v2_api_tests {
         assert!(if_none_match(&headers, "\"abc-7\""));
         headers.insert(axum::http::header::IF_NONE_MATCH, "\"old\"".parse().unwrap());
         assert!(!if_none_match(&headers, "\"abc-7\""));
+    }
+
+    #[tokio::test]
+    async fn public_map_matches_validate_release_filters_and_reject_pagination() {
+        for (params, expected) in [
+            (json!({}), StatusCode::BAD_REQUEST),
+            (json!({"release_id":"../private"}), StatusCode::BAD_REQUEST),
+            (json!({"release_id":"r1","limit":"100"}), StatusCode::BAD_REQUEST),
+            (json!({"release_id":"r1","cursor":"00000000-0000-0000-0000-000000000001"}), StatusCode::BAD_REQUEST),
+            (json!({"release_id":"r1","profile":"private"}), StatusCode::BAD_REQUEST),
+            (json!({"release_id":"r1","category_keys":"invented"}), StatusCode::BAD_REQUEST),
+            (json!({"release_id":"r1","min_lon":"0"}), StatusCode::BAD_REQUEST),
+            (json!({"release_id":"r1","radius_km":"25","latitude":"0","longitude":"0"}), StatusCode::SERVICE_UNAVAILABLE),
+            (json!({"release_id":"r1","q":"poultry","country_code":"ES"}), StatusCode::SERVICE_UNAVAILABLE),
+        ] {
+            let state = ApiState { database: None, community_database: None,
+                dev_preview_token: None, dev_test_release_id: None, dev_test_release_token: None };
+            let response = get_v2_map_matches_handler(State(state), Query(serde_json::from_value(params).unwrap())).await.into_response();
+            assert_eq!(response.status(), expected);
+        }
     }
 
     #[tokio::test]

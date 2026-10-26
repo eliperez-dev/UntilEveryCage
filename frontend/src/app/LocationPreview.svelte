@@ -1,7 +1,7 @@
 <script lang="ts">
   import 'maplibre-gl/dist/maplibre-gl.css';
   import type { Map as MapLibreMap } from 'maplibre-gl';
-  import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
+  import workerUrl from '../map/persistentMapWorker.ts?worker&url';
   import { CATEGORY_PRIMARY_BY_SOURCE_KEY } from '../features/locations/categoryPresentation';
   import { locationPreviewMode, locationPreviewPinFile, locationPreviewZoom } from '../features/locations/locationPreview';
 

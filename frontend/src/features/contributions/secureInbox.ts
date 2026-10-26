@@ -38,6 +38,7 @@ function exact(row: Record<string, unknown>, keys: readonly string[]): void {
   if (Object.keys(row).length !== keys.length || Object.keys(row).some(key => !keys.includes(key))) fail();
 }
 function string(value: unknown, max: number): string { if (typeof value !== 'string') fail(); bounded(value as string, max); return value as string; }
+function field(value: unknown, max: number): string { if (typeof value !== 'string' || value.length > max) fail(); return value as string; }
 function fingerprint(value: unknown): string { const result = string(value, 64); if (!secureFingerprint(result)) fail(); return result; }
 function uuid(value: unknown): string { const result = string(value, 36); if (!secureUuid(result)) fail(); return result; }
 function secret(): string { return [...crypto.getRandomValues(new Uint8Array(32))].map(byte => byte.toString(16).padStart(2, '0')).join(''); }
@@ -78,7 +79,7 @@ function draft(value: unknown): ContributionDraft {
     if (key === 'consent') { if (value !== true) fail(); }
     else if (key === 'claimed_latitude' || key === 'claimed_longitude') { if (typeof value !== 'number' || !Number.isFinite(value)) fail(); }
     else if (limits[key] === undefined) fail();
-    else string(value, limits[key]!);
+    else field(value, limits[key]!);
   }
   if (!kinds.has(String(row.kind)) || row.consent !== true) fail();
   if (row.claimed_precision !== undefined && !['unknown', 'exact', 'coarse', 'unmapped'].includes(String(row.claimed_precision))) fail();
@@ -93,7 +94,7 @@ function envelope(value: unknown): Envelope {
   uuid(row.case_id); uuid(row.message_id); fingerprint(row.contributor_fingerprint); fingerprint(row.reviewer_fingerprint);
   const payload = object(row.payload);
   if (row.message_type === 'submission') { exact(payload, ['draft']); payload.draft = draft(payload.draft); if (row.author !== 'contributor') fail(); }
-  else { exact(payload, ['text']); if (!string(payload.text, 8000).trim()) fail(); }
+  else { exact(payload, ['text']); if (!field(payload.text, 8000).trim()) fail(); }
   return row as unknown as Envelope;
 }
 async function encrypt(document: Envelope, value: State): Promise<string> {
@@ -168,7 +169,7 @@ export async function verifySecureInbox(inbox: SecureInbox, session: SecureSessi
 }
 export async function prepareSecureReply(session: SecureSession, text: string): Promise<PreparedSecureReply> {
   try {
-    const value = state(session); if (!value.verified || !string(text, 8000).trim()) fail();
+    const value = state(session); if (!value.verified || !field(text, 8000).trim()) fail();
     const message_id = crypto.randomUUID(), item = document(session, message_id, { text });
     const reply = Object.freeze({ message_id, ciphertext: await encrypt(item, value) });
     preparedReplies.set(reply, { session, hash: await hash(canonical(item)), ciphertext: reply.ciphertext });

@@ -5,7 +5,7 @@ import { expect, test } from '@playwright/test';
 test.skip(!process.env.UEC_REAL_PREVIEW_URL, 'Requires a populated local real preview');
 
 test('database selection opens a stable record URL and returns to the map', async ({ page }) => {
-  await page.goto('./#/database');
+  await page.goto('./#/database?f1a=field');
   const firstRecord = page.locator('.records button').first();
   await expect(firstRecord).toBeVisible();
   await firstRecord.click();

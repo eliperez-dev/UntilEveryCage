@@ -1,5 +1,6 @@
 import { DEFAULT_LAB_STATE, DIRECTIONS, SCENARIOS, type LabAction, type LabFilters, type LabState } from './contract';
 import { TAXONOMY_PRIMARY_KEYS } from '../domain/taxonomy';
+import { isSearchScope } from '../features/search/powerSearch';
 
 const safeNumber = (value: string | null, fallback: number, min: number, max: number) => {
   if (value === null || value.trim() === '') return fallback;
@@ -35,17 +36,18 @@ export function decodeLabHash(hash: string): LabState {
 }
 export function encodeLabHash(state: LabState, privatePreview = true, publicRelease = false): string {
   const q = new URLSearchParams({ ...(privatePreview ? { f1a: state.direction } : {}), ...(!publicRelease ? { scenario: state.scenario } : {}) });
+  const viewport = state.navigationViewport ?? state.viewport;
   // Search input may contain a home address. Keep it in memory rather than
   // browser history or a shareable URL; old q links are still decoded above.
   if (state.selectedId) q.set('selected', state.selectedId);
   if (state.sourceId) q.set('source', state.sourceId);
   if (state.expandedCluster) q.set('cluster', state.expandedCluster);
   if (state.basemap === 'satellite') q.set('basemap', 'satellite'); if (state.listOpen) q.set('list', 'open');
-  if (state.viewport.centerLat !== 45) q.set('lat', String(state.viewport.centerLat));
-  if (state.viewport.centerLon !== 5) q.set('lon', String(state.viewport.centerLon));
-  if (state.viewport.zoom !== 2) q.set('z', String(state.viewport.zoom));
-  if (state.viewport.pitch) q.set('pitch', String(state.viewport.pitch));
-  if (state.viewport.bearing) q.set('bearing', String(state.viewport.bearing));
+  if (viewport.centerLat !== 45) q.set('lat', String(viewport.centerLat));
+  if (viewport.centerLon !== 5) q.set('lon', String(viewport.centerLon));
+  if (viewport.zoom !== 2) q.set('z', String(viewport.zoom));
+  if (viewport.pitch) q.set('pitch', String(viewport.pitch));
+  if (viewport.bearing) q.set('bearing', String(viewport.bearing));
   for (const category of state.filters.categories) q.append('category', category);
   for (const precision of state.filters.precisions) q.append('precision', precision);
   for (const country of state.filters.countries) q.append('country', country);
@@ -65,6 +67,10 @@ export function reduceLabState(state: LabState, action: LabAction): LabState {
     case 'direction': return { ...state, direction: action.value };
     case 'scenario': return { ...state, scenario: action.value };
     case 'query': return { ...state, query: action.value, selectedId: null };
+    case 'search': return { ...state, query: action.value.query, filters: { categories: unique(action.value.filters.categories), precisions: unique(action.value.filters.precisions), countries: unique(action.value.filters.countries), sources: unique(action.value.filters.sources), activities: unique(action.value.filters.activities) }, selectedId: null, aggregateMemberIds: null, listOpen: true };
+    case 'scope': return isSearchScope(action.value) ? { ...state, searchScope: action.value, selectedId: null, aggregateMemberIds: null, listOpen: true } : state;
+    case 'results': return { ...state, selectedId: null, listOpen: true };
+    case 'close-workspace': return { ...state, selectedId: null, listOpen: false, aggregateMemberIds: null, expandedCluster: null };
     case 'select': return { ...state, selectedId: action.value };
     case 'source': return { ...state, sourceId: action.value, selectedId: null, aggregateMemberIds: null };
     case 'cluster': return { ...state, expandedCluster: action.value };
@@ -72,8 +78,13 @@ export function reduceLabState(state: LabState, action: LabAction): LabState {
     case 'basemap': return { ...state, basemap: action.value };
     case 'list': return { ...state, listOpen: action.value };
     case 'viewport': return { ...state, viewport: action.value };
+    case 'private-camera': {
+      const view = action.value;
+      if (![view.centerLat, view.centerLon, view.zoom, view.pitch ?? 0, view.bearing ?? 0].every(Number.isFinite) || Math.abs(view.centerLat) > 90 || Math.abs(view.centerLon) > 180 || view.zoom < 1 || view.zoom > 18 || (view.pitch ?? 0) < 0 || (view.pitch ?? 0) > 85 || Math.abs(view.bearing ?? 0) > 180) return state;
+      return { ...state, navigationViewport: state.navigationViewport ?? state.viewport, viewport: view };
+    }
     case 'filters': return { ...state, filters: { categories: unique(action.value.categories), precisions: unique(action.value.precisions), countries: unique(action.value.countries), sources: unique(action.value.sources), activities: unique(action.value.activities) } };
     // Retain camera, release, and list state, but clear every active criterion.
-    case 'reset-filters': return { ...state, query: '', sourceId: null, filters: DEFAULT_LAB_STATE.filters, selectedId: null, aggregateMemberIds: null };
+    case 'reset-filters': return { ...state, query: '', sourceId: null, filters: DEFAULT_LAB_STATE.filters, searchScope: null, selectedId: null, aggregateMemberIds: null };
   }
 }

@@ -12,7 +12,7 @@ test('map shell mounts and keeps Search, map modes, and navigation operable', as
   await search.click();
   await expect(search).toHaveCount(0); // The drawer replaces the button in place.
   await expect(page.getByRole('searchbox', { name: 'Search across preview records' })).toBeVisible();
-  await page.getByRole('button', { name: 'Close search panel' }).click();
+  await page.getByRole('button', { name:'Close workspace' }).click();
   await expect(search).toBeVisible();
 
   await page.getByRole('button', { name: 'Tools' }).click();
@@ -22,8 +22,8 @@ test('map shell mounts and keeps Search, map modes, and navigation operable', as
   await mapStyle.selectOption('satellite');
   await expect(mapStyle).toHaveValue('satellite');
 
-  await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Database', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Browse records' })).toBeVisible();
+  await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'About', exact: true }).click();
+  await expect(page.getByRole('heading', { name:'About Until Every Cage is Empty' })).toBeVisible();
   await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Map' }).click();
   await expect(search).toBeVisible();
 });
@@ -44,7 +44,7 @@ test('the grouped primary links retain the rich preview context across Contribut
   const primary = page.getByRole('navigation', { name: 'Primary' });
   await page.goto('/#/map?f1a=field&list=closed');
   await expect(page.getByRole('button', { name: /Search map Places, facilities, sources/ })).toBeVisible();
-  for (const label of ['Map', 'Database', 'API', 'Contribute', 'About', 'FAQ']) await expect(primary.getByRole('link', { name: label, exact: true })).toBeVisible();
+  for (const label of ['Map','Data','Contribute','About']) await expect(primary.getByRole('link', { name: label, exact: true })).toBeVisible();
   await expect(primary.getByRole('link', { name: 'About', exact: true })).toBeVisible();
 
   await primary.getByRole('link', { name: 'Contribute' }).click();
@@ -61,8 +61,8 @@ test('the grouped primary links retain the rich preview context across Contribut
   for (const label of ['Map', 'Contribute']) await expect(primary.getByRole('link', { name: label })).toBeVisible();
   await expect(primary.getByRole('link', { name: 'About', exact: true })).toBeVisible();
 
-  await primary.getByRole('link', { name: 'Database', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Browse records' })).toBeVisible();
+  await primary.getByRole('link', { name: 'Data', exact: true }).click();
+  await expect(page.getByRole('heading', { name:'Data' })).toBeVisible();
   for (const label of ['Map', 'Contribute']) await expect(primary.getByRole('link', { name: label })).toBeVisible();
   await expect(primary.getByRole('link', { name: 'About', exact: true })).toBeVisible();
   expect(new URL(page.url()).hash).toContain('f1a=field');

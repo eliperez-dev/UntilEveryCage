@@ -79,6 +79,34 @@ class PublicV0IntegrationAcceptance(unittest.TestCase):
             ))
         return features
 
+    def test_map_matches_share_list_filters_and_return_all_mapped_ids(self):
+        base = {"profile": "official", "release_id": self.release_id}
+        _, _, feed = self.get_json("/api/v2/map/feed?" + urllib.parse.urlencode(base))
+        features = feed["data"]["features"]
+        feed_ids = {feature["id"] for feature in features}
+        checks = [({}, len(feed_ids)), ({"q": "farm"}, None),
+                  ({"q": "uec-acceptance-no-match-9f4f641bb77c"}, 0),
+                  ({"bbox": "-180,-90,180,90", "category_keys": "slaughter"}, None),
+                  ({"latitude": "50", "longitude": "5", "radius_km": "100"}, None),
+                  ({"display_precision": "unmapped"}, 0)]
+        for filters, expected_mapped in checks:
+            query = {**base, **filters}
+            _, headers, matches = self.get_json("/api/v2/map/matches?" + urllib.parse.urlencode(query))
+            _, _, listing = self.get_json("/api/v2/locations?" + urllib.parse.urlencode({**query, "limit": "100"}))
+            ids = matches["data"]["facility_ids"]
+            self.assertEqual(headers["Cache-Control"], "no-store")
+            self.assertEqual(matches["meta"]["manifest_sha256"], self.baseline["manifest_sha256"])
+            self.assertEqual(matches["meta"]["suppression_generation"], feed["meta"]["suppression_generation"])
+            self.assertEqual(matches["meta"]["total_count"], listing["meta"]["total_count"])
+            self.assertEqual(matches["meta"]["mapped_count"], len(ids))
+            self.assertTrue(len(set(ids)) == len(ids) and set(ids) <= feed_ids)
+            mapped_page = {row["facility_id"] for row in listing["data"] if row["display_precision"] != "unmapped" and row["latitude"] is not None and row["longitude"] is not None}
+            self.assertTrue(mapped_page <= set(ids))
+            if expected_mapped is not None:
+                self.assertEqual(len(ids), expected_mapped)
+            if filters.get("q") == "farm":
+                self.assertGreater(len(ids), 100)
+
     def test_public_v0_surfaces_and_bounded_csv(self):
         # The frozen baseline remains V0 even after a newer dataset is active.
         release_path = "/api/v2/releases/manifest?" + urllib.parse.urlencode({

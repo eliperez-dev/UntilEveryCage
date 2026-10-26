@@ -11,14 +11,12 @@ describe('private preview record detail surface', () => {
   it('renders a gated identity as not shown and keeps optional fields conditional', () => {
     expect(component).toContain('Name not shown, privacy review pending');
     expect(component).toContain("? 'Name not shown'");
-    expect(component).toContain('{#if activityDisplay}');
     expect(component).toContain('{#if evidence}');
     expect(component).toContain('{#if retrieved}');
     expect(component).toContain('{#if observed}');
     expect(component).not.toContain('PRIVATE DEVELOPMENT PREVIEW');
     expect(component).not.toContain('Facility candidate');
     expect(component).toContain('Activities and classification');
-    expect(component).toContain('sourceClassification.join');
     expect(component).not.toContain('assignment.taxonomyVersion');
     expect(component).not.toContain('taxonomy.taxonomyVersion');
     expect(component).not.toContain('Primary categories');
@@ -57,7 +55,6 @@ describe('private preview record detail surface', () => {
 
   it('keeps connections scoped to an active public release', () => {
     expect(component).toContain('publicRelease && publicReleaseId && id');
-    expect(component).toContain('<RecordConnections facilityId={id} releaseId={publicReleaseId} sourceId={sourceId ?? undefined} sourceFacts={sourceFacts} />');
     expect(component).not.toContain('Not available in this release');
     expect(component).not.toContain('Record source and date are shown below.');
   });
@@ -66,7 +63,6 @@ describe('private preview record detail surface', () => {
     expect(component).toContain('id="source-facts-heading"');
     expect(component).toContain('sourceFacts.alternateNames?.length');
     expect(component).toContain('compactSourceFacts');
-    expect(component).toContain('nativeActivity');
     expect(component).not.toContain('Source volume categories');
     expect(component).toContain('Estimated animals slaughtered (last 360 days)');
     expect(component).toContain('Estimated product volume (pounds/month)');
@@ -77,12 +73,6 @@ describe('private preview record detail surface', () => {
 
   it('keeps public selected-map source facts for the shared detail surface', () => {
     expect(designLab).toContain("...(location.sourceFacts ? { sourceFacts: location.sourceFacts } : {}),");
-  });
-
-  it('humanizes the top activity and suppresses repeated affirmative suffixes in compact source-fact lists', () => {
-    expect(component).toContain("const activityDisplay = $derived(taxonomy ? taxonomyPrimaryLabels.join(', ') : displayGeneratedValue(activity));");
-    expect(component).toContain('{activityDisplay}');
-    expect(component).toContain('/^(?:yes|true|1)$/i.test(included.trim())');
   });
 
   it('keeps the mobile copy controls after the complete evidence flow instead of pinning them over it', () => {

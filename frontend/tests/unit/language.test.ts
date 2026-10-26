@@ -21,6 +21,7 @@ describe('language selection', () => {
     expect(localStorage.getItem('uec-language')).toBe('es');
     expect(document.documentElement.lang).toBe('es');
     expect(tr('Map', 'es')).toBe('Mapa');
+    expect(tr('Data', 'es')).toBe('Datos');
   });
 
   it('restores a prior explicit Spanish choice', async () => {

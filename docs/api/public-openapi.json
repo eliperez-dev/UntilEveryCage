@@ -814,10 +814,216 @@
           }
         }
       }
+    },
+    "/api/v2/map/matches": {
+      "get": {
+        "operationId": "getPublicMapMatches",
+        "summary": "Match public map pins to a search",
+        "description": "Returns every matching mapped facility ID using the location list predicates and the same current release and suppression gates. Requires a pinned release; accepts discovery filters including bbox or radius. Pagination is rejected. Names, coordinates, query text and raw evidence are not returned. More than 75000 matching mapped facilities returns 413; never a partial mask. Responses are no-store and carry manifest and suppression identity for validation against the displayed map feed.",
+        "tags": [
+          "Map"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/profile"
+          },
+          {
+            "name": "release_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 160
+            },
+            "description": "Eligible public release currently displayed on the map."
+          },
+          {
+            "name": "country_code",
+            "in": "query",
+            "description": "One or more ISO alpha-2 codes, comma-separated (OR).",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Z]{2}(,[A-Z]{2})*$"
+            }
+          },
+          {
+            "name": "source_id",
+            "in": "query",
+            "description": "Public source IDs, comma-separated (OR), combined with other dimensions using AND.",
+            "schema": {
+              "type": "string",
+              "maxLength": 5151,
+              "pattern": "^[A-Za-z0-9_.-]+(,[A-Za-z0-9_.-]+)*$"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/region"
+          },
+          {
+            "$ref": "#/components/parameters/category"
+          },
+          {
+            "$ref": "#/components/parameters/category_keys"
+          },
+          {
+            "$ref": "#/components/parameters/source_type"
+          },
+          {
+            "$ref": "#/components/parameters/display_precision"
+          },
+          {
+            "$ref": "#/components/parameters/lifecycle_status"
+          },
+          {
+            "$ref": "#/components/parameters/q"
+          },
+          {
+            "$ref": "#/components/parameters/min_lon"
+          },
+          {
+            "$ref": "#/components/parameters/min_lat"
+          },
+          {
+            "$ref": "#/components/parameters/max_lon"
+          },
+          {
+            "$ref": "#/components/parameters/max_lat"
+          },
+          {
+            "$ref": "#/components/parameters/latitude"
+          },
+          {
+            "$ref": "#/components/parameters/longitude"
+          },
+          {
+            "$ref": "#/components/parameters/radius_km"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Complete matching mapped facility ID mask; no-store.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicMapMatches"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "413": {
+            "description": "Eligible point count exceeds the documented endpoint bound.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/Limited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "PublicMapMatches": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "api_version",
+          "data",
+          "meta"
+        ],
+        "properties": {
+          "api_version": {
+            "const": "v2"
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "facility_ids"
+            ],
+            "properties": {
+              "facility_ids": {
+                "type": "array",
+                "uniqueItems": true,
+                "maxItems": 75000,
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            }
+          },
+          "meta": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "profile",
+              "release_id",
+              "manifest_sha256",
+              "suppression_generation",
+              "total_count",
+              "mapped_count"
+            ],
+            "properties": {
+              "profile": {
+                "type": "string",
+                "enum": [
+                  "official",
+                  "secondary",
+                  "community"
+                ]
+              },
+              "release_id": {
+                "type": "string"
+              },
+              "manifest_sha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "suppression_generation": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "total_count": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "All matching public facility records, including unmapped records."
+              },
+              "mapped_count": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 75000
+              }
+            }
+          }
+        }
+      },
       "Error": {
         "type": "object",
         "required": [

@@ -1,40 +1,63 @@
 import { describe, expect, it } from 'vitest';
-import { mapHrefFromHash, mapHrefFromParams, parseRoute, safeMapHref, serializeRoute } from '../../src/app/routeState';
+import { canonicalRouteHref, databaseMapHref, mapHrefFromHash, mapHrefFromParams, parseRoute, safeMapHref, serializeRoute } from '../../src/app/routeState';
 
 describe('routeState', () => {
   it('exposes local secure routes only under the explicit development gate without retaining credentials', () => {
     const fragment = '#/secure-inbox?case_id=18c6ef3a-28cd-4c8e-a9bb-3951f45f210d&access_secret=' + '2'.repeat(64);
     expect(parseRoute(fragment).kind).toBe('not-found');
-    expect(parseRoute(fragment, true)).toEqual({ kind: 'secure-inbox' });
-    expect(parseRoute('#/secure-review', true)).toEqual({ kind: 'secure-review' });
+    expect(parseRoute(fragment, false, true)).toEqual({ kind: 'secure-inbox' });
+    expect(parseRoute('#/secure-review', false, true)).toEqual({ kind: 'secure-review' });
     expect(serializeRoute({ kind: 'secure-inbox' })).toBe('#/secure-inbox');
     expect(mapHrefFromHash(fragment)).toBe('#/map');
   });
-  it('defaults the root and empty hash to the map', () => {
-    expect(parseRoute('')).toEqual({ kind: 'map' });
-    expect(parseRoute('#/')).toEqual({ kind: 'map' });
+  it('opens the separate landing at root and preserves explicit map release links', () => {
+    expect(parseRoute('')).toEqual({ kind: 'landing' });
+    expect(parseRoute('#')).toEqual({ kind: 'landing' });
+    expect(parseRoute('#/')).toEqual({ kind: 'landing' });
+    expect(serializeRoute({ kind: 'landing' })).toBe('#/');
     expect(parseRoute('#/map')).toEqual({ kind: 'map' });
     expect(parseRoute('#/map?release_id=release-2026-10')).toEqual({ kind: 'map', releaseId: 'release-2026-10' });
     expect(serializeRoute({ kind: 'map', releaseId: 'release-2026-10' })).toBe('#/map?release_id=release-2026-10');
   });
 
-  it('parses the database route independently', () => {
-    expect(parseRoute('#/database')).toEqual({ kind: 'database', returnMapHref: '#/map' });
-    expect(parseRoute('#/database?lat=44.5&lon=8.1&z=5&basemap=satellite&release_id=r-2026-10&selected=stale')).toEqual({ kind: 'database', releaseId: 'r-2026-10', returnMapHref: '#/map?lat=44.5&lon=8.1&z=5&basemap=satellite&release_id=r-2026-10' });
-    const databaseRoute = { kind: 'database' as const, releaseId: 'r-2026-10', returnMapHref: '#/map?lat=44.5&lon=8.1&z=5&basemap=satellite&release_id=r-2026-10' };
-    expect(parseRoute(serializeRoute(databaseRoute))).toEqual(databaseRoute);
+  it('redirects old database bookmarks into map search while preserving safe context', () => {
+    expect(parseRoute('#/database')).toEqual({ kind: 'map' });
+    expect(canonicalRouteHref('#/database')).toBe('#/map?list=open');
+    const oldLink = '#/database?lat=44.5&lon=8.1&z=5&basemap=satellite&release_id=r-2026-10&selected=stale&category=slaughter&country=es&precision=unmapped&source_filter=es.rgseaa&q=private&extra=unsafe';
+    expect(databaseMapHref(oldLink)).toBe('#/map?lat=44.5&lon=8.1&z=5&basemap=satellite&list=open&category=slaughter&precision=unmapped&country=ES&source_filter=es.rgseaa&release_id=r-2026-10');
+    expect(parseRoute(oldLink)).toEqual({ kind: 'map', releaseId: 'r-2026-10' });
+    expect(databaseMapHref('#/database?map=' + encodeURIComponent('#/map?lat=38&lon=-96&z=4&country=US&release_id=nested') + '&country=ES&release_id=explicit')).toBe('#/map?lat=38&lon=-96&z=4&list=open&country=ES&release_id=explicit');
   });
 
-  it('keeps the manifesto route and opens legacy FAQ and methodology URLs in the matching FAQ section', () => {
+  it('keeps explicitly enabled private database research separate from public aliases', () => {
+    const link = '#/database?f1a=field&source=us.fsis';
+    expect(parseRoute(link, true)).toEqual({ kind: 'database', returnMapHref: '#/map?source=us.fsis' });
+    expect(canonicalRouteHref(link, true)).toBeUndefined();
+    expect(canonicalRouteHref(link)).toBe('#/map?list=open&source=us.fsis');
+  });
+
+  it('keeps the manifesto route and opens legacy FAQ and methodology URLs in the matching About section', () => {
     expect(parseRoute('#/about')).toEqual({ kind: 'about', section: 'overview' });
     expect(parseRoute('#/about/manifesto')).toEqual({ kind: 'about', section: 'overview' });
     expect(serializeRoute(parseRoute('#/about/manifesto') as { kind: 'about'; section: 'overview' })).toBe('#/about');
     expect(parseRoute('#/about?section=sources')).toEqual({ kind: 'about', section: 'sources' });
-    expect(parseRoute('#/about/sources')).toEqual({ kind: 'faq', section: 'technology' });
-    expect(parseRoute('#/methodology')).toEqual({ kind: 'faq', section: 'technology' });
-    expect(parseRoute('#/about/faq')).toEqual({ kind: 'faq', section: 'records' });
-    expect(parseRoute('#/about/help')).toEqual({ kind: 'faq', section: 'help' });
-    expect(parseRoute('#/faq?section=contributions')).toEqual({ kind: 'faq', section: 'contributions' });
+    expect(parseRoute('#/about/sources')).toEqual({ kind: 'about', section: 'technology' });
+    expect(parseRoute('#/methodology')).toEqual({ kind: 'about', section: 'technology' });
+    expect(parseRoute('#/about/faq')).toEqual({ kind: 'about', section: 'records' });
+    expect(parseRoute('#/about/help')).toEqual({ kind: 'about', section: 'help' });
+    expect(parseRoute('#/faq?section=contributions')).toEqual({ kind: 'about', section: 'contributions' });
+  });
+
+  it('canonicalizes FAQ aliases with their section and validated map context', () => {
+    expect(parseRoute('#/faq')).toEqual({ kind: 'about', section: 'questions' });
+    expect(canonicalRouteHref('#/faq')).toBe('#/about?section=questions');
+    expect(canonicalRouteHref('#/about/faq')).toBe('#/about?section=records');
+    expect(canonicalRouteHref('#/methodology')).toBe('#/about?section=technology');
+    expect(canonicalRouteHref('#/about/help?map=' + encodeURIComponent('#/map?country=ES&release_id=synthetic&q=private'))).toBe('#/about?section=help&map=' + encodeURIComponent('#/map?country=ES&release_id=synthetic'));
+    for (const section of ['questions', 'technology', 'records', 'contributions', 'help'] as const) {
+      const route = { kind: 'about' as const, section, returnMapHref: '#/map?country=ES' };
+      expect(parseRoute(serializeRoute(route))).toEqual(route);
+    }
   });
 
   it('preserves only validated map context when returning from Database or other routes', () => {
@@ -60,8 +83,8 @@ describe('routeState', () => {
     expect(parseRoute('#/database/api')).toEqual({ kind: 'api' });
     expect(serializeRoute({ kind: 'api' })).toBe('#/database/api');
     expect(parseRoute('#/database/downloads')).toEqual({ kind: 'downloads' });
-    expect(parseRoute('#/about/faq')).toEqual({ kind: 'faq', section: 'records' });
-    expect(parseRoute('#/about/help')).toEqual({ kind: 'faq', section: 'help' });
+    expect(parseRoute('#/about/faq')).toEqual({ kind: 'about', section: 'records' });
+    expect(parseRoute('#/about/help')).toEqual({ kind: 'about', section: 'help' });
   });
 
   it('parses the contribution hub, form subroutes, and bug route', () => {

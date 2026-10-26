@@ -14,7 +14,7 @@ async function isolatedPage(page: Page) {
   await page.route('https://server.arcgisonline.com/**', route => route.abort());
 }
 
-test('the legacy Help route opens its section in the separate FAQ page', async ({ page }) => {
+test('the legacy Help route opens its section within About', async ({ page }) => {
   await isolatedPage(page);
   await page.goto('./#/about/help?map=%23%2Fmap%3Flat%3D44.5%26lon%3D8.1');
   await expect(page.getByRole('heading', { name: 'Help, support, and contact', exact: true })).toBeVisible();
@@ -51,7 +51,7 @@ test('Swagger is local and lazy, renders real GET operations and executes only o
   await page.goto('./#/about');
   await expect(page.getByRole('heading', { name: 'About Until Every Cage is Empty' })).toBeVisible();
   expect(swaggerAssets).toBe(0);
-  await page.getByRole('link', { name: 'API', exact: true }).click();
+  await page.getByRole('link', { name: 'Data', exact: true }).click();
   await expect(page.locator('.opblock')).toHaveCount(13);
   await expect(page.locator('.opblock-summary-method')).toHaveText(Array(13).fill('GET'));
   expect(locationReads).toBe(0); expect(writes).toBe(0);
@@ -105,21 +105,23 @@ test('evidence explains existing records and validates an edited prefill before 
   const record = '27d7ef4b-39de-4d9f-bacc-4062f560321e';
   let writes = 0;
   await isolatedPage(page);
+  await page.route('**/api/community/capabilities', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ enabled: true, types: ['facility', 'evidence', 'correction', 'duplicate', 'privacy_removal'] }) }));
   await page.route('**/api/community/submissions', async route => {
     writes += 1;
     expect(route.request().postDataJSON().target_record_id).toBe(record);
     await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ submission_id: record, receipt_secret: 'synthetic-tutorial-test-receipt', status: 'received' }) });
   });
   await page.goto(`./#/contribute/evidence?target=${record}`);
-  await expect(page.getByText('Choose a contribution type', { exact: true })).toBeVisible();
-  await expect(page.getByText('Add evidence to an existing record. Your submission will be reviewed.', { exact: true })).toBeVisible();
-  const reference = page.getByLabel('Record link or ID', { exact: true });
-  await expect(reference).toHaveValue(record);
+  await expect(page.getByRole('navigation', { name: 'Type of update' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Add evidence', exact: true })).toBeVisible();
+  await expect(page.getByText('Linked record', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Change', exact: true }).click();
+  const reference = page.getByRole('textbox', { name: 'Facility', exact: true });
   await reference.fill('this is not a record link');
-  await page.getByLabel('What did you find?').fill('Synthetic evidence explanation');
+  await page.getByLabel(/What did you find/).fill('Synthetic evidence explanation');
   await page.getByLabel(/I have permission to share/).check();
   await page.getByRole('button', { name: 'Send for review' }).click();
-  await expect(page.getByRole('alert')).toHaveText('Enter the record link or ID from the record details.');
+  await expect(page.getByRole('alert')).toHaveText('Choose a facility or paste its record link.');
   expect(writes).toBe(0);
   await reference.fill(`https://example.test/v2-preview/#/records/${record}`);
   await page.getByRole('button', { name: 'Send for review' }).click();

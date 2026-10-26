@@ -45,7 +45,9 @@ export function sourceClassificationLabels(
       codes.forEach(add);
       continue;
     }
-    if (label && code && identity(label) !== identity(code)) {
+    if (label && code && ` ${identity(label)} `.includes(` ${identity(code)} `)) {
+      add(label);
+    } else if (label && code && identity(label) !== identity(code)) {
       const labelRepeated = activityKeys.has(identity(label)) || seen.has(identity(label));
       const codeRepeated = activityKeys.has(identity(code)) || seen.has(identity(code));
       if (!labelRepeated && !codeRepeated) add(`${label} (${code})`);

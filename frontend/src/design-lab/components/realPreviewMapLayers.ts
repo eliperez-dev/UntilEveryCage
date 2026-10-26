@@ -1,4 +1,5 @@
 import type { Map as MapLibreMap } from 'maplibre-gl';
+import '../../map/installPublicMapSourceTransport';
 import type { JsonMapCollection } from './jsonMapFallback';
 import { CATEGORY_PRESENTATIONS, CATEGORY_PRIMARY_BY_SOURCE_KEY } from '../../features/locations/categoryPresentation';
 
@@ -43,6 +44,7 @@ export type RealPreviewVisualSettings = Readonly<{
   referenceRadiusKm: number;
   referenceOpacity: number;
   coordinateRadius: number;
+  pinScale?: number;
   showReferenceLabels: boolean;
   selectedKey?: string | null;
 }>;
@@ -341,6 +343,10 @@ function applyRealPreviewPinVisibility(map: MapLibreMap, enabled: boolean): void
 /** Paint/layout changes do not rebuild the full 39k-unit cluster index. */
 export function applyRealPreviewVisualSettings(map: MapLibreMap, settings: RealPreviewVisualSettings): void {
   if (!map.getLayer('aggregate-outer')) return;
+  const pinScale = Math.max(0.6, Math.min(1.6, settings.pinScale ?? 1));
+  for (const [id, base] of [['v1-source-pins', 0.5], ['v1-source-shadows', 1], ['approx-reference-pins', 0.5], ['approx-reference-shadows', 1], ['approx-reference-cue', 0.5]] as const) {
+    if (map.getLayer(id)) map.setLayoutProperty(id, 'icon-size', base * pinScale);
+  }
   map.setPaintProperty('aggregate-outer', 'circle-radius', referenceRadiusExpression(settings.referenceRadiusKm) as any);
   const selected = settings.selectedKey
     ? ['==', ['get', 'key'], settings.selectedKey]
