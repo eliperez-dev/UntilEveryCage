@@ -28,7 +28,7 @@ describe('search UI repair contract', () => {
     expect(field).toMatch(/<fieldset class="source-options"><legend>Source<\/legend>/);
     expect(field).toMatch(/<fieldset><legend>\{tr\('Activity category', \$language\)\}<\/legend>/);
     expect(field).toMatch(/<label><input type="checkbox"/);
-    expect(field).toContain('min-height: 2rem');
+    expect(field).toContain('min-height: 2.75rem');
   });
 
   it('offers the single clear action whenever a query, source, or filter is active', () => {
