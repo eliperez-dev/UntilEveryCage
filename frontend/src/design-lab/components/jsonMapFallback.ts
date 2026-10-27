@@ -189,11 +189,12 @@ export function addJsonLocationLayers(map: MapLibreMap, data: JsonMapCollection)
 
 /** Load only the legacy marker assets the fixture path needs. */
 export async function loadJsonFallbackImages(map: MapLibreMap, baseUrl: string): Promise<void> {
-  for (const color of new Set(Object.values(PIN_COLORS))) {
-    const id = `pin-${color}`;
-    if (!map.hasImage(id)) map.addImage(id, (await map.loadImage(`${baseUrl}marker-icon-2x-${color}.png`)).data);
-  }
-  if (!map.hasImage('pin-shadow')) map.addImage('pin-shadow', (await map.loadImage(`${baseUrl}marker-shadow.png`)).data);
+  const images = [...new Set(Object.values(PIN_COLORS))].map(color => [`pin-${color}`, `marker-icon-2x-${color}.png`] as const);
+  await Promise.all([...images, ['pin-shadow', 'marker-shadow.png'] as const].map(async ([id, file]) => {
+    if (map.hasImage(id)) return;
+    const image = await map.loadImage(`${baseUrl}${file}`);
+    if (!map.hasImage(id)) map.addImage(id, image.data);
+  }));
 }
 
 export function setJsonFallbackData(map: MapLibreMap, data: JsonMapCollection): boolean {

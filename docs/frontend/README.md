@@ -565,8 +565,13 @@ load. Terrain retains adaptive LOD. Selection flights settle the camera at the
 target's terrain elevation once its DEM is ready, preserving zoom, bearing and
 pitch. Manual movement cancels this pending selection adjustment.
 Raster handoffs and terrain activation check their own source after native
-render updates as well as source events, with a ten-second readiness bound.
-An unavailable or cancelled source still follows the existing fallback.
+render updates as well as source events. Each raster handoff stage has a
+30-second readiness bound, allowing imagery queued behind elevation work on
+slower devices; terrain activation retains its ten-second bound. The existing
+map stays visible while replacement imagery loads invisibly; the bundled
+baseline changes when the handoff commits. Source metadata alone does not
+establish tile readiness. Source errors and cancellation still end the wait
+immediately and follow the existing fallback.
 
 Native cluster animation holds a bounded, geographically anchored snapshot
 throughout a continuous zoom gesture. Once the final hierarchy is ready,
