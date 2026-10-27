@@ -86,6 +86,15 @@ class SpainReferenceActivationTests(unittest.TestCase):
                                              connect=lambda *args, **kwargs: connection)
                 repeated = activation.activate("unused", events_path, reference_path,
                                                connect=lambda *args, **kwargs: connection)
+                variant_connection = Connection()
+                with patch.object(activation, "resolve_municipality_reference", return_value={
+                    "outcome": "matched", "reference_source_id": "ign-ngmep-2026:14000000001",
+                    "latitude": 37.0, "longitude": -4.8, "coordinate_origin": "Mapa",
+                    "match_method": "ign_article_reordered_municipality_and_official_province",
+                }):
+                    variant_result = activation.activate(
+                        "unused", events_path, reference_path,
+                        connect=lambda *args, **kwargs: variant_connection)
         self.assertEqual(result["evidence_appended"], 1)
         self.assertEqual(result["provider_calls"], 0)
         sql = " ".join(connection.statements).lower()
@@ -99,6 +108,11 @@ class SpainReferenceActivationTests(unittest.TestCase):
         self.assertIn("dataset_sha256=" + "b" * 64, insert[7])
         self.assertEqual(repeated["already_present"], 1)
         self.assertEqual(repeated.get("evidence_appended", 0), 0)
+        self.assertEqual(variant_result["evidence_appended"], 1)
+        variant_insert = next(params for statement, params in variant_connection.calls
+                              if "INSERT INTO real_preview.local_reference_display_evidence" in statement)
+        self.assertIn("locality_name_match=ign_article_reordered_municipality_and_official_province",
+                      variant_insert[7])
 
     def test_candidate_gates_reject_foreign_country_and_restriction(self):
         allowed = {"restriction_clear": True, "country_code": "ES", "evidence_country_code": "ES",

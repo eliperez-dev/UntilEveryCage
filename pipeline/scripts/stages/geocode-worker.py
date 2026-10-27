@@ -508,8 +508,8 @@ def run(
                 continue
             processed += 1
             print(f"provider={provider_id} status={status} processed={processed}", flush=True)
-            if outcome is not None and (outcome.acceptance == "authentication_rejected"
-                    or (provider_id == "locationiq" and outcome.acceptance == "provider_rate_limited")):
+            if outcome is not None and outcome.acceptance in {
+                    "authentication_rejected", "provider_rate_limited"}:
                 break
             if limit is None or processed < limit:
                 time.sleep(delay)

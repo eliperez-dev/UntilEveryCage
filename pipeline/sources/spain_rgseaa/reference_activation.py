@@ -57,14 +57,18 @@ def load_locality_events(path: str | Path, *, limit: int = MAX_EVENTS) -> list[d
 def _candidate_index(connection: Any, expected_snapshot_sha256: str
                      ) -> dict[tuple[str, str], list[dict[str, Any]]]:
     rows = connection.execute("""
+        WITH restricted_candidates AS MATERIALIZED (
+            SELECT DISTINCT target.candidate_id
+              FROM uec.public_access_restricted restricted
+              JOIN uec.geocode_jobs job USING(source_record_id)
+              JOIN real_preview.geocode_targets target USING(job_id)
+        )
         SELECT candidate.candidate_id,candidate.snapshot_sha256,candidate.source_group_key,
                observation.source_identifier,candidate.country_code,candidate.location_class,
                candidate.default_map_scope,location.location_evidence->>'country_code',
                NOT EXISTS (
-                   SELECT 1 FROM real_preview.geocode_targets target
-                   JOIN uec.geocode_jobs job USING(job_id)
-                   JOIN uec.public_access_restricted restricted USING(source_record_id)
-                   WHERE target.candidate_id=candidate.candidate_id
+                   SELECT 1 FROM restricted_candidates restricted
+                   WHERE restricted.candidate_id=candidate.candidate_id
                ) AS restriction_clear
           FROM real_preview.candidates candidate
           JOIN real_preview.observations observation
@@ -74,6 +78,10 @@ def _candidate_index(connection: Any, expected_snapshot_sha256: str
           JOIN real_preview.candidate_private_location_evidence location
             ON location.candidate_id=candidate.candidate_id
          WHERE candidate.snapshot_sha256=%s AND candidate.source_id=%s AND candidate.country_code='ES'
+           AND NOT (COALESCE(candidate.coordinate_method,'') IN
+                    ('address_geocode','geoapify_forward','locationiq_forward')
+                    AND candidate.display_latitude IS NOT NULL
+                    AND candidate.display_longitude IS NOT NULL)
     """, (expected_snapshot_sha256, SOURCE_ID)).fetchall()
     index: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for row in rows:
@@ -156,6 +164,8 @@ def activate(database_url: str, events_path: str | Path, reference_path: str | P
                 f"{reference['source_sha256']}; AESAN lookup event="
                 f"{event['_event'].get('retrieved_at')}"
             )
+            if locality["match_method"] != "exact_ign_municipality_and_official_province":
+                evidence_source += f"; locality_name_match={locality['match_method']}"
             if existing is not None:
                 expected = (candidate["snapshot_sha256"], SOURCE_ID, locality["latitude"],
                             locality["longitude"], "locality_reference_coarse", geometry_source,

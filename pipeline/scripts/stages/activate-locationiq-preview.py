@@ -21,7 +21,8 @@ DATABASE = "uec_launch_sources_test_20261025"
 COHORTS = ("all", "unqueried", "previous-provider-unmapped")
 
 
-def activate(database_url: str, *, limit: int = 24, cohort: str = "all"):
+def activate(database_url: str, *, limit: int = 24, cohort: str = "all",
+             allow_parallel_primary: bool = False):
     if not 1 <= limit <= 5000:
         raise ValueError("fallback batch must contain 1 to 5000 records")
     if cohort not in COHORTS:
@@ -34,11 +35,12 @@ def activate(database_url: str, *, limit: int = 24, cohort: str = "all"):
     with psycopg.connect(database_url) as connection, connection.transaction():
         if connection.execute("SELECT current_database()").fetchone()[0] != DATABASE:
             raise ValueError("database_identity_invalid")
-        budget = connection.execute("""SELECT reserved_requests >= daily_limit
-            FROM uec.geocode_provider_budgets WHERE provider_id='geoapify'
-            AND budget_date=(now() AT TIME ZONE 'UTC')::date""").fetchone()
-        if not budget or not budget[0]:
-            raise ValueError("primary_provider_daily_allowance_not_exhausted")
+        if not allow_parallel_primary:
+            budget = connection.execute("""SELECT reserved_requests >= daily_limit
+                FROM uec.geocode_provider_budgets WHERE provider_id='geoapify'
+                AND budget_date=(now() AT TIME ZONE 'UTC')::date""").fetchone()
+            if not budget or not budget[0]:
+                raise ValueError("primary_provider_daily_allowance_not_exhausted")
         rows = connection.execute("""
             SELECT candidate.candidate_id,candidate.snapshot_sha256,candidate.source_group_key,
                    original.source_record_id,location.location_evidence->>'address',
@@ -103,7 +105,9 @@ def activate(database_url: str, *, limit: int = 24, cohort: str = "all"):
                   (SELECT 1 FROM uec.geocode_job_events WHERE job_id=%s)""",
                 (job_id,json.dumps({"processing_mode":"private_locationiq_source_profile","profile_id":PROFILE,
                                    "selection_cohort":cohort,
-                                   "fallback_from_provider":"geoapify","fallback_reason":"primary_daily_allowance_exhausted"}),job_id))
+                                   "fallback_from_provider":"geoapify",
+                                   "fallback_reason":("operator_authorized_parallel_provider" if allow_parallel_primary
+                                                      else "primary_daily_allowance_exhausted")}),job_id))
             connection.execute("""INSERT INTO real_preview.enrichment_state_events
                 (candidate_id,snapshot_sha256,source_id,source_record_key,state_code,reason_code)
                 VALUES(%s,%s,'de.locations',%s,'queued','locationiq_de_bltu_fallback')""", (candidate,snapshot,source_key))
@@ -117,13 +121,16 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=24)
     parser.add_argument("--cohort", choices=COHORTS, default="all")
     parser.add_argument("--run-worker", action="store_true")
+    parser.add_argument("--allow-parallel-primary", action="store_true",
+                        help="Explicit operator opt-in; partition address batches between providers before running workers")
     args = parser.parse_args()
     database_url = os.environ.get("UEC_DATABASE_URL")
     if not database_url or not os.environ.get("LOCATIONIQ_API_KEY", "").strip():
         print(json.dumps({"status":"blocked","reason":"database_or_locationiq_key_missing"}))
         return 2
     try:
-        summary, jobs = activate(database_url, limit=args.limit, cohort=args.cohort)
+        summary, jobs = activate(database_url, limit=args.limit, cohort=args.cohort,
+                                 allow_parallel_primary=args.allow_parallel_primary)
         print(json.dumps(summary), flush=True)
         if args.run_worker and jobs:
             spec = importlib.util.spec_from_file_location("locationiq_worker", Path(__file__).with_name("geocode-worker.py"))

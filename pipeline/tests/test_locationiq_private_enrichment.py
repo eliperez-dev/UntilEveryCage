@@ -19,6 +19,27 @@ ACTIVATION_SPEC.loader.exec_module(ACTIVATION)
 
 
 class LocationIqIntegrationTests(unittest.TestCase):
+    def test_parallel_primary_requires_explicit_operator_opt_in(self):
+        connection = Mock()
+        connection.__enter__ = Mock(return_value=connection)
+        connection.__exit__ = Mock(return_value=False)
+        connection.transaction.return_value.__enter__ = Mock()
+        connection.transaction.return_value.__exit__ = Mock(return_value=False)
+        connection.execute.side_effect = [Mock(fetchone=lambda: (ACTIVATION.DATABASE,)),
+                                          Mock(fetchone=lambda: (False,))]
+        with patch.object(ACTIVATION.psycopg, "connect", return_value=connection):
+            with self.assertRaisesRegex(ValueError, "primary_provider_daily_allowance_not_exhausted"):
+                ACTIVATION.activate("postgresql://synthetic")
+        connection.execute.side_effect = [Mock(fetchone=lambda: (ACTIVATION.DATABASE,)),
+                                          Mock(fetchall=lambda: [])]
+        connection.reset_mock()
+        with patch.object(ACTIVATION.psycopg, "connect", return_value=connection):
+            summary, jobs = ACTIVATION.activate("postgresql://synthetic", allow_parallel_primary=True)
+        self.assertEqual(summary["provider_calls"], 0)
+        self.assertEqual(jobs, ())
+        self.assertFalse(any("geocode_provider_budgets" in call.args[0]
+                             for call in connection.execute.call_args_list))
+
     def test_activation_cohort_is_validated_before_database_access(self):
         with patch.object(ACTIVATION.psycopg, "connect") as connect:
             with self.assertRaises(ValueError):
@@ -76,7 +97,11 @@ class LocationIqIntegrationTests(unittest.TestCase):
         self.assertIn("evidence.display_geometry_source=candidate.display_geometry_source",source)
 
     def test_authentication_or_provider_limit_stops_the_batch(self):
-        for acceptance in ("authentication_rejected","provider_rate_limited"):
+        for provider, profile, acceptance in (
+                ("locationiq", "locationiq-de-bltu", "authentication_rejected"),
+                ("locationiq", "locationiq-de-bltu", "provider_rate_limited"),
+                ("geoapify", "geoapify-de-bltu", "authentication_rejected"),
+                ("geoapify", "geoapify-de-bltu", "provider_rate_limited")):
             connection = Mock()
             connection.__enter__ = Mock(return_value=connection)
             connection.__exit__ = Mock(return_value=False)
@@ -90,8 +115,8 @@ class LocationIqIntegrationTests(unittest.TestCase):
                  patch.object(WORKER,"_is_restricted",return_value=False), \
                  patch.object(WORKER,"_reserve_request",return_value=(uuid.uuid4(),None)), \
                  patch.object(WORKER,"_persist_outcome",return_value="failed"):
-                self.assertEqual(WORKER.run("postgresql://synthetic","locationiq",24,0,1,
-                    daily_budget=5000,provider_interval=1.05,private_source_profile_id="locationiq-de-bltu"),1)
+                self.assertEqual(WORKER.run("postgresql://synthetic",provider,24,0,1,
+                    daily_budget=5000,provider_interval=1.05,private_source_profile_id=profile),1)
             self.assertEqual(claim.call_count,1)
             self.assertEqual(adapter.geocode.call_count,1)
 

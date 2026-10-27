@@ -12,7 +12,7 @@ import psycopg
 def status(database_url: str, provider: str | None = None) -> dict:
     parameters = (provider,) if provider else ()
     job_filter = "WHERE current.provider_id = %s" if provider else ""
-    result_filter = "WHERE result.provider_id = %s" if provider else ""
+    budget_filter = "WHERE budget.provider_id = %s" if provider else ""
 
     with psycopg.connect(database_url) as database:
         states = database.execute(
@@ -38,12 +38,9 @@ def status(database_url: str, provider: str | None = None) -> dict:
         ).fetchall()
         daily_usage = database.execute(
             f"""
-            SELECT date_trunc('day', result.queried_at)::date,
-                   result.provider_id,
-                   count(*)
-            FROM uec.geocode_results AS result
-            {result_filter}
-            GROUP BY 1, 2
+            SELECT budget.budget_date, budget.provider_id, budget.reserved_requests
+            FROM uec.geocode_provider_budgets AS budget
+            {budget_filter}
             ORDER BY 1 DESC, 2
             """,
             parameters,
@@ -62,6 +59,7 @@ def status(database_url: str, provider: str | None = None) -> dict:
             SELECT count(*)
             FROM uec.geocode_results AS result
             WHERE result.queried_at >= now() - interval '7 days'
+              AND NOT COALESCE(result.response ? '_uec_parent_geocode_result_id', false)
             {('AND result.provider_id = %s' if provider else '')}
             """,
             parameters,
@@ -84,6 +82,7 @@ def status(database_url: str, provider: str | None = None) -> dict:
             {"day": str(day), "provider": provider_id, "count": count}
             for day, provider_id, count in daily_usage
         ],
+        "usage_basis": "committed request reservations; offline evaluations do not consume requests",
         "retry_state": "retryable failures are included in state counts; details are intentionally omitted",
         "pending": pending,
         "completed_last_7_days": completed,

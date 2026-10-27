@@ -40,6 +40,34 @@ ALLOWED_COORDINATE_ORIGINS = {
 }
 SPAIN_REFERENCE_BOUNDS = {"min_longitude": -18.5, "max_longitude": 4.5,
                           "min_latitude": 27.5, "max_latitude": 44.2}
+_TRAILING_ARTICLE = re.compile(
+    r"\s*(?:,\s*|\(\s*)(el|la|los|las|els|les)\s*\)?$", re.IGNORECASE)
+
+
+def _municipality_name_aliases(name: str) -> dict[str, str]:
+    """Return only deterministic spellings derived from an IGN name."""
+    components = [name]
+    slash_parts = [part.strip() for part in name.split("/")]
+    if len(slash_parts) > 1:
+        components.extend(part for part in slash_parts if part)
+
+    aliases: dict[str, str] = {}
+    for component in components:
+        folded = _fold(component)
+        is_slash_component = component != name
+        if folded:
+            if is_slash_component:
+                aliases.setdefault(folded, "slash_component")
+            match = _TRAILING_ARTICLE.search(component)
+            if match and "/" not in component:
+                stem = component[:match.start()].rstrip(" ,(")
+                article = match.group(1)
+                reordered = _fold(f"{article} {stem}")
+                if reordered:
+                    rule = ("slash_component_and_article_reordered"
+                            if is_slash_component else "article_reordered")
+                    aliases.setdefault(reordered, rule)
+    return aliases
 
 
 def _finite_coordinate(value: Any) -> float | None:
@@ -225,32 +253,62 @@ def write_ign_reference_index(archive_path: str | Path, output_path: str | Path,
 def resolve_municipality_reference(municipality: str, province: str,
                                    references: Iterable[dict[str, Any]] | dict[tuple[str, str], list[dict[str, Any]]], *,
                                    source_metadata: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Resolve one official municipality point by exact name+province only.
+    """Resolve an exact or reference-derived municipality spelling + province.
 
     ``references`` is an adapter-owned normalized view of the official IGN
     MUNICIPIOS table. It must expose municipality_name, province_name,
     municipality_code, latitude, longitude, coordinate_origin, and optionally
-    population. No nearest-name, locality, city, or facility-address fallback
-    is permitted. Duplicate exact administrative names are unresolved.
+    population. The only supported name variants are trailing-article reorder,
+    exact slash components, and their combination. No nearest-name, locality,
+    city, or facility-address fallback is permitted. Distinct municipality
+    codes matching the same spelling remain ambiguous.
     """
     if not isinstance(municipality, str) or not municipality.strip() \
             or not isinstance(province, str) or not province.strip():
         return {"outcome": "incomplete_verified_locality"}
     municipality_key = _fold(municipality)
     if isinstance(references, dict):
-        matches = references.get((municipality_key, official_province_key(province)), [])
+        candidate_rows = references.get((municipality_key, official_province_key(province)), [])
     else:
-        matches = [row for row in references
-                   if isinstance(row, dict)
-                   and isinstance(row.get("municipality_name"), str)
-                   and _fold(row["municipality_name"]) == municipality_key
-                   and isinstance(row.get("province_name"), str)
-                   and same_official_province(province, row["province_name"])]
+        candidate_rows = [row for row in references
+                          if isinstance(row, dict)
+                          and isinstance(row.get("municipality_name"), str)
+                          and isinstance(row.get("province_name"), str)
+                          and same_official_province(province, row["province_name"])
+                          and (_fold(row["municipality_name"]) == municipality_key
+                               or municipality_key in _municipality_name_aliases(
+                                   row["municipality_name"]))]
+
+    matches: list[tuple[dict[str, Any], str | None]] = []
+    for row in candidate_rows:
+        if (not isinstance(row, dict)
+                or not isinstance(row.get("municipality_name"), str)
+                or not isinstance(row.get("province_name"), str)
+                or not same_official_province(province, row["province_name"])):
+            continue
+        canonical_key = _fold(row["municipality_name"])
+        if canonical_key == municipality_key:
+            matches.append((row, None))
+            continue
+        rule = _municipality_name_aliases(row["municipality_name"]).get(municipality_key)
+        if rule:
+            matches.append((row, rule))
     if not matches:
         return {"outcome": "not_found"}
-    if len(matches) != 1:
+
+    # Multiple spellings or duplicate rows for the same official municipality
+    # are one target. Prefer a canonical exact match so its historical method
+    # and evidence provenance remain byte-for-byte stable.
+    by_code: dict[str, list[tuple[dict[str, Any], str | None]]] = {}
+    for row, rule in matches:
+        code = row.get("municipality_code")
+        if not isinstance(code, str):
+            code = f"invalid:{id(row)}"
+        by_code.setdefault(code, []).append((row, rule))
+    if len(by_code) != 1:
         return {"outcome": "ambiguous_exact_municipality_and_province"}
-    row = matches[0]
+    selected = next(iter(by_code.values()))
+    row, rule = min(selected, key=lambda item: (item[1] is not None, item[1] or ""))
     code = row.get("municipality_code")
     if not isinstance(code, str) or not re.fullmatch(r"(?:\d{5}|\d{11})", code):
         return {"outcome": "invalid_ign_municipality_code"}
@@ -279,7 +337,10 @@ def resolve_municipality_reference(municipality: str, province: str,
         "latitude": float(latitude),
         "longitude": float(longitude),
         "precision": "locality_reference_coarse",
-        "match_method": "exact_ign_municipality_and_official_province",
+        "match_method": (
+            "exact_ign_municipality_and_official_province" if rule is None else
+            f"ign_{rule}_municipality_and_official_province"
+        ),
         "coordinate_origin": origin,
         "population": row.get("population"),
         "reference_source_id": f"{REFERENCE_SOURCE_ID}:{code}",
@@ -299,14 +360,17 @@ def normalized_reference_key(municipality: str, province: str) -> str:
 def exact_municipality_reference_index(
     references: Iterable[dict[str, Any]],
 ) -> dict[tuple[str, str], list[dict[str, Any]]]:
-    """Index by exact folded municipality and supported official province key."""
+    """Index canonical names and deterministic aliases by official province."""
     index: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for row in references:
         if (not isinstance(row, dict) or not isinstance(row.get("municipality_name"), str)
                 or not isinstance(row.get("province_name"), str)):
             continue
-        key = (_fold(row["municipality_name"]), official_province_key(row["province_name"]))
-        index.setdefault(key, []).append(row)
+        province_key = official_province_key(row["province_name"])
+        keys = {_fold(row["municipality_name"]),
+                *_municipality_name_aliases(row["municipality_name"]).keys()}
+        for name_key in keys:
+            index.setdefault((name_key, province_key), []).append(row)
     return index
 
 

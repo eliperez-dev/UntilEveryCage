@@ -35,6 +35,75 @@ class SpainIgnMunicipalityReferenceTests(unittest.TestCase):
         self.assertEqual(resolve_municipality_reference("Madrid City", "Madrid", [self.reference])["outcome"],
                          "not_found")
 
+    def test_reference_derived_article_alias_matches_in_iterable_and_indexed_paths(self):
+        reference = {**self.reference, "municipality_code": "28001",
+                     "municipality_name": "Sampletown, El"}
+        expected = "ign_article_reordered_municipality_and_official_province"
+        for references in ([reference], exact_municipality_reference_index([reference])):
+            with self.subTest(indexed=isinstance(references, dict)):
+                result = resolve_municipality_reference("El Sampletown", "Madrid", references)
+                self.assertEqual(result["outcome"], "matched")
+                self.assertEqual(result["match_method"], expected)
+                self.assertEqual(result["municipality_name"], "Sampletown, El")
+                self.assertEqual(result["precision"], "locality_reference_coarse")
+
+    def test_exact_slash_component_alias_and_combined_slash_article_alias(self):
+        slash_reference = {**self.reference, "municipality_code": "28002",
+                           "municipality_name": "Sampletown / Vila Mostra"}
+        combined_reference = {**self.reference, "municipality_code": "28003",
+                              "municipality_name": "Sampletown (El) / Vila Mostra"}
+        slash_result = resolve_municipality_reference(
+            "Vila Mostra", "Madrid", exact_municipality_reference_index([slash_reference]))
+        self.assertEqual(slash_result["match_method"],
+                         "ign_slash_component_municipality_and_official_province")
+        combined_result = resolve_municipality_reference(
+            "El Sampletown", "Madrid", exact_municipality_reference_index([combined_reference]))
+        self.assertEqual(combined_result["match_method"],
+                         "ign_slash_component_and_article_reordered_municipality_and_official_province")
+        iterable_result = resolve_municipality_reference(
+            "El Sampletown", "Madrid", [combined_reference])
+        self.assertEqual(combined_result, iterable_result)
+
+    def test_alias_still_requires_exact_official_province_and_known_suffix(self):
+        reference = {**self.reference, "municipality_code": "28004",
+                     "municipality_name": "Sampletown, El"}
+        index = exact_municipality_reference_index([reference])
+        self.assertEqual(resolve_municipality_reference(
+            "El Sampletown", "Sevilla", index)["outcome"], "not_found")
+        self.assertEqual(resolve_municipality_reference(
+            "Sampletown, Este", "Madrid", index)["outcome"], "not_found")
+
+    def test_alias_collision_with_distinct_canonical_target_remains_ambiguous(self):
+        canonical = {**self.reference, "municipality_code": "28005",
+                     "municipality_name": "El Sampletown"}
+        alias_target = {**self.reference, "municipality_code": "28006",
+                        "municipality_name": "Sampletown, El"}
+        rows = [canonical, alias_target]
+        for references in (rows, exact_municipality_reference_index(rows)):
+            with self.subTest(indexed=isinstance(references, dict)):
+                self.assertEqual(resolve_municipality_reference(
+                    "El Sampletown", "Madrid", references)["outcome"],
+                    "ambiguous_exact_municipality_and_province")
+
+    def test_duplicate_rows_for_same_official_municipality_are_one_target(self):
+        first = {**self.reference, "municipality_code": "28007",
+                 "municipality_name": "Sampletown, El"}
+        duplicate = dict(first)
+        for references in ([first, duplicate], exact_municipality_reference_index([first, duplicate])):
+            with self.subTest(indexed=isinstance(references, dict)):
+                result = resolve_municipality_reference("El Sampletown", "Madrid", references)
+                self.assertEqual(result["outcome"], "matched")
+                self.assertEqual(result["match_method"],
+                                 "ign_article_reordered_municipality_and_official_province")
+
+    def test_canonical_match_retains_existing_method_and_provenance(self):
+        for references in ([self.reference], exact_municipality_reference_index([self.reference])):
+            result = resolve_municipality_reference("Madrid", "Madrid", references)
+            self.assertEqual(result["match_method"],
+                             "exact_ign_municipality_and_official_province")
+            self.assertEqual(result["municipality_name"], "Madrid")
+            self.assertEqual(result["source_artifact_sha256"], "a" * 64)
+
     def test_duplicate_exact_names_remain_ambiguous(self):
         other = {**self.reference, "municipality_code": "28080"}
         self.assertEqual(resolve_municipality_reference("Madrid", "Madrid", [self.reference, other])["outcome"],

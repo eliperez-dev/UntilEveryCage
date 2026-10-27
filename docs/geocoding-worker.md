@@ -196,6 +196,14 @@ Authentication and rate-limit failures stop the batch.
 There is no cross-provider request-response cache. Other sources are not
 automatically enabled by adding a token.
 
+An operator may explicitly use `--allow-parallel-primary` to stage LocationIQ
+without first exhausting Geoapify. Stage the LocationIQ cohort before selecting
+the Geoapify cohort, exclude all LocationIQ-targeted candidates from the latter,
+and pass the existing exact `job_ids` allowlists to both workers. This keeps
+address batches disjoint; each provider retains its own daily ledger and rate
+limit. The default remains sequential fallback. Never use a second free account
+to reset or combine one provider's allowance.
+
 The adapter and database independently require a single German address match,
 including street/house number, postcode, locality and supplied state. Importance
 is not used as confidence. Results retain the LocationIQ provider and method;
@@ -217,8 +225,27 @@ uses a read-only transaction, and prints aggregate counts only. It compares the
 current matcher with German street-suffix and umlaut/digraph normalization while
 retaining house-number, postcode, locality, state and uniqueness checks. It does
 not promote points or change old results. A recovery count is an audit candidate,
-not an accepted geocode. The live adapter and independent database matcher remain
-unchanged until a versioned reconciliation is implemented and checked.
+not an accepted geocode. The live adapter's acceptance rule remains unchanged.
+
+Versioned retained-response reconciliation is available separately:
+
+```powershell
+python -m pipeline.geocoding.germany_retained_reconciliation --limit 5000
+```
+
+Apply migration 100 in the assigned disposable country database first. The
+command verifies the V0 baseline and replays saved LocationIQ responses without
+network access. Python and SQL independently require one matching address;
+only German street-suffix and umlaut/digraph spellings differ from the original
+matcher. It appends a linked derived evaluation and audited display evidence,
+preserving the original result, query and provider timestamp. Replays are
+idempotent. It creates no provider requests, reservations or job events.
+Provider usage comes from request reservations, not result/evaluation row counts.
+
+After large private imports, refresh PostgreSQL statistics on the imported
+candidate, observation and location-evidence tables when a measured query plan
+shows stale row estimates. Use `ANALYZE` only in the assigned disposable database;
+do not rebuild indexes or change a serving database for this step.
 
 Supply `GEOAPIFY_API_KEY` through the private environment/secret store, then use
 the optional worker profile:

@@ -694,6 +694,36 @@
           "098_locationiq_private_enrichment"
         ]
       },
+      "latest_private_enrichment": {
+        "checked_at_utc": "2026-10-27T02:28:15Z",
+        "status": "parallel_provider_batch_running_local_only",
+        "private_database": "uec_launch_sources_test_20261025",
+        "source_qualified_candidates": 15755,
+        "mapped_candidates": 4505,
+        "unmapped_candidates": 11250,
+        "mapped_candidates_before_batch": 2809,
+        "provider_budget_date_utc": "2026-10-27",
+        "provider_request_reservations": {
+          "geoapify": {"reserved_requests": 2058, "daily_limit": 3000},
+          "locationiq": {"reserved_requests": 2342, "daily_limit": 5000}
+        },
+        "request_accounting": "Committed shared reservations, not result-row counts; saved-response evaluations consume no credits. Dashboard balances were not independently refreshed.",
+        "selection": "LocationIQ targets are staged first, prioritizing unqueried addresses then previous-provider misses. Geoapify excludes all LocationIQ-targeted candidates. Bounded helper workers share the same job leases, rate limiter and daily ledger.",
+        "retained_response_reconciliation": {
+          "ruleset": "german-street-spelling-v1",
+          "method": "locationiq_retained_street_v1",
+          "examined": 4455,
+          "accepted_points": 159,
+          "database_rejected": 0,
+          "provider_calls": 0,
+          "parent_results_modified": 0,
+          "migration": "100_germany_retained_geocode_reconciliation",
+          "verification": "Real-V0 rollback tests verify independent Python/SQL address matching, immutable parent lineage, idempotence and audited map evidence. The live provider acceptance rule is unchanged."
+        },
+        "new_public_rows": 0,
+        "baseline_unchanged": true,
+        "scope": "Operational checkpoint, not a completed batch or a new API membership certificate. Earlier capture and API acceptance figures remain historical. Query the durable queue and budget ledger for progress after this timestamp."
+      },
       "evidence": [
         "docs/germany-source-assessment.md",
         "pipeline/sources/germany/README.md",
@@ -712,7 +742,10 @@
         "pipeline/migrations/098_locationiq_private_enrichment.sql",
         "pipeline/geocoding/locationiq.py",
         "pipeline/scripts/stages/activate-locationiq-preview.py",
-        "pipeline/scripts/diagnostics/audit-germany-retained-geocodes.py"
+        "pipeline/scripts/diagnostics/audit-germany-retained-geocodes.py",
+        "pipeline/geocoding/germany_retained_reconciliation.py",
+        "pipeline/migrations/100_germany_retained_geocode_reconciliation.sql",
+        "pipeline/tests/test_germany_retained_reconciliation_postgis.py"
       ],
       "next_action": "Prepare the measured 15,755-record source cohort with 2,809 address points and 12,946 unmapped records. The 2026-10-26 UTC LocationIQ allowance is exhausted; do not raise or reset its ledger. Preserve 15 queued retries for a future allowance and keep new-address and prior-provider retry cohorts separate. The read-only street audit found 136 potential recoveries, not yet promoted; implement versioned reconciliation with independent database checks before counting them as mapped. Validate locality differences separately without accepting road-only matches. Exact public BKG locality batch joining remains unverified. Preserve native labels, activities and source dates in the dated release."
     },
@@ -767,14 +800,14 @@
         "source_qualified_candidates": 19777,
         "quarantined_rows": 0,
         "api_listable_candidates": 19777,
-        "map_visible_candidates": 15330,
-        "unmapped_candidates": 4447,
+        "map_visible_candidates": 15339,
+        "unmapped_candidates": 4438,
         "public_rows": 0,
         "source_artifact_bytes": 9438501,
         "source_artifact_sha256": "6123d7f98402ae06ab54c7cd8cbfd2dead396442b3b1dc04d769d41a1fa08c44",
         "idempotent_replay_verified": true,
         "private_capture_archive": "D:/UntilEveryCage-Operations/source-captures/es-aesan-nameful-20261025/refresh-1c4f2b9fe16352b0",
-        "api_acceptance": "All 2,837 authenticated municipality map reference groups resolve to exactly 15,330 eligible SQL candidate IDs. All 19,777 private candidates retain business labels. Cached display geometry agrees with the audited view; no-store and unauthenticated rejection passed.",
+        "api_acceptance": "Earlier API acceptance verified all 2,837 municipality reference groups against 15,330 eligible SQL candidate IDs, with no-store and unauthenticated rejection. All 19,777 private candidates retain business labels. A later local name-format reconciliation added nine municipality points; the earlier API membership digest below describes the 15,330-record checkpoint, not the newer SQL count.",
         "refresh_command": "python scripts/real_preview.py refresh --source es.locations",
         "adapter_version": "es-aesan-rgseaa-v2",
         "normalized_sha256": "5107ecc7093ad6ff53fec63653ad986ae868ece1215be75da606dae7a221e9e4",
@@ -795,8 +828,8 @@
         "pipeline/tests/test_spain_shared_refresh.py"
       ],
       "latest_private_enrichment": {
-        "checked_date": "2026-10-25",
-        "method": "AESAN published province/sector Excel exports joined by exact RGSEAA registration and province, then exact municipality/province joining to the official IGN NGMEP 2026 reference.",
+        "checked_date": "2026-10-26",
+        "method": "AESAN published province/sector Excel exports joined by exact RGSEAA registration and province, then municipality/province joining to the official IGN NGMEP 2026 reference. Exact slash components and trailing-article reorderings are derived only from reference names; distinct matching municipality codes remain ambiguous.",
         "event_rows": 19421,
         "verified_locality_events": 19054,
         "official_lookup_not_found": 275,
@@ -806,14 +839,15 @@
           "Bilbao"
         ],
         "ign_reference_municipalities": 8132,
-        "private_approximate_map_candidates": 15330,
-        "reference_not_found": 3724,
-        "unmapped_candidates": 4447,
+        "private_approximate_map_candidates": 15339,
+        "reference_not_found": 3715,
+        "unmapped_candidates": 4438,
         "precision": "locality_reference_coarse",
         "new_provider_calls": 0,
         "earlier_provider_pilot_requests": 90,
-        "activation_replay_existing_evidence": 15330,
+        "activation_replay_existing_evidence": 15339,
         "activation_replay_new_evidence": 0,
+        "reference_name_format_recovery": {"new_points": 9, "rule": "exact slash component of the official IGN municipality name within the same province", "provider_calls": 0, "original_source_rows_modified": 0},
         "reference_archive_sha256": "496e3079d3b1844e2827d9dfc328fcd2e629e72c2640b46840daa3711b915116",
         "reference_normalized_sha256": "6ffab716993cd80516236d1bb3f4d72962e1d85101b522bad429d6f139e7d085",
         "reference_source_url": "https://centrodedescargas.cnig.es/CentroDescargas/detalleArchivo?sec=9000004",
@@ -824,7 +858,7 @@
         "public_rows_added": 0,
         "baseline_unchanged": true
       },
-      "next_action": "Use the measured national cohort in dated-release preparation: 19,777 named candidates, 15,330 approximate municipality points and 4,447 unmapped candidates. Resolve Bilbao province metadata and unmatched official locality variants without guessing; improve facility-address matches separately. Existing Catalonia coverage remains a distinct source.",
+      "next_action": "Use the measured national cohort in dated-release preparation: 19,777 named candidates, 15,339 approximate municipality points and 4,438 unmapped candidates. Resolve Bilbao province metadata and unmatched official locality variants without guessing; improve facility-address matches separately. Existing Catalonia coverage remains a distinct source.",
       "runtime_health_scope": "One fresh normal shared command and source-scoped API/map acceptance passed on 2026-10-25 Pacific; no recurring health claim."
     },
     {"source_id":"us.fsis","metadata":"verified","acquisition":"verified","runtime_health":"not_run","publication_eligibility":"blocked","evidence":["docs/country-recon-us.md","docs/source-status.md","docs/countries/us/README.md","docs/countries/us/v1-field-crosswalk.json","pipeline/sources/us/fsis/config.json","pipeline/sources/us/fsis/adapter.py","pipeline/sources/us/fsis/refresh.py","pipeline/source_registry.json"],"next_action":"Strict live private E2E verified: 7,240 observations and 7,240 candidates from official current CSVs acquired through an authorized bounded browser download; one-time run only, with no recurring monitor configured. Public release is not authorized; source terms, identity, location/privacy, reconciliation, project review, and release gates remain open."},

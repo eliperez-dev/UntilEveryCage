@@ -68,9 +68,6 @@ class LocationIqPostgisTests(unittest.TestCase):
         self.assertEqual(rows,[("geoapify","geoapify-de-bltu"),("locationiq","locationiq-de-bltu")])
 
     def test_real_unmapped_batch_can_be_staged_without_provider_calls_or_persistent_writes(self):
-        budget = self.connection.execute("SELECT reserved_requests >= daily_limit FROM uec.geocode_provider_budgets WHERE provider_id='geoapify' AND budget_date=(now() AT TIME ZONE 'UTC')::date").fetchone()
-        if not budget or not budget[0]:
-            self.skipTest("primary allowance is not exhausted")
         spec = importlib.util.spec_from_file_location("locationiq_activation_test", ROOT / "pipeline/scripts/stages/activate-locationiq-preview.py")
         activation = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(activation)
@@ -82,7 +79,8 @@ class LocationIqPostgisTests(unittest.TestCase):
             def transaction(self): return connection.transaction(force_rollback=True)
         before = self.connection.execute("SELECT count(*) FROM uec.geocode_jobs WHERE provider_id='locationiq'").fetchone()[0]
         with patch.object(activation.psycopg,"connect",return_value=RollbackConnection()):
-            summary, jobs = activation.activate(os.environ["UEC_DATABASE_URL"],limit=24)
+            summary, jobs = activation.activate(os.environ["UEC_DATABASE_URL"],limit=24,
+                                               allow_parallel_primary=True)
         self.assertEqual(summary["jobs_staged"]+summary["invalid_query_formats_skipped"],24)
         self.assertGreater(summary["jobs_staged"],0)
         self.assertEqual(summary["provider_calls"],0)
