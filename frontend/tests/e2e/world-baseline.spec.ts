@@ -25,7 +25,10 @@ async function installWorldFixture(page: import('@playwright/test').Page) {
 }
 
 for (const pitch of [0,55]) test(`satellite imagery stays backed by bounded local tiles through detailed ${pitch ? '3D' : '2D'} zoom`, async ({ page }, testInfo) => {
-  test.setTimeout(90_000);
+  // Linux software rendering took 43s and 20s for the first two 3D zooms.
+  // Keep the continuous three-zoom functional journey; hosted performance is
+  // checked separately. The 2D journey retains its existing deadline.
+  test.setTimeout(pitch ? 180_000 : 90_000);
   await page.setViewportSize({ width: 1280, height: 900 });
   // The bundled fallback is real; external detail tiles are deterministic.
   // Live provider availability is checked in the hosted review instead.
