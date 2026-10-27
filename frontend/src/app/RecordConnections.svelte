@@ -134,7 +134,7 @@
           <dl>
             <div><dt>{tr('Method', $language)}</dt><dd>{tr(humanize(edge.match_method), $language)}</dd></div>
             <div><dt>{tr('Source', $language)}</dt><dd>{edge.provenance.source_ids.join(', ')}</dd></div>
-            <div><dt>{tr('Observed', $language)}</dt><dd><time datetime={edge.observed_at}>{new Date(edge.observed_at).toLocaleDateString($language === 'es' ? 'es' : 'en')}</time></dd></div>
+            <div><dt>{tr('Observed', $language)}</dt><dd><time datetime={edge.observed_at}>{new Date(edge.observed_at).toLocaleDateString($language)}</time></dd></div>
             {#if Object.keys(edge.signals).length}<div><dt>{tr('Signals', $language)}</dt><dd>{Object.keys(edge.signals).map(value => tr(humanize(value), $language)).join(', ')}</dd></div>{/if}
             {#if edge.contradictions.length}<div><dt>{tr('Contradictions', $language)}</dt><dd>{edge.contradictions.length} {tr('recorded', $language)}</dd></div>{/if}
           </dl>

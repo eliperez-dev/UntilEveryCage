@@ -205,7 +205,7 @@ test('mobile detail shares the middle-height sheet with the map and preserves sc
     await expect(page.locator('.reading-sheet .detail h1')).toHaveText(row.canonical_name);
   };
   await open();
-  const workspace = page.locator('.workspace > .results');
+  const workspace = page.locator('.workspace .map-tool-shell > .results');
   const panel = page.locator('.reading-sheet.dossier');
   const close = panel.getByRole('button', { name: 'Close record detail' });
   for (const [width, height] of [[375, 812], [375, 667], [320, 667]]) {
@@ -264,9 +264,9 @@ test('mobile diagnostics temporarily cover an expanded selected sheet and restor
   await expect(page.locator('.dossier h1')).toHaveText(row.canonical_name);
   const handle=page.getByRole('button',{name:'View facility details',exact:true});
   await handle.focus();await page.keyboard.press('End');
-  await page.getByRole('button',{name:'Tools',exact:true}).click();
+  await page.getByRole('button',{name:'More tools',exact:true}).click();
   await page.getByLabel('Enable debug menu',{exact:true}).check();
-  await page.getByRole('button',{name:'Close Tools',exact:true}).click();
+  await page.getByRole('button',{name:'Close more tools',exact:true}).click();
   await page.getByRole('button',{name:'Debug menu',exact:true}).click();
   const debug=page.getByRole('complementary',{name:'Debug menu',exact:true});
   await expect(debug).toBeVisible();

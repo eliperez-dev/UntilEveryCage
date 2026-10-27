@@ -21,6 +21,7 @@
   import Field from './variants/field/Field.svelte';
   import PreviewMasthead from '../app/PreviewMasthead.svelte';
   import { createMapResumeGuard, releaseIdentityKey } from './mapResume';
+  import { createPinHoverLabels } from './pinHoverLabels';
 
   let { active = true, activationId = 0 }: { active?: boolean; activationId?: number } = $props();
   let mounted = $state(false);
@@ -66,6 +67,29 @@
   const publicReleaseIdentity = writable<string | null>(null);
   const publicReleaseManifestIdentity = writable<PublicReleaseIdentity | null>(null);
   const publicMapMeta = writable<PublicMapFeed['meta'] | null>(null);
+  const pinHoverLabels = createPinHoverLabels(async (id, signal) => {
+    const releaseId = $publicReleaseManifestIdentity?.releaseId;
+    if (!dataActive || mode !== 'public-release' || !releaseId) return null;
+    let loaded: LabRecord | undefined;
+    if (detailStatus === 'ready' && detailRecord?.id === id && observedSelection === `${$publicReleaseIdentity}:${id}`) loaded = detailRecord;
+    if (!loaded && $dataStatus === 'ready' && !listRefreshing && !pageLoading
+      && apiRecordsIdentity === $publicReleaseIdentity && apiRecordsSearchKey === JSON.stringify(publicSearchFilters(labState))) loaded = apiRecords.find(record => record.id === id);
+    if (loaded) return { name: loaded.name, categoryKey: loaded.taxonomy?.displayCategory ?? 'unclassified' };
+    const result = await publicLocationRepository.detail(id, 'official', signal, releaseId);
+    return { name: result.location.name, categoryKey: result.location.taxonomy?.displayCategory ?? 'unclassified' };
+  });
+  const pinHoverContext = $derived(dataActive && mode === 'public-release' && $publicReleaseManifestIdentity
+    && $publicReleaseManifestIdentity.releaseId === $publicReleaseId
+    && mapMatchesStatus !== 'loading' && mapMatchesStatus !== 'error'
+    ? JSON.stringify([releaseIdentityKey($publicReleaseManifestIdentity), labState.query, labState.sourceId, labState.filters, labState.searchScope, mapMatchesAttempt])
+    : null);
+  $effect(() => { pinHoverLabels.setContext(pinHoverContext); });
+  function resolvePinHover(id: string, signal: AbortSignal) {
+    // Synchronise at the call boundary too: no old-label window between an
+    // identity/filter update and the next effect flush.
+    pinHoverLabels.setContext(pinHoverContext);
+    return pinHoverLabels.resolve(id, signal);
+  }
   const V0_ARCHIVE_RELEASE_ID = 'v0-candidate-2026-10-04-r3';
   const v0ArchiveVerified = writable(false);
   let refreshPinnedPublicRelease: (() => void) | undefined;
@@ -112,6 +136,8 @@
   }
   const sourceId = $derived(labState.sourceId);
   let apiRecords = $state<LabRecord[]>([]);
+  let apiRecordsIdentity: string | null = null;
+  let apiRecordsSearchKey: string | undefined;
   const dataStatus = writable<'loading' | 'ready' | 'empty' | 'error' | 'unauthorized'>('loading');
   const dataError = writable('');
   let nextCursor = $state<string | null>(null);
@@ -208,10 +234,12 @@
       if (mode === 'public-release') {
         if (!$publicReleaseId) return;
         const requestedIdentity = $publicReleaseIdentity;
-        const page = await publicLocationRepository.list('official', { ...publicSearchFilters({ ...labState, query }), cursor: reset ? undefined : nextCursor ?? undefined, limit: 100 }, controller.signal, $publicReleaseId);
+        const filters = publicSearchFilters({ ...labState, query });
+        const page = await publicLocationRepository.list('official', { ...filters, cursor: reset ? undefined : nextCursor ?? undefined, limit: 100 }, controller.signal, $publicReleaseId);
         if (controller.signal.aborted || requestedIdentity !== $publicReleaseIdentity) return;
         const mapped = page.locations.map(mapPublicLocation);
         apiRecords = reset ? mapped : [...new Map([...apiRecords, ...mapped].map(record => [record.id, record])).values()];
+        apiRecordsIdentity = requestedIdentity; apiRecordsSearchKey = JSON.stringify(filters);
         nextCursor = page.nextCursor;
         candidateTotalCount = page.totalCount ?? null;
         if (page.ruleset && publicFacetRelease !== page.releaseId) void loadPublicFacets(page.releaseId, page.ruleset);
@@ -501,7 +529,7 @@
     <div class="retained-map-content" hidden={!mapReadyToShow} inert={!mapReadyToShow}>
     <Field active={dataActive} state={labState} {coverageOpen} records={mode !== 'synthetic' ? apiRecords : model.listRecords} mapRecords={mode !== 'synthetic' ? [] : model.mapRecords} {mode} publicReleaseId={$publicReleaseId} selectedPublicReleaseId={$publicReleaseId ?? $pinnedPublicReleaseId ?? null} publicReleaseIdentity={$publicReleaseIdentity} publicReleaseManifestIdentity={$publicReleaseManifestIdentity} publicMapMeta={$publicMapMeta} releaseOptions={publicReleaseOptions} onreleasechange={selectPublicRelease} onMapFeedMeta={(meta) => { $publicMapMeta = meta; }}
       dataStatus={$dataStatus} dataError={$dataError} {listRefreshing} {mapMatchingIds} {mapMatchesStatus} {mapMatchesError} onRetryMapMatches={() => mapMatchesAttempt += 1}
-      {detailRecord} {detailStatus} {detailError} {nextCursor} {pageLoading}
+      {detailRecord} {detailStatus} {detailError} {nextCursor} {pageLoading} {resolvePinHover}
       {facets} {facetsStatus} {candidateFacets} {candidateTotalCount} {mapDiagnostics} {aggregateMemberRecords} {aggregateNextCursor} {aggregateLoading} {aggregateError} onMapTiming={timing=>{sourceMaterializeMs=timing.sourceMaterializeMs;clusterReadyMs=timing.clusterReadyMs;if(timing.zoomSettleMs!==undefined)zoomSettleMs=timing.zoomSettleMs;}} onLoadMore={() => void loadPage(labState.query, false)} onMapReference={(key, refSourceId) => void loadReference(key, true, refSourceId)} onLoadMoreAggregate={() => { if (aggregateReferenceKey) void loadReference(aggregateReferenceKey, false); }} {dispatch}/>
     </div>
     {#if mode === 'real-preview' && counts}

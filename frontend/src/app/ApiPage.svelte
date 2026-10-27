@@ -16,7 +16,7 @@
   let profile = $state<LocalProfile>('official');
   let { selectedReleaseId: selectedFromRoute = null }: { selectedReleaseId?: string | null } = $props();
   let selectedReleaseId = $state<string | null>(null);
-  let releaseOptions = $state<readonly { id: string; label: string }[]>([]);
+  let releaseOptions = $state<readonly { id: string; generatedAt?: string }[]>([]);
   let releaseId = $state<string | null>(null);
   let releaseDate = $state<string | null>(null);
   let releaseLoading = $state(true);
@@ -28,7 +28,7 @@
   const V0_ARCHIVE_RELEASE_ID = 'v0-candidate-2026-10-04-r3';
   const query = $derived(new URLSearchParams({ profile, ...(releaseId ? { release_id: releaseId } : {}) }).toString());
   const releaseLabel = (id: string, date?: string) => {
-    const readableDate = date ? new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date(date)) : null;
+    const readableDate = date ? new Intl.DateTimeFormat($language, { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date(date)) : null;
     return readableDate ? `${readableDate} · ${publicReleaseLabel(id) ?? 'Public release'}` : publicReleaseLabel(id) ?? id;
   };
 
@@ -57,9 +57,9 @@
         : chosenId === history?.releaseId ? history
           : chosenId ? await repository.current(profile, controller.signal, chosenId) : null;
       if (controller.signal.aborted) return;
-      releaseOptions = available.map(item => ({ id: item.releaseId, label: releaseLabel(item.releaseId, item.mapGeneratedAt) }));
+      releaseOptions = available.map(item => ({ id: item.releaseId, ...(item.mapGeneratedAt ? { generatedAt: item.mapGeneratedAt } : {}) }));
       if (selected && !available.some(item => item.releaseId === selected.releaseId)) {
-        releaseOptions = [...releaseOptions, { id: selected.releaseId, label: releaseLabel(selected.releaseId, selected.mapGeneratedAt) }];
+        releaseOptions = [...releaseOptions, { id: selected.releaseId, ...(selected.mapGeneratedAt ? { generatedAt: selected.mapGeneratedAt } : {}) }];
       }
       releaseId = selected?.releaseId ?? null;
       releaseDate = selected?.mapGeneratedAt ?? null;
@@ -109,18 +109,18 @@
   <p>{tr('Download the complete selected public release as CSV, or use paginated JSON to browse records. Downloads cover the selected release, not only the current map or database results.', $language)}</p>
   <div class="release-access">
     <label>{tr('Dataset', $language)}<select bind:value={profile}><option value="official">{tr('Project dataset', $language)}</option>{#if communityReleaseAvailable}<option value="community">{tr('Community submissions', $language)}</option>{/if}</select></label>
-    {#if releaseOptions.length}<label>{tr('Release', $language)}<select aria-label={tr('Public release', $language)} value={releaseId ?? selectedReleaseId ?? ''} onchange={event => selectedReleaseId = event.currentTarget.value}>{#each releaseOptions as release}<option value={release.id}>{release.label}</option>{/each}</select></label>{/if}
-    {#if profile === 'community'}<p class="community-warning"><strong>Unreviewed community claims are not verified by Until Every Cage.</strong> This opt-in profile is separate from project totals. Privacy screening does not mean factual review or project approval.</p>{/if}
-    {#if releaseLoading}<p role="status">Checking the current release…</p>{:else if releaseError}<p role="alert">{releaseError} <button type="button" onclick={() => retry += 1}>Retry</button></p>{:else if !releaseId}<p role="status">No public release is available for this dataset yet.</p>{:else}
-      <p class="release-label">{profile === 'official' ? 'Project dataset' : 'Community submissions'}{#if releaseDate} · map snapshot generated {new Intl.DateTimeFormat('en', { dateStyle: 'long', timeZone: 'UTC' }).format(new Date(releaseDate))}{:else} · {publicReleaseLabel(releaseId)}{/if}</p>
+    {#if releaseOptions.length}<label>{tr('Release', $language)}<select aria-label={tr('Public release', $language)} value={releaseId ?? selectedReleaseId ?? ''} onchange={event => selectedReleaseId = event.currentTarget.value}>{#each releaseOptions as release}<option value={release.id}>{releaseLabel(release.id, release.generatedAt)}</option>{/each}</select></label>{/if}
+    {#if profile === 'community'}<p class="community-warning"><strong>{tr("Unreviewed community claims are not verified by Until Every Cage.", $language)}</strong> {tr("This opt-in profile is separate from project totals. Privacy screening does not mean factual review or project approval.", $language)}</p>{/if}
+    {#if releaseLoading}<p role="status">{tr("Checking the current release…", $language)}</p>{:else if releaseError}<p role="alert">{tr(releaseError, $language)} <button type="button" onclick={() => retry += 1}>{tr("Retry", $language)}</button></p>{:else if !releaseId}<p role="status">{tr("No public release is available for this dataset yet.", $language)}</p>{:else}
+      <p class="release-label">{tr(profile === 'official' ? 'Project dataset' : 'Community submissions', $language)}{#if releaseDate} {tr("· map snapshot generated", $language)} {new Intl.DateTimeFormat($language, { dateStyle: 'long', timeZone: 'UTC' }).format(new Date(releaseDate))}{:else} · {publicReleaseLabel(releaseId)}{/if}</p>
       <p class="release-id">{tr('API release ID:', $language)} <code>{releaseId}</code></p>
       <p class="download-links"><a href={`/api/v2/locations.csv?${query}`}>{tr('Download complete CSV', $language)}</a> · <a href={`/api/v2/locations?${query}&limit=100`}>{tr('Paginated JSON (100 per page)', $language)}</a> · <a href={`${reference}public-openapi.json`} download>{tr('OpenAPI specification', $language)}</a></p>
     {/if}
   </div>
-  <p class="pagination-note">A release is a dated, versioned snapshot. The date identifies its creation; current privacy restrictions still apply to older views. The API ID above selects that specific release.</p>
-  {#if communitySelected || communityRequested}<p class="community-warning" role="status"><strong>Unreviewed community claims are not verified by Until Every Cage.</strong> Community results are separate from project totals; privacy screening is not factual review or project approval.</p>{/if}
-  {#if loading}<p role="status">Loading the API explorer…</p>{/if}
-  {#if error}<p role="alert">{error} <button type="button" onclick={() => window.location.reload()}>Try again</button></p>{/if}
+  <p class="pagination-note">{tr("A release is a dated, versioned snapshot. The date identifies its creation; current privacy restrictions still apply to older views. The API ID above selects that specific release.", $language)}</p>
+  {#if communitySelected || communityRequested}<p class="community-warning" role="status"><strong>{tr("Unreviewed community claims are not verified by Until Every Cage.", $language)}</strong> {tr("Community results are separate from project totals; privacy screening is not factual review or project approval.", $language)}</p>{/if}
+  {#if loading}<p role="status">{tr("Loading the API explorer…", $language)}</p>{/if}
+  {#if error}<p role="alert">{tr(error, $language)} <button type="button" onclick={() => window.location.reload()}>{tr("Try again", $language)}</button></p>{/if}
   <div class="explorer" bind:this={host}></div>
   <section class="reuse"><h2>{tr('Reuse and citation', $language)}</h2><p>{tr('The code is licensed under AGPLv3 or later. The project compilation is licensed under CC BY-NC-SA 4.0 where the project holds those rights. Individual sources and map providers may have separate terms.', $language)}</p><p>{tr('Credit Until Every Cage and the original sources; retain source links, release IDs, dates, and uncertainty labels. Check source rights before redistributing material.', $language)}</p></section>
 </section>

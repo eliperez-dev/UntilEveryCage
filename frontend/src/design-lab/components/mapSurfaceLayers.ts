@@ -6,6 +6,7 @@
 
 import type { Map as MapLibreMap } from 'maplibre-gl';
 import { baseRasterPaint, createBaseStyle, type BasemapKind } from '../../map/baseMapStyle';
+import { DEFAULT_FACILITY_PIN_SCALE } from './facilityPinScale';
 export { baseRasterPaint, createBaseStyle };
 export type { BasemapKind };
 
@@ -110,6 +111,20 @@ export function createSearchRadiusArea(scope: Readonly<{ latitude: number; longi
   return area ? { type: 'FeatureCollection' as const, features: [area] } : emptyReferenceAreas();
 }
 
+/** A query's saved geographic extent, independent of the live camera bounds. */
+export function createSearchBoundsArea(bounds: import('../contract').ViewportBounds | null) {
+  if (!bounds || ![bounds.west, bounds.south, bounds.east, bounds.north].every(Number.isFinite)
+    || bounds.west < -180 || bounds.east > 180 || bounds.south < -90 || bounds.north > 90
+    || bounds.west >= bounds.east || bounds.south >= bounds.north) return emptyReferenceAreas();
+  const ring: [number, number][] = [
+    [bounds.west, bounds.south], [bounds.east, bounds.south],
+    [bounds.east, bounds.north], [bounds.west, bounds.north], [bounds.west, bounds.south],
+  ];
+  return { type: 'FeatureCollection' as const, features: [{ type: 'Feature' as const,
+    properties: { scope: 'search-area' }, geometry: { type: 'Polygon' as const, coordinates: [ring] },
+  }] };
+}
+
 /** Return at most one fixed-radius area, only for the selected public approximate point. */
 export function createSelectedApproximateReferenceArea(
   features: readonly any[],
@@ -208,7 +223,7 @@ export function addMvtLocationLayers(map: MapLike, sourceId?: string): void {
     id: 'mvt-reference-center', type: 'symbol', source, 'source-layer': sourceLayer,
     filter: references,
     layout: {
-      'icon-image': 'v1-pin-grey', 'icon-anchor': 'bottom', 'icon-size': 0.5,
+      'icon-image': 'v1-pin-grey', 'icon-anchor': 'bottom', 'icon-size': 0.5 * DEFAULT_FACILITY_PIN_SCALE,
       'icon-allow-overlap': true, 'icon-ignore-placement': true,
     },
     paint: { 'icon-opacity': 0.95 },
@@ -233,13 +248,13 @@ export function addMvtLocationLayers(map: MapLike, sourceId?: string): void {
   map.addLayer({
     id: 'mvt-v1-source-shadows', type: 'symbol', source, 'source-layer': sourceLayer,
     filter: kind('source_coordinate'),
-    layout: { visibility: 'none', 'icon-image': 'v1-pin-shadow', 'icon-anchor': 'bottom', 'icon-size': 1,
+    layout: { visibility: 'none', 'icon-image': 'v1-pin-shadow', 'icon-anchor': 'bottom', 'icon-size': DEFAULT_FACILITY_PIN_SCALE,
       'icon-offset': [8.5, 0], 'icon-allow-overlap': true, 'icon-ignore-placement': true },
   });
   map.addLayer({
     id: 'mvt-v1-source-pins', type: 'symbol', source, 'source-layer': sourceLayer,
     filter: kind('source_coordinate'),
-    layout: { visibility: 'none', 'icon-image': 'v1-pin-red', 'icon-anchor': 'bottom', 'icon-size': 0.5,
+    layout: { visibility: 'none', 'icon-image': 'v1-pin-red', 'icon-anchor': 'bottom', 'icon-size': 0.5 * DEFAULT_FACILITY_PIN_SCALE,
       'icon-allow-overlap': true, 'icon-ignore-placement': true },
   });
 }

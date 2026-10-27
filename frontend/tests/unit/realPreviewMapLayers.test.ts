@@ -27,7 +27,7 @@ describe('real-preview native clustering layers', () => {
     expect(layers.find(layer => layer.id === 'approx-reference-points')).toMatchObject({
       type: 'symbol',
       layout: {
-        'icon-image': 'v1-pin-grey', 'icon-anchor': 'bottom', 'icon-size': 0.5,
+        'icon-image': 'v1-pin-grey', 'icon-anchor': 'bottom', 'icon-size': 0.4,
         'text-field': ['case', ['>', ['get', 'weight'], 1], ['to-string', ['get', 'weight']], ''],
       },
       paint: { 'text-color': '#172019' },
@@ -40,7 +40,7 @@ describe('real-preview native clustering layers', () => {
     expect(approximatePins).toMatchObject({
       type: 'symbol',
       filter: ['all', ['!', ['has', 'cluster']], ['in', ['get', 'kind'], ['literal', ['reference', 'provider_locality_approximate']]], ['==', ['get', 'precision'], 'approximate']],
-      layout: { visibility: 'none', 'icon-anchor': 'bottom', 'icon-size': 0.5, 'text-field': ['case', ['>', ['get', 'weight'], 1], ['to-string', ['get', 'weight']], ''] },
+      layout: { visibility: 'none', 'icon-anchor': 'bottom', 'icon-size': 0.4, 'text-field': ['case', ['>', ['get', 'weight'], 1], ['to-string', ['get', 'weight']], ''] },
     });
     expect(JSON.stringify(approximatePins.layout['icon-image'])).toContain('category_keys');
     expect(JSON.stringify(approximatePins.layout['icon-image'])).toContain('v1-pin-red');
@@ -50,7 +50,7 @@ describe('real-preview native clustering layers', () => {
     expect(layers.find(layer => layer.id === 'source-coordinate-points')?.layout?.visibility).toBe('none');
     expect(layers.find(layer => layer.id === 'approx-reference-cue')).toMatchObject({
       type: 'symbol', layout: {
-        visibility: 'none', 'icon-image': 'approximation-mark', 'icon-size': 0.5,
+        visibility: 'none', 'icon-image': 'approximation-mark', 'icon-size': 0.4,
         'icon-offset': [17, -21], 'icon-allow-overlap': true,
       },
     });

@@ -35,13 +35,11 @@ test('satellite imagery stays backed by bounded local tiles through detailed 2D 
   });
   await page.goto('./#/map?release_id=synthetic-release-2026-09&lat=48&lon=10&z=8');
   await page.waitForFunction(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.isStyleLoaded());
-  await page.getByRole('button', { name: 'Tools', exact: true }).click();
-  await page.getByLabel('Map style').selectOption('satellite');
+  await page.locator('.map-navigation').getByRole('button', { name: 'Satellite', exact: true }).click();
   await expect.poll(() => page.evaluate(() => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     return map.getStyle().sources.base.tiles[0].includes('World_Imagery') && !map.getLayer('candidate-base') && map.isSourceLoaded('base');
   }), { timeout: 30_000 }).toBe(true);
-  await page.getByRole('button', { name: 'Close Tools', exact: true }).click();
   for (const pitch of [0, 55]) {
     for (const zoom of [9, 7, 10]) {
       await page.evaluate(({ zoom, pitch }) => (window as any).__UEC_LOCAL_PREVIEW_MAP__.easeTo({ zoom, pitch, duration: 450 }), { zoom, pitch });
@@ -80,9 +78,9 @@ test('satellite imagery stays backed by bounded local tiles through detailed 2D 
   expect(whole).toHaveLength(0);
   expect(ranges.length).toBeGreaterThan(0);
   expect(ranges.every(url => /-z[0-5]\./.test(url))).toBe(true);
-  await page.getByRole('button', { name: 'Tools', exact: true }).click();
+  await page.getByRole('button', { name: 'More tools', exact: true }).click();
   await page.getByLabel('Enable debug menu', { exact: true }).check();
-  await page.getByRole('button', { name: 'Close Tools', exact: true }).click();
+  await page.getByRole('button', { name: 'Close more tools', exact: true }).click();
   await page.getByRole('button', { name: 'Debug menu', exact: true }).click();
   const debug = page.getByRole('complementary', { name: 'Debug menu', exact: true });
   await debug.locator('details.cache-controls > summary').click();
@@ -112,13 +110,11 @@ test('real local world streets and satellite warm through z5 and survive a full 
   });
   await expect.poll(cacheStats, { timeout: 30_000 }).toEqual({ entries: 12, bytes: 16899100, local: true });
   await page.screenshot({ path: testInfo.outputPath('world-streets.png') });
-  await page.getByRole('button', { name: 'Tools', exact: true }).click();
-  await page.getByLabel('Map style').selectOption('satellite');
+  await page.locator('.map-navigation').getByRole('button', { name: 'Satellite', exact: true }).click();
   await expect.poll(() => page.evaluate(() => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     return map.getLayoutProperty('world-satellite', 'visibility') === 'visible' && map.getLayoutProperty('world-streets-roads', 'visibility') === 'none';
   })).toBe(true);
-  await page.getByRole('button', { name: 'Close Tools', exact: true }).click();
   await page.waitForFunction(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.isStyleLoaded());
   await page.screenshot({ path: testInfo.outputPath('world-satellite.png') });
   wholeRequests.length = 0;
@@ -126,9 +122,9 @@ test('real local world streets and satellite warm through z5 and survive a full 
   await page.waitForFunction(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.isStyleLoaded());
   await expect.poll(cacheStats).toEqual({ entries: 12, bytes: 16899100, local: true });
   expect(wholeRequests).toHaveLength(0);
-  await page.getByRole('button', { name: 'Tools', exact: true }).click();
+  await page.getByRole('button', { name: 'More tools', exact: true }).click();
   await page.getByLabel('Enable debug menu', { exact: true }).check();
-  await page.getByRole('button', { name: 'Close Tools', exact: true }).click();
+  await page.getByRole('button', { name: 'Close more tools', exact: true }).click();
   await page.getByRole('button', { name: 'Debug menu', exact: true }).click();
   const debug = page.getByRole('complementary', { name: 'Debug menu', exact: true });
   await debug.locator('details.cache-controls > summary').click();
@@ -156,9 +152,9 @@ test('world warm-up does not wait for unrelated raster requests', async ({ page 
       const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
       return map?.getLayer('clusters') && map.isSourceLoaded('locations');
     });
-    await page.getByRole('button', { name: 'Tools', exact: true }).click();
+    await page.getByRole('button', { name: 'More tools', exact: true }).click();
     await page.getByLabel('Enable debug menu', { exact: true }).check();
-    await page.getByRole('button', { name: 'Close Tools', exact: true }).click();
+    await page.getByRole('button', { name: 'Close more tools', exact: true }).click();
     await page.getByRole('button', { name: 'Debug menu', exact: true }).click();
     const debug = page.getByRole('complementary', { name: 'Debug menu', exact: true });
     await debug.locator('details.cache-controls > summary').click();

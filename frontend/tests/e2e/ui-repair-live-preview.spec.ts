@@ -9,7 +9,7 @@ test('live candidate map keeps the repaired controls and default V1 pins operabl
   await page.goto('/v2-preview/#/map?list=closed');
   await expect(page.locator('.lab')).toHaveAttribute('data-data-mode', 'candidate-preview');
 
-  await page.getByRole('button', { name: 'Tools' }).click();
+  await page.getByRole('button', { name: 'More tools' }).click();
   const mapStyle = page.getByLabel('Map style');
   await expect(mapStyle).toHaveValue('vector');
   await expect(mapStyle.locator('option')).toHaveText(['Street', 'Satellite']);
@@ -54,12 +54,13 @@ test('live candidate map keeps the repaired controls and default V1 pins operabl
   await page.getByRole('button', { name: 'Search map' }).click();
   await expect(page.locator('.results-heading').last().locator('span')).toHaveText(/^\d+ matching · 100 shown$/);
   await page.locator('details.filters > summary').click();
+  await page.locator('.filter-choice > summary').filter({hasText:'Source'}).click();
   const source = page.getByRole('group', { name: 'Source' });
   await expect(source).toBeVisible({ timeout: 30_000 });
   await source.locator('input[type="checkbox"]').first().check();
   const search = page.getByRole('searchbox', { name: 'Search across preview records' });
   await search.fill('a');
-  const clear = page.getByRole('button', { name: 'Clear all filters' });
+  const clear = page.getByRole('button', { name: 'Clear filters' });
   await expect(clear).toBeVisible();
   await clear.click();
   await expect(search).toHaveValue('');

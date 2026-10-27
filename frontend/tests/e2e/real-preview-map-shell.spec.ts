@@ -15,12 +15,11 @@ test('map shell mounts and keeps Search, map modes, and navigation operable', as
   await page.getByRole('button', { name:'Close workspace' }).click();
   await expect(search).toBeVisible();
 
-  await page.getByRole('button', { name: 'Tools' }).click();
-  const mapStyle = page.getByLabel('Map style');
-  await expect(mapStyle).toHaveValue('vector');
-  await expect(mapStyle.locator('option')).toHaveText(['Street', 'Satellite']);
-  await mapStyle.selectOption('satellite');
-  await expect(mapStyle).toHaveValue('satellite');
+  const mapStyle = page.locator('.map-navigation').getByRole('group', { name: 'Map style' });
+  await expect(mapStyle.getByRole('button', { name: 'Street', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(mapStyle.locator('button:visible')).toHaveText(['Street', 'Satellite']);
+  await mapStyle.getByRole('button', { name: 'Satellite', exact: true }).click();
+  await expect(mapStyle.getByRole('button', { name: 'Satellite', exact: true })).toHaveAttribute('aria-pressed', 'true');
 
   await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'About', exact: true }).click();
   await expect(page.getByRole('heading', { name:'About Until Every Cage is Empty' })).toBeVisible();

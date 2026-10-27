@@ -8,10 +8,9 @@ test('map style exposes Street and Satellite only without refetching the native 
     if (new URL(request.url()).pathname.endsWith('/map/feed')) feedRequests++;
   });
   await page.goto('/v2-preview/#/map');
-  await page.getByRole('button', { name: 'Tools' }).click();
-  const mapStyle = page.getByLabel('Map style');
-  await expect(mapStyle).toHaveValue('vector');
-  await expect(mapStyle.locator('option')).toHaveText(['Street', 'Satellite']);
+  const mapStyle = page.locator('.map-navigation').getByRole('group', { name: 'Map style' });
+  await expect(mapStyle.getByRole('button', { name: 'Street', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(mapStyle.locator('button:visible')).toHaveText(['Street', 'Satellite']);
   await page.waitForFunction(() => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     return map?.isStyleLoaded() && map.getLayer('clusters') && map.isSourceLoaded('locations');
@@ -32,10 +31,10 @@ test('map style exposes Street and Satellite only without refetching the native 
   expect(before.tiles[0]).toContain('tile.openstreetmap.org');
   expect(before.overlays.every((index: number) => index >= 0)).toBe(true);
   expect(before.sourceLoaded).toBe(true);
-  await mapStyle.selectOption('satellite');
-  await expect(mapStyle).toHaveValue('satellite');
-  await mapStyle.selectOption('vector');
-  await expect(mapStyle).toHaveValue('vector');
+  await mapStyle.getByRole('button', { name: 'Satellite', exact: true }).click();
+  await expect(mapStyle.getByRole('button', { name: 'Satellite', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await mapStyle.getByRole('button', { name: 'Street', exact: true }).click();
+  await expect(mapStyle.getByRole('button', { name: 'Street', exact: true })).toHaveAttribute('aria-pressed', 'true');
   expect(feedRequests).toBe(1);
 });
 
@@ -44,12 +43,11 @@ test('unavailable satellite imagery leaves Street active', async ({ page }) => {
   test.setTimeout(45_000);
   await page.route('**/World_Imagery/**', route => route.abort());
   await page.goto('/v2-preview/#/map');
-  await page.getByRole('button', { name: 'Tools' }).click();
-  const mapStyle = page.getByLabel('Map style');
-  await expect(mapStyle).toHaveValue('vector');
-  await mapStyle.selectOption('satellite');
+  const mapStyle = page.locator('.map-navigation').getByRole('group', { name: 'Map style' });
+  await expect(mapStyle.getByRole('button', { name: 'Street', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await mapStyle.getByRole('button', { name: 'Satellite', exact: true }).click();
   await expect(page.getByRole('alert').filter({ hasText: 'Satellite imagery is unavailable' })).toBeVisible({ timeout: 30_000 });
-  await expect(mapStyle).toHaveValue('vector');
+  await expect(mapStyle.getByRole('button', { name: 'Street', exact: true })).toHaveAttribute('aria-pressed', 'true');
   const tiles = await page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getStyle().sources.base.tiles);
   expect(tiles[0]).toContain('tile.openstreetmap.org');
 });

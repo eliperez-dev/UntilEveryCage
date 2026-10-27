@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick } from "svelte";
-  import type { Basemap } from '../design-lab/contract';
+  import type { MapDisplaySettings } from '../design-lab/contract';
   import { language, tr, LANGUAGE_OPTIONS, languageLoadState, selectLanguage, type Language } from './language';
   import ThemeControl from './ThemeControl.svelte';
   let {
@@ -14,11 +14,9 @@
     selectedReleaseId = null,
     onreleasechange,
     ondebugchange,
-    mapBasemap = 'vector',
-    mapCameraPitch = 0,
     mapControlsReady = false,
-    onmapbasemap,
-    onmapviewtoggle,
+    mapDisplaySettings = null,
+    onmapdisplaychange,
   }: {
     current: "landing" | "map" | "database" | "api" | "methodology" | "about" | "faq" | "contribute";
     mapHref: string;
@@ -31,11 +29,9 @@
     selectedReleaseId?: string | null;
     onreleasechange?(releaseId: string): void;
     ondebugchange?(enabled: boolean): void;
-    mapBasemap?: Basemap;
-    mapCameraPitch?: number;
     mapControlsReady?: boolean;
-    onmapbasemap?(value: Basemap): void;
-    onmapviewtoggle?(): void;
+    mapDisplaySettings?: MapDisplaySettings | null;
+    onmapdisplaychange?(patch: Partial<MapDisplaySettings>): void;
   } = $props();
 
   const logo = `${import.meta.env.BASE_URL}assets/icon.png`;
@@ -73,6 +69,14 @@
   async function chooseLanguage(value: Language) {
     if (await selectLanguage(value) && languageOpen) closeLanguages(true);
   }
+  const sizeLabel = $derived(mapDisplaySettings?.optimizedPins ? 'Dot size' : 'Icon size');
+  const sizeValue = $derived(mapDisplaySettings?.optimizedPins ? mapDisplaySettings.coordinateRadius : mapDisplaySettings?.pinScale ?? .8);
+  const sizeText = $derived(mapDisplaySettings?.optimizedPins ? `${new Intl.NumberFormat($language, { maximumFractionDigits: 1 }).format(sizeValue)} px` : `${Math.round(sizeValue * 100)}%`);
+  function resizePins(value: string) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || !mapDisplaySettings) return;
+    onmapdisplaychange?.(mapDisplaySettings.optimizedPins ? { coordinateRadius: Math.max(3, Math.min(12, parsed)) } : { pinScale: Math.max(.6, Math.min(1.6, parsed)) });
+  }
 </script>
 
 <svelte:window onhashchange={() => { closeTools(); closeLanguages(); }} onkeydown={(event) => { if (event.key === 'Escape') { if (languageOpen) { event.preventDefault(); closeLanguages(true); } else if (toolsOpen) { event.preventDefault(); closeTools(true); } } }} onclick={(event) => { if (event.target instanceof Node) { if (!actionArea?.contains(event.target)) closeTools(); if (!languageMenu?.contains(event.target) && !languageButton?.contains(event.target)) closeLanguages(); } }} />
@@ -93,26 +97,25 @@
     <button bind:this={languageButton} type="button" class="header-action language-action" aria-label={tr('Language', $language)} aria-expanded={languageOpen} aria-controls="shared-language-menu" onclick={toggleLanguages}>
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 8 6 6M4 5h12M10 3v2M13 5c-1 6-5 10-9 12m11 4 4-10 4 10m-7-3h6" /></svg>
     </button>
-    <button bind:this={toolsButton} type="button" class="header-action tools-action" aria-label={tr('Tools', $language)} aria-expanded={toolsOpen} aria-controls="shared-tools-menu" onclick={toggleTools}>
-      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg><span>{tr('Tools', $language)}</span>
+    <button bind:this={toolsButton} type="button" class="header-action tools-action" aria-label={tr('More tools', $language)} title={tr('More tools', $language)} aria-expanded={toolsOpen} aria-controls="shared-tools-menu" onclick={toggleTools}>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg><span>{tr('More tools', $language)}</span>
     </button>
     {#if languageOpen}<div bind:this={languageMenu} id="shared-language-menu" class="header-menu language-menu" role="dialog" tabindex="-1" aria-label={tr('Language', $language)} aria-busy={$languageLoadState.state === 'loading'}>
       <header><strong>{tr('Language', $language)}</strong><button type="button" aria-label={tr('Close', $language)} onclick={() => closeLanguages(true)}>×</button></header>
       <div class="language-options">{#each LANGUAGE_OPTIONS as option}<button type="button" lang={option.code} aria-pressed={$language === option.code} onclick={() => void chooseLanguage(option.code)}><span>{option.name}</span><span aria-hidden="true">{$language === option.code ? '✓' : ''}</span></button>{/each}</div>
       {#if $languageLoadState.state === 'loading'}<p role="status">{tr('Loading…', $language)}</p>{:else if $languageLoadState.state === 'failed'}<div class="language-error"><p role="alert">{tr('Language could not be loaded.', $language)}</p><button type="button" onclick={() => void chooseLanguage($languageLoadState.requested)}>{tr('Retry', $language)}</button></div>{/if}
     </div>{/if}
-    {#if toolsOpen}<aside id="shared-tools-menu" class="header-menu tools-menu" aria-label={tr('Tools', $language)}>
-      <header><strong><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> {tr('Tools', $language)}</strong><button type="button" aria-label={tr('Close Tools', $language)} onclick={() => closeTools(true)}>×</button></header>
-      {#if current === 'map' && onmapbasemap && onmapviewtoggle}<section class="map-view-tools" role="group" aria-label={tr('Map view', $language)}>
-        <h2>{tr('Map view', $language)}</h2>
-        <div class="map-view-controls">
-          <select aria-label={tr('Map style', $language)} value={mapBasemap === 'satellite' ? 'satellite' : 'vector'} disabled={!mapControlsReady} onchange={event => onmapbasemap?.(event.currentTarget.value as Basemap)}><option value="vector">{tr('Street', $language)}</option><option value="satellite">{tr('Satellite', $language)}</option></select>
-          <button class="map-camera-toggle" type="button" disabled={!mapControlsReady} aria-label={tr(mapCameraPitch > 0.5 ? 'Switch to 2D view' : 'Switch to 3D view', $language)} aria-pressed={mapCameraPitch > 0.5} aria-describedby="map-camera-help" title={tr('Right-drag to tilt and rotate', $language)} onclick={onmapviewtoggle}>{mapCameraPitch > 0.5 ? '3D' : '2D'}</button>
-        </div>
-        <small class="gesture-hint">{tr('Right-mouse to rotate / Left-mouse to pan', $language)}</small>
-        <span id="map-camera-help" class="sr-only">{tr('Right-drag to tilt and rotate', $language)}. {tr('On touchscreens, use two fingers to tilt.', $language)}</span>
+    {#if toolsOpen}<aside id="shared-tools-menu" class="header-menu tools-menu" aria-label={tr('More tools', $language)}>
+      <header><strong><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> {tr('More tools', $language)}</strong><button type="button" aria-label={tr('Close more tools', $language)} onclick={() => closeTools(true)}>×</button></header>
+      {#if current === 'map' && mapDisplaySettings && onmapdisplaychange}<section class="map-display-tools" role="group" aria-label={tr('Map display', $language)}>
+        <h2>{tr('Map display', $language)}</h2>
+        <label for="map-clustering-choice">{tr('Clustering', $language)}</label>
+        <select id="map-clustering-choice" disabled={!mapControlsReady} value={mapDisplaySettings.clusterMode} onchange={event => onmapdisplaychange?.({ clusterMode: event.currentTarget.value as MapDisplaySettings['clusterMode'] })}><option value="auto">{tr('Automatic', $language)}</option><option value="on">{tr('On', $language)}</option><option value="off">{tr('Off', $language)}</option></select>
+        <label class="toggle"><input type="checkbox" checked={mapDisplaySettings.optimizedPins} disabled={!mapControlsReady} onchange={event => onmapdisplaychange?.({ optimizedPins: event.currentTarget.checked })} />{tr('Use optimized pins', $language)}</label>
+        <label class="size-label" for="map-pin-size"><span>{tr(sizeLabel, $language)}</span><output for="map-pin-size">{sizeText}</output></label>
+        <input id="map-pin-size" type="range" aria-label={tr(sizeLabel, $language)} aria-valuetext={sizeText} disabled={!mapControlsReady} min={mapDisplaySettings.optimizedPins ? 3 : .6} max={mapDisplaySettings.optimizedPins ? 12 : 1.6} step={mapDisplaySettings.optimizedPins ? .5 : .05} value={sizeValue} oninput={event => resizePins(event.currentTarget.value)} />
       </section>{/if}
-      <section><label for="release-choice">{tr('Current release', $language)}</label><select id="release-choice" aria-label={tr('Current release', $language)} title={displayedReleaseLabel} value={selectedReleaseId ?? ''} disabled={!releaseOptions.length || !onreleasechange} onchange={event => onreleasechange?.(event.currentTarget.value)}>{#if selectedReleaseId && !releaseOptions.some(release => release.id === selectedReleaseId)}<option value={selectedReleaseId} disabled>{tr('Selected release unavailable', $language)}</option>{/if}{#if releaseOptions.length}{#each releaseOptions as release}<option value={release.id}>{displayReleaseLabel(release.label)}</option>{/each}{:else}<option value="">{displayedReleaseLabel}</option>{/if}</select><small>{tr(releaseDescription ?? (publicReleaseLabel ? 'Release metadata from the active public map.' : 'Release selection is available from the map.'), $language)}</small></section>
+      <section><label for="release-choice">{tr('Current release', $language)}</label><select id="release-choice" aria-label={tr('Current release', $language)} title={displayedReleaseLabel} value={selectedReleaseId ?? ''} disabled={!releaseOptions.length || !onreleasechange} onchange={event => onreleasechange?.(event.currentTarget.value)}>{#if selectedReleaseId && !releaseOptions.some(release => release.id === selectedReleaseId)}<option value={selectedReleaseId} disabled>{tr('Selected release unavailable', $language)}</option>{/if}{#if releaseOptions.length}{#each releaseOptions as release}<option value={release.id}>{displayReleaseLabel(release.label)}</option>{/each}{:else}<option value="">{tr(displayedReleaseLabel, $language)}</option>{/if}</select><small>{tr(releaseDescription ?? (publicReleaseLabel ? 'Release metadata from the active public map.' : 'Release selection is available from the map.'), $language)}</small></section>
       {#if current === 'map'}<section><label class="toggle"><input type="checkbox" checked={debugEnabled} onchange={(event) => ondebugchange?.(event.currentTarget.checked)} /> {tr('Enable debug menu', $language)}</label><small>{tr('Map diagnostics and rendering controls.', $language)}</small></section>{/if}
     </aside>{/if}
   </div>
@@ -175,12 +178,10 @@
   .toggle input { width:1rem; height:1rem; margin:0; accent-color:var(--ui-ink); }
   .header-menu small { margin:0; color:var(--ui-muted); font-size:.6875rem; line-height:1.5; }
   .tools-menu select { width:100%; max-width:100%; min-height:2.75rem; padding:.5rem .625rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; border:1px solid var(--ui-line); border-radius:0; background:var(--ui-raised); color:var(--ui-ink); font:.75rem/1.4 system-ui,sans-serif; }
-  .map-view-controls { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:.5rem; align-items:center; }
-  .map-camera-toggle { min-width:2.75rem; min-height:2.75rem; padding:.5rem; border:1px solid var(--ui-line); border-radius:0; color:var(--ui-ink); background:var(--ui-raised); cursor:pointer; font:500 .75rem/1.4 system-ui,sans-serif; }
-  .map-camera-toggle:hover { background:var(--ui-hover); }
-  .map-camera-toggle[aria-pressed="true"] { border-color:var(--line-strong); background:var(--ui-selected); }
-  .map-camera-toggle:disabled, .tools-menu select:disabled { opacity:.58; cursor:default; }
-  .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+  .map-display-tools .size-label { display:flex; justify-content:space-between; align-items:center; gap:1rem; }
+  .size-label output { font-variant-numeric:tabular-nums; color:var(--ui-muted); }
+  .map-display-tools input[type=range] { width:100%; min-width:0; min-height:2.75rem; margin:0; accent-color:var(--ui-ink); cursor:pointer; }
+  .tools-menu :is(select,input):disabled { opacity:.58; cursor:default; }
   a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
   @media (max-width: 60rem) {
     .masthead { grid-template-columns:minmax(0,1fr) auto; gap:.1875rem 1rem; padding:.5rem 1rem; }

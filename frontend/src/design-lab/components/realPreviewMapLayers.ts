@@ -2,6 +2,7 @@ import type { Map as MapLibreMap } from 'maplibre-gl';
 import '../../map/installPublicMapSourceTransport';
 import type { JsonMapCollection } from './jsonMapFallback';
 import { CATEGORY_PRESENTATIONS, CATEGORY_PRIMARY_BY_SOURCE_KEY } from '../../features/locations/categoryPresentation';
+import { applyFacilityPinScale, DEFAULT_FACILITY_PIN_SCALE } from './facilityPinScale';
 
 export const DEFAULT_CLUSTER_RADIUS = 50;
 /** Requested camera zoom. Native GeoJSON tile zooms are whole numbers. */
@@ -177,24 +178,24 @@ export function addRealPreviewMapLayers(
   // source-coordinate facilities. The fallback circles serve debug mode only.
   map.addLayer({
     id: 'approx-reference-circles', type: 'circle', source: 'locations',
-    filter: approximateReference,
+    filter: aggregateReference,
     layout: { visibility: 'none' },
     paint: {
       'circle-radius': 6.5,
       'circle-color': categoryColor,
       'circle-opacity': 0.94,
-      'circle-stroke-color': '#171a18',
+      'circle-stroke-color': '#ff9c93',
       'circle-stroke-width': 2.5,
     },
   } as any);
   map.addLayer({
     id: 'approx-reference-shadows', type: 'symbol', source: 'locations', filter: approximateReference,
     layout: { visibility: 'none', 'icon-image': 'v1-pin-shadow', 'icon-anchor': 'bottom',
-      'icon-size': 1, 'icon-offset': [8.5, 0], 'icon-allow-overlap': true, 'icon-ignore-placement': true },
+      'icon-size': DEFAULT_FACILITY_PIN_SCALE, 'icon-offset': [8.5, 0], 'icon-allow-overlap': true, 'icon-ignore-placement': true },
   } as any);
   map.addLayer({
     id: 'approx-reference-pins', type: 'symbol', source: 'locations', filter: approximateReference,
-    layout: { visibility: 'none', 'icon-image': v1CategoryPin, 'icon-anchor': 'bottom', 'icon-size': 0.5,
+    layout: { visibility: 'none', 'icon-image': v1CategoryPin, 'icon-anchor': 'bottom', 'icon-size': 0.5 * DEFAULT_FACILITY_PIN_SCALE,
       'icon-allow-overlap': true, 'icon-ignore-placement': true,
       'text-field': ['case', ['>', weight, 1], ['to-string', weight], ''], 'text-font': ['Open Sans Bold'], 'text-size': 11,
       'text-allow-overlap': true, 'text-ignore-placement': true },
@@ -209,7 +210,7 @@ export function addRealPreviewMapLayers(
     layout: {
       // A singleton remains an ordinary muted pin, not a misleading numeric
       // cluster badge. A small ≈ mark makes its precision legible before selection.
-      'icon-image': 'v1-pin-grey', 'icon-anchor': 'bottom', 'icon-size': 0.5,
+      'icon-image': 'v1-pin-grey', 'icon-anchor': 'bottom', 'icon-size': 0.5 * DEFAULT_FACILITY_PIN_SCALE,
       'icon-allow-overlap': true, 'icon-ignore-placement': true,
       'text-field': ['case', ['>', weight, 1], ['to-string', weight], ''], 'text-font': ['Open Sans Bold'], 'text-size': 11,
       'text-allow-overlap': true, 'text-ignore-placement': true,
@@ -219,7 +220,7 @@ export function addRealPreviewMapLayers(
   map.addLayer({
     id: 'approx-reference-cue', type: 'symbol', source: 'locations',
     filter: ['all', ...aggregateReference.slice(1), ['any', ['==', ['get', 'precision'], 'approximate'], cityReference]],
-    layout: { visibility: 'none', 'icon-image': 'approximation-mark', 'icon-size': 0.5,
+    layout: { visibility: 'none', 'icon-image': 'approximation-mark', 'icon-size': 0.5 * DEFAULT_FACILITY_PIN_SCALE,
       'icon-offset': [17, -21], 'icon-allow-overlap': true, 'icon-ignore-placement': true },
   } as any);
   map.addLayer({
@@ -245,12 +246,12 @@ export function addRealPreviewMapLayers(
   map.addLayer({
     id: 'v1-source-shadows', type: 'symbol', source: 'locations', filter: coordinate,
     layout: { 'visibility': 'none', 'icon-image': 'v1-pin-shadow', 'icon-anchor': 'bottom',
-      'icon-size': 1, 'icon-offset': [8.5, 0], 'icon-allow-overlap': true, 'icon-ignore-placement': true },
+      'icon-size': DEFAULT_FACILITY_PIN_SCALE, 'icon-offset': [8.5, 0], 'icon-allow-overlap': true, 'icon-ignore-placement': true },
   } as any);
   map.addLayer({
     id: 'v1-source-pins', type: 'symbol', source: 'locations', filter: coordinate,
     layout: { 'visibility': 'none', 'icon-image': v1CategoryPin, 'icon-anchor': 'bottom',
-      'icon-size': 0.5, 'icon-allow-overlap': true, 'icon-ignore-placement': true },
+      'icon-size': 0.5 * DEFAULT_FACILITY_PIN_SCALE, 'icon-allow-overlap': true, 'icon-ignore-placement': true },
   } as any);
 }
 
@@ -337,16 +338,14 @@ function applyRealPreviewPinVisibility(map: MapLibreMap, enabled: boolean): void
   if (map.getLayer('approx-reference-circles')) map.setLayoutProperty('approx-reference-circles', 'visibility', enabled ? 'none' : 'visible');
   if (map.getLayer('approx-reference-shadows')) map.setLayoutProperty('approx-reference-shadows', 'visibility', enabled ? 'visible' : 'none');
   if (map.getLayer('approx-reference-pins')) map.setLayoutProperty('approx-reference-pins', 'visibility', enabled ? 'visible' : 'none');
+  if (map.getLayer('approx-reference-points')) map.setLayoutProperty('approx-reference-points', 'visibility', enabled ? 'visible' : 'none');
   if (map.getLayer('approx-reference-cue')) map.setLayoutProperty('approx-reference-cue', 'visibility', enabled ? 'visible' : 'none');
 }
 
 /** Paint/layout changes do not rebuild the full 39k-unit cluster index. */
 export function applyRealPreviewVisualSettings(map: MapLibreMap, settings: RealPreviewVisualSettings): void {
   if (!map.getLayer('aggregate-outer')) return;
-  const pinScale = Math.max(0.6, Math.min(1.6, settings.pinScale ?? 1));
-  for (const [id, base] of [['v1-source-pins', 0.5], ['v1-source-shadows', 1], ['approx-reference-pins', 0.5], ['approx-reference-shadows', 1], ['approx-reference-cue', 0.5]] as const) {
-    if (map.getLayer(id)) map.setLayoutProperty(id, 'icon-size', base * pinScale);
-  }
+  applyFacilityPinScale(map, settings.pinScale);
   map.setPaintProperty('aggregate-outer', 'circle-radius', referenceRadiusExpression(settings.referenceRadiusKm) as any);
   const selected = settings.selectedKey
     ? ['==', ['get', 'key'], settings.selectedKey]

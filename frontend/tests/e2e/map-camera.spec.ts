@@ -75,9 +75,9 @@ test('a reloaded public map reports its cached projection and uses one loading m
   });
   await page.goto('./#/map?release_id=synthetic-release-2026-09&lat=50.95&lon=4.45&z=13');
   await page.waitForFunction(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.isSourceLoaded('locations'));
-  await page.getByRole('button', { name: 'Tools', exact: true }).click();
+  await page.getByRole('button', { name: 'More tools', exact: true }).click();
   await page.getByRole('checkbox', { name: 'Enable debug menu', exact: true }).check();
-  await page.getByRole('button', { name: 'Close Tools', exact: true }).click();
+  await page.getByRole('button', { name: 'Close More tools', exact: true }).click();
   await page.getByRole('button', { name: 'Debug menu', exact: true }).click();
   const renderer = page.locator('#map-diagnostics summary').filter({ hasText: 'Renderer & timing' });
   await renderer.click();
@@ -88,9 +88,9 @@ test('a reloaded public map reports its cached projection and uses one loading m
   const feedRequests = requests.feeds;
   await page.reload();
   await page.waitForFunction(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.isSourceLoaded('locations'));
-  await page.getByRole('button', { name: 'Tools', exact: true }).click();
+  await page.getByRole('button', { name: 'More tools', exact: true }).click();
   await page.getByRole('checkbox', { name: 'Enable debug menu', exact: true }).check();
-  await page.getByRole('button', { name: 'Close Tools', exact: true }).click();
+  await page.getByRole('button', { name: 'Close More tools', exact: true }).click();
   await page.getByRole('button', { name: 'Debug menu', exact: true }).click(); await renderer.click();
   await expect(metric('Cache')).toHaveText(/^hit · 1 entries$/);
   await expect(metric('Decoded projection')).toHaveText(decoded!);
@@ -109,9 +109,9 @@ test('world preload controls change actual cached zoom coverage, budget, layers 
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     return map?.getSource('locations') && map.isSourceLoaded('locations') && map.isStyleLoaded();
   });
-  await page.getByRole('button', { name: 'Tools', exact: true }).click();
+  await page.getByRole('button', { name: 'More tools', exact: true }).click();
   await page.getByRole('checkbox', { name: 'Enable debug menu', exact: true }).check();
-  await page.getByRole('button', { name: 'Close Tools', exact: true }).click();
+  await page.getByRole('button', { name: 'Close More tools', exact: true }).click();
   await page.getByRole('button', { name: 'Debug menu', exact: true }).click();
   const debug = page.getByRole('complementary', { name: 'Debug menu', exact: true });
   await debug.locator('details.cache-controls > summary').click();
@@ -163,9 +163,9 @@ for (const viewport of [{ width: 1280, height: 720 }, { width: 390, height: 844 
     await installPublicCameraFixture(page); await mockCameraRaster(page);
     await page.goto('./#/map?release_id=synthetic-release-2026-09&lat=50.95&lon=4.45&z=13');
     await expect(page.getByRole('button', { name: /Search map/ })).toBeVisible();
-    await page.getByRole('button', { name: 'Tools', exact: true }).click();
+    await page.getByRole('button', { name: 'More tools', exact: true }).click();
     await page.getByRole('checkbox', { name: 'Enable debug menu', exact: true }).check();
-    await page.getByRole('button', { name: 'Close Tools', exact: true }).click();
+    await page.getByRole('button', { name: 'Close More tools', exact: true }).click();
     await page.getByRole('button', { name: 'Debug menu', exact: true }).click();
     await expect(page.getByRole('button', { name: /Search map/ })).toBeHidden();
     for (const target of [page.locator('#map-diagnostics > header strong'), page.getByRole('button', { name: 'Close debug menu', exact: true })]) {
@@ -248,9 +248,9 @@ test('bearing rotation keeps common-area cluster memberships at one level withou
   } }); });
   await page.goto('./#/map?release_id=synthetic-release-2026-09&lat=50.95&lon=4.45&z=8.3&pitch=45');
   await page.waitForFunction(() => { const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__; return map?.getLayer('clusters') && map.isSourceLoaded('locations'); });
-  await page.getByRole('button', { name: 'Tools', exact: true }).click();
+  await page.getByRole('button', { name: 'More tools', exact: true }).click();
   await page.getByRole('checkbox', { name: 'Enable debug menu', exact: true }).check();
-  await page.getByRole('button', { name: 'Close Tools', exact: true }).click();
+  await page.getByRole('button', { name: 'Close More tools', exact: true }).click();
   await page.getByRole('button', { name: 'Debug menu', exact: true }).click();
   await page.locator('#map-diagnostics summary').filter({ hasText: 'Renderer & timing' }).click();
   const counter = page.locator('#map-diagnostics dt').filter({ hasText: /^Index updates$/ }).locator('..').locator('dd');
@@ -370,11 +370,11 @@ test('cluster bodies render on cold and warm public maps through satellite, 3D a
   await expectClusterBody('cold');
   await page.reload();
   await expectClusterBody('warm');
-  const tools = page.getByRole('button', { name: 'Tools', exact: true }); await tools.click();
-  await page.getByLabel('Map style').selectOption('satellite');
+  const tools = page.getByRole('button', { name: 'More tools', exact: true }); await tools.click();
+  await page.getByRole('navigation',{name:'Map navigation'}).getByRole('button',{name:'Satellite',exact:true}).click();
   await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getStyle().sources.base.tiles[0]), { timeout: basemapHandoffTimeout }).toContain('World_Imagery');
   await expectClusterBody('satellite');
-  const toggle = page.locator('#shared-tools-menu .map-camera-toggle'); await toggle.click();
+  const toggle = page.locator('.map-navigation .dimension-button'); await toggle.click();
   // The first tilt waits for the bounded DEM request before animating.
   await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getPitch()), { timeout: 12_000 }).toBe(60);
   await expectClusterBody('3d'); await toggle.click();
@@ -443,8 +443,8 @@ test('delayed high-elevation terrain keeps the selected geographic focus anchore
     expect(demRequests).toBe(0);
     await clickCameraFixturePin(page);
     await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.isMoving())).toBe(false);
-    const tools = page.getByRole('button', { name: 'Tools', exact: true }); await tools.click();
-    const toggle = page.locator('#shared-tools-menu .map-camera-toggle');
+    const tools = page.getByRole('button', { name: 'More tools', exact: true }); await tools.click();
+    const toggle = page.locator('.map-navigation .dimension-button');
     await toggle.click();
     await expect.poll(() => demRequests).toBeGreaterThan(0);
     // Load elevation while overhead, before tilting, so no late height jump is visible.
@@ -480,9 +480,9 @@ test('returning from About revalidates the release and reuses the live canvas an
   await page.getByRole('button', { name: /Search map/ }).click();
   await page.locator('.record-list button').filter({ hasText: 'Synthetic camera fixture' }).click();
   await expect.poll(() => new URL(page.url()).hash).toContain(`selected=${cameraFixtureId}`);
-  const tools = page.getByRole('button', { name: 'Tools', exact: true }); await tools.click();
+  const tools = page.getByRole('button', { name: 'More tools', exact: true }); await tools.click();
   await page.getByRole('checkbox', { name: 'Enable debug menu', exact: true }).check();
-  await page.getByRole('button', { name: 'Close Tools', exact: true }).click();
+  await page.getByRole('button', { name: 'Close More tools', exact: true }).click();
   await page.getByRole('button', { name: 'Debug menu', exact: true }).click();
   await page.locator('#map-diagnostics summary').filter({ hasText: 'Renderer & timing' }).click();
   const counter = page.locator('#map-diagnostics dt').filter({ hasText: /^Index updates$/ }).locator('..').locator('dd');
@@ -542,11 +542,8 @@ test('camera tilt, map style, and URL state preserve the map view without compas
     return map?.isStyleLoaded() && map.getLayer('clusters');
   });
   const map = page.getByLabel('Map showing records');
-  const tools = page.getByRole('button', { name: 'Tools', exact: true });
-  await tools.click();
-  await expect(tools).toHaveAttribute('aria-expanded', 'true');
-  const controls = page.getByRole('group', { name: 'Map view' });
-  const viewToggle = controls.locator('.map-camera-toggle');
+  const controls = page.getByRole('navigation', { name:'Map navigation' });
+  const viewToggle = controls.locator('.dimension-button');
   await expect(controls).toBeVisible();
   await expect(map.locator('.maplibregl-ctrl-compass')).toHaveCount(0);
   await expect(viewToggle).toHaveText('3D');
@@ -577,23 +574,23 @@ test('camera tilt, map style, and URL state preserve the map view without compas
   await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getPitch())).toBe(60);
   await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getTerrain())).toMatchObject({ source: 'mapterhorn-terrain', exaggeration: 1 });
 
-  const mapStyle = page.getByLabel('Map style');
-  await expect(mapStyle.locator('option')).toHaveText(['Street', 'Satellite']);
-  await expect(mapStyle).toHaveValue('vector');
+  const mapStyle = controls.getByRole('group', { name:'Map style' });
+  await expect(mapStyle.locator('.desktop-style')).toHaveText(['Street','Satellite']);
+  await expect(mapStyle.getByRole('button',{name:'Street',exact:true})).toHaveAttribute('aria-pressed','true');
   const mapState = await page.evaluate(() => {
     const instance = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     const center = instance.getCenter();
     return { lat: Number(center.lat.toFixed(5)), lon: Number(center.lng.toFixed(5)), zoom: instance.getZoom() };
   });
-  await mapStyle.selectOption('satellite');
-  await expect(mapStyle).toHaveValue('satellite');
+  await mapStyle.getByRole('button',{name:'Satellite',exact:true}).click();
+  await expect(mapStyle.getByRole('button',{name:'Satellite',exact:true})).toHaveAttribute('aria-pressed','true');
   await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getStyle().sources.base.tiles[0]), { timeout: basemapHandoffTimeout }).toContain('World_Imagery');
   await expect.poll(() => page.evaluate(() => {
     const instance = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     return [instance.getPitch(), instance.getBearing(), instance.getZoom(), Boolean(instance.getLayer('clusters'))];
   })).toEqual([60, 24, mapState.zoom, true]);
-  await mapStyle.selectOption('vector');
-  await expect(mapStyle).toHaveValue('vector');
+  await mapStyle.getByRole('button',{name:'Street',exact:true}).click();
+  await expect(mapStyle.getByRole('button',{name:'Street',exact:true})).toHaveAttribute('aria-pressed','true');
   await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getStyle().sources.base.tiles[0]), { timeout: basemapHandoffTimeout }).toContain('tile.openstreetmap.org');
 });
 
@@ -605,11 +602,8 @@ test('flat camera URLs stay compact and the camera control remains usable on tou
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     return map?.isStyleLoaded() && map.getLayer('clusters');
   });
-  const tools = page.getByRole('button', { name: 'Tools', exact: true });
-  if (await tools.getAttribute('aria-expanded') !== 'true') await tools.click();
-  await expect(tools).toHaveAttribute('aria-expanded', 'true');
-  const controls = page.getByRole('group', { name: 'Map view' });
-  const viewToggle = controls.locator('.map-camera-toggle');
+  const controls = page.getByRole('navigation', { name:'Map navigation' });
+  const viewToggle = controls.locator('.dimension-button');
   await expect(controls).toBeVisible();
   await expect(viewToggle).toBeVisible();
   await expect(viewToggle).toHaveText('2D');
@@ -622,7 +616,7 @@ test('flat camera URLs stay compact and the camera control remains usable on tou
   await expect.poll(() => new URL(page.url()).hash).toContain('pitch=60');
 });
 
-test('compact map view control toggles 3D and shows the map gesture hint without compass controls', async ({ page }, testInfo) => {
+test('centered map tools toggle 3D and preserve accessible gesture guidance without compass controls', async ({ page }, testInfo) => {
   test.setTimeout(60_000);
   await installTerrainFixture(page);
   await page.goto('./#/map?f1a=field&scenario=dense&lat=38&lon=-96&z=4');
@@ -630,15 +624,12 @@ test('compact map view control toggles 3D and shows the map gesture hint without
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     return map?.isStyleLoaded() && map.getLayer('clusters');
   });
-  const tools = page.getByRole('button', { name: 'Tools', exact: true });
-  if (await tools.getAttribute('aria-expanded') !== 'true') await tools.click();
-  await expect(tools).toHaveAttribute('aria-expanded', 'true');
-  const controls = page.getByRole('group', { name: 'Map view' });
-  const viewToggle = controls.locator('.map-camera-toggle');
-  const styleSelect = controls.getByLabel('Map style');
-  await expect(controls.getByText('Right-mouse to rotate / Left-mouse to pan', { exact: true })).toBeVisible();
+  const controls = page.getByRole('navigation', { name:'Map navigation' });
+  const viewToggle = controls.locator('.dimension-button');
+  const styleSelect = controls.getByRole('group', { name:'Map style' });
+  await expect(controls.locator('#map-camera-help')).toContainText('Right-drag to tilt and rotate');
   await expect(page.locator('.maplibregl-ctrl-compass')).toHaveCount(0);
-  await expect(styleSelect.locator('option')).toHaveText(['Street', 'Satellite']);
+  await expect(styleSelect.locator('.desktop-style')).toHaveText(['Street','Satellite']);
   await expect(viewToggle).toHaveText('2D');
   await expect(controls.locator('#map-camera-help')).toHaveClass(/sr-only/);
   const rowTops = await Promise.all([styleSelect.boundingBox(), viewToggle.boundingBox()]);
@@ -653,6 +644,11 @@ test('compact map view control toggles 3D and shows the map gesture hint without
     return map.getPitch() === 60 && !map.isMoving();
   });
   await page.screenshot({ path: testInfo.outputPath('map-controls-desktop.png') });
+  // The toggle above establishes 60°, which is also the renderer's maximum.
+  // Start the separate native gesture check below that limit so an upward
+  // right-drag can change both pitch and bearing instead of clamping pitch.
+  await page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.jumpTo({ pitch:35 }));
+  await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getPitch())).toBe(35);
   const before = await page.evaluate(() => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     return { pitch: map.getPitch(), bearing: map.getBearing(), tileCacheZoomLevels: map._maxTileCacheZoomLevels };
@@ -660,9 +656,10 @@ test('compact map view control toggles 3D and shows the map gesture hint without
   expect(before.tileCacheZoomLevels).toBe(6);
   const canvas = await page.locator('.maplibregl-canvas').boundingBox();
   expect(canvas).not.toBeNull();
-  await page.mouse.move(canvas!.x + canvas!.width * 0.5, canvas!.y + canvas!.height * 0.6);
+  // The joined results surface overlays the center-left; gesture on uncovered map.
+  await page.mouse.move(canvas!.x + canvas!.width * 0.8, canvas!.y + canvas!.height * 0.6);
   await page.mouse.down({ button: 'right' });
-  await page.mouse.move(canvas!.x + canvas!.width * 0.64, canvas!.y + canvas!.height * 0.55, { steps: 8 });
+  await page.mouse.move(canvas!.x + canvas!.width * 0.94, canvas!.y + canvas!.height * 0.55, { steps: 8 });
   await page.mouse.up({ button: 'right' });
   await expect.poll(() => page.evaluate((initial: { pitch: number; bearing: number }) => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
@@ -681,12 +678,11 @@ test('compact map view control toggles 3D and shows the map gesture hint without
   expect(mobileRowTops.every(Boolean)).toBe(true);
   const mobileRowCenters = mobileRowTops.map(box => box!.y + box!.height / 2);
   expect(Math.max(...mobileRowCenters) - Math.min(...mobileRowCenters)).toBeLessThan(2);
-  const mobileLabel = await controls.getByText('Map view', { exact: true }).boundingBox();
-  expect(mobileLabel).not.toBeNull();
-  expect(mobileLabel!.y + mobileLabel!.height).toBeLessThanOrEqual(mobileRowTops[0]!.y);
+  const toolbar = await page.locator('.map-toolbar').boundingBox();
+  expect(toolbar!.x + toolbar!.width/2).toBeCloseTo(195,0);
   await expect(controls.locator('#map-camera-help')).toHaveClass(/sr-only/);
   await expect(viewToggle).toHaveAttribute('aria-describedby', 'map-camera-help');
-  await expect(controls.getByText('Right-mouse to rotate / Left-mouse to pan', { exact: true })).toBeVisible();
+  await expect(controls.locator('#map-camera-help')).toContainText('Right-drag to tilt and rotate');
   await expect(page.locator('.maplibregl-ctrl-compass')).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath('map-controls-mobile.png') });
 });
@@ -891,10 +887,10 @@ test('flat maps do not request elevation and a DEM failure returns to a flat map
     return map?.isStyleLoaded() && map.getLayer('clusters');
   });
   expect(demRequests).toBe(0);
-  const tools = page.getByRole('button', { name: 'Tools', exact: true });
+  const tools = page.getByRole('button', { name: 'More tools', exact: true });
   await tools.click();
   await expect(tools).toHaveAttribute('aria-expanded', 'true');
-  await page.locator('#shared-tools-menu .map-camera-toggle').click();
+  await page.locator('.map-navigation .dimension-button').click();
   await expect(page.getByRole('alert')).toContainText(/Terrain (tiles are unavailable|could not be loaded)/);
   await expect.poll(() => page.evaluate(() => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;

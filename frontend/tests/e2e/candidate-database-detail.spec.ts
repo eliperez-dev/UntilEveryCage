@@ -44,7 +44,7 @@ test('candidate map exposes projection-cache invalidation through Tools', async 
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     return Boolean(map?.isStyleLoaded() && map.isSourceLoaded('locations'));
   }, undefined, { timeout: 60_000 });
-  await page.getByRole('button', { name: 'Tools' }).click();
+  await page.getByRole('button', { name: 'More tools' }).click();
   await page.getByLabel('Enable debug menu').check();
   await page.getByRole('button', { name: 'Debug menu' }).click();
   const debug = page.getByRole('complementary', { name: 'Debug menu' });
@@ -142,8 +142,7 @@ test('candidate map retains native overlays and V1 selection across route and ba
   await page.goto('/v2-preview/#/database?f1a=field&source=us.fsis');
   await page.goto('/v2-preview/#/map?f1a=field&source=us.fsis');
   await ready();
-  await page.getByRole('button', { name: 'Tools' }).click();
-  await page.getByLabel('Map style').selectOption('satellite');
+  await page.locator('.map-navigation').getByRole('button', { name: 'Satellite', exact: true }).click();
   await page.waitForFunction(() => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     return map?.isSourceLoaded('locations') && ['clusters', 'aggregate-outer', 'source-coordinate-points', 'v1-source-pins'].every(id => map.getLayer(id));

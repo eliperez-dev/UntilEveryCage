@@ -8,6 +8,8 @@
     Precision,
     ViewportBounds,
     LabFilters,
+    MapDisplaySettings,
+    MapDisplaySettingsRequest,
   } from "../../contract";
   import type { RealPreviewFacet } from "../../../api/RealPreviewRepository";
   import type { CandidateFacets } from "../../../api/TestReleaseRepository";
@@ -15,7 +17,7 @@
   import MapNavigation from "../../components/MapNavigation.svelte";
   import RecordList from "../../components/RecordList.svelte";
   import MobileSearchSheet from "../../components/MobileSearchSheet.svelte";
-  import { filterViewportHeight, type SheetSnap } from "../../components/mobileSheet";
+  import { type SheetSnap } from "../../components/mobileSheet";
   import type { LayoutTuning } from "../../components/mapDebug";
   import RecordDetail from "../../../app/RecordDetail.svelte";
   import PreviewMasthead from "../../../app/PreviewMasthead.svelte";
@@ -23,6 +25,7 @@
   import type { PlaceSuggestion } from "../../../features/placeSearch/placeSearch";
   import { publicReleaseLabel } from "../../../features/locations/releasePresentation";
   import { CATEGORY_PRESENTATIONS } from "../../../features/locations/categoryPresentation";
+  import { classificationLabel } from "../../../features/locations/classificationSummary";
   import { language, tr } from '../../../app/language';
   import { serializeRoute } from "../../../app/routeState";
   import { parseSearch, searchSuggestions, applySearchSuggestion, areaScopeFromBounds, type SearchSuggestion } from "../../../features/search/powerSearch";
@@ -49,6 +52,7 @@
     mapMatchesStatus = "idle",
     mapMatchesError = "",
     onRetryMapMatches,
+    resolvePinHover,
     mapDiagnostics,
     onMapTiming,
     detailRecord = null,
@@ -172,8 +176,8 @@
       frame = 0;
       if (!disclosure?.open) return;
       const viewportBottom = window.visualViewport ? window.visualViewport.offsetTop + window.visualViewport.height : window.innerHeight;
-      const safeArea = parseFloat(getComputedStyle(node).getPropertyValue('--filter-safe-bottom')) || 0;
-      node.style.setProperty('--filter-available-height', `${filterViewportHeight(node.getBoundingClientRect().top, viewportBottom, safeArea)}px`);
+      const bottom = Math.min(viewportBottom, sheet?.getBoundingClientRect().bottom ?? viewportBottom);
+      node.style.setProperty('--filter-available-height', `${Math.max(0, bottom - node.getBoundingClientRect().top)}px`);
     };
     const schedule = () => { if (frame) cancelAnimationFrame(frame); frame = requestAnimationFrame(measure); };
     const observer = new ResizeObserver(schedule);
@@ -260,6 +264,11 @@
     });
     dispatch({ type: 'results' });
   }
+  const mappedPrecisions: readonly Precision[] = ['source_reported', 'approximate', 'exact'];
+  function toggleMapped(checked: boolean) {
+    dispatch({ type:'filters', value:{ ...state.filters, precisions: checked ? [...new Set([...state.filters.precisions, ...mappedPrecisions])] : state.filters.precisions.filter(value => !mappedPrecisions.includes(value)) } });
+    dispatch({ type:'results' });
+  }
   function precision(value: Precision, checked: boolean) {
     dispatch({
       type: "filters",
@@ -299,6 +308,15 @@
   let flightSequence = 0;
   const mapCameraPitch = writable(0);
   const mapControlsReady = writable(false);
+  const mapDisplaySettings = writable<MapDisplaySettings>({ clusterMode:'auto', pinScale:.8, optimizedPins:false, coordinateRadius:6.5 });
+  const displaySettingsRequest = writable<MapDisplaySettingsRequest | null>(null);
+  let displayRequestSequence = 0;
+  function changeMapDisplay(patch: Partial<MapDisplaySettings>) {
+    displaySettingsRequest.set({ id:++displayRequestSequence, patch });
+  }
+  function receiveMapDisplaySettings(snapshot: MapDisplaySettings) {
+    mapDisplaySettings.set(snapshot);
+  }
   let cameraRequestSequence = 0;
   const cameraViewRequest = writable<{ id: number; enable3d: boolean } | null>(null);
   function toggleMapCameraView() {
@@ -581,11 +599,25 @@
   const scopeError = writable("");
   const nearbyRadius = writable(25);
   const filterDisclosure = writable<HTMLDetailsElement | undefined>(undefined);
+  let beforeFilterSnap: SheetSnap | null = null;
+  function filterToggled() {
+    if ($filterDisclosure?.open) {
+      autocompleteOpen.set(false);
+      if ($mobileLayout && beforeFilterSnap === null) {
+        beforeFilterSnap = $resultsSheetSnap;
+        resultsSheetSnap.set('expanded');
+      }
+    } else if (beforeFilterSnap !== null) {
+      resultsSheetSnap.set(beforeFilterSnap);
+      beforeFilterSnap = null;
+    }
+  }
   const suggestions = $derived(searchSuggestions(state.query, candidateFacets, $language));
   const countries = $derived(new Intl.DisplayNames([$language], { type: 'region' }));
   function countryName(value: string) { try { return countries.of(value) ?? value; } catch { return value; } }
   function sourceName(value: string) { return candidateFacets?.sources.find(facet => facet.value === value)?.label ?? value; }
-  function categoryName(value: string) { return value in CATEGORY_PRESENTATIONS ? tr(CATEGORY_PRESENTATIONS[value as keyof typeof CATEGORY_PRESENTATIONS].label, $language) : value; }
+  const shortCategoryLabels: Readonly<Record<string,string>> = { animal_keeping_and_production:'Animal keeping', slaughter:'Slaughter', processing_and_preparation:'Processing', research_and_animal_use:'Research', other_regulated_premises:'Other premises', unclassified:'Unclassified' };
+  function categoryName(value: string) { return tr(shortCategoryLabels[value] ?? (value in CATEGORY_PRESENTATIONS ? CATEGORY_PRESENTATIONS[value as keyof typeof CATEGORY_PRESENTATIONS].label : value), $language); }
   function removeFilter(field: keyof LabFilters, value: string) {
     dispatch({ type: 'filters', value: { ...state.filters, [field]: state.filters[field].filter(item => item !== value) } });
     dispatch({ type: 'results' });
@@ -643,9 +675,24 @@
 </script>
 
 <svelte:window onkeydown={onKeydown} />
+{#snippet searchInput()}
+          <form class="search" role="search" onsubmit={(event) => { event.preventDefault(); applyParsedSearch(); }}>
+            <label for="field-search">{tr(mode === "public-release" ? 'Search across public release records' : 'Search across preview records', $language)}</label>
+            {#if !$mobileLayout}<button class="search-toggle" bind:this={$searchToggle} type="button" aria-label={tr($detailMapPreview ? 'View facility details' : 'Search map', $language)} aria-expanded={workspaceOpen} aria-controls="field-record-list" onclick={openMobileSearch}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg></button>{:else}<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg>{/if}
+            <input id="field-search" type="search" role="combobox" aria-autocomplete="list" aria-haspopup="listbox" maxlength="120" placeholder={tr(!$mobileLayout && !workspaceOpen ? 'Search map' : 'Name, activity, source, or place', $language)}
+              value={state.query} aria-activedescendant={$autocompleteOpen && $suggestionIndex >= 0 ? `field-suggestion-${$suggestionIndex}` : undefined} aria-expanded={$autocompleteOpen && suggestions.length > 0} aria-controls="search-suggestions" onfocus={() => { if (!$mobileLayout) { if (state.selectedId) dispatch({ type:'results' }); dispatch({ type:'list', value:true }); } autocompleteOpen.set(true); suggestionIndex.set(-1); }} onblur={(event) => { if (!(event.relatedTarget instanceof HTMLElement) || !event.relatedTarget.closest('.search-autocomplete')) autocompleteOpen.set(false); }} oninput={(event) => { autocompleteOpen.set(true); suggestionIndex.set(-1); dispatch({ type: 'search', value: { query: event.currentTarget.value, filters: state.filters } }); }} onkeydown={(event) => {
+                if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && suggestions.length) { event.preventDefault(); autocompleteOpen.set(true); suggestionIndex.update(index => (index + (event.key === 'ArrowDown' ? 1 : -1) + suggestions.length) % suggestions.length); }
+                if (event.key === 'Enter') { event.preventDefault(); if ($autocompleteOpen && $suggestionIndex >= 0 && suggestions[$suggestionIndex]) applySuggestion(suggestions[$suggestionIndex]!); else applyParsedSearch(); }
+              }} />
+          </form>
+          {#if $autocompleteOpen && suggestions.length > 0}<div id="search-suggestions" class="search-autocomplete" role="listbox" aria-label={tr('Search suggestions', $language)}>
+            {#each suggestions as suggestion, index (`${suggestion.kind}:${suggestion.value}`)}<button id={`field-suggestion-${index}`} role="option" aria-selected={$suggestionIndex === index} tabindex="-1" type="button" onclick={() => applySuggestion(suggestion)}><strong>{suggestion.label}</strong><small>{tr(suggestion.kind === 'country' ? 'Country' : suggestion.kind === 'category' ? 'Category' : 'Source', $language)}</small></button>{/each}
+          </div>{/if}
+
+{/snippet}
 <section class="field-view">
-  {#if active}<PreviewMasthead privateTools={mode === "real-preview" || mode === "candidate-preview"} publicReleaseLabel={mode === "candidate-preview" ? $candidatePreviewLabel : publicReleaseLabel(publicMapMeta?.releaseId, publicMapMeta?.releaseLabel)} releaseDescription={mode === "candidate-preview" && $candidatePreviewLabel ? 'Configured private candidate release.' : null} {releaseOptions} selectedReleaseId={mode === "public-release" ? selectedPublicReleaseId : null} {...(onreleasechange ? { onreleasechange } : {})} current="map" {mapHref} {databaseHref} debugEnabled={$debugEnabled} ondebugchange={(enabled) => { debugEnabled.set(enabled); if (!enabled) debugOpen.set(false); }} mapBasemap={state.basemap} mapCameraPitch={$mapCameraPitch} mapControlsReady={$mapControlsReady} onmapbasemap={(value) => dispatch({ type: "basemap", value })} onmapviewtoggle={toggleMapCameraView} />{/if}
-  <div class="workspace" use:measureWorkspace class:workspace-open={workspaceOpen && !detailCollapsed} class:detail-active={showingDetail} class:debug-active={$debugOpen} style:--mobile-sheet-height={`${$sheetHeight}px`} style:--visual-workspace-height={`${$workspaceHeight}px`} style:--workspace-width={$railWidth === null ? `${$layoutTuning.panelWidthPercent}%` : `${$railWidth}px`} style:--result-row-padding={`${$layoutTuning.rowPadding}px`} style:--result-type-scale={$layoutTuning.typeScale}>
+  {#if active}<PreviewMasthead privateTools={mode === "real-preview" || mode === "candidate-preview"} publicReleaseLabel={mode === "candidate-preview" ? $candidatePreviewLabel : publicReleaseLabel(publicMapMeta?.releaseId, publicMapMeta?.releaseLabel)} releaseDescription={mode === "candidate-preview" && $candidatePreviewLabel ? 'Configured private candidate release.' : null} {releaseOptions} selectedReleaseId={mode === "public-release" ? selectedPublicReleaseId : null} {...(onreleasechange ? { onreleasechange } : {})} current="map" {mapHref} {databaseHref} debugEnabled={$debugEnabled} ondebugchange={(enabled) => { debugEnabled.set(enabled); if (!enabled) debugOpen.set(false); }} mapControlsReady={$mapControlsReady} mapDisplaySettings={$mapDisplaySettings} onmapdisplaychange={changeMapDisplay} />{/if}
+  <div class="workspace" use:measureWorkspace class:workspace-open={workspaceOpen && !detailCollapsed} class:detail-active={showingDetail} class:debug-active={$debugOpen} style:--mobile-sheet-height={`${$sheetHeight}px`} style:--visual-workspace-height={`${$workspaceHeight}px`} style:--workspace-width={$railWidth === null ? `${$layoutTuning.panelWidthPercent}vw` : `${$railWidth}px`} style:--result-row-padding={`${$layoutTuning.rowPadding}px`} style:--result-type-scale={$layoutTuning.typeScale}>
     <main class="map-stage" aria-label={tr('Investigative map field', $language)}>
     {#if mode === "synthetic" && state.scenario === "loading"}<div class="status" role="status">
         {tr('Loading records…', $language)}
@@ -663,6 +710,7 @@
         {publicReleaseIdentity}
         {publicReleaseManifestIdentity}
         {onMapFeedMeta}
+        {...(resolvePinHover ? { resolvePinHover } : {})}
         onCandidatePreviewLabel={(label) => { candidatePreviewLabel.set(label); onCandidatePreviewLabel?.(label); }}
         {mapStatus}
         {mapError}
@@ -674,6 +722,8 @@
         searchScope={state.searchScope}
         flightTarget={$flightTarget}
         cameraViewRequest={$cameraViewRequest}
+        displaySettingsRequest={$displaySettingsRequest}
+        onDisplaySettingsChange={receiveMapDisplaySettings}
         onCameraPitchChange={(pitch) => { mapCameraPitch.set(pitch); }}
         onMapControlsReady={(ready) => { mapControlsReady.set(ready); }}
         debugEnabled={$debugEnabled}
@@ -708,33 +758,18 @@
       >
         {dataError}
       </div>{/if}
-    {#if (!workspaceOpen || $detailMapPreview) && !$debugOpen}<button
-      class="search-toggle"
-      bind:this={$searchToggle}
-      type="button"
-      aria-expanded={workspaceOpen}
-      aria-controls="field-record-list"
-      onclick={openMobileSearch}
-      ><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg><span class="search-toggle-copy"><strong>{tr($detailMapPreview ? 'View facility details' : 'Search map', $language)}</strong><small>{state.query || state.sourceId ? tr('Search or filters active', $language) : tr('Places, facilities, sources', $language)}</small></span></button>{/if}
-      {#if active}<MapNavigation viewport={state.viewport} ready={$mapControlsReady} basemap={state.basemap} pitch={$mapCameraPitch} compactHidden={$mobileLayout && $workspaceHeight - $sheetHeight < 100} overlayExpanded={state.selectedId ? $detailSheetSnap === 'expanded' && !detailCollapsed : $resultsSheetSnap === 'expanded' && workspaceOpen} onbasemap={(value) => dispatch({type:'basemap',value})} onviewtoggle={toggleMapCameraView} areaEnabled={Boolean($currentBounds) && mode === 'public-release'} areaActive={state.searchScope?.kind === 'area'} onarea={searchArea} onlocate={(value) => dispatch({ type: 'private-camera', value })} />{/if}
     </main>
+    <div class="map-tool-shell">
+      <div class="map-toolbar" class:toolbar-hidden={$mobileLayout && $workspaceHeight - $sheetHeight < 100}>
+        <div class="desktop-search search-tools">{#if !$mobileLayout}{@render searchInput()}{/if}</div>
+      {#if active}<MapNavigation viewport={state.viewport} ready={$mapControlsReady} basemap={state.basemap} pitch={$mapCameraPitch} compactHidden={$mobileLayout && $workspaceHeight - $sheetHeight < 100} onbasemap={(value) => dispatch({type:'basemap',value})} onviewtoggle={toggleMapCameraView} areaEnabled={Boolean($currentBounds) && mode === 'public-release'} areaActive={state.searchScope?.kind === 'area'} onarea={searchArea} onlocate={(value) => dispatch({ type: 'private-camera', value })} />{/if}
+      </div>
     <aside class="results" inert={$debugOpen && $mobileLayout} aria-hidden={$debugOpen && $mobileLayout ? true : undefined} class:rail-collapsed={!workspaceOpen} class:map-preview={detailCollapsed} id="field-record-list" aria-label={tr('Search, filters, and results', $language)}>
       <div class="mobile-sheet-control"><MobileSearchSheet open={workspaceOpen && !detailCollapsed} snap={state.selectedId ? $detailSheetSnap : $resultsSheetSnap} detail={Boolean(state.selectedId)} preview={Boolean(state.selectedId)} available={$workspaceHeight} middlePercent={$layoutTuning.mobileSheetPercent ?? 48} expandedPercent={$layoutTuning.mobileExpandedPercent ?? 90} onchange={changeMobileSheet} onheight={height => sheetHeight.set(height)} /></div>
-      <button class="rail-resize" type="button" aria-label="Resize search panel" title="Use left and right arrows to resize" onpointerdown={resizeRail} onkeydown={resizeRailKey}></button>
+      <button class="rail-resize" type="button" aria-label={tr('Resize search panel', $language)} title={tr('Use left and right arrows to resize', $language)} onpointerdown={resizeRail} onkeydown={resizeRailKey}></button>
       <header hidden={Boolean(state.selectedId) || !workspaceOpen}><strong>{tr('Search records', $language)}</strong><button type="button" aria-label={tr('Close workspace', $language)} onclick={closeWorkspace}>×</button></header>
         <div class="search-tools" id="field-search-content" hidden={Boolean(state.selectedId) || !workspaceOpen}>
-          <form class="search" role="search" onsubmit={(event) => { event.preventDefault(); applyParsedSearch(); }}>
-            <label for="field-search">{tr(mode === "public-release" ? 'Search across public release records' : 'Search across preview records', $language)}</label>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg>
-            <input id="field-search" type="search" role="combobox" aria-autocomplete="list" aria-haspopup="listbox" maxlength="120" placeholder={tr('Name, activity, source, or place', $language)}
-              value={state.query} aria-activedescendant={$autocompleteOpen && $suggestionIndex >= 0 ? `field-suggestion-${$suggestionIndex}` : undefined} aria-expanded={$autocompleteOpen && suggestions.length > 0} aria-controls="search-suggestions" onfocus={() => { autocompleteOpen.set(true); suggestionIndex.set(-1); }} onblur={(event) => { if (!(event.relatedTarget instanceof HTMLElement) || !event.relatedTarget.closest('.search-autocomplete')) autocompleteOpen.set(false); }} oninput={(event) => { autocompleteOpen.set(true); suggestionIndex.set(-1); dispatch({ type: 'search', value: { query: event.currentTarget.value, filters: state.filters } }); }} onkeydown={(event) => {
-                if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && suggestions.length) { event.preventDefault(); autocompleteOpen.set(true); suggestionIndex.update(index => (index + (event.key === 'ArrowDown' ? 1 : -1) + suggestions.length) % suggestions.length); }
-                if (event.key === 'Enter') { event.preventDefault(); if ($autocompleteOpen && $suggestionIndex >= 0 && suggestions[$suggestionIndex]) applySuggestion(suggestions[$suggestionIndex]!); else applyParsedSearch(); }
-              }} />
-          </form>
-          {#if $autocompleteOpen && suggestions.length > 0}<div id="search-suggestions" class="search-autocomplete" role="listbox" aria-label={tr('Search suggestions', $language)}>
-            {#each suggestions as suggestion, index (`${suggestion.kind}:${suggestion.value}`)}<button id={`field-suggestion-${index}`} role="option" aria-selected={$suggestionIndex === index} tabindex="-1" type="button" onclick={() => applySuggestion(suggestion)}><strong>{suggestion.label}</strong><small>{tr(suggestion.kind === 'country' ? 'Country' : suggestion.kind === 'category' ? 'Category' : 'Source', $language)}</small></button>{/each}
-          </div>{/if}
+          {#if $mobileLayout}{@render searchInput()}{/if}
           <div class="filter-chips" aria-label={tr('Search filters', $language)}>
             {#each state.filters.countries as value}<button type="button" aria-label={`${tr('Remove filter', $language)}: ${countryName(value)}`} onclick={() => removeFilter('countries', value)}>{countryName(value)} <span aria-hidden="true">×</span></button>{/each}
             {#each state.filters.categories as value}<button type="button" aria-label={`${tr('Remove filter', $language)}: ${categoryName(value)}`} onclick={() => removeFilter('categories', value)}>{categoryName(value)} <span aria-hidden="true">×</span></button>{/each}
@@ -745,46 +780,46 @@
             {#if state.searchScope}<button type="button" aria-label={tr('Remove filter', $language)} onclick={() => dispatch({ type: 'scope', value: null })}>{state.searchScope.kind === 'area' ? tr('This map area', $language) : `${state.searchScope.radiusKm} km · ${state.searchScope.label}`} <span aria-hidden="true">×</span></button>{/if}
           </div>
           <div class="search-toolbar">
-          <details class="filters" bind:this={$filterDisclosure} ontoggle={() => { if ($filterDisclosure?.open) autocompleteOpen.set(false); }}>
+          <details class="filters" bind:this={$filterDisclosure} ontoggle={filterToggled}>
             <summary><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h7m5 0h4M4 17h3m5 0h8M11 4v6M7 14v6"/></svg>{tr('Filters', $language)} {#if activeFilters}<b>{activeFilters}</b>{/if}</summary>
-            <div class="filter-sheet" use:fitFilterViewport>
+            <div class="filter-sheet" use:fitFilterViewport><div class="filter-scroll">
               {#if mode === "candidate-preview" || mode === "public-release"}
-                {#if facetsStatus === "loading"}<small>Loading filters…</small>
-                {:else if facetsStatus === "error" || facetsStatus === "unauthorized"}<small role="alert">Filters are unavailable. Search remains available.</small>
+                {#if facetsStatus === "loading"}<small>{tr('Loading filters…', $language)}</small>
+                {:else if facetsStatus === "error" || facetsStatus === "unauthorized"}<small role="alert">{tr('Filters are unavailable. Search remains available.', $language)}</small>
                 {:else if candidateFacets}
                   {#if mode === "public-release"}
-                  <fieldset><legend>{tr('Activity category', $language)}</legend>{#each Object.entries(CATEGORY_PRESENTATIONS).filter(([key]) => key !== 'unclassified') as [key, presentation]}<label><input type="checkbox" checked={state.filters.categories.includes(key)} onchange={(event) => toggleCandidateFilter('categories', key, event.currentTarget.checked)} /><span class="category-swatch" style:background={presentation.color} aria-hidden="true"></span>{tr(presentation.label, $language)}</label>{/each}</fieldset>
-                  <fieldset><legend>Country</legend>{#each candidateFacets.countries as facet (facet.value)}<label><input type="checkbox" checked={state.filters.countries.includes(facet.value)} onchange={(event) => toggleCandidateFilter('countries', facet.value, event.currentTarget.checked)} />{facet.label ?? facet.value} ({facet.count})</label>{/each}</fieldset>
-                  {#if candidateFacets.activities.length}<fieldset><legend>Activity</legend>{#each candidateFacets.activities as facet (facet.value)}<label><input type="checkbox" checked={state.filters.activities.includes(facet.value)} onchange={(event) => toggleCandidateFilter('activities', facet.value, event.currentTarget.checked)} />{facet.label ?? facet.value} ({facet.count})</label>{/each}</fieldset>{/if}
-                  <fieldset><legend>{tr('Location precision', $language)}</legend>{#each ['source_reported', 'approximate', 'unmapped', 'exact'] as value}<label><input type="checkbox" checked={state.filters.precisions.includes(value as Precision)} onchange={(event) => precision(value as Precision, event.currentTarget.checked)} />{tr(value === 'source_reported' ? 'Source-provided coordinates' : value === 'approximate' ? 'Approximate location' : value === 'unmapped' ? 'Unmapped' : 'Exact', $language)}</label>{/each}</fieldset>
-                  <fieldset class="source-options"><legend>Source</legend>{#each candidateFacets.sources as facet (facet.value)}<label><input type="checkbox" checked={state.filters.sources.includes(facet.value)} onchange={(event) => toggleCandidateFilter('sources', facet.value, event.currentTarget.checked)} />{facet.label ?? facet.value} ({facet.count})</label>{/each}</fieldset>
+                  <fieldset><legend>{tr('Activity category', $language)}</legend>{#each Object.entries(CATEGORY_PRESENTATIONS) as [key, presentation]}<label><input type="checkbox" checked={state.filters.categories.includes(key)} onchange={(event) => toggleCandidateFilter('categories', key, event.currentTarget.checked)} /><span class="category-swatch" style:background={presentation.color} aria-hidden="true"></span>{categoryName(key)}</label>{/each}</fieldset>
+                  <details class="filter-choice"><summary><span>{tr('Country', $language)}</span><span class="choice-value">{state.filters.countries.length ? state.filters.countries.map(countryName).join(', ') : tr('All countries', $language)}</span></summary><fieldset aria-label="{tr('Country', $language)}">{#each candidateFacets.countries as facet (facet.value)}<label><input type="checkbox" checked={state.filters.countries.includes(facet.value)} onchange={(event) => toggleCandidateFilter('countries', facet.value, event.currentTarget.checked)} />{countryName(facet.value)} ({facet.count})</label>{/each}</fieldset></details>
+                  {#if candidateFacets.activities.length}<details class="filter-choice"><summary>{tr('Activity', $language)}</summary><fieldset aria-label="{tr('Activity', $language)}">{#each candidateFacets.activities as facet (facet.value)}<label><input type="checkbox" checked={state.filters.activities.includes(facet.value)} onchange={(event) => toggleCandidateFilter('activities', facet.value, event.currentTarget.checked)} />{tr(classificationLabel(facet.label ?? facet.value), $language)} ({facet.count})</label>{/each}</fieldset></details>{/if}
+                  <fieldset class="location-options"><legend>{tr('Location precision', $language)}</legend><label><input type="checkbox" checked={mappedPrecisions.every(value => state.filters.precisions.includes(value))} indeterminate={mappedPrecisions.some(value => state.filters.precisions.includes(value)) && !mappedPrecisions.every(value => state.filters.precisions.includes(value))} onchange={event => toggleMapped(event.currentTarget.checked)} />{tr('Mapped', $language)}</label>{#each ['unmapped', 'source_reported', 'approximate', 'exact'] as value}<label><input type="checkbox" checked={state.filters.precisions.includes(value as Precision)} onchange={(event) => precision(value as Precision, event.currentTarget.checked)} />{tr(value === 'source_reported' ? 'Source-reported' : value === 'approximate' ? 'Approximate' : value === 'unmapped' ? 'Unmapped' : 'Exact', $language)}</label>{/each}</fieldset>
+                  <details class="filter-choice"><summary><span>{tr('Source', $language)}</span><span class="choice-value">{state.filters.sources.length ? state.filters.sources.map(sourceName).join(', ') : tr('All sources', $language)}</span></summary><fieldset aria-label="{tr('Source', $language)}">{#each candidateFacets.sources as facet (facet.value)}<label><input type="checkbox" checked={state.filters.sources.includes(facet.value)} onchange={(event) => toggleCandidateFilter('sources', facet.value, event.currentTarget.checked)} />{facet.label ?? facet.value} ({facet.count})</label>{/each}</fieldset></details>
                   {:else}
-                  <fieldset><legend>Country</legend>{#each candidateFacets.countries as facet (facet.value)}<label><input type="checkbox" checked={state.filters.countries.includes(facet.value)} onchange={(event) => toggleCandidateFilter('countries', facet.value, event.currentTarget.checked)} />{facet.label ?? facet.value} ({facet.count})</label>{/each}</fieldset>
-                  <fieldset class="source-options"><legend>Source</legend>{#each candidateFacets.sources as facet (facet.value)}<label><input type="checkbox" checked={state.filters.sources.includes(facet.value)} onchange={(event) => toggleCandidateFilter('sources', facet.value, event.currentTarget.checked)} />{facet.label ?? facet.value} ({facet.count})</label>{/each}</fieldset>
-                  <fieldset><legend>Activity category</legend>{#each candidateFacets.categories as facet (facet.value)}<label><input type="checkbox" checked={state.filters.categories.includes(facet.value)} onchange={(event) => toggleCandidateFilter('categories', facet.value, event.currentTarget.checked)} />{facet.label ?? facet.value} ({facet.count})</label>{/each}</fieldset>
-                  {#if candidateFacets.activities.length}<fieldset><legend>Activity</legend>{#each candidateFacets.activities as facet (facet.value)}<label><input type="checkbox" checked={state.filters.activities.includes(facet.value)} onchange={(event) => toggleCandidateFilter('activities', facet.value, event.currentTarget.checked)} />{facet.label ?? facet.value} ({facet.count})</label>{/each}</fieldset>{/if}
+                  <details class="filter-choice"><summary><span>{tr('Country', $language)}</span><span class="choice-value">{state.filters.countries.length ? state.filters.countries.map(countryName).join(', ') : tr('All countries', $language)}</span></summary><fieldset aria-label="{tr('Country', $language)}">{#each candidateFacets.countries as facet (facet.value)}<label><input type="checkbox" checked={state.filters.countries.includes(facet.value)} onchange={(event) => toggleCandidateFilter('countries', facet.value, event.currentTarget.checked)} />{countryName(facet.value)} ({facet.count})</label>{/each}</fieldset></details>
+                  <details class="filter-choice"><summary><span>{tr('Source', $language)}</span><span class="choice-value">{state.filters.sources.length ? state.filters.sources.map(sourceName).join(', ') : tr('All sources', $language)}</span></summary><fieldset aria-label="{tr('Source', $language)}">{#each candidateFacets.sources as facet (facet.value)}<label><input type="checkbox" checked={state.filters.sources.includes(facet.value)} onchange={(event) => toggleCandidateFilter('sources', facet.value, event.currentTarget.checked)} />{facet.label ?? facet.value} ({facet.count})</label>{/each}</fieldset></details>
+                  <fieldset><legend>{tr('Activity category', $language)}</legend>{#each candidateFacets.categories as facet (facet.value)}<label><input type="checkbox" checked={state.filters.categories.includes(facet.value)} onchange={(event) => toggleCandidateFilter('categories', facet.value, event.currentTarget.checked)} />{facet.value in CATEGORY_PRESENTATIONS ? categoryName(facet.value) : tr(classificationLabel(facet.label ?? facet.value), $language)} ({facet.count})</label>{/each}</fieldset>
+                  {#if candidateFacets.activities.length}<details class="filter-choice"><summary>{tr('Activity', $language)}</summary><fieldset aria-label="{tr('Activity', $language)}">{#each candidateFacets.activities as facet (facet.value)}<label><input type="checkbox" checked={state.filters.activities.includes(facet.value)} onchange={(event) => toggleCandidateFilter('activities', facet.value, event.currentTarget.checked)} />{tr(classificationLabel(facet.label ?? facet.value), $language)} ({facet.count})</label>{/each}</fieldset></details>{/if}
                   {/if}
                 {/if}
               {:else if mode === "real-preview"}
                 <fieldset class="source-filter">
-                  <legend>Source</legend>
-                  {#if facetsStatus === "loading"}<small>Loading sources…</small>
-                  {:else if facetsStatus === "error" || facetsStatus === "unauthorized"}<small role="alert">Sources unavailable. Search remains available.</small>
+                  <legend>{tr('Source', $language)}</legend>
+                  {#if facetsStatus === "loading"}<small>{tr('Loading sources…', $language)}</small>
+                  {:else if facetsStatus === "error" || facetsStatus === "unauthorized"}<small role="alert">{tr('Sources unavailable. Search remains available.', $language)}</small>
                   {:else}
-                    <label><input type="radio" name="source" checked={state.sourceId === null} onchange={() => chooseSource(null)} />All sources</label>
+                    <label><input type="radio" name="source" checked={state.sourceId === null} onchange={() => chooseSource(null)} />{tr('All sources', $language)}</label>
                     {#each sources as value}<label><input type="radio" name="source" checked={state.sourceId === value} onchange={() => chooseSource(value)} />{value}</label>{/each}
                   {/if}
                 </fieldset>
               {:else}
                 <p class="category-key"><i class="poultry"></i>Poultry <i class="pig"></i>Pig <i class="dairy"></i>Dairy <i class="processing"></i>Processing <i class="laboratory"></i>Lab <i class="aquaculture"></i>Aquaculture</p>
-                <fieldset><legend>Category</legend>{#each categories as value}<label><input type="checkbox" checked={state.filters.categories.includes(value)} onchange={(event) => category(value, event.currentTarget.checked)} />{value}</label>{/each}</fieldset>
-                <fieldset><legend>Location precision</legend>{#each precisions as value}<label><input type="checkbox" checked={state.filters.precisions.includes(value)} onchange={(event) => precision(value, event.currentTarget.checked)} />{value}</label>{/each}</fieldset>
+                <fieldset><legend>{tr('Category', $language)}</legend>{#each categories as value}<label><input type="checkbox" checked={state.filters.categories.includes(value)} onchange={(event) => category(value, event.currentTarget.checked)} />{value}</label>{/each}</fieldset>
+                <fieldset><legend>{tr('Location precision', $language)}</legend>{#each precisions as value}<label><input type="checkbox" checked={state.filters.precisions.includes(value)} onchange={(event) => precision(value, event.currentTarget.checked)} />{value}</label>{/each}</fieldset>
               {/if}
-              {#if activeFilters}<button type="button" class="clear-filters" onclick={clearSearch}>Clear all filters</button>{/if}
+              </div><footer class="filter-actions"><button type="button" class="clear-filters" onclick={clearSearch}>{tr('Clear filters', $language)}</button><button type="button" class="show-results" onclick={() => { if ($filterDisclosure) $filterDisclosure.open = false; }}>{tr('Show results', $language)}</button></footer>
             </div>
           </details>
           {#if mode === 'public-release'}<a class="csv-download" href={downloadsHref} aria-label={tr('Download CSV', $language)} title={tr('Download CSV', $language)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 16v5h14v-5"/></svg><span>CSV</span></a>{/if}
-          <div class="result-status"><strong class="sr-only">{aggregateOpen ? "Members" : "Facility records"}</strong><span role="status" aria-live="polite">{!aggregateOpen && listRefreshing ? (resultCount ? "Searching · showing previous results" : "Searching…") : !aggregateOpen && (dataStatus === "error" || dataStatus === "unauthorized") && resultCount ? "Search unavailable · showing previous results" : aggregateOpen ? `${resultCount} loaded` : (mode === "candidate-preview" || mode === "public-release") && candidateTotalCount !== null ? `${candidateTotalCount} matching · ${resultCount} shown` : `${resultCount} loaded`}</span></div>
+          <div class="result-status"><strong class="sr-only">{tr(aggregateOpen ? 'Members' : 'Facility records', $language)}</strong><span role="status" aria-live="polite">{!aggregateOpen && listRefreshing ? tr(resultCount ? 'Searching · showing previous results' : 'Searching…', $language) : !aggregateOpen && (dataStatus === 'error' || dataStatus === 'unauthorized') && resultCount ? tr('Search unavailable · showing previous results', $language) : !aggregateOpen && (mode === 'candidate-preview' || mode === 'public-release') && candidateTotalCount !== null ? tr('{count} matching · {shown} shown', $language).replace('{count}', new Intl.NumberFormat($language).format(candidateTotalCount)).replace('{shown}', new Intl.NumberFormat($language).format(resultCount)) : tr('{count} loaded', $language).replace('{count}', new Intl.NumberFormat($language).format(resultCount))}</span></div>
           </div>
         </div>
       {#if $scopeError}<p class="search-error" hidden={Boolean(state.selectedId) || !workspaceOpen} role="alert">{$scopeError}</p>{/if}
@@ -901,22 +936,23 @@
         role="status"
         aria-label="Record evidence" hidden={detailCollapsed}
       >
-        <header class="dossier-header"><button class="back-to-results" type="button" onclick={dismissSelection}>← {tr('Back to results', $language)}</button><button class="detail-close" type="button" aria-label="Close record detail" onclick={dismissSelection}>×</button></header>
+        <header class="dossier-header"><button class="back-to-results" type="button" onclick={dismissSelection}>← {tr('Back to results', $language)}</button><button class="detail-close" type="button" aria-label={tr('Close record detail', $language)} onclick={dismissSelection}>×</button></header>
         <p class="dossier-message">Loading record evidence…</p>
       </section>{:else if active && state.selectedId && mode !== "synthetic" && (detailStatus === "error" || detailStatus === "unauthorized")}<section
         class="reading-sheet dossier"
         role="alert"
         aria-label="Record evidence" hidden={detailCollapsed}
       >
-        <header class="dossier-header"><button class="back-to-results" type="button" onclick={dismissSelection}>← {tr('Back to results', $language)}</button><button class="detail-close" type="button" aria-label="Close record detail" onclick={dismissSelection}>×</button></header>
+        <header class="dossier-header"><button class="back-to-results" type="button" onclick={dismissSelection}>← {tr('Back to results', $language)}</button><button class="detail-close" type="button" aria-label={tr('Close record detail', $language)} onclick={dismissSelection}>×</button></header>
         <p class="dossier-message">{detailError}</p>
       </section>{:else if active && state.selectedId && selected}<section class="reading-sheet dossier" aria-label="Record evidence" hidden={detailCollapsed}>
-        <header class="dossier-header"><button class="back-to-results" type="button" onclick={dismissSelection}>← {tr('Back to results', $language)}</button><button class="detail-close" type="button" aria-label="Close record detail" onclick={dismissSelection}>×</button></header>
+        <header class="dossier-header"><button class="back-to-results" type="button" onclick={dismissSelection}>← {tr('Back to results', $language)}</button><button class="detail-close" type="button" aria-label={tr('Close record detail', $language)} onclick={dismissSelection}>×</button></header>
         {#if aggregateOpen}<button type="button" class="back" onclick={dismissSelection}>← Members</button>{/if}
         <RecordDetail record={selected} presentation="rail" fullRecordHref={facilityPageHref} publicRelease={mode === "public-release"} publicReleaseId={mode === "public-release" ? publicReleaseId : null} onshowmap={selected.latitude !== null && selected.longitude !== null ? showSelectedOnMap : undefined} oncategoryfilter={mode === 'public-release' ? (value) => detailFilter('categories', value) : undefined} onsourcefilter={mode === 'public-release' ? (value) => detailFilter('sources', value) : undefined} />
       </section>{/if}
       </div>
     </aside>
+    </div>
   </div>
 </section>
 
@@ -939,8 +975,8 @@
   .field-view :global(.masthead) { position: relative; z-index: 6; flex: 0 0 auto; }
   .map-stage { position: relative; flex: 1 1 auto; min-height: 0; padding: 0; }
   .map-stage :global(.map-surface), .map-stage :global(.map-host) { position: absolute; inset: 0; }
-  .workspace-open .map-stage :global(.diagnostics-toggle) { left:calc(var(--workspace-width) + 1rem); }
-  .workspace-open .map-stage :global(.map-diagnostics) { left:calc(var(--workspace-width) + .65rem);width:min(25rem,calc(100% - var(--workspace-width) - 1.3rem)); }
+  .workspace .map-stage :global(.diagnostics-toggle) { left:.65rem;z-index:8; }
+  .workspace .map-stage :global(.map-diagnostics) { left:.65rem;width:min(25rem,calc(100% - 1.3rem)); }
   .search { display: flex; align-items: center; gap: .65rem; min-width: 0; height: 3.25rem; padding: 0 3.25rem 0 1rem; }
   .search label, .results > header strong, .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
   .search svg, .search-toggle svg { width: 1.1rem; height: 1.1rem; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; color: var(--muted); }
@@ -959,7 +995,6 @@
   .filters summary b { min-width: 1.25rem; padding: 0 .3rem; background: var(--panel-selected); text-align: center; font-weight: 500; font-variant-numeric: tabular-nums; }
   .filter-sheet { --filter-safe-bottom:env(safe-area-inset-bottom);position: absolute; z-index: 8; top: 100%; left: -1px; right: -1px; box-sizing:border-box;height:var(--filter-available-height,50dvh);max-height:var(--filter-available-height,50dvh); overflow: auto; overscroll-behavior: contain; padding: .25rem 1rem 1rem; border: 1px solid var(--line); background: var(--panel); box-shadow: 0 .7rem 1.5rem #0002; }
   .filter-sheet fieldset { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(11rem, 100%), 1fr)); gap: .1rem .75rem; margin: .8rem 0 0; padding: .6rem 0 0; border: 0; border-top: 1px solid var(--line); }
-  .filter-sheet fieldset.source-options { grid-template-columns: minmax(0, 1fr); }
   .filter-sheet legend { padding: 0 .5rem 0 0; color: var(--muted); font-size: .75rem; font-weight: 500; }
   .filter-sheet label { display: flex; align-items: center; gap: .6rem; min-height: 2.75rem; padding: .3rem .1rem; font-size: .8rem; line-height: 1.4; overflow-wrap: anywhere; cursor: pointer; }
   .category-swatch { width: .5rem; height: .5rem; flex: none; border-radius: 50%; }
@@ -974,9 +1009,6 @@
   .category-key .aquaculture { background: #39804e; }
   .status { position: absolute; z-index: 4; top: 50%; left: 50%; max-width: min(30rem, calc(100% - 2rem)); padding: 1rem; border: 1px solid var(--line); background: var(--panel); transform: translate(-50%, -50%); }
   .search-toggle { position: absolute; z-index: 4; top: 0; left: 0; display: flex; align-items: center; gap: .75rem; min-width: 15rem; min-height: 3.25rem; padding: .6rem 1rem; border: 1px solid var(--line); background: var(--panel); color: var(--ink); text-align: left; cursor: pointer; }
-  .search-toggle-copy { display: grid; gap: .12rem; }
-  .search-toggle-copy strong { font-size: .8125rem; font-weight: 500; }
-  .search-toggle-copy small { color: var(--muted); font-size: .6875rem; }
   .results { position: absolute; z-index: 5; top: 1.5rem; bottom: 2rem; left: 1.5rem; display: flex; flex-direction: column; width: min(35rem, calc(100% - 3rem)); min-height: 0; border: 1px solid var(--line); background: var(--panel); }
   .rail-resize { position: absolute; z-index: 2; top: 0; right: -.45rem; bottom: 0; width: .9rem; padding: 0; border: 0; background: transparent; cursor: ew-resize; touch-action: none; }
   .rail-resize::after { content: ""; position: absolute; top: 45%; left: .34rem; width: 2px; height: 2.5rem; background: var(--muted); opacity: .6; }
@@ -1123,4 +1155,46 @@
     .search-toolbar { gap:0 .4rem;padding-right:.75rem; }
   }
   @media (pointer: coarse) { .filter-chips button { min-height: 2.75rem; } }
+
+/* The search input stays anchored as its joined results surface opens below. */
+.map-tool-shell { --search-segment-width:clamp(18rem,var(--workspace-width),calc(100vw - 22rem));position:absolute;z-index:5;top:1rem;left:50%;transform:translateX(-50%);width:max-content;max-width:calc(100% - 2rem);height:calc(100% - 2rem);pointer-events:none; }
+.map-toolbar { position:relative;display:flex;align-items:stretch;width:max-content;max-width:100%;border:1px solid var(--line);background:var(--panel);box-shadow:0 3px 14px #0002;pointer-events:auto; }
+.desktop-search { width:var(--search-segment-width);flex:none;min-width:0; }
+.desktop-search .search { height:44px;padding:0 .8rem 0 0;gap:0; }
+.desktop-search .search-toggle { position:static;display:grid;place-items:center;min-width:44px;width:44px;height:44px;min-height:44px;padding:0;border:0;background:transparent; }
+.desktop-search .search-toggle:hover { background:var(--panel-hover); }
+.desktop-search .search input { height:44px;font-size:.8125rem; }
+.desktop-search .search-autocomplete { top:100%;left:-1px;right:-1px; }
+.workspace .map-tool-shell .results { top:45px;bottom:0;left:0;width:var(--search-segment-width);border:1px solid var(--line);border-top:0;pointer-events:auto;box-shadow:0 7px 16px #0002; }
+.workspace .map-tool-shell .results > header { top:0;right:0; }
+.workspace .map-tool-shell .search-toolbar { padding-right:3rem;border-top:0; }
+.filter-sheet { display:flex;flex-direction:column;padding:0;overflow:hidden;box-shadow:none; }
+.filter-scroll { flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:.35rem 1rem 1rem; }
+.filter-sheet fieldset { grid-template-columns:repeat(2,minmax(0,1fr));gap:.1rem .55rem;margin-top:.65rem; }
+.filter-choice fieldset { grid-template-columns:minmax(0,1fr); }
+.filter-sheet label { min-height:44px;font-size:.75rem;gap:.5rem; }
+.filter-choice { border-top:1px solid var(--line);margin-top:.65rem; }
+.filter-choice > summary { display:flex;justify-content:space-between;align-items:center;width:100%;max-width:none;min-height:44px;padding:.55rem 0;font-size:.75rem; }
+.filter-choice > fieldset { margin:0;padding:0;border:0; }
+.filter-actions { display:flex;justify-content:space-between;align-items:center;gap:.5rem;flex:none;padding:.65rem .8rem;border-top:1px solid var(--line);background:var(--panel); }
+.filter-actions .clear-filters { width:auto;margin:0;padding:.5rem .45rem;border:0;text-decoration:none; }
+.filter-actions .show-results { background:var(--ink);color:var(--panel);border-color:var(--ink);padding-inline:1rem; }
+.filter-actions .show-results:hover { opacity:.9;background:var(--ink); }
+@media(max-width:40rem) {
+  .map-tool-shell { position:static;transform:none;width:auto;height:auto;max-width:none; }
+  .map-toolbar { position:absolute;z-index:7;top:.8rem;left:50%;transform:translateX(-50%);max-width:calc(100% - 1.2rem); }
+  .map-toolbar.toolbar-hidden { visibility:hidden;pointer-events:none; }
+  .desktop-search { display:none; }
+  .workspace .map-tool-shell .results { inset:auto 0 0;width:100%;height:var(--mobile-sheet-height,56px);border:0;border-top:1px solid var(--line);border-radius:0; }
+  .workspace .map-tool-shell .results > header { top:2.9rem;right:.25rem; }
+  .workspace .map-tool-shell .search-toolbar { padding-right:.65rem; }
+  .filter-scroll { padding-inline:.85rem; }
+  .filter-actions { padding-bottom:max(.65rem,env(safe-area-inset-bottom)); }
+  .filter-sheet label { font-size:.75rem; }
+}
+
+  .filter-choice .choice-value { margin-left:auto;max-width:70%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-weight:400; }
+  .filters .filter-choice > summary::after { transform:rotate(45deg) translateY(-2px); }
+  .filters .filter-choice[open] > summary::after { transform:rotate(225deg) translate(-2px,-1px); }
+  .filter-sheet label,.filter-choice > summary,.filter-actions button { font-size:.875rem; }
 </style>

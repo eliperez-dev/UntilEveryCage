@@ -29,6 +29,9 @@
     MapTiming,
     Viewport,
     ViewportBounds,
+    PinHoverLabel,
+    MapDisplaySettings,
+    MapDisplaySettingsRequest,
   } from "../contract";
   import { MvtMotionController } from "./mvtMotionController";
   import { JsonClusterMotionController } from "./jsonClusterMotionController";
@@ -45,6 +48,7 @@
     baseRasterPaint,
     createSelectedApproximateReferenceArea,
     createSearchRadiusArea,
+    createSearchBoundsArea,
     createMvtReferenceAreas,
     createBaseStyle,
     removeLocationLayers,
@@ -70,6 +74,10 @@
   import { canReusePublicMapFeed, clearPublicMapCache, createPublicMapFeedRepository, publicMapCacheEntryCount } from "../../api/PublicMapFeedRepository";
   import { TERRAIN_EXAGGERATION, TERRAIN_SOURCE, TERRAIN_SOURCE_ID } from "../../map/terrain";
   import { CLUSTERING_POPULATION_THRESHOLD, clusterFilteredPopulation, maskPublicMapMatches, representedMappedCount, resizeWorkspaceMap } from './mapWorkspace';
+  import { categoryPresentation } from '../../features/locations/categoryPresentation';
+  import { individualHoverPin } from '../pinHoverLabels';
+  import { applyFacilityPinScale, DEFAULT_FACILITY_PIN_SCALE } from './facilityPinScale';
+  import { mergeMapDisplaySettings } from './mapDisplaySettings';
 
   let {
     active = true,
@@ -108,6 +116,9 @@
     ondebugopenchange,
     onviewport,
     onbounds,
+    resolvePinHover,
+    displaySettingsRequest = null,
+    onDisplaySettingsChange,
   }: {
     active?: boolean;
     records: readonly LabRecord[];
@@ -151,9 +162,49 @@
     ondebugopenchange?(open: boolean): void;
     onviewport(value: Viewport): void;
     onbounds?(bounds: ViewportBounds): void;
+    resolvePinHover?(id: string, signal: AbortSignal): Promise<PinHoverLabel | null>;
+    displaySettingsRequest?: MapDisplaySettingsRequest | null;
+    onDisplaySettingsChange?(settings: MapDisplaySettings): void;
   } = $props();
   let host: HTMLDivElement;
   let map: MapLibreMap | undefined;
+  let hoverLabel = $state<(PinHoverLabel & { x: number; y: number; below: boolean }) | null>(null);
+  let hoverPin: ReturnType<typeof individualHoverPin> = null;
+  let hoverTimer: ReturnType<typeof setTimeout> | undefined;
+  let hoverAbort: AbortController | undefined;
+  let hoverGeneration = 0;
+  function clearPinHover() {
+    hoverGeneration++;
+    if (hoverTimer) clearTimeout(hoverTimer);
+    hoverTimer = undefined;
+    hoverAbort?.abort(); hoverAbort = undefined;
+    hoverPin = null; hoverLabel = null;
+  }
+  function updatePinHover(event: maplibregl.MapMouseEvent) {
+    if (!active || mode !== 'public-release' || !resolvePinHover || !map || map.isMoving()
+      || activeFlight || mapMatchesStatus === 'loading' || mapMatchesStatus === 'error'
+      || !matchMedia('(hover: hover) and (pointer: fine)').matches) {
+      clearPinHover(); return;
+    }
+    const layers = ['v1-source-pins', 'source-coordinate-points', 'approx-reference-pins', 'approx-reference-points', 'approx-reference-circles']
+      .filter(id => !!map?.getLayer(id));
+    const pin = layers.length ? individualHoverPin(map.queryRenderedFeatures(event.point, { layers })[0]) : null;
+    if (!pin) { clearPinHover(); return; }
+    if (hoverPin?.id === pin.id) return;
+    clearPinHover(); hoverPin = pin;
+    const ticket = hoverGeneration;
+    const controller = new AbortController(); hoverAbort = controller;
+    hoverTimer = setTimeout(() => {
+      hoverTimer = undefined;
+      void resolvePinHover!(pin.id, controller.signal).then(label => {
+        if (!label || !active || controller.signal.aborted || ticket !== hoverGeneration
+          || hoverPin?.id !== pin.id || !map || map.isMoving()) return;
+        const point = map.project(pin.coordinates);
+        const halfWidth = Math.min(128, (host.clientWidth - 20) / 2);
+        hoverLabel = { ...label, x: Math.max(halfWidth + 10, Math.min(host.clientWidth - halfWidth - 10, point.x)), y: point.y, below: point.y < 145 };
+      }).catch(() => { /* A hover is optional; detail selection retains its own error state. */ });
+    }, 170);
+  }
   let nativeStyleReady = $state(false);
   let resumePending = false;
   let lifecyclePaused = false;
@@ -283,7 +334,7 @@
   let referenceOpacity = $state(0.22);
   let visibleApproximateCount = $state(0);
   let coordinateRadius = $state(6.5);
-  let pinScale = $state(1);
+  let pinScale = $state(DEFAULT_FACILITY_PIN_SCALE);
   let debugDimensions = $state({ width: 0, height: 0, canvasWidth: 0, canvasHeight: 0 });
   let showReferenceLabels = $state(false);
   // Exact locations default to the retained V1 pin family. The toggle remains
@@ -653,6 +704,7 @@
   function updateVisualSettings() {
     if (!map || !isNativeMap()) return;
     if (usingMvt) {
+      applyFacilityPinScale(map, pinScale);
       syncMvtReferenceAreas(map);
       const selected = activeApproximateAreaKey();
       const selectedArea = selected ? ['==', ['get', 'feature_key'], selected] : false;
@@ -681,11 +733,21 @@
     const data = createSearchRadiusArea(searchScope?.kind === 'radius' ? searchScope : null);
     let source = instance.getSource('search-radius') as GeoJSONSource | undefined;
     if (!source) {
-      if (!data.features.length) return;
-      instance.addSource('search-radius', { type: 'geojson', data });
-      instance.addLayer({ id: 'search-radius-fill', type: 'fill', source: 'search-radius', paint: { 'fill-color': '#d8d6cc', 'fill-opacity': 0.08 } });
-      instance.addLayer({ id: 'search-radius-outline', type: 'line', source: 'search-radius', paint: { 'line-color': '#eeeae0', 'line-opacity': 0.85, 'line-width': 1.5 } });
+      if (data.features.length) {
+        instance.addSource('search-radius', { type: 'geojson', data });
+        instance.addLayer({ id: 'search-radius-fill', type: 'fill', source: 'search-radius', paint: { 'fill-color': '#d8d6cc', 'fill-opacity': 0.08 } });
+        instance.addLayer({ id: 'search-radius-outline', type: 'line', source: 'search-radius', paint: { 'line-color': '#eeeae0', 'line-opacity': 0.85, 'line-width': 1.5 } });
+      }
     } else source.setData(data);
+    const area = createSearchBoundsArea(searchScope?.kind === 'area' ? searchScope.bounds : null);
+    const areaSource = instance.getSource('search-area') as GeoJSONSource | undefined;
+    if (areaSource) areaSource.setData(area);
+    else if (area.features.length) {
+      instance.addSource('search-area', { type: 'geojson', data: area });
+      instance.addLayer({ id: 'search-area-fill', type: 'fill', source: 'search-area', paint: { 'fill-color': '#81c9be', 'fill-opacity': 0.055 } });
+      instance.addLayer({ id: 'search-area-halo', type: 'line', source: 'search-area', paint: { 'line-color': '#172a29', 'line-opacity': 0.85, 'line-width': 5 } });
+      instance.addLayer({ id: 'search-area-outline', type: 'line', source: 'search-area', paint: { 'line-color': '#a3e5d6', 'line-opacity': 1, 'line-width': 2.5, 'line-dasharray': [3, 2] } });
+    }
   }
   function activeApproximateAreaKey(): string | null {
     // MVT aggregate references have opaque 32-hex feature keys and are
@@ -732,6 +794,23 @@
     debugDimensions = { width: host.clientWidth, height: host.clientHeight, canvasWidth: canvas.width, canvasHeight: canvas.height };
   }
   const debugClusterMode = $derived(clusterEnabledOverride === null ? 'auto' : clusterEnabledOverride ? 'on' : 'off');
+  const currentDisplaySettings: MapDisplaySettings = $derived({ clusterMode: debugClusterMode, pinScale, optimizedPins: !useV1Pins, coordinateRadius });
+  let handledDisplaySettingsId = 0;
+  $effect(() => { onDisplaySettingsChange?.(currentDisplaySettings); });
+  $effect(() => {
+    const request = displaySettingsRequest;
+    if (!request || !Number.isSafeInteger(request.id) || request.id <= 0 || request.id <= handledDisplaySettingsId || !active || !nativeStyleReady || !map) return;
+    handledDisplaySettingsId = request.id;
+    const next = mergeMapDisplaySettings(currentDisplaySettings, request.patch);
+    const clusterChanged = next.clusterMode !== debugClusterMode;
+    const pinModeChanged = next.optimizedPins !== !useV1Pins;
+    clearPinHover();
+    clusterEnabledOverride = next.clusterMode === 'auto' ? null : next.clusterMode === 'on';
+    pinScale = next.pinScale; coordinateRadius = next.coordinateRadius; useV1Pins = !next.optimizedPins;
+    if (clusterChanged) scheduleClusterSettings();
+    updateVisualSettings();
+    if (pinModeChanged) void updatePinMode();
+  });
   const ms = (value: number | null) => value === null ? 'Not sampled' : `${value} ms`;
   const debugSession = $derived([
     { label: 'Release', value: publicReleaseId ?? (isRealPreview() ? 'Private preview' : 'Not loaded') },
@@ -797,7 +876,7 @@
   function resetTemporarySettings() {
     clusterRadius = DEFAULT_CLUSTER_RADIUS; clusterMaxZoom = DEFAULT_CLUSTER_MAX_ZOOM; clusterEnabledOverride = null;
     referenceRadiusKm = DEFAULT_REFERENCE_RADIUS_KM; referenceOpacity = 0.22; coordinateRadius = 6.5;
-    pinScale = 1; showReferenceLabels = false; useV1Pins = true; clusterZoomDuration = 460; clusterRebuildDebounce = 150;
+    pinScale = DEFAULT_FACILITY_PIN_SCALE; showReferenceLabels = false; useV1Pins = true; clusterZoomDuration = 460; clusterRebuildDebounce = 150;
     clusterMotionDuration = DEFAULT_CLUSTER_MOTION_MS; clusterMotionLimit = DEFAULT_CLUSTER_MOTION_LIMIT; nativeMotionController?.cancel();
     onLayoutTuningReset?.(); scheduleClusterSettings(); updateVisualSettings(); void updatePinMode();
   }
@@ -1640,6 +1719,14 @@
       return cleanupFailedInitialization;
     }
     map = instance;
+    instance.on('mousemove', updatePinHover);
+    host.addEventListener('pointerleave', clearPinHover);
+    instance.on('click', clearPinHover);
+    const dismissHover = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || !hoverPin) return;
+      event.preventDefault(); event.stopPropagation(); clearPinHover();
+    };
+    window.addEventListener('keydown', dismissHover, true);
     let resizeFrame: number | undefined;
     let previousWidth = host.clientWidth;
     let previousHeight = host.clientHeight;
@@ -1670,6 +1757,7 @@
         "Record map. Select a cluster, source coordinate, or approximate area reference.",
       );
     instance.on('styledataloading', () => {
+      clearPinHover();
       nativeStyleReady = false;
       onMapControlsReady?.(false);
       nativeMotionController?.cancel(true);
@@ -1731,6 +1819,7 @@
       }
     });
     instance.on("movestart", (event: any) => {
+      clearPinHover();
       nativeMotionController?.cancel();
       if (event?.originalEvent) { pendingSelectionFocus = null; selectionFocus = null; }
       if (event?.originalEvent && terrainPending) {
@@ -1813,6 +1902,7 @@
     instance.on("pitch", () => updateCameraPitch(instance.getPitch()));
     instance.on("pitchend", () => { if (active && instance.getPitch() > 0.5) setTerrain(true); });
     return () => {
+      clearPinHover(); window.removeEventListener('keydown', dismissHover, true); host.removeEventListener('pointerleave', clearPinHover);
       unsubscribeTiles(); unsubscribeWorld(); cancelWorldBaselineWarmup(); indexCacheChannel?.close(); indexCacheChannel = undefined;
       setTileCachePersistenceAllowed(true);
       resizeObserver.disconnect();
@@ -1829,6 +1919,11 @@
         delete previewWindow.__UEC_LOCAL_PREVIEW_MAP__;
       instance.remove();
     };
+  });
+  $effect(() => {
+    active; publicReleaseId; publicReleaseIdentity; publicReleaseManifestIdentity;
+    mapState.query; mapState.sourceId; mapState.filters; searchScope; mapMatchesStatus; mapMatchingIds;
+    clearPinHover();
   });
   $effect(() => {
     setTileCachePersistenceAllowed(!active || (mode === 'public-release' && !mapState.navigationViewport));
@@ -1987,6 +2082,10 @@
   aria-label={tr('Map showing records', $language)}
 >
   <div class="map-host" bind:this={host}></div>
+  {#if hoverLabel}<div class="pin-hover-label" class:below={hoverLabel.below} role="tooltip" style:left={`${hoverLabel.x}px`} style:top={`${hoverLabel.y}px`} style:--hover-pin-height={`${useV1Pins ? 41 * pinScale + 3 : coordinateRadius + 5}px`}>
+    <strong>{hoverLabel.name}</strong>
+    <span><i style:background={categoryPresentation(hoverLabel.categoryKey).color}></i>{tr(categoryPresentation(hoverLabel.categoryKey).label, $language)}</span>
+  </div>{/if}
   {#if rendererUnavailable}<p class="map-status" role="alert">{tr('Map unavailable in this browser.', $language)}</p>{/if}
   {#if terrainError}<small class="map-status terrain-status" role="alert">{terrainError}</small>{/if}
   {#if terrainPending}<small class="map-status terrain-status" role="status">{tr('Loading terrain…', $language)}</small>{/if}
@@ -2096,10 +2195,16 @@
     position: relative;
     overflow: hidden;
   }
+  .map-surface.diagnostics-active { contain:none; }
   .map-host {
     position: absolute;
     inset: 0;
   }
+  .pin-hover-label { position:absolute; z-index:3; pointer-events:none; transform:translate(-50%,calc(-100% - var(--hover-pin-height))); width:max-content; max-width:min(16rem,calc(100% - 20px)); padding:.55rem .7rem; box-sizing:border-box; background:var(--panel,#1c1c1c); color:var(--ink,#f2f0e8); border:1px solid var(--line,#494949); box-shadow:0 3px 12px #0004; font-size:.8rem; line-height:1.35; }
+  .pin-hover-label.below { transform:translate(-50%,12px); }
+  .pin-hover-label strong { display:-webkit-box; -webkit-line-clamp:2; line-clamp:2; -webkit-box-orient:vertical; max-height:2.7em; overflow:hidden; overflow-wrap:anywhere; text-overflow:ellipsis; font-weight:600; }
+  .pin-hover-label span { display:flex; align-items:center; gap:.4rem; margin-top:.25rem; font-size:.72rem; }
+  .pin-hover-label i { width:.45rem; height:.45rem; flex:none; border-radius:50%; }
   .terrain-status { top:6.8rem; left:.65rem; transform:none; }
   .feature-list-toggle,
   .diagnostics-toggle {

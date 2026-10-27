@@ -80,8 +80,7 @@ test('viewed basemap tiles survive zoom return and browser reload, expire correc
     };
     map.on('render', listener); (window as any).__stopTileHandoffFrames = () => map.off('render', listener);
   });
-  await page.getByRole('button', { name: 'Tools', exact: true }).click();
-  await page.getByLabel('Map style').selectOption('satellite');
+  await page.locator('.map-navigation').getByRole('button', { name: 'Satellite', exact: true }).click();
   await expect.poll(() => page.evaluate(() => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     return map.getStyle().sources.base.tiles[0].includes('World_Imagery') && !map.getLayer('candidate-base') && map.isSourceLoaded('base');
@@ -97,13 +96,14 @@ test('viewed basemap tiles survive zoom return and browser reload, expire correc
 
   // Exercise the actual debug callbacks against storage and MapLibre, rather
   // than only checking that range controls display their chosen value.
-  await page.getByLabel('Map style').selectOption('vector');
+  await page.locator('.map-navigation').getByRole('button', { name: 'Street', exact: true }).click();
   await expect.poll(() => page.evaluate(() => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     return map.getStyle().sources.base.tiles[0].includes('openstreetmap') && !map.getLayer('candidate-base') && map.isSourceLoaded('base');
   })).toBe(true);
+  await page.getByRole('button', { name: 'More tools', exact: true }).click();
   await page.getByLabel('Enable debug menu', { exact: true }).check();
-  await page.getByRole('button', { name: 'Close Tools', exact: true }).click();
+  await page.getByRole('button', { name: 'Close more tools', exact: true }).click();
   await page.getByRole('button', { name: 'Debug menu', exact: true }).click();
   const debug = page.getByRole('complementary', { name: 'Debug menu', exact: true });
   await debug.locator('details.cache-controls > summary').click();

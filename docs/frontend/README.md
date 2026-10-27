@@ -51,17 +51,18 @@ API schemas own supported fields. They are not additional roadmaps.
   old FAQ links retain their section and map context. API and downloads remain
   available, including a download link from map search.
   Existing informational/download routes remain compatible aliases.
-- Keep Search map on the map. Street/Satellite and 2D/3D remain in header Tools.
-  A compact map toolbar groups View (Street/Satellite), 2D/3D, Your location
-  and Search this area. Native map gestures and keyboard navigation remain
-  available. The 3D view uses a 60-degree pitch; 2D looks straight down.
-  On desktop, the collapsed Search map control sits flush against the map's top-left,
-  directly below the shared header.
-  Preserve the compact controls, theme styles and 44px touch targets.
+- A centered horizontal map toolbar joins desktop Search map with direct
+  Street/Satellite controls, 2D/3D, Your location and Search this area. The input
+  stays in place as its resizable results/detail surface opens directly below
+  the search segment. On mobile, tools stay centered near the map top while
+  search uses the bottom sheet. Keep 44px touch targets and native gestures.
+  The 3D view uses a 60-degree pitch; 2D looks straight down. More tools contains
+  release selection, clustering, icon size, optimized dots and diagnostics;
+  map style and camera controls are not duplicated in that menu.
 - Resize applicable panels by dragging edges, not plus/minus width buttons.
   Do not change panel layout without the maintainer's specific approval.
 - The map stage fills the space below the header, including when navigation
-  wraps. On desktop Search opens a resizable left workspace at one-third width;
+  wraps. On desktop Search opens its anchored resizable workspace at one-third width;
   the map remains full-size underneath it. Opening, closing or resizing the
   overlay preserves the map canvas, camera and marker positions. Search,
   filters, results and facility detail share that overlay.
@@ -85,12 +86,33 @@ API schemas own supported fields. They are not additional roadmaps.
   returns to that record. Unmapped records have no Show on map action.
   Below Search, keep Filters with its
   sliders icon and the result count on one compact row. Keep detail dense and
-  readable, with an outlined `Open facility page` action at the bottom.
+  readable, with a white `Open facility page` action with black text at the bottom.
   Keep checkbox multi-selection, totals/pagination, evidence and relationship
-  controls. Public category filters reuse their existing semantic color swatches.
+  controls. Public category filters use short translated labels and existing
+  semantic color swatches in two columns. Country and Source use multi-select
+  disclosures that show their current selections. Location preserves explicit
+  precision choices; Mapped expands to supported mapped precision values,
+  with an indeterminate state for partial selection. Filters fill the available
+  workspace, with a scrolling options region and fixed Clear filters / Show
+  results footer. Opening filters on mobile expands the sheet; closing them
+  restores its previous results height.
 
 ## Map
 
+- Individual pins show an escaped-text name/category label on fine-pointer
+  hover. Labels use the validated release-pinned public detail projection, with
+  debouncing, cancellation and a bounded short-lived in-memory cache. Release,
+  restrictions, filter and active-state changes invalidate labels; clusters and
+  aggregate references never expose a facility tooltip. Hover does not move the
+  camera or obstruct pin selection.
+- Search this area captures fixed bounds and draws a native geographic perimeter.
+  Panning, rotation and style changes retain those bounds. The persistent
+  Searching this area indication includes a clear action that removes only this
+  scope and its graphic; neither applying nor clearing it opens the search sheet.
+  Radius scopes remain distinct. Queries and spatial scopes are not persisted.
+- Facility icons default to 80% size. More tools and the existing debug slider
+  share renderer settings for clustering, icon size and optimized dots; changes
+  retain camera, filters and selection and are not persisted.
 - Use MapLibre, the existing V1 PNG pin family and V2 taxonomy mappings.
   Do not substitute the six legacy type names for the V2 classification model.
   Processing is grey; do not invent approval for an undocumented palette.
@@ -361,9 +383,12 @@ default; missing translations fall back to English. Additional catalogs load on
 demand, keeping the current language until loading succeeds. Reloading restores
 a saved language without overwriting its preference during loading.
 Language switching preserves map camera,
-release, filters and selection. Source names, identifiers and evidence retain
-their original language; some secondary community/operator and generated API
-reference strings remain English. Extend the existing dictionary rather than
+release, filters and selection. Public About and methodology, filter labels and
+normalized options, Data/download copy, records and contribution flows use the
+shared dictionaries. Country display names and formatted dates/numbers use the
+selected locale. Source names, identifiers, unknown source facts and user content
+retain their original language. Generated Swagger references and operator/debug
+strings may remain English. Extend the existing dictionary rather than
 creating another localization path or rewriting approved English copy.
 
 The square theme button immediately left of the language button shows a moon in Dark and a

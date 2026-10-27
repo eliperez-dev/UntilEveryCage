@@ -163,9 +163,9 @@ test('reduced motion and zero-duration debug controls skip the overlay and reset
   await page.waitForTimeout(300);
   expect(await page.evaluate(() => (window as any).__motionFrames.length)).toBe(0);
   await page.emulateMedia({ reducedMotion: 'no-preference' });
-  await page.getByRole('button', { name: 'Tools', exact: true }).click();
+  await page.getByRole('button', { name: 'More tools', exact: true }).click();
   await page.getByRole('checkbox', { name: 'Enable debug menu', exact: true }).check();
-  await page.getByRole('button', { name: 'Close Tools', exact: true }).click();
+  await page.getByRole('button', { name: 'Close more tools', exact: true }).click();
   await page.getByRole('button', { name: 'Debug menu', exact: true }).click();
   const interaction = page.locator('#map-diagnostics details').filter({ has: page.locator('#cluster-motion-duration') });
   await interaction.locator('summary').click();
@@ -238,11 +238,11 @@ test('animation on and off keep the same 3D camera path and mobile wheel zoom re
     return canvas.toDataURL('image/png').split(',')[1]!;
   }), 'base64');
   await page.route('https://tiles.mapterhorn.com/**', route => route.fulfill({ contentType: 'image/png', body: elevation }));
-  await page.getByRole('button', { name: 'Tools', exact: true }).click();
+  await page.getByRole('button', { name: 'More tools', exact: true }).click();
   await page.getByRole('checkbox', { name: 'Enable debug menu', exact: true }).check();
-  await page.locator('#shared-tools-menu .map-camera-toggle').click();
-  await page.waitForFunction(() => { const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__; return map.getPitch() === 45 && map.isSourceLoaded('mapterhorn-terrain'); });
-  await page.getByRole('button', { name: 'Close Tools', exact: true }).click();
+  await page.getByRole('button', { name: 'Close more tools', exact: true }).click();
+  await page.locator('.map-navigation .dimension-button').click();
+  await page.waitForFunction(() => { const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__; return map.getPitch() === 60 && map.isSourceLoaded('mapterhorn-terrain'); });
   const coarse = await page.evaluate(() => [...new Set((window as any).__UEC_LOCAL_PREVIEW_MAP__.queryRenderedFeatures({ layers: ['clusters'] }).map((feature: any) => feature.properties.cluster_id))].sort());
   const setDuration = async (duration: number) => {
     await page.getByRole('button', { name: 'Debug menu', exact: true }).click();

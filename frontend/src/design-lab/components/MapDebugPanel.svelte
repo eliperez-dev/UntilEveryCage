@@ -96,7 +96,7 @@
     </fieldset>
     <fieldset><legend>Marks</legend>
       <label class="checkbox" for="v1-pin-mode"><input id="v1-pin-mode" type="checkbox" checked={usePins} onchange={e => onvisual('pins', e.currentTarget.checked)} />Facility pins</label>
-      {#if usePins}<label for="pin-scale">Pin size<output>{Math.round(pinScale * 100)}%</output></label><input id="pin-scale" type="range" min="0.6" max="1.6" step="0.05" value={pinScale} oninput={e => onvisual('pinScale', Number(e.currentTarget.value))} />
+      {#if usePins}<label for="pin-scale">{tr('Facility pin size', $language)}<output>{Math.round(pinScale * 100)}%</output></label><input id="pin-scale" type="range" min="0.6" max="1.6" step="0.05" value={pinScale} oninput={e => onvisual('pinScale', Number(e.currentTarget.value))} />
       {:else}<label for="coordinate-radius">Point size<output>{coordinateRadius} px</output></label><input id="coordinate-radius" type="range" min="3" max="12" step="0.5" value={coordinateRadius} oninput={e => onvisual('coordinateRadius', Number(e.currentTarget.value))} />{/if}
       {#if privateReferences}<label for="reference-radius">Display radius<output>{referenceRadius.toFixed(2)} km</output></label><input id="reference-radius" type="range" min="0.25" max="5" step="0.25" value={referenceRadius} oninput={e => onvisual('referenceRadius', Number(e.currentTarget.value))} />
       <label for="reference-opacity">Area opacity<output>{Math.round(referenceOpacity * 100)}%</output></label><input id="reference-opacity" type="range" min="0.02" max="0.35" step="0.01" value={referenceOpacity} oninput={e => onvisual('referenceOpacity', Number(e.currentTarget.value))} />

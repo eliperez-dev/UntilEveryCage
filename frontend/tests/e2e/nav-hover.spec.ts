@@ -26,7 +26,7 @@ test('the masthead exposes four direct destinations and Tools', async ({ page })
   await page.goto('./#/about');
   const nav = page.getByRole('navigation', { name: 'Primary' });
   await expect(nav.getByRole('link')).toHaveText(['Map', 'Data', 'Contribute', 'About']);
-  await expect(page.getByRole('button', { name: 'Tools', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'More tools', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: /Show (About|Database) pages/ })).toHaveCount(0);
   await expect(page.locator('#shared-about-nav, #shared-database-nav')).toHaveCount(0);
   await nav.getByRole('link', { name: 'Data', exact: true }).click();

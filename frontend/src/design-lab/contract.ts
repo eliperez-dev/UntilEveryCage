@@ -55,10 +55,15 @@ export type LabAction =
   | { type: 'search'; value: { query: string; filters: LabFilters } }
   | { type: 'results' } | { type: 'close-workspace' };
 
+export type PinHoverLabel = Readonly<{ name: string; categoryKey: string }>;
+export type MapDisplaySettings = Readonly<{ clusterMode: 'auto' | 'on' | 'off'; pinScale: number; optimizedPins: boolean; coordinateRadius: number }>;
+export type MapDisplaySettingsRequest = Readonly<{ id: number; patch: Partial<MapDisplaySettings> }>;
+
 export interface DirectionViewProps {
   state: LabState;
   records: readonly LabRecord[];
   mapRecords?: readonly LabRecord[];
+  resolvePinHover?(id: string, signal: AbortSignal): Promise<PinHoverLabel | null>;
   mode?: 'synthetic' | 'real-preview' | 'candidate-preview' | 'public-release';
   publicReleaseId?: string | null;
   publicReleaseIdentity?: string | null;

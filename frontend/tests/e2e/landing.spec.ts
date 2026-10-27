@@ -8,7 +8,7 @@ test('landing stays separate from the map and its media can be paused', async ({
   await expect(page.getByRole('navigation', { name: 'Primary' }).getByRole('link')).toHaveText(['Map', 'Data', 'Contribute', 'About']);
   await expect(page.locator('.masthead nav [aria-current]')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Dark theme', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Tools', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'More tools', exact: true })).toBeVisible();
   await expect(page.locator('.hero-photo')).toHaveCount(2);
   await expect.poll(() => page.locator('.hero-photo').evaluateAll(images => images.every(image => (image as HTMLImageElement).complete && (image as HTMLImageElement).naturalWidth > 0))).toBe(true);
   await expect(page.locator('.maplibregl-map')).toHaveCount(0);
@@ -61,11 +61,11 @@ test('saved Spanish choice applies to the landing and shared header in both them
       expect(box!.x).toBeGreaterThanOrEqual(0);
       expect(box!.x + box!.width).toBeLessThanOrEqual(320);
     }
-    await page.getByRole('button', { name: 'Herramientas', exact: true }).click();
+    await page.getByRole('button', { name: 'Más herramientas', exact: true }).click();
     await expect(page.getByRole('combobox', { name: 'Idioma', exact: true })).toBeVisible();
     await expect(page.getByRole('combobox', { name: 'Versión actual', exact: true })).toBeDisabled();
     await page.keyboard.press('Escape');
-    await expect(page.getByRole('button', { name: 'Herramientas', exact: true })).toBeFocused();
+    await expect(page.getByRole('button', { name: 'Más herramientas', exact: true })).toBeFocused();
   }
 });
 

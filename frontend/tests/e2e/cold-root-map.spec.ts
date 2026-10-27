@@ -179,8 +179,7 @@ test('cold landing entry and warmed reload keep map controls and exact/approxima
   await page.getByRole('button', { name: 'Close workspace', exact: true }).click();
   await expectMapWidth();
 
-  await page.getByRole('button', { name: 'Tools' }).click();
-  await page.getByLabel('Map style').selectOption('satellite');
+  await page.locator('.map-navigation').getByRole('button', { name: 'Satellite', exact: true }).click();
   await expect.poll(() => new URL(page.url()).hash).toContain('basemap=satellite');
   await expect.poll(() => page.evaluate(() => Boolean((window as any).__UEC_LOCAL_PREVIEW_MAP__?.getLayer('approx-reference-pins')))).toBe(true);
   await expect(page.locator('.startup-status')).toHaveCount(0);
@@ -210,8 +209,7 @@ test('cold landing entry and warmed reload keep map controls and exact/approxima
   await expect(page.getByRole('combobox', { name: 'Search across public release records' })).toBeVisible();
   expect(new URL(page.url()).hash).toContain('list=open');
   await page.getByRole('button', { name: 'Close workspace', exact: true }).click();
-  await page.getByRole('button', { name: 'Tools' }).click();
-  await page.getByLabel('Map style').selectOption('satellite');
+  await page.locator('.map-navigation').getByRole('button', { name: 'Satellite', exact: true }).click();
   await expect.poll(() => new URL(page.url()).hash).toContain('basemap=satellite');
   await expect(page.locator('.startup-status')).toHaveCount(0);
 
@@ -361,9 +359,9 @@ test('cold landing entry and warmed reload keep map controls and exact/approxima
   expect(links).not.toMatch(/12\.345678|98\.765432/);
   expect(feedRequests).toBe(1);
 
-  await page.getByRole('button', { name: 'Tools', exact: true }).click();
+  await page.getByRole('button', { name: 'More tools', exact: true }).click();
   await page.getByLabel('Enable debug menu', { exact: true }).check();
-  await page.getByRole('button', { name: 'Close Tools', exact: true }).click();
+  await page.getByRole('button', { name: 'Close more tools', exact: true }).click();
   await page.getByRole('button', { name: 'Debug menu', exact: true }).click();
   const debug = page.getByRole('complementary', { name: 'Debug menu', exact: true });
   await expect(debug).toBeVisible();

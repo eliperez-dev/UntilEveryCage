@@ -277,13 +277,13 @@
     return sourceFactLabels(facts, field).join(', ') || null;
   }
   function formattedRange(range: DerivedSourceVolumeRange): string | null {
-    const number = (value: number) => new Intl.NumberFormat('en-US').format(value);
+    const number = (value: number) => new Intl.NumberFormat($language).format(value);
     if (range.bounds === 'exclusive_upper' && range.upper !== null) return `${tr('Less than', $language)} ${number(range.upper)}`;
     if (range.bounds === 'inclusive_lower_unbounded' && range.lower !== null) return `${number(range.lower)} ${tr('or more', $language)}`;
     if (range.bounds === 'inclusive_lower_exclusive_upper' && range.lower !== null && range.upper !== null) return `${number(range.lower)} ${tr('to less than', $language)} ${number(range.upper)}`;
     return null;
   }
-  function annualSpeciesCount(count: number): string { return new Intl.NumberFormat('en-US').format(count); }
+  function annualSpeciesCount(count: number): string { return new Intl.NumberFormat($language).format(count); }
   const slaughterRanges = $derived(sourceFacts?.derivedSourceVolumeRanges?.filter(range => range.unit === 'head' && range.period === 'trailing_360_days') ?? []);
   const processingRanges = $derived(sourceFacts?.derivedSourceVolumeRanges?.filter(range => range.unit === 'pounds' && range.period === 'month') ?? []);
   const slaughterRangeText = $derived(slaughterRanges.map(formattedRange).filter((range): range is string => Boolean(range)).map(range => `${range} ${tr('animals', $language)}`).join(', '));
@@ -375,7 +375,7 @@
       {#if coordinateConfidence !== null || record.coordinateConfidenceBand}<div><dt>{tr('Geocoding confidence', $language)}</dt><dd>{#if coordinateConfidence !== null}{coordinateConfidence} ({tr('provider score', $language)}){/if}{#if record.coordinateConfidenceBand}{coordinateConfidence !== null ? ' · ' : ''}{displayGeneratedValue(record.coordinateConfidenceBand)}{/if}</dd></div>{/if}
       {#if defaultMapScope === false}<div><dt>{tr('Map scope', $language)}</dt><dd>{tr('Outside the default map', $language)}{#if mapScopeReason} · {displayGeneratedValue(mapScopeReason)}{/if}</dd></div>{/if}
     </dl>
-    {#if presentation === 'rail' && hasCoordinates && onshowmap}<button class="show-on-map" type="button" onclick={onshowmap}>{tr('Show on map', $language)} <span aria-hidden="true">↗</span></button>{/if}
+    {#if presentation === 'rail' && hasCoordinates && onshowmap}<button class="show-on-map" type="button" onclick={onshowmap}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/><path d="M12 2v4m0 12v4M2 12h4m12 0h4"/></svg>{tr('Show on map', $language)}</button>{/if}
   </section>
 
   {#if presentation === 'page' && hasCoordinates}<LocationPreview latitude={record.latitude!} longitude={record.longitude!} precision={precision} category={taxonomy?.primaryCategories[0] ?? activity ?? 'unclassified'} />{/if}
@@ -435,7 +435,7 @@
   .connection-state { margin-left:.6rem;color:var(--muted);font-size:.75rem;font-weight:400; }
   .classification-disclosure { margin-top:1rem;border-top:1px solid var(--line); }
   .compact-source { color:var(--ui-muted,var(--muted));font-size:.75rem;line-height:1.5;margin:.5rem 0 1rem;overflow-wrap:anywhere; }
-  .detail:not(.page) .show-on-map { display:inline-flex;align-items:center;gap:.75rem;min-height:44px;margin:.45rem 0 0;padding:0;border:0;background:transparent;color:var(--ink);font:inherit;text-decoration:underline;text-underline-offset:.25rem; }
+  .detail:not(.page) .show-on-map { display:inline-flex;align-items:center;gap:.45rem;min-height:44px;margin:.45rem 0 0;padding:0;border:0;background:transparent;color:var(--ink);font:inherit;font-size:.75rem;text-decoration:none; }
   .detail:not(.page) details.source-facts-section,.detail:not(.page) details.evidence-section,.detail:not(.page) details.connections-disclosure { border-top:1px solid var(--line);margin-top:1rem; }
   .detail:not(.page) details > summary { min-height:48px;padding:.75rem 0;cursor:pointer;font-size:.8125rem; }
   .detail:not(.page) .connections-disclosure :global(.connections > h2) { display:none; }
@@ -602,8 +602,9 @@
     overflow-wrap: anywhere;
   }
 
-  .detail:not(.page) .open-facility { display: flex; align-items: center; justify-content: space-between; gap: .75rem; width: 100%; min-height: 2.75rem; margin: 1rem 0 0; padding: .55rem .8rem; border: 1px solid var(--line); color: var(--ink); background: transparent; font-size: .8125rem; font-weight: 500; text-decoration: none; }
-  .detail:not(.page) .open-facility:hover { background: var(--ui-hover); }
+  .detail:not(.page) .open-facility { display: flex; align-items: center; justify-content: space-between; gap: .75rem; width: 100%; min-height: 2.75rem; margin: 1rem 0 0; padding: .55rem .8rem; border: 1px solid #f4f2ec; color: #141414; background: #f4f2ec; font-size: .8125rem; font-weight: 500; text-decoration: none; }
+  .detail:not(.page) .open-facility:hover { background:#e3e0d8;border-color:#e3e0d8; }
+  .detail:not(.page) .open-facility:focus-visible { outline:2px solid var(--ink);outline-offset:3px; }
   .open-facility svg { width: 1rem; height: 1rem; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 
   .detail:not(.page) .share {
@@ -659,4 +660,5 @@
     .detail:not(.page) { border: 0; padding: 1rem; }
     .detail:not(.page) .share { width: 2.75rem; min-height: 2.75rem; }
   }
+  .show-on-map svg { width:1rem;height:1rem;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round; }
 </style>

@@ -53,12 +53,7 @@ test('mobile selection preserves query and sheet state, and map preview retains 
   const detailHandle = page.getByRole('button', { name:'View facility details', exact:true });
   await expect(detailHandle).toHaveAttribute('data-sheet-state','expanded');
   await detailHandle.focus(); await page.keyboard.press('ArrowDown');
-  const view=page.getByRole('navigation',{name:'Map navigation',exact:true}).getByRole('button',{name:'View',exact:true});
-  await expect(view).toBeEnabled();
-  await view.click();
-  await expect(page.locator('#map-navigation-view')).toBeVisible();
-  await page.keyboard.press('Escape');
-  await expect(page.locator('#map-navigation-view')).toHaveCount(0);
+  await expect(page.locator('.map-navigation .mobile-style')).toBeEnabled();
   await expect(page.locator('.dossier')).toBeVisible();
   expect(new URL(page.url()).hash).toContain('selected=syn-001');
   await expect(detailHandle).toHaveAttribute('data-sheet-state','middle');
@@ -69,7 +64,7 @@ test('mobile selection preserves query and sheet state, and map preview retains 
   expect(new URL(page.url()).hash).toContain('selected=syn-001');
   await detailHandle.click();
   await expect(detailHandle).toHaveAttribute('data-sheet-state','middle');
-  await expect(page.locator('.search-tools')).toBeHidden();
+  await expect(page.locator('#field-search-content')).toBeHidden();
   await expect(page.locator('.csv-download')).toBeHidden();
   await expect(page.locator('.result-status')).toBeHidden();
   const selectedUrl = page.url();
@@ -159,9 +154,9 @@ test('desktop overlays a one-third rail on the unchanged map and mobile handle s
   expect(map!.width).toBeCloseTo(1440, -1);
   await expect(page.locator('.mobile-sheet-handle')).toBeHidden();
   await page.locator('[data-record-id="syn-001"]').click();
-  await expect(page.locator('.search-tools')).toBeHidden();
+  await expect(page.locator('#field-search-content')).toBeHidden();
   await page.getByRole('button', { name: /Back to results/ }).click();
-  await expect(page.locator('.search-tools')).toBeVisible();
+  await expect(page.locator('#field-search-content')).toBeVisible();
 });
 
 for (const width of [320,390]) test(`mobile filters keep their final option and clear action reachable at ${width}px`, async ({ page }) => {
@@ -173,35 +168,35 @@ for (const width of [320,390]) test(`mobile filters keep their final option and 
   const popup = page.locator('.filter-sheet');
   await expect.poll(async () => (await popup.boundingBox())!.y + (await popup.boundingBox())!.height).toBeLessThanOrEqual(844);
   await expect.poll(async () => (await popup.boundingBox())!.y + (await popup.boundingBox())!.height).toBeGreaterThan(830);
-  await popup.evaluate(node => { node.scrollTop = node.scrollHeight; });
+  await popup.locator('.filter-scroll').evaluate(node => { node.scrollTop = node.scrollHeight; });
   const last = popup.getByRole('checkbox').last();
   await expect(last).toBeInViewport();
   await last.check();
-  await popup.evaluate(node => { node.scrollTop = node.scrollHeight; });
-  const clear = popup.getByRole('button', { name:'Clear all filters',exact:true });
+  await popup.locator('.filter-scroll').evaluate(node => { node.scrollTop = node.scrollHeight; });
+  const clear = popup.getByRole('button', { name:'Clear filters',exact:true });
   await expect(clear).toBeInViewport();
   await clear.click();
   await expect(last).not.toBeChecked();
   await handle.focus(); await page.keyboard.press('End');
   await expect(handle).toHaveAttribute('data-sheet-state','expanded');
   await expect.poll(async () => (await popup.boundingBox())!.y + (await popup.boundingBox())!.height).toBeLessThanOrEqual(844);
-  await popup.evaluate(node => { node.scrollTop = node.scrollHeight; });
+  await popup.locator('.filter-scroll').evaluate(node => { node.scrollTop = node.scrollHeight; });
   await last.focus(); await page.keyboard.press('Space');
   await expect(last).toBeChecked();
   await expect(last).toBeInViewport();
   await page.keyboard.press('Escape');
   await expect(popup).toBeHidden();
   await expect(page.locator('.filters > summary')).toBeFocused();
-  await expect(handle).toHaveAttribute('data-sheet-state','expanded');
+  await expect(handle).toHaveAttribute('data-sheet-state','middle');
 });
 
 test('desktop filters extend to the available viewport bottom and retain the clear action', async ({page})=>{
   await page.setViewportSize({width:1440,height:960});await openFixture(page,'open');
   await page.locator('.filters > summary').click();
   const popup=page.locator('.filter-sheet');
-  await expect.poll(async()=>{const r=(await popup.boundingBox())!;return r.y+r.height}).toBeGreaterThan(946);
+  await expect.poll(async()=>{const r=(await popup.boundingBox())!,panel=(await page.locator('.results').boundingBox())!;return Math.abs(r.y+r.height-panel.y-panel.height)}).toBeLessThan(2);
   await expect.poll(async()=>{const r=(await popup.boundingBox())!;return r.y+r.height}).toBeLessThanOrEqual(960);
   await popup.getByRole('checkbox').last().check();
-  await popup.getByRole('button',{name:'Clear all filters',exact:true}).click();
+  await popup.getByRole('button',{name:'Clear filters',exact:true}).click();
   await expect(popup.getByRole('checkbox').last()).not.toBeChecked();
 });

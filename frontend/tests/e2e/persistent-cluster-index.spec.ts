@@ -67,9 +67,9 @@ async function fixture(page: Page) {
 
 async function diagnostics(page: Page) {
   if (!await page.locator('#map-diagnostics').isVisible()) {
-    await page.getByRole('button', { name: 'Tools', exact: true }).click();
+    await page.getByRole('button', { name: 'More tools', exact: true }).click();
     await page.getByRole('checkbox', { name: 'Enable debug menu', exact: true }).check();
-    await page.getByRole('button', { name: 'Close Tools', exact: true }).click();
+    await page.getByRole('button', { name: 'Close more tools', exact: true }).click();
     await page.getByRole('button', { name: 'Debug menu', exact: true }).click();
   }
   const renderer = page.locator('#map-diagnostics details').filter({ has: page.locator('summary', { hasText: 'Renderer & timing' }) });

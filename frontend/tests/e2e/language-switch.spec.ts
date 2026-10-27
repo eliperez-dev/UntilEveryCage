@@ -5,7 +5,8 @@ test('Spanish selection changes primary and map controls without changing route 
   await installEmptyPublicMap(page, 'synthetic-release');
   await page.goto('./#/map?scenario=default&lat=38&lon=-96&z=4&release_id=synthetic-release&source=us.fsis&category=Processing&precision=exact&country=US&source_filter=us.fsis&activity=slaughter&selected=synthetic-record-1&focus=selected');
   await expect(page.getByRole('button', { name: /Back to results/ })).toBeVisible();
-  await expect(page.locator('.search-tools')).toBeHidden();
+  await expect(page.locator('#field-search-content')).toBeHidden();
+  await expect(page.getByRole('combobox', { name: 'Search across public release records' })).toBeVisible();
   const stateBeforeSwitch = page.url().split('#')[1];
   const languageControl = async () => {
     // The shell header can appear before the lazy map module is mounted.
@@ -17,7 +18,8 @@ test('Spanish selection changes primary and map controls without changing route 
   await control.click();
   await expect(page.getByRole('navigation', { name: 'Navegación principal' }).getByRole('link', { name: 'Mapa', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: /Volver a los resultados/ })).toBeVisible();
-  await expect(page.locator('.search-tools')).toBeHidden();
+  await expect(page.locator('#field-search-content')).toBeHidden();
+  await expect(page.getByRole('combobox', { name: 'Buscar en los registros de la versión pública' })).toBeVisible();
   expect(page.url().split('#')[1]).toBe(stateBeforeSwitch);
   const mapParams = new URLSearchParams(page.url().split('?')[1] ?? '');
   expect(mapParams.get('release_id')).toBe('synthetic-release');
@@ -29,7 +31,7 @@ test('Spanish selection changes primary and map controls without changing route 
   expect(mapParams.get('precision')).toBe('exact');
   expect(mapParams.get('country')).toBe('US');
   await page.getByRole('button', { name:/Volver a los resultados/ }).click();
-  await expect(page.getByText('Buscar registros', { exact: true })).toBeVisible();
+  await expect(page.getByRole('combobox', { name: 'Buscar en los registros de la versión pública' })).toBeVisible();
   await expect(page.getByText('Filtros 6', { exact: true })).toBeVisible();
   const restoredParams = new URLSearchParams(page.url().split('?')[1] ?? '');
   for (const key of ['release_id','lat','lon','z','category','precision','country','source_filter','activity']) expect(restoredParams.get(key)).toBe(mapParams.get(key));

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { language, tr } from './language';
   import 'maplibre-gl/dist/maplibre-gl.css';
   import type { Map as MapLibreMap } from 'maplibre-gl';
   import workerUrl from '../map/persistentMapWorker.ts?worker&url';
@@ -67,10 +68,10 @@
   });
 </script>
 
-<section class="location-preview" aria-label={exact ? 'Satellite location preview' : 'Approximate road map preview'}>
+<section class="location-preview" aria-label={tr(exact ? 'Satellite location preview' : 'Approximate road map preview', $language)}>
   <div class="map" bind:this={host} data-pin-loaded={pinLoaded}></div>
-  {#if error}<p class="map-error" role="status">Location map unavailable.</p>{/if}
-  {#if !exact}<p class="approx">Approximate location</p>{/if}
+  {#if error}<p class="map-error" role="status">{tr("Location map unavailable.", $language)}</p>{/if}
+  {#if !exact}<p class="approx">{tr("Approximate location", $language)}</p>{/if}
 </section>
 
 <style>

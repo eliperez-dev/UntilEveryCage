@@ -46,7 +46,7 @@
   const sourceFlagLabel = (key: string) => translatedGenerated(key);
   const affirmativeEntries = affirmativeSourceEntries;
   const formattedRangeLocalized = (range: DerivedSourceVolumeRange) => {
-    const number = (value: number) => new Intl.NumberFormat('en-US').format(value);
+    const number = (value: number) => new Intl.NumberFormat($language).format(value);
     if (range.bounds === 'exclusive_upper' && range.upper !== null) return `${tr('Less than', $language)} ${number(range.upper)}`;
     if (range.bounds === 'inclusive_lower_unbounded' && range.lower !== null) return `${number(range.lower)} ${tr('or more', $language)}`;
     if (range.bounds === 'inclusive_lower_exclusive_upper' && range.lower !== null && range.upper !== null) return `${number(range.lower)} ${tr('to less than', $language)} ${number(range.upper)}`;
@@ -54,7 +54,7 @@
   };
   const slaughterRanges = (ranges: readonly DerivedSourceVolumeRange[] | undefined) => ranges?.filter(range => range.unit === 'head' && range.period === 'trailing_360_days') ?? [];
   const processingRanges = (ranges: readonly DerivedSourceVolumeRange[] | undefined) => ranges?.filter(range => range.unit === 'pounds' && range.period === 'month') ?? [];
-  const annualSpeciesCount = (count: number) => new Intl.NumberFormat('en-US').format(count);
+  const annualSpeciesCount = (count: number) => new Intl.NumberFormat($language).format(count);
   const recordLink = $derived(`${window.location.origin}${window.location.pathname}${serializeRoute({kind:'record',facilityId:id,profile,...(currentRelease ? {releaseId:currentRelease} : {}),returnMapHref})}`);
   const openMapHref = $derived(record && record.lat !== null && record.lon !== null ? (() => {
     const params = new URLSearchParams((safeMapHref(returnMapHref) ?? '#/map').split('?')[1] ?? '');
@@ -74,10 +74,10 @@
     copyResetTimer = setTimeout(() => { if (attempt === copyAttempt) copyFeedback = ''; copyResetTimer = undefined; }, copied ? 1500 : 2500);
   }
 </script>
-<svelte:head><title>{record?.name ?? 'Record'} · Until Every Cage</title></svelte:head>
-<section class="public-record" aria-label="Public record">
-  {#if profile === 'community'}<p class="warning"><strong>Unreviewed community claim: not verified by Until Every Cage.</strong> Privacy screening is not factual review or project approval. Community counts are separate.</p>{/if}
-  {#if busy}<p role="status">{tr('Loading record…', $language)}</p>{:else if error}<h1>Record unavailable</h1><p role="alert">{error}</p><button type="button" onclick={() => retry += 1}>Retry</button><p><a href="#/database">Browse records</a></p>{:else if record}<h1>{record.name} <button class="share" type="button" aria-label={tr('Copy facility link', $language)} title={tr('Copy facility link', $language)} onclick={copyRecordLink}><svg aria-hidden="true" viewBox="0 0 24 24">{#if copyFeedback === 'copied'}<path d="m5 12 4 4L19 6"/>{:else if copyFeedback === 'failed'}<path d="M6 6l12 12M18 6 6 18"/>{:else}<path d="M10 13a5 5 0 0 0 7.1 0l3-3A5 5 0 0 0 13 2.9l-1.7 1.7m2.7 6.4a5 5 0 0 0-7.1 0l-3 3A5 5 0 0 0 11 21.1l1.7-1.7"/>{/if}</svg></button><span class="sr-only" role="status" aria-live="polite">{copyFeedback === 'copied' ? tr('Link copied', $language) : copyFeedback === 'failed' ? tr('Could not copy facility link', $language) : ''}</span></h1>
+<svelte:head><title>{record?.name ?? tr('Record', $language)} · Until Every Cage</title></svelte:head>
+<section class="public-record" aria-label={tr('Public record', $language)}>
+  {#if profile === 'community'}<p class="warning"><strong>{tr("Unreviewed community claim: not verified by Until Every Cage.", $language)}</strong> {tr("Privacy screening is not factual review or project approval. Community counts are separate.", $language)}</p>{/if}
+  {#if busy}<p role="status">{tr('Loading record…', $language)}</p>{:else if error}<h1>{tr("Record unavailable", $language)}</h1><p role="alert">{tr(error, $language)}</p><button type="button" onclick={() => retry += 1}>{tr("Retry", $language)}</button><p><a href="#/database">{tr("Browse records", $language)}</a></p>{:else if record}<h1>{record.name} <button class="share" type="button" aria-label={tr('Copy facility link', $language)} title={tr('Copy facility link', $language)} onclick={copyRecordLink}><svg aria-hidden="true" viewBox="0 0 24 24">{#if copyFeedback === 'copied'}<path d="m5 12 4 4L19 6"/>{:else if copyFeedback === 'failed'}<path d="M6 6l12 12M18 6 6 18"/>{:else}<path d="M10 13a5 5 0 0 0 7.1 0l3-3A5 5 0 0 0 13 2.9l-1.7 1.7m2.7 6.4a5 5 0 0 0-7.1 0l-3 3A5 5 0 0 0 11 21.1l1.7-1.7"/>{/if}</svg></button><span class="sr-only" role="status" aria-live="polite">{copyFeedback === 'copied' ? tr('Link copied', $language) : copyFeedback === 'failed' ? tr('Could not copy facility link', $language) : ''}</span></h1>
     <section class="classification-overview" aria-labelledby="activities-heading">
       <h2 id="activities-heading" class="sr-only">{tr('Activities and classification', $language)}</h2>
       <div class="record-category"><CategoryBadge {record} /></div>
@@ -93,7 +93,7 @@
         {#if record.evidence?.geometryProvenance?.provider}<div><dt>{tr('Geocoding provider', $language)}</dt><dd>{record.evidence.geometryProvenance.provider}</dd></div>{/if}
         {#if geocodingConfidence(record) !== null || record.evidence?.geometryProvenance?.confidence_band}<div><dt>{tr('Geocoding confidence', $language)}</dt><dd>{#if geocodingConfidence(record) !== null}{geocodingConfidence(record)} ({tr('provider score', $language)}){/if}{#if record.evidence?.geometryProvenance?.confidence_band}{geocodingConfidence(record) !== null ? ' · ' : ''}{translatedGenerated(record.evidence.geometryProvenance.confidence_band)}{/if}</dd></div>{/if}
       </dl>
-      {#if openMapHref}<p class="map-action"><a href={openMapHref}>{tr('Open in Map', $language)}</a></p>{/if}
+      {#if openMapHref}<p class="map-action"><a href={openMapHref}><svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/><path d="M12 2v4m0 12v4M2 12h4m12 0h4"/></svg>{tr('Open in Map', $language)}</a></p>{/if}
     </section>
     {#if record.lat !== null && record.lon !== null}<LocationPreview latitude={record.lat} longitude={record.lon} precision={record.evidence?.displayPrecision ?? 'unmapped'} category={record.taxonomy?.primaryCategories[0] ?? record.category} />{/if}
     {#if record.sourceFacts}
@@ -124,6 +124,7 @@
   h1 { margin: 0 0 .75rem; font: 500 2rem/1.2 Georgia, serif; overflow-wrap: anywhere; }
   h2 { margin: 1.5rem 0 0; font: 600 1.05rem/1.3 Georgia, serif; }
   p { color: #c6d0c5; }
+  .map-action a { display:inline-flex;align-items:center;gap:.5rem;min-height:2.75rem; }.map-action svg { width:1rem;height:1rem;flex:none;fill:none;stroke:currentColor;stroke-width:1.5; }
   .record-category { margin: .25rem 0; }
   dl { margin: 1.25rem 0; }
   .source-facts dl { margin: .4rem 0; }
