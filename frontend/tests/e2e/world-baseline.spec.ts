@@ -2,7 +2,10 @@ import { expect, test } from '@playwright/test';
 import releaseManifest from '../fixtures/release-map/manifest.json' with { type: 'json' };
 
 async function installWorldFixture(page: import('@playwright/test').Page) {
-  const transparent = Buffer.from(await page.evaluate(() => document.createElement('canvas').toDataURL('image/png').split(',')[1]!), 'base64');
+  const transparent = Buffer.from(await page.evaluate(() => {
+    const canvas = document.createElement('canvas'); canvas.width = canvas.height = 256;
+    return canvas.toDataURL('image/png').split(',')[1]!;
+  }), 'base64');
   await page.route('https://tile.openstreetmap.org/**', route => route.fulfill({ contentType: 'image/png', body: transparent }));
   await page.route('https://server.arcgisonline.com/**', route => route.fulfill({ contentType: 'image/png', body: transparent }));
   const elevation = Buffer.from(await page.evaluate(() => {
@@ -21,7 +24,7 @@ async function installWorldFixture(page: import('@playwright/test').Page) {
   await page.route(url => url.pathname === '/api/v2/locations', route => route.fulfill({ json: { api_version: 'v2', data: [], meta: { profile: 'official', release_id: 'synthetic-release-2026-09', ruleset_version: 'rules-v1', coverage_note: 'Synthetic world test.', total_count: 0, next_cursor: null } } }));
 }
 
-test('satellite imagery stays backed by bounded local tiles through detailed 2D and 3D zoom', async ({ page }, testInfo) => {
+for (const pitch of [0,55]) test(`satellite imagery stays backed by bounded local tiles through detailed ${pitch ? '3D' : '2D'} zoom`, async ({ page }, testInfo) => {
   test.setTimeout(90_000);
   await page.setViewportSize({ width: 1280, height: 900 });
   // The bundled fallback is real; external detail tiles are deterministic.
@@ -40,41 +43,43 @@ test('satellite imagery stays backed by bounded local tiles through detailed 2D 
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     return map.getStyle().sources.base.tiles[0].includes('World_Imagery') && !map.getLayer('candidate-base') && map.isSourceLoaded('base');
   }), { timeout: 30_000 }).toBe(true);
-  for (const pitch of [0, 55]) {
-    for (const zoom of [9, 7, 10]) {
-      await page.evaluate(({ zoom, pitch }) => (window as any).__UEC_LOCAL_PREVIEW_MAP__.easeTo({ zoom, pitch, duration: 450 }), { zoom, pitch });
-      await page.waitForFunction(() => {
-        const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
-        return !map.isMoving() && map.isSourceLoaded('base') && map.isSourceLoaded('world-satellite');
-      });
-    }
-    if (pitch) expect(await page.evaluate(() => Boolean((window as any).__UEC_LOCAL_PREVIEW_MAP__.getTerrain()))).toBe(true);
-    await page.screenshot({ path: testInfo.outputPath(`satellite-${pitch ? '3d' : '2d'}.png`) });
-    // Remove detail only: the same high-zoom viewport must keep actual coarse
-    // imagery, rather than revealing the flat Natural Earth backing.
-    await page.evaluate(() => {
+  // Each mode exercises all three zoom changes and the actual fallback. Keep
+  // the 3D case's first flat-to-tilted transition, without charging both modes'
+  // software-rendering work against one shared test deadline.
+  for (const zoom of [9, 7, 10]) {
+    await page.evaluate(({ zoom, pitch }) => (window as any).__UEC_LOCAL_PREVIEW_MAP__.easeTo({ zoom, pitch, duration: 450 }), { zoom, pitch });
+    await page.waitForFunction(expectedPitch => {
       const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
-      map.setPaintProperty('base', 'raster-opacity', 0);
-      map.setPaintProperty('transport', 'raster-opacity', 0);
-    });
-    await page.waitForFunction(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.isSourceLoaded('world-satellite'));
-    const fallback = await page.evaluate(() => {
-      const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__, style = map.getStyle();
-      const layer = style.layers.find((layer: any) => layer.id === 'world-satellite');
-      const manager = map.style.tileManagers['world-satellite'];
-      return { maxzoom: style.sources['world-satellite'].maxzoom, layerMaxzoom: layer.maxzoom ?? null,
-        visible: layer.layout.visibility, tiles: manager.getRenderableIds().length,
-        zooms: manager.getRenderableIds().map((id: string) => manager.getTileByID(id)?.tileID?.canonical?.z).filter((z: unknown) => typeof z === 'number') };
-    });
-    expect(fallback).toMatchObject({ maxzoom: 5, layerMaxzoom: null, visible: 'visible' });
-    expect(fallback.tiles).toBeGreaterThan(0);
-    expect(fallback.zooms.every((zoom: number) => zoom <= 5)).toBe(true);
-    await page.screenshot({ path: testInfo.outputPath(`satellite-fallback-${pitch ? '3d' : '2d'}.png`) });
-    await page.evaluate(() => {
-      const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
-      map.setPaintProperty('base', 'raster-opacity', 1); map.setPaintProperty('transport', 'raster-opacity', .72);
-    });
+      return !map.isMoving() && map.isSourceLoaded('base') && map.isSourceLoaded('world-satellite')
+        && (!expectedPitch || Boolean(map.getTerrain() && map.getSource('mapterhorn-terrain') && map.isSourceLoaded('mapterhorn-terrain')));
+    }, pitch);
   }
+  if (pitch) expect(await page.evaluate(() => Boolean((window as any).__UEC_LOCAL_PREVIEW_MAP__.getTerrain()))).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath(`satellite-${pitch ? '3d' : '2d'}.png`) });
+  // Remove detail only: the same high-zoom viewport must keep actual coarse
+  // imagery, rather than revealing the flat Natural Earth backing.
+  await page.evaluate(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    map.setPaintProperty('base', 'raster-opacity', 0);
+    map.setPaintProperty('transport', 'raster-opacity', 0);
+  });
+  await page.waitForFunction(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.isSourceLoaded('world-satellite'));
+  const fallback = await page.evaluate(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__, style = map.getStyle();
+    const layer = style.layers.find((layer: any) => layer.id === 'world-satellite');
+    const manager = map.style.tileManagers['world-satellite'];
+    return { maxzoom: style.sources['world-satellite'].maxzoom, layerMaxzoom: layer.maxzoom ?? null,
+      visible: layer.layout.visibility, tiles: manager.getRenderableIds().length,
+      zooms: manager.getRenderableIds().map((id: string) => manager.getTileByID(id)?.tileID?.canonical?.z).filter((z: unknown) => typeof z === 'number') };
+  });
+  expect(fallback).toMatchObject({ maxzoom: 5, layerMaxzoom: null, visible: 'visible' });
+  expect(fallback.tiles).toBeGreaterThan(0);
+  expect(fallback.zooms.every((zoom: number) => zoom <= 5)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath(`satellite-fallback-${pitch ? '3d' : '2d'}.png`) });
+  await page.evaluate(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    map.setPaintProperty('base', 'raster-opacity', 1); map.setPaintProperty('transport', 'raster-opacity', .72);
+  });
   expect(whole).toHaveLength(0);
   expect(ranges.length).toBeGreaterThan(0);
   expect(ranges.every(url => /-z[0-5]\./.test(url))).toBe(true);
@@ -84,8 +89,13 @@ test('satellite imagery stays backed by bounded local tiles through detailed 2D 
   await page.getByRole('button', { name: 'Debug menu', exact: true }).click();
   const debug = page.getByRole('complementary', { name: 'Debug menu', exact: true });
   await debug.locator('details.cache-controls > summary').click();
-  await expect(debug.locator('#debug-tile-fade')).toBeDisabled();
-  await expect(debug.getByText('Unavailable with terrain', { exact: true })).toBeVisible();
+  if (pitch) {
+    await expect(debug.locator('#debug-tile-fade')).toBeDisabled();
+    await expect(debug.getByText('Unavailable with terrain', { exact: true })).toBeVisible();
+  } else {
+    await expect(debug.locator('#debug-tile-fade')).toBeEnabled();
+    await expect(debug.getByText('Unavailable with terrain', { exact: true })).toBeHidden();
+  }
 });
 
 test('real local world streets and satellite warm through z5 and survive a full reload', async ({ page }, testInfo) => {

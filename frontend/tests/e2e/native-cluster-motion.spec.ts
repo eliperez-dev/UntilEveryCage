@@ -468,6 +468,18 @@ test('a reload and repeated warm gestures keep native parent-origin movement wit
       await page.reload();
       await page.waitForFunction(() => { const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__; return map?.getLayer('clusters') && map.isSourceLoaded('locations') && map.queryRenderedFeatures({ layers: ['clusters'] }).length; });
     }
+    // A source can expose its first cluster before initial style/tile placement
+    // settles. Start from a genuinely idle map, without priming its hierarchy.
+    await page.evaluate(() => new Promise<void>(resolve => {
+      const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+      const ready = () => {
+        if (!map.loaded() || map.isMoving() || !map.isSourceLoaded('locations') || !map.queryRenderedFeatures({ layers: ['clusters'] }).length) return;
+        map.off('idle', ready); resolve();
+      };
+      map.on('idle', ready);
+      // Request one render so an already idle map also emits the readiness cue.
+      map.triggerRepaint();
+    }));
     await page.evaluate(() => { (window as any).__motionFrames.length = 0; (window as any).__UEC_LOCAL_PREVIEW_MAP__.easeTo({ zoom: 10, duration: 500 }); });
     await expect.poll(() => page.evaluate(() => (window as any).__motionFrames.filter((frame: any) => frame.direction === 'split').length)).toBeGreaterThan(10);
     await page.waitForFunction(() => !document.querySelector('.native-cluster-motion')?.hasAttribute('data-phase') && !(window as any).__UEC_LOCAL_PREVIEW_MAP__.isMoving());
