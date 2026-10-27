@@ -12,6 +12,8 @@
   import { publicReleaseLabel } from '../features/locations/releasePresentation';
   import { language, tr } from './language';
   import { SECURE_INBOX_LOCAL } from '../features/contributions/secureInboxMode';
+  import { requestDeviceLocation } from '../features/search/nearbySearch';
+  import type { NearbySearchCommand } from '../design-lab/contract';
   let SecureInbox = $state<typeof import('./contributions/secure/SecureInbox.svelte').default | null>(null);
   let SecureReview = $state<typeof import('./contributions/secure/SecureReview.svelte').default | null>(null);
   let DesignLab = $state<typeof import('../design-lab/DesignLab.svelte').default | null>(null);
@@ -24,6 +26,8 @@
   let publicMapActivation = $state(0);
   let wasPublicMap = false;
   let verifiedReleaseLabel = $state<string | null>(null);
+  let nearbyCommand = $state<NearbySearchCommand | null>(null);
+  let nearbyCommandId = 0;
 
   let route = $state<RouteState>(parseRoute(window.location.hash, false, SECURE_INBOX_LOCAL));
   let routeGeneration = 0;
@@ -37,6 +41,12 @@
     const query = returnMapHref.split('?')[1];
     return query ? `#/database?${query}` : '#/database';
   });
+  async function findNearby(signal: AbortSignal) {
+    const coordinates = await requestDeviceLocation(signal);
+    if (signal.aborted || route.kind !== 'landing') return;
+    nearbyCommand = { id: ++nearbyCommandId, ...coordinates };
+    window.location.hash = returnMapHref;
+  }
 
   const syncRoute = () => {
     const generation = ++routeGeneration;
@@ -113,12 +123,12 @@
 
 {#if DesignLab && publicMapVisited && !reviewMode}
   <div class="retained-public-map" hidden={route.kind !== 'map'} inert={route.kind !== 'map'}>
-    <DesignLab active={route.kind === 'map'} activationId={publicMapActivation} />
+    <DesignLab active={route.kind === 'map'} activationId={publicMapActivation} {nearbyCommand} onnearbyconsumed={id => { if (nearbyCommand?.id === id) nearbyCommand = null; }} />
   </div>
 {/if}
 
 {#if route.kind === 'landing'}
-  <LandingPage mapHref={returnMapHref} />
+  <LandingPage mapHref={returnMapHref} onfindnearby={findNearby} />
 {:else if route.kind === 'map' && DesignLab}
   {#if reviewMode}<DesignLab />{/if}
 {:else if reviewMode && route.kind === 'database' && DatabaseResearch}

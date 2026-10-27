@@ -44,9 +44,11 @@ async function mockSanitizedApi(page: Page) {
 }
 
 async function setSpanishAndTheme(page: Page, theme: 'Claro' | 'Oscuro') {
-  const tools = page.getByRole('button', { name: 'Herramientas', exact: true });
+  const tools = page.getByRole('button', { name: 'Más herramientas', exact: true });
   if (await tools.getAttribute('aria-expanded') !== 'true') await tools.click();
-  await page.getByLabel('Idioma', { exact: true }).selectOption('es');
+  await page.locator('.language-action').click();
+  await page.locator('#shared-language-menu').getByRole('button', { name: 'Español', exact: true }).click();
+  await tools.click();
   const toggle = page.locator('.masthead .theme-toggle');
   const selectedLight = theme === 'Claro';
   if ((await toggle.getAttribute('aria-pressed')) !== String(selectedLight)) await toggle.click();
@@ -54,49 +56,53 @@ async function setSpanishAndTheme(page: Page, theme: 'Claro' | 'Oscuro') {
   await expect(page.locator('html')).toHaveAttribute('data-theme', theme === 'Claro' ? 'light' : 'dark');
 }
 
-test('Spanish map controls stay usable in Tools at 320px, 375px and 390px in either theme', async ({ page }, testInfo) => {
+test('Spanish integrated map controls stay usable at 320px, 375px and 390px in either theme', async ({ page }, testInfo) => {
   await mockSanitizedApi(page);
   await page.addInitScript(() => localStorage.setItem('uec-language', 'es'));
   await page.goto('./#/map');
   await expect(page.getByRole('button', { name: 'Buscar en el mapa' })).toBeVisible();
-  await page.getByRole('button', { name: 'Herramientas', exact: true }).click();
+  await page.getByRole('button', { name: 'Más herramientas', exact: true }).click();
 
   for (const width of [390, 375, 320]) {
     await page.setViewportSize({ width, height: 844 });
     for (const theme of ['Claro', 'Oscuro'] as const) {
       await setSpanishAndTheme(page, theme);
       const geometry = await page.evaluate(() => {
-        const toolbar = document.querySelector('.map-view-tools')!.getBoundingClientRect();
-        const hint = document.querySelector('.gesture-hint')!;
-        const toolbarSurface = document.querySelector('.map-view-tools')!;
-        const style = getComputedStyle(hint);
+        const toolbar = document.querySelector('.navigation-stack')!;
+        const bounds = toolbar.getBoundingClientRect();
+        const menu = document.querySelector('#shared-tools-menu')!;
         return {
-          overflow: toolbarSurface.scrollWidth > toolbarSurface.clientWidth,
-          hintDisplay: style.display,
-          touchTargets: [...document.querySelectorAll('.map-view-tools select, .map-view-tools button')].map(control => control.getBoundingClientRect().height),
+          overflow: toolbar.scrollWidth > toolbar.clientWidth || bounds.left < 0 || bounds.right > innerWidth,
+          menuOverflow: menu.scrollWidth > menu.clientWidth,
+          touchTargets: [...toolbar.querySelectorAll('button')].filter(control => control.getBoundingClientRect().width > 0).map(control => control.getBoundingClientRect().height),
           touchHelpVisibleToAssistiveTech: document.querySelector('#map-camera-help')?.textContent?.trim(),
-          labelClipped: toolbar.scrollWidth > toolbar.clientWidth,
+          duplicatedHeaderControls: menu.querySelectorAll('.map-view-tools, .style-options, .dimension-button').length,
         };
       });
-      expect(geometry.overflow, `${width}px ${theme}: map controls overflow their Tools group`).toBe(false);
-      expect(geometry.labelClipped, `${width}px ${theme}: Tools controls overflow their group`).toBe(false);
-      expect(geometry.hintDisplay, `${width}px ${theme}: gesture hint remains visible in Tools`).not.toBe('none');
+      expect(geometry.overflow, `${width}px ${theme}: map toolbar stays in viewport`).toBe(false);
+      expect(geometry.menuOverflow, `${width}px ${theme}: More tools stays in viewport`).toBe(false);
+      expect(geometry.duplicatedHeaderControls).toBe(0);
       expect(geometry.touchTargets.every(height => height >= 44), `${width}px ${theme}: map controls keep 44px touch targets`).toBe(true);
       expect(geometry.touchHelpVisibleToAssistiveTech, `${width}px ${theme}: camera and touch help remains available`).toContain('dos dedos');
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${width}px ${theme}: page overflow`).toBe(true);
 
       await page.screenshot({ path: testInfo.outputPath(`spanish-map-${width}-${theme.toLowerCase()}.png`) });
       if (width === 390) {
-        await expect(page.getByLabel('Idioma', { exact: true })).toHaveValue('es');
+        await page.locator('.language-action').click();
+        await expect(page.locator('#shared-language-menu').getByRole('button', { name: 'Español', exact: true })).toHaveAttribute('aria-pressed', 'true');
+        await page.keyboard.press('Escape');
+        await page.getByRole('button', { name: 'Más herramientas', exact: true }).click();
         await expect(page.locator('#shared-tools-menu').getByRole('button', { name: /Tema (claro|oscuro)/ })).toHaveCount(0);
         await expect(page.locator('.masthead .theme-toggle')).toHaveAttribute('aria-pressed', String(theme === 'Claro'));
         await page.screenshot({ path: testInfo.outputPath(`spanish-tools-390-${theme.toLowerCase()}.png`) });
         await page.screenshot({ path: testInfo.outputPath(`map-es-mobile-${theme.toLowerCase()}-tools-open.png`), fullPage: true });
-        await page.getByRole('button', { name: 'Cerrar herramientas', exact: true }).click();
-        await expect(page.locator('.map-view-tools')).toHaveCount(0);
+        await page.getByRole('button', { name: 'Cerrar más herramientas', exact: true }).click();
+        await expect(page.locator('#shared-tools-menu')).toHaveCount(0);
+        await expect(page.locator('.map-navigation')).toBeVisible();
+        await expect(page.getByRole('button', { name: 'Más herramientas', exact: true })).toBeFocused();
         await expect(page.getByRole('button', { name: 'Buscar en el mapa' })).toBeVisible();
         await page.screenshot({ path: testInfo.outputPath(`map-es-mobile-${theme.toLowerCase()}-tools-closed.png`), fullPage: true });
-        await page.getByRole('button', { name: 'Herramientas', exact: true }).click();
+        await page.getByRole('button', { name: 'Más herramientas', exact: true }).click();
         await page.setViewportSize({ width, height: 844 });
       }
     }

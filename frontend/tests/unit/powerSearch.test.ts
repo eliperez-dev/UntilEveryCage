@@ -52,4 +52,13 @@ describe('structured map search', () => {
     expect(encodeLabHash(searched)).not.toMatch(/poultry|Synthetic|radius|40|-3/);
     expect(reduceLabState(searched, { type: 'reset-filters' })).toMatchObject({ query: '', searchScope: null, filters: DEFAULT_LAB_STATE.filters });
   });
+  it('opens spatial search results while retaining selection when requested, and clears only the spatial scope',()=>{
+    const initial={...DEFAULT_LAB_STATE,listOpen:false,selectedId:'synthetic-selected',query:'poultry',filters:{...DEFAULT_LAB_STATE.filters,countries:['ES'],categories:['slaughter']}};
+    const scope={kind:'area' as const,bounds:{west:-4,east:4,south:38,north:44}};
+    const applied=reduceLabState(initial,{type:'scope',value:scope,preserveWorkspace:true});
+    expect(applied).toEqual({...initial,searchScope:scope,listOpen:true});
+    expect(reduceLabState(applied,{type:'scope',value:null,preserveWorkspace:true})).toEqual({...initial,listOpen:true});
+    expect(reduceLabState(initial,{type:'scope',value:scope})).toMatchObject({listOpen:true,selectedId:null,searchScope:scope});
+    expect(encodeLabHash(applied)).not.toMatch(/poultry|south|north|west|east|scope/);
+  });
 });

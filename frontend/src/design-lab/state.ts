@@ -1,6 +1,7 @@
 import { DEFAULT_LAB_STATE, DIRECTIONS, SCENARIOS, type LabAction, type LabFilters, type LabState } from './contract';
 import { TAXONOMY_PRIMARY_KEYS } from '../domain/taxonomy';
 import { isSearchScope } from '../features/search/powerSearch';
+import { DEFAULT_NEARBY_RADIUS_KM, nearbyOverviewZoom, validDeviceLocation } from '../features/search/nearbySearch';
 
 const safeNumber = (value: string | null, fallback: number, min: number, max: number) => {
   if (value === null || value.trim() === '') return fallback;
@@ -66,11 +67,18 @@ export function reduceLabState(state: LabState, action: LabAction): LabState {
   switch (action.type) {
     case 'direction': return { ...state, direction: action.value };
     case 'scenario': return { ...state, scenario: action.value };
-    case 'query': return { ...state, query: action.value, selectedId: null };
+    case 'query': return { ...state, query: action.value, selectedId: null, listOpen: true };
     case 'search': return { ...state, query: action.value.query, filters: { categories: unique(action.value.filters.categories), precisions: unique(action.value.filters.precisions), countries: unique(action.value.filters.countries), sources: unique(action.value.filters.sources), activities: unique(action.value.filters.activities) }, selectedId: null, aggregateMemberIds: null, listOpen: true };
-    case 'scope': return isSearchScope(action.value) ? { ...state, searchScope: action.value, selectedId: null, aggregateMemberIds: null, listOpen: true } : state;
+    case 'scope': return isSearchScope(action.value) ? action.preserveWorkspace
+      ? { ...state, searchScope: action.value, listOpen: action.value !== null || state.listOpen }
+      : { ...state, searchScope: action.value, selectedId: null, aggregateMemberIds: null, listOpen: true } : state;
     case 'results': return { ...state, selectedId: null, listOpen: true };
     case 'close-workspace': return { ...state, selectedId: null, listOpen: false, aggregateMemberIds: null, expandedCluster: null };
+    case 'explore-map': {
+      const { navigationViewport, ...publicState } = state;
+      return { ...publicState, viewport: navigationViewport ?? state.viewport, searchScope: null,
+        selectedId: null, listOpen: false, aggregateMemberIds: null, expandedCluster: null };
+    }
     case 'select': return { ...state, selectedId: action.value };
     case 'source': return { ...state, sourceId: action.value, selectedId: null, aggregateMemberIds: null };
     case 'cluster': return { ...state, expandedCluster: action.value };
@@ -82,6 +90,16 @@ export function reduceLabState(state: LabState, action: LabAction): LabState {
       const view = action.value;
       if (![view.centerLat, view.centerLon, view.zoom, view.pitch ?? 0, view.bearing ?? 0].every(Number.isFinite) || Math.abs(view.centerLat) > 90 || Math.abs(view.centerLon) > 180 || view.zoom < 1 || view.zoom > 18 || (view.pitch ?? 0) < 0 || (view.pitch ?? 0) > 85 || Math.abs(view.bearing ?? 0) > 180) return state;
       return { ...state, navigationViewport: state.navigationViewport ?? state.viewport, viewport: view };
+    }
+    case 'near-device': {
+      if (!validDeviceLocation(action.value)) return state;
+      const radiusKm = action.value.radiusKm ?? DEFAULT_NEARBY_RADIUS_KM;
+      const scope = { kind: 'radius' as const, label: 'Near you', ...action.value, radiusKm, deviceDerived: true as const };
+      if (!isSearchScope(scope)) return state;
+      return { ...state, navigationViewport: state.navigationViewport ?? state.viewport,
+        viewport: { ...state.viewport, centerLat: scope.latitude, centerLon: scope.longitude,
+          zoom: nearbyOverviewZoom(radiusKm, scope.latitude) },
+        searchScope: scope, selectedId: null, aggregateMemberIds: null, expandedCluster: null, listOpen: true };
     }
     case 'filters': return { ...state, filters: { categories: unique(action.value.categories), precisions: unique(action.value.precisions), countries: unique(action.value.countries), sources: unique(action.value.sources), activities: unique(action.value.activities) } };
     // Retain camera, release, and list state, but clear every active criterion.

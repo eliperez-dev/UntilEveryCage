@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { language, tr } from './language';
   import { LocalLocationRepository, type LocalProfile } from '../api/LocalLocationRepository';
   import { PublicGraphRepository, type GraphFilters } from '../api/PublicGraphRepository';
@@ -7,7 +8,7 @@
   import AphisReports from './AphisReports.svelte';
   import { serializeRoute } from './routeState';
 
-  let { facilityId, releaseId, profile = 'official', sourceId, sourceFacts, rail = false }: { facilityId: string; releaseId: string; profile?: LocalProfile; sourceId?: string | undefined; sourceFacts?: LocationSourceFacts | undefined; rail?: boolean } = $props();
+  let { facilityId, releaseId, profile = 'official', sourceId, sourceFacts, rail = false, onstatechange }: { facilityId: string; releaseId: string; profile?: LocalProfile; sourceId?: string | undefined; sourceFacts?: LocationSourceFacts | undefined; rail?: boolean; onstatechange?: ((state: { count:number; loading:boolean; error:boolean }) => void) | undefined } = $props();
   const graph = new PublicGraphRepository();
   const locations = new LocalLocationRepository();
   let rows = $state<readonly PublicGraphConnection[]>([]);
@@ -21,6 +22,10 @@
   let retry = $state(0);
   let controller: AbortController | undefined;
   let requestVersion = 0;
+  $effect(() => {
+    const state = { count:rows.length, loading, error };
+    untrack(() => onstatechange?.(state));
+  });
 
   function filters(cursor?: string): GraphFilters {
     return {
@@ -129,7 +134,7 @@
           <dl>
             <div><dt>{tr('Method', $language)}</dt><dd>{tr(humanize(edge.match_method), $language)}</dd></div>
             <div><dt>{tr('Source', $language)}</dt><dd>{edge.provenance.source_ids.join(', ')}</dd></div>
-            <div><dt>{tr('Observed', $language)}</dt><dd><time datetime={edge.observed_at}>{new Date(edge.observed_at).toLocaleDateString($language === 'es' ? 'es' : 'en')}</time></dd></div>
+            <div><dt>{tr('Observed', $language)}</dt><dd><time datetime={edge.observed_at}>{new Date(edge.observed_at).toLocaleDateString($language)}</time></dd></div>
             {#if Object.keys(edge.signals).length}<div><dt>{tr('Signals', $language)}</dt><dd>{Object.keys(edge.signals).map(value => tr(humanize(value), $language)).join(', ')}</dd></div>{/if}
             {#if edge.contradictions.length}<div><dt>{tr('Contradictions', $language)}</dt><dd>{edge.contradictions.length} {tr('recorded', $language)}</dd></div>{/if}
           </dl>

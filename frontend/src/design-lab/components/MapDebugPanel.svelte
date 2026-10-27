@@ -1,19 +1,20 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { language, tr } from '../../app/language';
   import type { CacheTuning, DebugMetric, LayoutTuning, WorldCacheTuning } from './mapDebug';
-  let { session, renderer, errors = [], clusterMode, clusterRadius, clusterMaxZoom, clusterDuration, clusterMotionDuration, clusterMotionLimit, rebuildDelay,
+  let { session, renderer, errors = [], clusterMode, clusterRadius, clusterMaxZoom, clusterDuration, clusterMotionDuration, clusterMotionLimit, clusterMotionIdleDelay, rebuildDelay,
     pinScale, usePins, coordinateRadius, privateReferences = false, referenceRadius, referenceOpacity, referenceLabels,
     layout, snapshot, onclose, oncluster, onvisual, oninteraction, onlayout, onreset, onclearcache,
     cacheTuning, tileFadeUnavailable = false, oncache, onresetcaches, onclearindex, oncleartiles, worldTuning, onworld, onclearworld
   }: {
     session: readonly DebugMetric[]; renderer: readonly DebugMetric[]; errors?: readonly string[];
-    clusterMode: 'auto' | 'on' | 'off'; clusterRadius: number; clusterMaxZoom: number; clusterDuration: number; clusterMotionDuration: number; clusterMotionLimit: number; rebuildDelay: number;
+    clusterMode: 'auto' | 'on' | 'off'; clusterRadius: number; clusterMaxZoom: number; clusterDuration: number; clusterMotionDuration: number; clusterMotionLimit: number; clusterMotionIdleDelay: number; rebuildDelay: number;
     pinScale: number; usePins: boolean; coordinateRadius: number; privateReferences?: boolean;
     referenceRadius: number; referenceOpacity: number; referenceLabels: boolean;
     layout: LayoutTuning; snapshot: unknown; onclose(): void;
     oncluster(key: 'mode' | 'radius' | 'cutoff', value: string | number): void;
     onvisual(key: 'pinScale' | 'pins' | 'coordinateRadius' | 'referenceRadius' | 'referenceOpacity' | 'referenceLabels', value: number | boolean): void;
-    oninteraction(key: 'duration' | 'debounce' | 'motionDuration' | 'motionLimit', value: number): void;
+    oninteraction(key: 'duration' | 'debounce' | 'motionDuration' | 'motionLimit' | 'motionIdleDelay', value: number): void;
     onlayout(value: LayoutTuning): void; onreset(): void; onclearcache(): void;
     cacheTuning: CacheTuning;
     tileFadeUnavailable?: boolean;
@@ -26,6 +27,13 @@
     onclearworld(): void;
   } = $props();
   let copyStatus = $state('');
+  let mobileLayout = $state(false);
+  onMount(() => {
+    const media = matchMedia('(max-width:40rem)');
+    const update = () => { mobileLayout = media.matches; };
+    update(); media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  });
   async function copy() {
     try { await navigator.clipboard.writeText(JSON.stringify(snapshot, null, 2)); copyStatus = tr('Copied', $language); }
     catch { copyStatus = tr('Copy failed', $language); }
@@ -88,7 +96,7 @@
     </fieldset>
     <fieldset><legend>Marks</legend>
       <label class="checkbox" for="v1-pin-mode"><input id="v1-pin-mode" type="checkbox" checked={usePins} onchange={e => onvisual('pins', e.currentTarget.checked)} />Facility pins</label>
-      {#if usePins}<label for="pin-scale">Pin size<output>{Math.round(pinScale * 100)}%</output></label><input id="pin-scale" type="range" min="0.6" max="1.6" step="0.05" value={pinScale} oninput={e => onvisual('pinScale', Number(e.currentTarget.value))} />
+      {#if usePins}<label for="pin-scale">{tr('Facility pin size', $language)}<output>{Math.round(pinScale * 100)}%</output></label><input id="pin-scale" type="range" min="0.6" max="1.6" step="0.05" value={pinScale} oninput={e => onvisual('pinScale', Number(e.currentTarget.value))} />
       {:else}<label for="coordinate-radius">Point size<output>{coordinateRadius} px</output></label><input id="coordinate-radius" type="range" min="3" max="12" step="0.5" value={coordinateRadius} oninput={e => onvisual('coordinateRadius', Number(e.currentTarget.value))} />{/if}
       {#if privateReferences}<label for="reference-radius">Display radius<output>{referenceRadius.toFixed(2)} km</output></label><input id="reference-radius" type="range" min="0.25" max="5" step="0.25" value={referenceRadius} oninput={e => onvisual('referenceRadius', Number(e.currentTarget.value))} />
       <label for="reference-opacity">Area opacity<output>{Math.round(referenceOpacity * 100)}%</output></label><input id="reference-opacity" type="range" min="0.02" max="0.35" step="0.01" value={referenceOpacity} oninput={e => onvisual('referenceOpacity', Number(e.currentTarget.value))} />
@@ -96,11 +104,15 @@
     </fieldset>
     <fieldset><legend>Interaction</legend><label for="cluster-zoom-duration">Cluster-click zoom<output>{clusterDuration} ms</output></label><input id="cluster-zoom-duration" type="range" min="0" max="700" step="20" value={clusterDuration} oninput={e => oninteraction('duration', Number(e.currentTarget.value))} />
     <label for="cluster-motion-duration">{tr('Cluster animation', $language)}<output>{clusterMotionDuration} ms</output></label><input id="cluster-motion-duration" type="range" min="0" max="400" step="10" value={clusterMotionDuration} oninput={e => oninteraction('motionDuration', Number(e.currentTarget.value))} />
-    <label for="cluster-motion-limit">{tr('Animation mark limit', $language)}<output>{clusterMotionLimit}</output></label><input id="cluster-motion-limit" type="range" min="50" max="300" step="10" value={clusterMotionLimit} oninput={e => oninteraction('motionLimit', Number(e.currentTarget.value))} />
+    <label for="cluster-motion-idle-delay">{tr('Camera idle delay', $language)}<output>{clusterMotionIdleDelay} ms</output></label><input id="cluster-motion-idle-delay" type="range" min="0" max="500" step="25" value={clusterMotionIdleDelay} oninput={e => oninteraction('motionIdleDelay', Number(e.currentTarget.value))} />
+    <label for="cluster-motion-limit">{tr('Animation mark limit', $language)}<output>{clusterMotionLimit}</output></label><input id="cluster-motion-limit" type="range" min="50" max="2000" step="50" value={clusterMotionLimit} oninput={e => oninteraction('motionLimit', Number(e.currentTarget.value))} />
     <label for="cluster-rebuild-debounce">Slider rebuild delay<output>{rebuildDelay} ms</output></label><input id="cluster-rebuild-debounce" type="range" min="0" max="500" step="25" value={rebuildDelay} oninput={e => oninteraction('debounce', Number(e.currentTarget.value))} /></fieldset>
   </details>
   <details open><summary>{tr('Layout & density', $language)}</summary><fieldset><legend class="sr-only">{tr('Layout & density', $language)}</legend>
-    <label for="debug-panel-width">{tr('Panel width', $language)}<output>{Math.round(layout.panelWidthPercent)}%</output></label><input id="debug-panel-width" type="range" min="25" max="55" step="1" value={layout.panelWidthPercent} oninput={e => onlayout({...layout, panelWidthPercent: Number(e.currentTarget.value)})} />
+    {#if mobileLayout}
+    <label for="debug-sheet-height">{tr('Mobile sheet height', $language)}<output>{layout.mobileSheetPercent ?? 48}%</output></label><input id="debug-sheet-height" type="range" min="35" max="65" step="1" value={layout.mobileSheetPercent ?? 48} oninput={e => onlayout({...layout, mobileSheetPercent: Number(e.currentTarget.value)})} />
+    <label for="debug-sheet-expanded">{tr('Expanded sheet height', $language)}<output>{layout.mobileExpandedPercent ?? 90}%</output></label><input id="debug-sheet-expanded" type="range" min="75" max="95" step="1" value={layout.mobileExpandedPercent ?? 90} oninput={e => onlayout({...layout, mobileExpandedPercent: Number(e.currentTarget.value)})} />
+    {:else}<label for="debug-panel-width">{tr('Panel width', $language)}<output>{Math.round(layout.panelWidthPercent)}%</output></label><input id="debug-panel-width" type="range" min="25" max="55" step="1" value={layout.panelWidthPercent} oninput={e => onlayout({...layout, panelWidthPercent: Number(e.currentTarget.value)})} />{/if}
     <label for="debug-row-padding">{tr('Result spacing', $language)}<output>{layout.rowPadding} px</output></label><input id="debug-row-padding" type="range" min="10" max="22" step="1" value={layout.rowPadding} oninput={e => onlayout({...layout, rowPadding: Number(e.currentTarget.value)})} />
     <label for="debug-type-scale">{tr('Text size', $language)}<output>{Math.round(layout.typeScale * 100)}%</output></label><input id="debug-type-scale" type="range" min="0.9" max="1.15" step="0.05" value={layout.typeScale} oninput={e => onlayout({...layout, typeScale: Number(e.currentTarget.value)})} />
   </fieldset></details>

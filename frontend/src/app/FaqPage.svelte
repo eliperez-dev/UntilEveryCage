@@ -8,7 +8,7 @@
     if (id) requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ block: 'start' }));
   });
 </script>
-<svelte:head>{#if !embedded}<title>FAQ · Until Every Cage</title><meta name="description" content="How the data reaches the map, contributions, and help for Until Every Cage." />{/if}</svelte:head>
+<svelte:head>{#if !embedded}<title>{tr('FAQ', $language)} · Until Every Cage</title><meta name="description" content={tr('How the data reaches the map, contributions, and help for Until Every Cage.', $language)} />{/if}</svelte:head>
 <section id="questions" class="faq-page" class:embedded aria-labelledby="faq-title">
   {#if embedded}<h2 id="faq-title" class="faq-heading">{tr('Frequently asked questions', $language)}</h2>{:else}<h1 id="faq-title">{tr('Frequently asked questions', $language)}</h1>{/if}
   <section id="technology" aria-labelledby="technology-title">

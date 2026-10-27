@@ -13,11 +13,11 @@ const collection = (...features: ReturnType<typeof feature>[]): JsonMapCollectio
 
 describe('map workspace population', () => {
   it('uses the complete filtered represented population, including weighted references', () => {
-    expect(CLUSTERING_POPULATION_THRESHOLD).toBe(2800);
-    const below = collection(feature('reference', 2798), feature('coordinate'));
-    expect(representedMappedCount(below)).toBe(2799);
+    expect(CLUSTERING_POPULATION_THRESHOLD).toBe(3000);
+    const below = collection(feature('reference', 2998), feature('coordinate'));
+    expect(representedMappedCount(below)).toBe(2999);
     expect(clusterFilteredPopulation(below)).toBe(false);
-    const threshold = collection(feature('reference', 2799), feature('coordinate'));
+    const threshold = collection(feature('reference', 2999), feature('coordinate'));
     expect(clusterFilteredPopulation(threshold)).toBe(true);
     expect(clusterFilteredPopulation(collection())).toBe(false);
   });

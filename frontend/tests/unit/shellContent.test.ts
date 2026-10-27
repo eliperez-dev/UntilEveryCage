@@ -17,7 +17,7 @@ const picker = readFileSync(resolve(process.cwd(), 'src/app/ContributionPinPicke
 const mapSurface = readFileSync(resolve(process.cwd(), 'src/design-lab/components/MapSurface.svelte'), 'utf8');
 const aphisReports = readFileSync(resolve(process.cwd(), 'src/app/AphisReports.svelte'), 'utf8');
 const publicRecord = readFileSync(resolve(process.cwd(), 'src/app/PublicRecord.svelte'), 'utf8');
-const language = readFileSync(resolve(process.cwd(), 'src/app/language.ts'), 'utf8');
+const language = readFileSync(resolve(process.cwd(), 'src/app/locales/es.ts'), 'utf8');
 
 describe('normal shell content', () => {
   it('keeps release context compact and removes unavailable account controls', () => {
@@ -56,7 +56,7 @@ describe('normal shell content', () => {
     expect(about).toContain('The Architecture of Silence');
     expect(about).toContain("{tr('Until Every Cage is Empty', $language)}</h2>");
     expect(language).toContain("'Until Every Cage is Empty': 'Hasta que todas las jaulas estén vacías'");
-    expect(about).toContain('<aside class="about-counter-slot" aria-label="Animal counter"><AnimalKillCounter /></aside>');
+    expect(about).toContain(`<aside class="about-counter-slot" aria-label={tr('Animal counter', $language)}><AnimalKillCounter /></aside>`);
     expect(about).toContain('assets/icon.png');
     expect(about).toContain('about-logo');
     expect(about).not.toContain('Explore and contribute');
@@ -97,9 +97,10 @@ describe('normal shell content', () => {
     expect(footer).not.toContain('Counter approach adapted');
     expect(picker).toContain('new maplibregl.NavigationControl');
     expect(mapSurface).not.toContain('new maplibregl.NavigationControl');
-    expect(masthead).toContain('map-view-tools');
-    expect(masthead).toContain('Right-mouse to rotate / Left-mouse to pan');
-    expect(masthead).toContain('.map-view-controls');
+    expect(masthead).toContain('map-display-tools');
+    expect(masthead).not.toContain('map-view-tools');
+    expect(masthead).toContain("tr('Clustering', $language)");
+    expect(masthead).toContain('onmapdisplaychange');
     expect(mapSurface).not.toContain('class="map-controls-wrap"');
     expect(footer).toContain('Final Nail');
     expect(footer).toContain('<div class="application-version-slot"><ApplicationVersion /></div>');

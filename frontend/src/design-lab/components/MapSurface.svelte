@@ -16,7 +16,7 @@
    * in-memory native cluster source; camera movement must never reload it.
    * Synthetic fixtures retain their own transition controller.
    */
-  import { onMount, tick } from "svelte";
+  import { onMount, tick, untrack } from "svelte";
   import * as maplibregl from "maplibre-gl";
   import mapLibreWorkerUrl from "../../map/persistentMapWorker.ts?worker&url";
   import type { GeoJSONSource, Map as MapLibreMap } from "maplibre-gl";
@@ -29,10 +29,15 @@
     MapTiming,
     Viewport,
     ViewportBounds,
+    PinHoverLabel,
+    MapDisplaySettings,
+    MapDisplaySettingsRequest,
+    AreaSummary,
+    SearchScope,
   } from "../contract";
   import { MvtMotionController } from "./mvtMotionController";
   import { JsonClusterMotionController } from "./jsonClusterMotionController";
-  import { NativeClusterMotionController, DEFAULT_CLUSTER_MOTION_MS, DEFAULT_CLUSTER_MOTION_LIMIT } from './nativeClusterMotion';
+  import { NativeClusterMotionController, DEFAULT_CLUSTER_MOTION_MS, DEFAULT_CLUSTER_MOTION_LIMIT, DEFAULT_CLUSTER_IDLE_MS, type ClusterMotionState } from './nativeClusterMotion';
   import {
     addJsonLocationLayers,
     createJsonMapCollection,
@@ -45,6 +50,7 @@
     baseRasterPaint,
     createSelectedApproximateReferenceArea,
     createSearchRadiusArea,
+    createSearchBoundsArea,
     createMvtReferenceAreas,
     createBaseStyle,
     removeLocationLayers,
@@ -70,6 +76,13 @@
   import { canReusePublicMapFeed, clearPublicMapCache, createPublicMapFeedRepository, publicMapCacheEntryCount } from "../../api/PublicMapFeedRepository";
   import { TERRAIN_EXAGGERATION, TERRAIN_SOURCE, TERRAIN_SOURCE_ID } from "../../map/terrain";
   import { CLUSTERING_POPULATION_THRESHOLD, clusterFilteredPopulation, maskPublicMapMatches, representedMappedCount, resizeWorkspaceMap } from './mapWorkspace';
+  import { categoryPresentation } from '../../features/locations/categoryPresentation';
+  import { individualHoverPin } from '../pinHoverLabels';
+  import { applyFacilityPinScale, DEFAULT_FACILITY_PIN_SCALE } from './facilityPinScale';
+  import { mergeMapDisplaySettings } from './mapDisplaySettings';
+  import { emptyAreaSummary, summarizeMappedArea } from '../../features/search/areaSummary';
+  import { publicSearchFilters } from '../../features/search/powerSearch';
+  import { nearbyCameraBounds } from '../../features/search/nearbySearch';
 
   let {
     active = true,
@@ -85,6 +98,7 @@
     mapError = "",
     mapTruncated = false,
     mapMatchingIds = null,
+    mapMatchesSearchKey = null,
     mapMatchesStatus = 'idle',
     mapMatchesError = '',
     searchScope = null,
@@ -108,6 +122,11 @@
     ondebugopenchange,
     onviewport,
     onbounds,
+    resolvePinHover,
+    displaySettingsRequest = null,
+    onDisplaySettingsChange,
+    onAreaSummary,
+    fitResultsRequest = 0,
   }: {
     active?: boolean;
     records: readonly LabRecord[];
@@ -128,9 +147,10 @@
     mapError?: string;
     mapTruncated?: boolean;
     mapMatchingIds?: readonly string[] | null;
+    mapMatchesSearchKey?: string | null;
     mapMatchesStatus?: 'idle' | 'loading' | 'ready' | 'error';
     mapMatchesError?: string;
-    searchScope?: null | Readonly<{ kind: 'area'; bounds: ViewportBounds }> | Readonly<{ kind: 'radius'; label: string; latitude: number; longitude: number; radiusKm: number }>;
+    searchScope?: SearchScope;
     mapDiagnostics?: MapDiagnostics | undefined;
     referenceLoading?: boolean;
     flightTarget?: Readonly<{ id: number; longitude: number; latitude: number; zoom: number }> | null;
@@ -151,12 +171,58 @@
     ondebugopenchange?(open: boolean): void;
     onviewport(value: Viewport): void;
     onbounds?(bounds: ViewportBounds): void;
+    resolvePinHover?(id: string, signal: AbortSignal): Promise<PinHoverLabel | null>;
+    displaySettingsRequest?: MapDisplaySettingsRequest | null;
+    onDisplaySettingsChange?(settings: MapDisplaySettings): void;
+    onAreaSummary?(summary: AreaSummary): void;
+    fitResultsRequest?: number;
   } = $props();
   let host: HTMLDivElement;
   let map: MapLibreMap | undefined;
+  let hoverLabel = $state<(PinHoverLabel & { x: number; y: number; below: boolean }) | null>(null);
+  let hoverMark = $state<{ x: number; y: number } | null>(null);
+  let hoverPin: ReturnType<typeof individualHoverPin> = null;
+  let hoverTimer: ReturnType<typeof setTimeout> | undefined;
+  let hoverAbort: AbortController | undefined;
+  let hoverGeneration = 0;
+  function clearPinHover() {
+    hoverGeneration++;
+    if (hoverTimer) clearTimeout(hoverTimer);
+    hoverTimer = undefined;
+    hoverAbort?.abort(); hoverAbort = undefined;
+    hoverPin = null; hoverLabel = null; hoverMark = null;
+  }
+  function updatePinHover(event: maplibregl.MapMouseEvent) {
+    if (!active || mode !== 'public-release' || !resolvePinHover || !map || map.isMoving()
+      || activeFlight || mapMatchesStatus === 'loading' || mapMatchesStatus === 'error'
+      || !matchMedia('(hover: hover) and (pointer: fine)').matches) {
+      clearPinHover(); return;
+    }
+    const layers = ['v1-source-pins', 'source-coordinate-points', 'approx-reference-pins', 'approx-reference-points', 'approx-reference-circles']
+      .filter(id => !!map?.getLayer(id));
+    const pin = layers.length ? individualHoverPin(map.queryRenderedFeatures(event.point, { layers })[0]) : null;
+    if (!pin) { clearPinHover(); return; }
+    if (hoverPin?.id === pin.id) return;
+    clearPinHover(); hoverPin = pin;
+    const hoverPoint = map.project(pin.coordinates);
+    hoverMark = { x: hoverPoint.x, y: hoverPoint.y };
+    const ticket = hoverGeneration;
+    const controller = new AbortController(); hoverAbort = controller;
+    hoverTimer = setTimeout(() => {
+      hoverTimer = undefined;
+      void resolvePinHover!(pin.id, controller.signal).then(label => {
+        if (!label || !active || controller.signal.aborted || ticket !== hoverGeneration
+          || hoverPin?.id !== pin.id || !map || map.isMoving()) return;
+        const point = map.project(pin.coordinates);
+        const halfWidth = Math.min(128, (host.clientWidth - 20) / 2);
+        hoverLabel = { ...label, x: Math.max(halfWidth + 10, Math.min(host.clientWidth - halfWidth - 10, point.x)), y: point.y, below: point.y < 145 };
+      }).catch(() => { /* A hover is optional; detail selection retains its own error state. */ });
+    }, 170);
+  }
   let nativeStyleReady = $state(false);
   let resumePending = false;
   let lifecyclePaused = false;
+  let privateCameraWasActive = false;
   let nativeStyleGeneration = 0;
   let appliedBasemap = $state<Basemap | undefined>();
   let cameraPitch = $state(0);
@@ -171,6 +237,7 @@
   let pendingBasemap = $state<Basemap | undefined>();
   let basemapError = $state("");
   let basemapRequest = 0;
+  let basemapAbort: AbortController | undefined;
   let syncing = false;
   let activeFlight = false;
   let handledFlightId = 0;
@@ -205,6 +272,8 @@
   let appliedNativeClustering: boolean | undefined;
   let visibleNativeCollection: JsonMapCollection | undefined;
   const matchingIdSet = $derived(mapMatchingIds === null ? null : new Set(mapMatchingIds));
+  let handledFitResultsRequest = 0;
+  let handledDeviceScope: SearchScope = null;
   let appliedMvtTileSignature: string | undefined;
   let feedStatus = $state<"loading" | "ready" | "error">("loading");
   // These are milestones, not a guessed byte or worker percentage.
@@ -283,7 +352,7 @@
   let referenceOpacity = $state(0.22);
   let visibleApproximateCount = $state(0);
   let coordinateRadius = $state(6.5);
-  let pinScale = $state(1);
+  let pinScale = $state(DEFAULT_FACILITY_PIN_SCALE);
   let debugDimensions = $state({ width: 0, height: 0, canvasWidth: 0, canvasHeight: 0 });
   let showReferenceLabels = $state(false);
   // Exact locations default to the retained V1 pin family. The toggle remains
@@ -294,6 +363,8 @@
   let clusterZoomDuration = $state(460);
   let clusterMotionDuration = $state(DEFAULT_CLUSTER_MOTION_MS);
   let clusterMotionLimit = $state(DEFAULT_CLUSTER_MOTION_LIMIT);
+  let clusterMotionIdleDelay = $state(DEFAULT_CLUSTER_IDLE_MS);
+  let clusterMotionState = $state<ClusterMotionState>('idle');
   let clusterRebuildDebounce = $state(150);
   let clusterSettingsError = $state("");
   let roundedClusterTilesAvailable = $state(true);
@@ -402,7 +473,7 @@
     const generation = ++terrainViewGeneration;
     terrainViewAbort?.abort();
     terrainPending = false;
-    if (!enable3d && cameraPitch <= 0.5) return;
+    if (!enable3d && cameraPitch <= 0.5 && Math.abs(instance.getBearing()) <= 0.5) return;
     terrainError = "";
     if (enable3d) {
       setTerrain(true, true);
@@ -429,8 +500,8 @@
     // Keep healthy terrain in overhead mode once activated. Removing it would
     // reset the camera elevation to sea level and change the geographic focus.
     const center = instance.getCenter();
-    instance.easeTo({ center: [center.lng, center.lat], zoom: instance.getZoom(), bearing: instance.getBearing(),
-      pitch: enable3d ? 45 : 0, duration: matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 450 });
+    instance.easeTo({ center: [center.lng, center.lat], zoom: instance.getZoom(), bearing: enable3d ? instance.getBearing() : 0,
+      pitch: enable3d ? 60 : 0, duration: matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 450 });
   }
   $effect(() => {
     const request = cameraViewRequest;
@@ -462,7 +533,7 @@
     instance.setPaintProperty("transport", "raster-opacity", basemap === "satellite" ? 0.72 : 0);
   }
   /** A source can report loaded after an error, so tile failures reject the handoff. */
-  function waitForRaster(instance: MapLibreMap, sourceId: string): Promise<void> {
+  function waitForRaster(instance: MapLibreMap, sourceId: string, signal?: AbortSignal): Promise<void> {
     return new Promise((resolve, reject) => {
       let settled = false;
       const timeout = setTimeout(() => finish(false), 10000);
@@ -473,17 +544,21 @@
         if (event?.sourceId === sourceId && instance.isSourceLoaded(sourceId))
           finish(true);
       };
+      const onAbort = () => finish(false);
       function finish(ok: boolean) {
         if (settled) return;
         settled = true;
         clearTimeout(timeout);
         instance.off("error", onError);
         instance.off("sourcedata", onData);
+        signal?.removeEventListener('abort', onAbort);
         ok ? resolve() : reject(new Error("Basemap tiles unavailable"));
       }
       instance.on("error", onError);
       instance.on("sourcedata", onData);
-      if (instance.isSourceLoaded(sourceId)) finish(true);
+      signal?.addEventListener('abort', onAbort, { once: true });
+      if (signal?.aborted) finish(false);
+      else if (instance.isSourceLoaded(sourceId)) finish(true);
     });
   }
   async function applyBasemapTiles(basemap: Basemap) {
@@ -498,6 +573,8 @@
       return;
     }
     const request = ++basemapRequest;
+    const controller = new AbortController();
+    basemapAbort = controller;
     nativeMotionController?.cancel();
     basemapSwitching = true;
     pendingBasemap = basemap;
@@ -517,37 +594,49 @@
         { id: "candidate-base", type: "raster", source: "candidate-base", paint: { 'raster-fade-duration': 0 } },
         "transport",
       );
-      await waitForRaster(instance, "candidate-base");
+      await waitForRaster(instance, "candidate-base", controller.signal);
       if (request !== basemapRequest || map !== instance) return;
+      if (mapState.basemap !== basemap) controller.abort();
+      controller.signal.throwIfAborted();
       const base = instance.getSource("base") as any;
       if (typeof base?.setTiles !== "function") throw new Error("Basemap source cannot switch");
       base.setTiles(rasterTiles(basemap));
       baseChanged = true;
-      await waitForRaster(instance, "base");
+      await waitForRaster(instance, "base", controller.signal);
       if (request !== basemapRequest || map !== instance) return;
+      if (mapState.basemap !== basemap) controller.abort();
+      controller.signal.throwIfAborted();
       applyBaseAppearance(instance, basemap);
       // Source-loaded precedes the raster's first fade completing. Keep the
       // opaque candidate covering the base until that bounded transition ends.
       if (!terrainEnabled && cacheTuning.tileFadeMs > 0)
         await new Promise<void>(resolve => setTimeout(resolve, cacheTuning.tileFadeMs));
       if (request !== basemapRequest || map !== instance) return;
+      if (mapState.basemap !== basemap) controller.abort();
+      controller.signal.throwIfAborted();
       appliedBasemap = basemap;
       onbasemap(basemap);
     } catch {
-      if (map === instance) {
+      if (map === instance && request === basemapRequest) {
         if (baseChanged) {
           (instance.getSource("base") as any)?.setTiles?.(rasterTiles(previous));
           try { await waitForRaster(instance, "base"); } catch { /* keep the last selected mode */ }
+          if (map === instance) applyBaseAppearance(instance, previous);
         }
-        onbasemap(previous);
-        basemapError = `${basemapLabel(basemap)} imagery is unavailable. ${basemapLabel(previous)} remains selected.`;
+        // A superseded request must never overwrite the latest toolbar/URL
+        // intent. Its candidate is removed before the next handoff starts.
+        if (!controller.signal.aborted && mapState.basemap === basemap) {
+          onbasemap(previous);
+          basemapError = `${basemapLabel(basemap)} imagery is unavailable. ${basemapLabel(previous)} remains selected.`;
+        }
       }
     } finally {
-      if (map === instance) {
+      if (map === instance && request === basemapRequest) {
         if (instance.getLayer("candidate-base")) instance.removeLayer("candidate-base");
         if (instance.getSource("candidate-base")) instance.removeSource("candidate-base");
       }
       if (request === basemapRequest) {
+        if (basemapAbort === controller) basemapAbort = undefined;
         basemapSwitching = false;
         pendingBasemap = undefined;
       }
@@ -616,7 +705,7 @@
       map.addImage("reference-marker", clusterImage("#ff695ce6", "#d8473fe6"));
   }
   function scheduleClusterSettings() {
-    nativeMotionController?.cancel();
+    nativeMotionController?.invalidate();
     if (clusterUpdateTimer) clearTimeout(clusterUpdateTimer);
     clusterUpdateTimer = setTimeout(async () => {
       if (usingMvt && map) {
@@ -653,6 +742,7 @@
   function updateVisualSettings() {
     if (!map || !isNativeMap()) return;
     if (usingMvt) {
+      applyFacilityPinScale(map, pinScale);
       syncMvtReferenceAreas(map);
       const selected = activeApproximateAreaKey();
       const selectedArea = selected ? ['==', ['get', 'feature_key'], selected] : false;
@@ -681,11 +771,21 @@
     const data = createSearchRadiusArea(searchScope?.kind === 'radius' ? searchScope : null);
     let source = instance.getSource('search-radius') as GeoJSONSource | undefined;
     if (!source) {
-      if (!data.features.length) return;
-      instance.addSource('search-radius', { type: 'geojson', data });
-      instance.addLayer({ id: 'search-radius-fill', type: 'fill', source: 'search-radius', paint: { 'fill-color': '#d8d6cc', 'fill-opacity': 0.08 } });
-      instance.addLayer({ id: 'search-radius-outline', type: 'line', source: 'search-radius', paint: { 'line-color': '#eeeae0', 'line-opacity': 0.85, 'line-width': 1.5 } });
+      if (data.features.length) {
+        instance.addSource('search-radius', { type: 'geojson', data });
+        instance.addLayer({ id: 'search-radius-fill', type: 'fill', source: 'search-radius', paint: { 'fill-color': '#d8d6cc', 'fill-opacity': 0.08 } });
+        instance.addLayer({ id: 'search-radius-outline', type: 'line', source: 'search-radius', paint: { 'line-color': '#eeeae0', 'line-opacity': 0.85, 'line-width': 1.5 } });
+      }
     } else source.setData(data);
+    const area = createSearchBoundsArea(searchScope?.kind === 'area' ? searchScope.bounds : null);
+    const areaSource = instance.getSource('search-area') as GeoJSONSource | undefined;
+    if (areaSource) areaSource.setData(area);
+    else if (area.features.length) {
+      instance.addSource('search-area', { type: 'geojson', data: area });
+      instance.addLayer({ id: 'search-area-fill', type: 'fill', source: 'search-area', paint: { 'fill-color': '#81c9be', 'fill-opacity': 0.055 } });
+      instance.addLayer({ id: 'search-area-halo', type: 'line', source: 'search-area', paint: { 'line-color': '#172a29', 'line-opacity': 0.85, 'line-width': 5 } });
+      instance.addLayer({ id: 'search-area-outline', type: 'line', source: 'search-area', paint: { 'line-color': '#a3e5d6', 'line-opacity': 1, 'line-width': 2.5, 'line-dasharray': [3, 2] } });
+    }
   }
   function activeApproximateAreaKey(): string | null {
     // MVT aggregate references have opaque 32-hex feature keys and are
@@ -732,6 +832,23 @@
     debugDimensions = { width: host.clientWidth, height: host.clientHeight, canvasWidth: canvas.width, canvasHeight: canvas.height };
   }
   const debugClusterMode = $derived(clusterEnabledOverride === null ? 'auto' : clusterEnabledOverride ? 'on' : 'off');
+  const currentDisplaySettings: MapDisplaySettings = $derived({ clusterMode: debugClusterMode, pinScale, optimizedPins: !useV1Pins, coordinateRadius });
+  let handledDisplaySettingsId = 0;
+  $effect(() => { onDisplaySettingsChange?.(currentDisplaySettings); });
+  $effect(() => {
+    const request = displaySettingsRequest;
+    if (!request || !Number.isSafeInteger(request.id) || request.id <= 0 || request.id <= handledDisplaySettingsId || !active || !nativeStyleReady || !map) return;
+    handledDisplaySettingsId = request.id;
+    const next = mergeMapDisplaySettings(currentDisplaySettings, request.patch);
+    const clusterChanged = next.clusterMode !== debugClusterMode;
+    const pinModeChanged = next.optimizedPins !== !useV1Pins;
+    clearPinHover();
+    clusterEnabledOverride = next.clusterMode === 'auto' ? null : next.clusterMode === 'on';
+    pinScale = next.pinScale; coordinateRadius = next.coordinateRadius; useV1Pins = !next.optimizedPins;
+    if (clusterChanged) scheduleClusterSettings();
+    updateVisualSettings();
+    if (pinModeChanged) void updatePinMode();
+  });
   const ms = (value: number | null) => value === null ? 'Not sampled' : `${value} ms`;
   const debugSession = $derived([
     { label: 'Release', value: publicReleaseId ?? (isRealPreview() ? 'Private preview' : 'Not loaded') },
@@ -759,11 +876,14 @@
     { label: 'Decoded projection', value: nativeDecodedBytes === null ? 'Unavailable' : `${(nativeDecodedBytes / 1048576).toFixed(2)} MB` },
     { label: 'Units / approximate references', value: `${nativeUnitCount.toLocaleString()} / ${nativeApproximateCount.toLocaleString()}` },
     { label: 'Index updates', value: String(nativeIndexUpdates) },
+    { label: tr('Cluster animation state', $language), value: clusterMotionState },
     { label: 'Persistent index', value: cacheTuning.indexEnabled ? indexCacheDiagnostic?.state ?? 'Not sampled' : 'Disabled' },
     { label: 'Cache builds / restores', value: `${indexCacheDiagnostic?.builds ?? 0} / ${indexCacheDiagnostic?.restores ?? 0}` },
     { label: tr('Stored index size', $language), value: indexCacheDiagnostic?.storedBytes == null ? 'Not sampled' : `${(indexCacheDiagnostic.storedBytes / 1048576).toFixed(2)} MiB` },
     ...(indexCacheReasonLabel(indexCacheDiagnostic?.reason) ? [{ label: tr('Index cache reason', $language), value: tr(indexCacheReasonLabel(indexCacheDiagnostic?.reason)!, $language) }] : []),
     { label: 'Tile cache hits / misses', value: `${tileCacheDiagnostic.hits} / ${tileCacheDiagnostic.misses}` },
+    { label: tr('Street app hits / misses / browser-managed requests', $language), value: `${tileCacheDiagnostic.streetHits} / ${tileCacheDiagnostic.streetMisses} / ${tileCacheDiagnostic.streetDelegations}` },
+    { label: tr('Satellite app hits / misses / browser-managed requests', $language), value: `${tileCacheDiagnostic.satelliteHits} / ${tileCacheDiagnostic.satelliteMisses} / ${tileCacheDiagnostic.satelliteDelegations}` },
     { label: 'Tile cache entries / size', value: `${tileCacheDiagnostic.entries} / ${(tileCacheDiagnostic.bytes / 1048576).toFixed(2)} MiB` },
     { label: 'Tile cache evictions / HTTP cache', value: `${tileCacheDiagnostic.evictions} / ${tileCacheDiagnostic.policyDelegations}` },
     { label: tr('World baseline', $language), value: worldCacheDiagnostic.status },
@@ -785,20 +905,21 @@
     feedMs: nativeFeedMs, indexMs: nativeIndexMs, rebuildMs: nativeRebuildMs,
     cameraMoveendMs: nativeCameraMoveendMs, cameraIdleMs: nativeCameraIdleMs,
     ...debugDimensions, zoom: mapState.viewport.zoom, bearing: mapState.viewport.bearing ?? 0, pitch: cameraPitch,
-    clusterMode: debugClusterMode, clusterRadius, clusterMaxZoom, clusterMotionDuration, clusterMotionLimit, pinScale, layout: layoutTuning,
+    clusterMode: debugClusterMode, clusterRadius, clusterMaxZoom, clusterMotionDuration, clusterMotionLimit, clusterMotionIdleDelay, pinScale, layout: layoutTuning,
     cache: cacheTuning,
     worldCache: worldTuning, worldCacheMetrics: worldCacheDiagnostic,
     cacheMetrics: { indexState: indexCacheDiagnostic?.state ?? null, builds: indexCacheDiagnostic?.builds ?? 0,
       indexReason: indexCacheDiagnostic?.reason ?? null, indexStoredBytes: indexCacheDiagnostic?.storedBytes ?? null,
       restores: indexCacheDiagnostic?.restores ?? 0, tileEntries: tileCacheDiagnostic.entries, tileBytes: tileCacheDiagnostic.bytes,
       tileHits: tileCacheDiagnostic.hits, tileMisses: tileCacheDiagnostic.misses, tileEvictions: tileCacheDiagnostic.evictions,
-      httpDelegations: tileCacheDiagnostic.policyDelegations },
+      httpDelegations: tileCacheDiagnostic.policyDelegations, streetHits: tileCacheDiagnostic.streetHits, streetMisses: tileCacheDiagnostic.streetMisses, streetDelegations: tileCacheDiagnostic.streetDelegations,
+      satelliteHits: tileCacheDiagnostic.satelliteHits, satelliteMisses: tileCacheDiagnostic.satelliteMisses, satelliteDelegations: tileCacheDiagnostic.satelliteDelegations },
   }));
   function resetTemporarySettings() {
     clusterRadius = DEFAULT_CLUSTER_RADIUS; clusterMaxZoom = DEFAULT_CLUSTER_MAX_ZOOM; clusterEnabledOverride = null;
     referenceRadiusKm = DEFAULT_REFERENCE_RADIUS_KM; referenceOpacity = 0.22; coordinateRadius = 6.5;
-    pinScale = 1; showReferenceLabels = false; useV1Pins = true; clusterZoomDuration = 460; clusterRebuildDebounce = 150;
-    clusterMotionDuration = DEFAULT_CLUSTER_MOTION_MS; clusterMotionLimit = DEFAULT_CLUSTER_MOTION_LIMIT; nativeMotionController?.cancel();
+    pinScale = DEFAULT_FACILITY_PIN_SCALE; showReferenceLabels = false; useV1Pins = true; clusterZoomDuration = 460; clusterRebuildDebounce = 150;
+    clusterMotionDuration = DEFAULT_CLUSTER_MOTION_MS; clusterMotionLimit = DEFAULT_CLUSTER_MOTION_LIMIT; clusterMotionIdleDelay = DEFAULT_CLUSTER_IDLE_MS; nativeMotionController?.cancel();
     onLayoutTuningReset?.(); scheduleClusterSettings(); updateVisualSettings(); void updatePinMode();
   }
   $effect(() => {
@@ -850,7 +971,7 @@
     }
   }
   function restoreNativeProjection(instance: MapLibreMap, data: JsonMapCollection): void {
-    nativeMotionController?.cancel();
+    nativeMotionController?.invalidate();
     // A verified feed can arrive through resume without passing addLayers.
     // Symbols must be registered before their source reaches worker placement.
     loadClusterImages();
@@ -924,6 +1045,7 @@
     if (appliedNativeClustering === enabled) return;
     const source = instance.getSource('locations') as GeoJSONSource | undefined;
     if (!source) return;
+    nativeMotionController?.invalidate();
     appliedNativeClustering = enabled;
     nativeIndexUpdates++;
     void source.setClusterOptions({ cluster: enabled, clusterRadius, clusterMaxZoom: nativeClusterMaxZoom(clusterMaxZoom) })
@@ -955,6 +1077,7 @@
     addJsonLocationLayers(map, createJsonMapCollection(mapped, mode));
   }
   async function loadNativeFeed() {
+    nativeMotionController?.invalidate();
     const instance = map;
     if (!instance || !active) return;
     if (mode === "public-release" && !publicReleaseId) return;
@@ -1059,6 +1182,80 @@
       : collection;
     return filterTestReleaseMapCollection(collection, { sourceIds, countryCodes: mapState.filters.countries, categoryKeys: mapState.filters.categories, activityKeys: mapState.filters.activities });
   }
+  const areaSummaryFilterKey = $derived(JSON.stringify([
+    mapState.query, mapState.sourceId, mapState.filters, searchScope,
+  ]));
+  const areaSummaryNeedsMatches = $derived(!!mapState.query.trim() || searchScope !== null);
+  const areaSummary = $derived.by((): AreaSummary => {
+    // Match results must describe this exact release, restrictions and query.
+    // A newly changed scope cannot briefly display the previous area's figures.
+    if (!active || mode !== 'public-release') return emptyAreaSummary('loading');
+    if (feedStatus === 'error') return emptyAreaSummary('error');
+    if (feedStatus !== 'ready' || !nativeFullCollection || !publicReleaseManifestIdentity
+      || requestedPublicReleaseId !== publicReleaseId || requestedPublicReleaseIdentity !== publicReleaseIdentity)
+      return emptyAreaSummary('loading');
+    areaSummaryFilterKey;
+    if (areaSummaryNeedsMatches) {
+      if (mapMatchesStatus === 'error') return emptyAreaSummary('error');
+      const identity = publicReleaseManifestIdentity;
+      let expectedKey: string;
+      try { expectedKey = JSON.stringify([identity.releaseId, identity.manifestSha256, identity.suppressionGeneration,
+        untrack(() => publicSearchFilters({ ...mapState, searchScope }))]); }
+      catch { return emptyAreaSummary('error'); }
+      if (mapMatchesStatus !== 'ready' || mapMatchesSearchKey !== expectedKey || mapMatchingIds === null)
+        return emptyAreaSummary('loading');
+    }
+    const result = untrack(() => summarizeMappedArea(filteredNativeCollection(nativeFullCollection!)));
+    if (areaSummaryNeedsMatches && result.total !== mapMatchingIds?.length) return emptyAreaSummary('error');
+    return result;
+  });
+  $effect(() => {
+    const value = areaSummary;
+    untrack(() => onAreaSummary?.(value));
+  });
+  function resultCameraPadding() {
+    const frame = host.getBoundingClientRect();
+    const workspace = host.closest('.workspace');
+    const rail = workspace?.querySelector<HTMLElement>('.results');
+    const toolbar = workspace?.querySelector<HTMLElement>('.map-toolbar');
+    const padding = { top: 32, right: 32, bottom: 32, left: 32 };
+    if (toolbar?.getClientRects().length) padding.top = Math.max(32, toolbar.getBoundingClientRect().bottom - frame.top + 24);
+    if (rail?.getClientRects().length) {
+      const rect = rail.getBoundingClientRect();
+      if (matchMedia('(max-width:40rem)').matches) padding.bottom = Math.max(32, frame.bottom - rect.top + 24);
+      else padding.left = Math.max(32, rect.right - frame.left + 24);
+    }
+    // Keep a usable projection viewport even in unusually narrow/zoomed layouts.
+    padding.left = Math.min(padding.left, Math.max(32, frame.width - 192));
+    padding.bottom = Math.min(padding.bottom, Math.max(32, frame.height - padding.top - 160));
+    return padding;
+  }
+  $effect(() => {
+    const request = fitResultsRequest;
+    const value = areaSummary;
+    if (!active || !map || request <= handledFitResultsRequest || value.status !== 'ready' || !value.bounds) return;
+    handledFitResultsRequest = request;
+    clearPinHover(); pendingSelectionFocus = null; selectionFocus = null;
+    const bounds = value.bounds;
+    // Fitting never changes membership. A single point keeps a useful limit.
+    activeFlight = true;
+    map.fitBounds([[bounds.west, bounds.south], [bounds.east, bounds.north]], {
+      padding: resultCameraPadding(), maxZoom: 14, bearing: map.getBearing(),
+      duration: matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 450,
+    });
+  });
+  $effect(() => {
+    const scope = searchScope;
+    if (!active || !map || !nativeStyleReady || scope?.kind !== 'radius' || !scope.deviceDerived || scope === handledDeviceScope) return;
+    handledDeviceScope = scope;
+    // Location is already private in the atomic state before this camera move.
+    setTileCachePersistenceAllowed(false); cancelWorldBaselineWarmup();
+    map.stop(); clearPinHover(); pendingSelectionFocus = null; selectionFocus = null; activeFlight = true;
+    map.fitBounds(nearbyCameraBounds(scope, scope.radiusKm), {
+      padding: resultCameraPadding(), bearing: map.getBearing(),
+      duration: matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 450,
+    });
+  });
   function nativeFilterSignature(sourceId: string | null): string {
     return JSON.stringify([sourceId, mapState.filters.countries, mapState.filters.sources, mapState.filters.categories, mapState.filters.activities, mapState.filters.precisions]);
   }
@@ -1066,7 +1263,7 @@
     if (!active || !map || !nativeFullCollection || !map.getSource("locations")) return;
     const signature = nativeFilterSignature(sourceId);
     if (appliedNativeFilterSignature === signature && appliedMatchingIds === mapMatchingIds && appliedMatchesStatus === mapMatchesStatus) return;
-    nativeMotionController?.cancel();
+    nativeMotionController?.invalidate();
     nativeIndexStartedAt = performance.now();
     startupStage = "indexing";
     const visible = filteredNativeCollection(nativeFullCollection);
@@ -1097,7 +1294,7 @@
           nativeFullCollection = undefined;
           visibleNativeCollection = undefined;
           appliedNativeSourceId = undefined;
-          if (instance.getSource("locations")) { nativeIndexUpdates++; setRealPreviewMapData(instance, { type: "FeatureCollection", features: [] }); }
+          if (instance.getSource("locations")) { nativeMotionController?.invalidate(); nativeIndexUpdates++; setRealPreviewMapData(instance, { type: "FeatureCollection", features: [] }); }
           syncSelectedApproximateArea(instance);
           onMapFeedMeta?.(null);
           feedStatus = "error";
@@ -1116,6 +1313,7 @@
     return () => {};
   }
   async function clearProjectionCache() {
+    nativeMotionController?.invalidate();
     await clearClusterIndexCache();
     const removed = publicReleaseId ? (await clearPublicMapCache(), 1) : mode === "candidate-preview" ? await clearTestReleaseMapCache() : await clearRealPreviewMapCache();
     feedGeneration++; feedAbort?.abort(); feedAbort = undefined;
@@ -1165,7 +1363,7 @@
     }
     mvtMotionController?.cancel();
     mvtMotionController?.clearLineage();
-    nativeMotionController?.cancel();
+    nativeMotionController?.invalidate();
     // Source/style changes invalidate both cached tile symbols and lineage. Remove
     // the complete projection before adding the selected path back atomically.
     removeLocationLayers(map);
@@ -1307,6 +1505,7 @@
       getMap: () => map, reducedMotion: prefersReducedMotion,
       enabled: () => active && isNativeMap() && !activeFlight && useV1Pins,
       duration: () => clusterMotionDuration, limit: () => clusterMotionLimit,
+      idleDelay: () => clusterMotionIdleDelay, onState: value => { clusterMotionState = value; },
     });
     if (host.parentElement) {
       // Each projection owns exactly one overlay canvas. The fixture fallback
@@ -1497,7 +1696,7 @@
           onselect(id);
         }
       });
-    const handleReferenceClick = (event: any, layer: "aggregate-outer" | "approx-reference-points" | "approx-reference-pins" | "approx-reference-circles" | "approx-reference-cue") => {
+    const handleReferenceClick = (event: any, layer: "aggregate-outer" | "approx-reference-points" | "approx-reference-pins" | "approx-reference-circles") => {
       if (activeFlight) return;
       // The visible point owns center clicks for approximate records; keep
       // the reference circle available for inspecting its selected area.
@@ -1553,12 +1752,11 @@
     if (isNativeMap()) {
       map.on("click", "approx-reference-pins", (event: any) => handleReferenceClick(event, "approx-reference-pins"));
       map.on("click", "approx-reference-circles", (event: any) => handleReferenceClick(event, "approx-reference-circles"));
-      map.on("click", "approx-reference-cue", (event: any) => handleReferenceClick(event, "approx-reference-cue"));
     }
     if (isNativeMap())
       map.on("click", "approx-reference-points", (event: any) => handleReferenceClick(event, "approx-reference-points"));
     for (const layer of isNativeMap()
-      ? ["clusters", "source-coordinate-points", "v1-source-pins", "aggregate-outer", "approx-reference-pins", "approx-reference-circles", "approx-reference-points", "approx-reference-cue"]
+      ? ["clusters", "source-coordinate-points", "v1-source-pins", "aggregate-outer", "approx-reference-pins", "approx-reference-circles", "approx-reference-points"]
       : ["clusters", "exact-pins", "approximate-points", "source-coordinate-points", "aggregate-outer"]) {
       map.on("mouseenter", layer, () => {
         if (map) map.getCanvas().style.cursor = "pointer";
@@ -1640,6 +1838,14 @@
       return cleanupFailedInitialization;
     }
     map = instance;
+    instance.on('mousemove', updatePinHover);
+    host.addEventListener('pointerleave', clearPinHover);
+    instance.on('click', clearPinHover);
+    const dismissHover = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || !hoverPin) return;
+      event.preventDefault(); event.stopPropagation(); clearPinHover();
+    };
+    window.addEventListener('keydown', dismissHover, true);
     let resizeFrame: number | undefined;
     let previousWidth = host.clientWidth;
     let previousHeight = host.clientHeight;
@@ -1670,6 +1876,7 @@
         "Record map. Select a cluster, source coordinate, or approximate area reference.",
       );
     instance.on('styledataloading', () => {
+      clearPinHover();
       nativeStyleReady = false;
       onMapControlsReady?.(false);
       nativeMotionController?.cancel(true);
@@ -1731,6 +1938,7 @@
       }
     });
     instance.on("movestart", (event: any) => {
+      clearPinHover();
       nativeMotionController?.cancel();
       if (event?.originalEvent) { pendingSelectionFocus = null; selectionFocus = null; }
       if (event?.originalEvent && terrainPending) {
@@ -1743,6 +1951,7 @@
       }
     });
     instance.on("sourcedata", (event: any) => {
+      if (event?.sourceId === 'locations') nativeMotionController?.onSourceReady();
       if (event?.sourceId === TERRAIN_SOURCE_ID) settlePendingSelectionFocus();
       if (isNativeMap() && event?.sourceId === "locations" &&
           nativeIndexStartedAt !== null && instance.isSourceLoaded("locations")) {
@@ -1762,6 +1971,7 @@
           instance.isSourceLoaded("locations")) startupStage = "ready";
     });
     instance.on("idle", () => {
+      void nativeMotionController?.warm();
       settlePendingSelectionFocus();
       if (isNativeMap()) {
         updateVisibleApproximateCount(instance);
@@ -1813,11 +2023,13 @@
     instance.on("pitch", () => updateCameraPitch(instance.getPitch()));
     instance.on("pitchend", () => { if (active && instance.getPitch() > 0.5) setTerrain(true); });
     return () => {
+      clearPinHover(); window.removeEventListener('keydown', dismissHover, true); host.removeEventListener('pointerleave', clearPinHover);
       unsubscribeTiles(); unsubscribeWorld(); cancelWorldBaselineWarmup(); indexCacheChannel?.close(); indexCacheChannel = undefined;
       setTileCachePersistenceAllowed(true);
       resizeObserver.disconnect();
       terrainViewGeneration++; terrainViewAbort?.abort();
       if (resizeFrame !== undefined) cancelAnimationFrame(resizeFrame);
+      basemapAbort?.abort();
       basemapRequest++;
       feedAbort?.abort();
       if (boundsTimer) clearTimeout(boundsTimer);
@@ -1831,7 +2043,30 @@
     };
   });
   $effect(() => {
-    setTileCachePersistenceAllowed(!active || (mode === 'public-release' && !mapState.navigationViewport));
+    active; publicReleaseId; publicReleaseIdentity; publicReleaseManifestIdentity;
+    mapState.query; mapState.sourceId; mapState.filters; searchScope; mapMatchesStatus; mapMatchingIds;
+    clearPinHover();
+  });
+  $effect(() => {
+    nativeStyleReady;
+    if (mapState.navigationViewport) {
+      privateCameraWasActive = true;
+      setTileCachePersistenceAllowed(false);
+      return;
+    }
+    if (privateCameraWasActive) {
+      // Explore full map restores its prior public camera atomically in state.
+      // Restore the live camera before reopening persistent tile writes, even
+      // when it interrupts a still-running nearby or selected-record flight.
+      setTileCachePersistenceAllowed(false);
+      if (!active || !map) return;
+      syncing = true; map.stop(); activeFlight = false;
+      pendingSelectionFocus = null; selectionFocus = null; clearPinHover();
+      const view = mapState.viewport;
+      map.jumpTo({ center: [view.centerLon, view.centerLat], zoom: view.zoom, pitch: view.pitch ?? 0, bearing: view.bearing ?? 0 });
+      syncing = false; privateCameraWasActive = false;
+    }
+    setTileCachePersistenceAllowed(!active || mode === 'public-release');
   });
   $effect(() => {
     const enabled = active && mode === 'public-release' && !mapState.navigationViewport && worldTuning.enabled;
@@ -1886,8 +2121,9 @@
   $effect(() => {
     const basemap = mapState.basemap;
     if (active && nativeStyleReady && map) applyWorldBaselineBasemap(map, basemap);
-    if (active && nativeStyleReady && map && appliedBasemap !== basemap) {
-      void applyBasemapTiles(basemap);
+    if (active && nativeStyleReady && map) {
+      if (basemapSwitching && pendingBasemap !== basemap) basemapAbort?.abort();
+      else if (!basemapSwitching && appliedBasemap !== basemap) void applyBasemapTiles(basemap);
     }
   });
   $effect(() => {
@@ -1987,6 +2223,11 @@
   aria-label={tr('Map showing records', $language)}
 >
   <div class="map-host" bind:this={host}></div>
+  {#if hoverMark}<div class="pin-hover-halo" aria-hidden="true" style:left={`${hoverMark.x}px`} style:top={`${hoverMark.y}px`} style:--hover-halo-size={`${useV1Pins ? Math.max(32, 50 * pinScale) : coordinateRadius * 2 + 20}px`} style:--hover-halo-offset={`${useV1Pins ? -22 * pinScale : 0}px`}></div>{/if}
+  {#if hoverLabel}<div class="pin-hover-label" class:below={hoverLabel.below} role="tooltip" style:left={`${hoverLabel.x}px`} style:top={`${hoverLabel.y}px`} style:--hover-pin-height={`${useV1Pins ? 41 * pinScale + 3 : coordinateRadius + 5}px`}>
+    <strong>{hoverLabel.name}</strong>
+    <span>{tr(categoryPresentation(hoverLabel.categoryKey).label, $language)}</span>
+  </div>{/if}
   {#if rendererUnavailable}<p class="map-status" role="alert">{tr('Map unavailable in this browser.', $language)}</p>{/if}
   {#if terrainError}<small class="map-status terrain-status" role="alert">{terrainError}</small>{/if}
   {#if terrainPending}<small class="map-status terrain-status" role="status">{tr('Loading terrain…', $language)}</small>{/if}
@@ -2021,7 +2262,7 @@
     >{#if diagnosticsOpen}<MapDebugPanel
       session={debugSession} renderer={debugRenderer}
       errors={[mapError && 'Map request failed', mapMatchesError && 'Matching pins request failed', basemapError && 'Basemap request failed', terrainError && 'Terrain unavailable', clusterSettingsError, pinModeError, mvtError && 'Tile request failed'].filter(Boolean)}
-      clusterMode={debugClusterMode} {clusterRadius} {clusterMaxZoom} clusterDuration={clusterZoomDuration} {clusterMotionDuration} {clusterMotionLimit} rebuildDelay={clusterRebuildDebounce}
+      clusterMode={debugClusterMode} {clusterRadius} {clusterMaxZoom} clusterDuration={clusterZoomDuration} {clusterMotionDuration} {clusterMotionLimit} {clusterMotionIdleDelay} rebuildDelay={clusterRebuildDebounce}
       {pinScale} usePins={useV1Pins} {coordinateRadius} privateReferences={isRealPreview() && !usingMvt}
       referenceRadius={referenceRadiusKm} {referenceOpacity} referenceLabels={showReferenceLabels}
       layout={layoutTuning} snapshot={diagnosticSnapshot} onclose={() => setDiagnosticsOpen(false)}
@@ -2029,7 +2270,7 @@
       {worldTuning} onworld={updateWorldTuning} onclearworld={clearWorldCache}
       oncluster={(key, value) => { if (key === 'mode') clusterEnabledOverride = value === 'auto' ? null : value === 'on'; else if (key === 'radius') clusterRadius = Number(value); else clusterMaxZoom = Number(value); scheduleClusterSettings(); }}
       onvisual={(key, value) => { if (key === 'pins') { useV1Pins = Boolean(value); void updatePinMode(); } else { if (key === 'pinScale') pinScale = Number(value); else if (key === 'coordinateRadius') coordinateRadius = Number(value); else if (key === 'referenceRadius') referenceRadiusKm = Number(value); else if (key === 'referenceOpacity') referenceOpacity = Number(value); else showReferenceLabels = Boolean(value); updateVisualSettings(); } }}
-      oninteraction={(key, value) => { nativeMotionController?.cancel(); if (key === 'duration') clusterZoomDuration = value; else if (key === 'motionDuration') clusterMotionDuration = value; else if (key === 'motionLimit') clusterMotionLimit = value; else clusterRebuildDebounce = value; }}
+      oninteraction={(key, value) => { nativeMotionController?.cancel(); if (key === 'duration') clusterZoomDuration = value; else if (key === 'motionDuration') clusterMotionDuration = value; else if (key === 'motionLimit') clusterMotionLimit = value; else if (key === 'motionIdleDelay') clusterMotionIdleDelay = value; else clusterRebuildDebounce = value; }}
       onlayout={value => onLayoutTuningChange?.(value)} onreset={resetTemporarySettings} onclearcache={clearProjectionCache}
     />{/if}{/if}{#if false && mode === "real-preview" && !usingMvt && hasMapFeatures}<button
       class="feature-list-toggle"
@@ -2092,14 +2333,20 @@
 </section>
 
 <style>
+  .pin-hover-halo { position:absolute;z-index:2;width:var(--hover-halo-size);height:var(--hover-halo-size);transform:translate(-50%,calc(-50% + var(--hover-halo-offset)));border-radius:50%;box-sizing:border-box;border:1px solid color-mix(in srgb,var(--ink,#f2f0e8) 24%,transparent);background:color-mix(in srgb,var(--ink,#f2f0e8) 10%,transparent);pointer-events:none; }
   .map-surface {
     position: relative;
     overflow: hidden;
   }
+  .map-surface.diagnostics-active { contain:none; }
   .map-host {
     position: absolute;
     inset: 0;
   }
+  .pin-hover-label { position:absolute; z-index:3; pointer-events:none; transform:translate(-50%,calc(-100% - var(--hover-pin-height))); width:max-content; max-width:min(16rem,calc(100% - 20px)); padding:.45rem .65rem; box-sizing:border-box; background:var(--panel,#1c1c1c); color:var(--ink,#f2f0e8); border:1px solid color-mix(in srgb,var(--line,#494949) 60%,transparent); border-radius:8px; box-shadow:0 4px 14px #0003; font-size:.78rem; line-height:1.3; }
+  .pin-hover-label.below { transform:translate(-50%,12px); }
+  .pin-hover-label strong { display:-webkit-box; -webkit-line-clamp:2; line-clamp:2; -webkit-box-orient:vertical; max-height:2.7em; overflow:hidden; overflow-wrap:anywhere; text-overflow:ellipsis; font-weight:600; }
+  .pin-hover-label span { display:block; margin-top:.18rem; color:var(--muted,#b9b9b1); font-size:.7rem; }
   .terrain-status { top:6.8rem; left:.65rem; transform:none; }
   .feature-list-toggle,
   .diagnostics-toggle {

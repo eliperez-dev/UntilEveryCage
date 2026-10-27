@@ -136,17 +136,20 @@ test('saved theme is applied before the app module starts', async ({ page }) => 
   await expect(page.getByRole('heading', { name: 'About Until Every Cage is Empty' })).toBeVisible();
 });
 
-test('masthead theme toggle is square, directly before Tools, and outside the Tools menu', async ({ page }) => {
+test('masthead theme toggle is square, before language and Tools, and outside the Tools menu', async ({ page }) => {
   await page.goto('./#/about');
   const toggle = page.locator('.masthead .theme-toggle');
-  const tools = page.getByRole('button', { name: 'Tools', exact: true });
+  const tools = page.getByRole('button', { name: 'More tools', exact: true });
   const boxes = await page.evaluate(() => {
     const toggleRect = document.querySelector('.masthead .theme-toggle')!.getBoundingClientRect();
+    const languageRect = document.querySelector('.masthead .language-action')!.getBoundingClientRect();
     const toolsRect = document.querySelector('.masthead .tools-action')!.getBoundingClientRect();
-    return { width: toggleRect.width, height: toggleRect.height, gap: toolsRect.left - toggleRect.right };
+    return { width: toggleRect.width, height: toggleRect.height, gap: languageRect.left - toggleRect.right, languageWidth: languageRect.width, toolsGap: toolsRect.left - languageRect.right };
   });
   expect(Math.abs(boxes.width - boxes.height)).toBeLessThan(1);
   expect(boxes.gap).toBeGreaterThanOrEqual(0);
+  expect(boxes.languageWidth).toBeGreaterThanOrEqual(44);
+  expect(boxes.toolsGap).toBeGreaterThanOrEqual(0);
   await tools.click();
   await expect(page.locator('#shared-tools-menu').getByRole('button', { name: /Light theme|Dark theme/ })).toHaveCount(0);
   await expect(toggle).toBeVisible();
@@ -154,7 +157,7 @@ test('masthead theme toggle is square, directly before Tools, and outside the To
 
 const viewports = [{ name: 'desktop', width: 1280, height: 900 }, { name: 'mobile', width: 390, height: 844 }] as const;
 const publicViews = [
-  { route: `./#/map?release_id=${release}`, surface: '.map-view-tools', label: 'map controls' },
+  { route: `./#/map?release_id=${release}`, surface: '.map-navigation', label: 'map controls' },
   { route: './#/map?list=open', surface: '.results', label: 'map search' },
   { route: `./#/records/${id}?release_id=${release}`, surface: '.public-record', label: 'full facility detail' },
   { route: './#/contribute/bug', surface: '.intake', label: 'contribute form' },
@@ -174,17 +177,17 @@ for (const viewport of viewports) {
         await page.goto(view.route);
         if (view.label === 'map controls') {
           await expect(page.getByRole('button', { name: 'Search map' })).toBeVisible();
-          await page.getByRole('button', { name: 'Tools', exact: true }).click();
+          await page.getByRole('button', { name: 'More tools', exact: true }).click();
         }
         await expectAppSurface(page, view.surface, view.label, pageErrors);
         if (view.label === 'map controls') {
           await selectTheme(page, theme);
-          await page.getByRole('button', { name: 'Tools', exact: true }).click();
+          await page.getByRole('button', { name: 'More tools', exact: true }).click();
           await page.screenshot({ path: testInfo.outputPath(`map-en-${viewport.name}-${theme}-tools-closed.png`), fullPage: true });
-          await page.getByRole('button', { name: 'Tools', exact: true }).click();
+          await page.getByRole('button', { name: 'More tools', exact: true }).click();
           await page.locator('#shared-tools-menu').waitFor({ state: 'visible' });
           await page.screenshot({ path: testInfo.outputPath(`map-en-${viewport.name}-${theme}-tools-open.png`), fullPage: true });
-          await page.getByRole('button', { name: 'Close Tools', exact: true }).click();
+          await page.getByRole('button', { name: 'Close more tools', exact: true }).click();
           await page.getByRole('button', { name: 'Search map' }).click();
           const fixtureRecord = page.locator(`.record-list button[data-record-id="${id}"]`);
           await expect(fixtureRecord).toBeVisible();
@@ -198,8 +201,9 @@ for (const viewport of viewports) {
           expect(contrast(detailStyle.color, detailStyle.background), `selected map dossier ${theme} contrast`).toBeGreaterThanOrEqual(4.5);
           await page.getByRole('button', { name: 'Close record detail', exact: true }).click();
           await expect(detail).toBeHidden();
-          await page.getByRole('button', { name: 'Tools', exact: true }).click();
-          await expect(page.locator('.map-view-tools')).toBeVisible();
+          await page.getByRole('button', { name: 'More tools', exact: true }).click();
+          await expect(page.locator('.map-display-tools')).toBeVisible();
+          await expect(page.locator('#shared-tools-menu .map-view-tools')).toHaveCount(0);
         } else {
           await selectTheme(page, theme);
         }

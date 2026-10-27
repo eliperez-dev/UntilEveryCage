@@ -44,7 +44,7 @@ test('candidate map exposes projection-cache invalidation through Tools', async 
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     return Boolean(map?.isStyleLoaded() && map.isSourceLoaded('locations'));
   }, undefined, { timeout: 60_000 });
-  await page.getByRole('button', { name: 'Tools' }).click();
+  await page.getByRole('button', { name: 'More tools' }).click();
   await page.getByLabel('Enable debug menu').check();
   await page.getByRole('button', { name: 'Debug menu' }).click();
   const debug = page.getByRole('complementary', { name: 'Debug menu' });
@@ -142,8 +142,7 @@ test('candidate map retains native overlays and V1 selection across route and ba
   await page.goto('/v2-preview/#/database?f1a=field&source=us.fsis');
   await page.goto('/v2-preview/#/map?f1a=field&source=us.fsis');
   await ready();
-  await page.getByRole('button', { name: 'Tools' }).click();
-  await page.getByLabel('Map style').selectOption('satellite');
+  await page.locator('.map-navigation').getByRole('switch', { name: 'Map style: Street', exact: true }).click();
   await page.waitForFunction(() => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     return map?.isSourceLoaded('locations') && ['clusters', 'aggregate-outer', 'source-coordinate-points', 'v1-source-pins'].every(id => map.getLayer(id));
@@ -167,7 +166,7 @@ test('candidate map keeps mobile controls clear and uses category and reference 
       stroke: map.getPaintProperty('aggregate-outer', 'circle-stroke-color'),
     };
   });
-  expect(paints.coordinate).toContain('#009E73');
+  expect(paints.coordinate).toContain('#D5B84A');
   expect(paints.coordinate).toContain('#0072B2');
   expect(paints.reference).toBe('#d8473f');
   expect(paints.opacity).toContain('0.22');
@@ -221,12 +220,12 @@ test('plain map entry uses the configured candidate projection and preserves its
       hasApproximatePoint: Boolean(approximate),
     };
   });
-  expect(mapState.color).toContain('#009E73');
+  expect(mapState.color).toContain('#D5B84A');
   expect(mapState.color).toContain('#0072B2');
   expect(mapState.referenceColor).toBe('#d8473f');
   expect(mapState.referenceStroke).toBe('#ff695c');
   expect(mapState.referenceOpacity).toContain('0.22');
-  expect(mapState.v1Icons).toContain('v1-pin-green');
+  expect(mapState.v1Icons).toContain('v1-pin-yellow');
   expect(mapState.v1Icons).toContain('v1-pin-yellow');
   expect(mapState.hasApproximatePoint).toBe(true);
   expect(mapState.renderedReferences).toBeGreaterThan(0);

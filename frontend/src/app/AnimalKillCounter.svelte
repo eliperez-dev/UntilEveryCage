@@ -30,7 +30,7 @@
   <h2 id="estimate-title">{tr('Animals Killed Since You Opened This Page', $language)}</h2>
   <ul class="estimate-list">
     {#each ANIMAL_KILL_GROUPS as group (group.id)}
-      <li><span class="estimate-number">{estimateGroupSinceOpen(group.annualEstimate, elapsedMilliseconds).toLocaleString($language === 'es' ? 'es' : 'en-US')}</span><span>{tr(group.label, $language)}</span></li>
+      <li><span class="estimate-number">{estimateGroupSinceOpen(group.annualEstimate, elapsedMilliseconds).toLocaleString($language)}</span><span>{tr(group.label, $language)}</span></li>
     {/each}
   </ul>
 </section>

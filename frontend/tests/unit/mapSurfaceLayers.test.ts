@@ -58,14 +58,16 @@ describe('MapSurface layer contract', () => {
     expect(layers.filter((layer) => layer.id.startsWith('mvt-'))).toHaveLength(MVT_LOCATION_LAYER_IDS.length);
     expect(layers.every((layer) => layer.minzoom === undefined && layer.maxzoom === undefined)).toBe(true);
     expect(layers.find((layer) => layer.id === 'mvt-v1-source-pins')?.layout).toMatchObject({
-      visibility: 'none', 'icon-image': 'v1-pin-red', 'icon-anchor': 'bottom',
+      visibility: 'none', 'icon-image': expect.any(Array), 'icon-anchor': 'bottom',
     });
     expect(layers.find((layer) => layer.id === 'mvt-reference-outer')).toBeUndefined();
     expect(layers.find((layer) => layer.id === 'mvt-reference-center')).toMatchObject({
       type: 'symbol',
       filter: ['any', ['==', ['get', 'kind'], 'city_reference'], ['==', ['get', 'kind'], 'coarse_reference']],
-      layout: { 'icon-image': 'v1-pin-grey' },
+      layout: { 'icon-image': expect.any(Array) },
     });
+    expect(JSON.stringify(layers.find((layer) => layer.id === 'mvt-reference-center')?.layout['icon-image'])).toContain('v1-pin-graphite');
+    expect(JSON.stringify(layers.find((layer) => layer.id === 'mvt-source-coordinates')?.paint['circle-color'])).toContain('#515B60');
     expect(layers.find((layer) => layer.id === 'mvt-reference-count')?.layout['text-field'])
       .toEqual(['case', ['>', ['coalesce', ['get', 'count'], 1], 1], ['to-string', ['coalesce', ['get', 'count'], 1]], '']);
   });

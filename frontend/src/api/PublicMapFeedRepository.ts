@@ -1,6 +1,7 @@
 import type { JsonMapCollection, JsonMapFeature } from '../design-lab/components/jsonMapFallback';
 import type { LocalProfile } from './LocalLocationRepository';
 import { PublicReleaseRepository, type PublicReleaseIdentity } from './PublicReleaseRepository';
+import { CATEGORY_PIN_IMAGES } from '../features/locations/categoryPresentation';
 
 export type PublicMapFeed = Readonly<{
   collection: JsonMapCollection;
@@ -41,11 +42,7 @@ const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 const categories = new Set(['animal_keeping_and_production', 'slaughter', 'processing_and_preparation', 'research_and_animal_use', 'other_regulated_premises', 'unclassified']);
 const precisions = new Set(['source_reported', 'exact', 'approximate', 'city']);
 const isObject = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
-const categoryIcon: Record<string, string> = {
-  animal_keeping_and_production: 'v1-pin-green', slaughter: 'v1-pin-red',
-  processing_and_preparation: 'v1-pin-grey', research_and_animal_use: 'v1-pin-violet',
-  other_regulated_premises: 'v1-pin-orange', unclassified: 'v1-pin-grey',
-};
+const categoryIcon: Readonly<Record<string, string>> = CATEGORY_PIN_IMAGES;
 
 type CompactFeed = Readonly<{ format: 'compact-v1'; dictionaries: Record<string, unknown>; features: unknown[] }>;
 const isCompactFeed = (value: unknown): value is CompactFeed => isObject(value) && value.format === 'compact-v1' && isObject(value.dictionaries) && Array.isArray(value.features);

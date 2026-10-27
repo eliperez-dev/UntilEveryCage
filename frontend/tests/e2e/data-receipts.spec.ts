@@ -16,7 +16,7 @@ const candidate = (candidate_id = id) => ({ candidate_id, source_id:'synthetic.s
 test('direct API and About destinations preserve safe map context and section aliases', async ({ page }) => {
   await isolate(page); await page.goto('./#/about?map=%23%2Fmap%3Flat%3D44.5%26lon%3D8.1%26z%3D5%26release_id%3Drelease-2026-10');
   await expect(page.getByRole('button',{name:'Account menu'})).toHaveCount(0);
-  await expect(page.getByRole('button',{name:'Tools',exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'More tools',exact:true})).toBeVisible();
   const nav = page.getByRole('navigation', { name: 'Primary' });
   await expect(nav.getByRole('link')).toHaveText(['Map','Data','Contribute','About']);
   await nav.getByRole('link',{name:'Data',exact:true}).click();

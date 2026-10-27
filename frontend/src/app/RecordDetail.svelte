@@ -3,6 +3,7 @@
   import { language, tr } from './language';
   import RecordConnections from './RecordConnections.svelte';
   import LocationPreview from './LocationPreview.svelte';
+  import { externalMapLink } from '../features/locations/externalMapLink';
   import { serializeRoute } from './routeState';
   import type { LabRecord } from '../design-lab/contract';
   import CategoryBadge from '../features/locations/CategoryBadge.svelte';
@@ -81,6 +82,7 @@
     onclose,
     oncategoryfilter,
     onsourcefilter,
+    onshowmap,
   }: {
     record: LabRecord | RecordDetailRecord;
     presentation?: 'rail' | 'page';
@@ -90,10 +92,13 @@
     onclose?: () => void;
     oncategoryfilter?: ((key: string) => void) | undefined;
     onsourcefilter?: ((sourceId: string) => void) | undefined;
+    onshowmap?: (() => void) | undefined;
   } = $props();
   let copyFeedback = $state<'copied' | 'failed' | ''>('');
   let copyResetTimer: ReturnType<typeof setTimeout> | undefined;
   let copyAttempt = 0;
+  let connectionsState = $state({ count:0, loading:true, error:false });
+  function updateConnectionsState(next: typeof connectionsState) { connectionsState = next; }
   onDestroy(() => { copyAttempt += 1; if (copyResetTimer) clearTimeout(copyResetTimer); });
 
 
@@ -196,6 +201,10 @@
       'retrieved_at' in record ? record.retrieved_at : null,
     ),
   );
+  function shortDate(raw: string): string {
+    const date = new Date(raw);
+    return Number.isNaN(date.getTime()) ? raw : new Intl.DateTimeFormat($language, { day:'numeric', month:'short', year:'numeric', timeZone:'UTC' }).format(date);
+  }
   const observed = $derived(
     value(
       'observedAt' in record ? record.observedAt : null,
@@ -222,6 +231,7 @@
     ),
   );
   const sourceLocationRole = $derived(value('sourceLocationRole' in record ? record.sourceLocationRole : null, 'source_location_role' in record ? record.source_location_role : null));
+  const mapsHref = $derived(publicRelease ? externalMapLink({latitude:record.latitude, longitude:record.longitude, precision, coordinatePrecision:record.coordinatePrecision, sourceLocationRole}) : null);
   const locationText = $derived(
     [value(record.locality), value(record.country)].filter(Boolean).join(', ') ||
       'Location unavailable',
@@ -269,16 +279,17 @@
     return sourceFactLabels(facts, field).join(', ') || null;
   }
   function formattedRange(range: DerivedSourceVolumeRange): string | null {
-    const number = (value: number) => new Intl.NumberFormat('en-US').format(value);
+    const number = (value: number) => new Intl.NumberFormat($language).format(value);
     if (range.bounds === 'exclusive_upper' && range.upper !== null) return `${tr('Less than', $language)} ${number(range.upper)}`;
     if (range.bounds === 'inclusive_lower_unbounded' && range.lower !== null) return `${number(range.lower)} ${tr('or more', $language)}`;
     if (range.bounds === 'inclusive_lower_exclusive_upper' && range.lower !== null && range.upper !== null) return `${number(range.lower)} ${tr('to less than', $language)} ${number(range.upper)}`;
     return null;
   }
-  function annualSpeciesCount(count: number): string { return new Intl.NumberFormat('en-US').format(count); }
-  const slaughterRanges = $derived(sourceFacts?.derivedSourceVolumeRanges?.filter(range => range.unit === 'head' && range.period === 'trailing_360_days') ?? []);
+  function annualSpeciesCount(count: number): string { return new Intl.NumberFormat($language).format(count); }
+  const slaughterRanges = $derived(sourceFacts?.derivedSourceVolumeRanges?.filter(range => range.unit === 'head' && range.period === 'trailing_360_days' && range.verificationState === 'source_codebook_verified') ?? []);
   const processingRanges = $derived(sourceFacts?.derivedSourceVolumeRanges?.filter(range => range.unit === 'pounds' && range.period === 'month') ?? []);
   const slaughterRangeText = $derived(slaughterRanges.map(formattedRange).filter((range): range is string => Boolean(range)).map(range => `${range} ${tr('animals', $language)}`).join(', '));
+  const slaughterCodebooks = $derived([...new Set(slaughterRanges.map(range => safeHttps(range.sourceCodebookUrl)).filter((url):url is string=>Boolean(url)))]);
   const processingRangeText = $derived(processingRanges.map(formattedRange).filter((range): range is string => Boolean(range)).map(range => `${range} ${tr('pounds/month', $language)}`).join(', '));
 
   function safeHttps(raw: string | null): string | null {
@@ -340,13 +351,14 @@
       onclick={onclose}
     >{tr('Close', $language)}</button>
   {/if}
-  <h1 id="record-title">{name}{#if presentation === 'page' || (presentation === 'rail' && publicRelease)} <button class="share" type="button" aria-label={tr('Copy facility link', $language)} title={tr('Copy facility link', $language)} onclick={copyFacilityLink}><svg aria-hidden="true" viewBox="0 0 24 24">{#if copyFeedback === 'copied'}<path d="m5 12 4 4L19 6"/>{:else if copyFeedback === 'failed'}<path d="M6 6l12 12M18 6 6 18"/>{:else}<path d="M10 13a5 5 0 0 0 7.1 0l3-3A5 5 0 0 0 13 2.9l-1.7 1.7m2.7 6.4a5 5 0 0 0-7.1 0l-3 3A5 5 0 0 0 11 21.1l1.7-1.7"/>{/if}</svg></button><span class="sr-only" role="status" aria-live="polite">{copyFeedback === 'copied' ? tr('Link copied', $language) : copyFeedback === 'failed' ? tr('Could not copy facility link', $language) : ''}</span>{/if}</h1>
-  {#if presentation === 'rail' && fullRecordHref}<a class="open-facility" href={fullRecordHref}><span>{tr('Open facility page', $language)}</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg></a>{/if}
+  <h1 id="record-title"><span class="record-name">{name}</span>{#if presentation === 'page' || (presentation === 'rail' && publicRelease)}<button class="share" type="button" aria-label={tr('Copy facility link', $language)} title={tr('Copy facility link', $language)} onclick={copyFacilityLink}><svg aria-hidden="true" viewBox="0 0 24 24">{#if copyFeedback === 'copied'}<path d="m5 12 4 4L19 6"/>{:else if copyFeedback === 'failed'}<path d="M6 6l12 12M18 6 6 18"/>{:else}<path d="M10 13a5 5 0 0 0 7.1 0l3-3A5 5 0 0 0 13 2.9l-1.7 1.7m2.7 6.4a5 5 0 0 0-7.1 0l-3 3A5 5 0 0 0 11 21.1l1.7-1.7"/>{/if}</svg></button><span class="sr-only" role="status" aria-live="polite">{copyFeedback === 'copied' ? tr('Link copied', $language) : copyFeedback === 'failed' ? tr('Could not copy facility link', $language) : ''}</span>{/if}</h1>
   <section class="classification-overview" aria-labelledby="taxonomy-heading">
     <h2 id="taxonomy-heading" class="sr-only">{tr('Activities and classification', $language)}</h2>
     <div class="record-category"><CategoryBadge record={classificationRecord} onfilter={oncategoryfilter} /></div>
-    <ClassificationSummary record={classificationRecord} />
+    <ClassificationSummary record={classificationRecord} presentation={presentation === 'rail' ? 'summary' : 'all'} />
+    {#if slaughterRangeText}<section class="slaughter-estimate" aria-label={tr('Estimated animals slaughtered (last 360 days)', $language)}><p>{tr('Estimated animals slaughtered (last 360 days)', $language)}</p><strong>{slaughterRangeText}</strong>{#each slaughterCodebooks as href}<a href={href} target="_blank" rel="noopener noreferrer">{tr('Source codebook', $language)}</a>{/each}</section>{/if}
   </section>
+  {#if presentation === 'rail' && (sourceName || observed || retrieved)}<p class="compact-source">{#if sourceName}<span>{sourceName}</span>{/if}{#if observed || retrieved}<span>{sourceName ? ' · ' : ''}{tr(observed ? 'Observed' : 'Retrieved', $language)} <time datetime={observed ?? retrieved ?? undefined} title={observed ?? retrieved ?? undefined}>{shortDate(observed ?? retrieved ?? '')}</time></span>{/if}</p>{/if}
   {#if presentation === 'page' && import.meta.env.VITE_COMMUNITY_PILOT === 'true' && id}
     <p class="contribution-actions">{#each [['evidence','Add evidence'],['correction','Suggest a correction'],['privacy-removal','Privacy or removal']] as [type, label]}<a class="evidence-link" href={`#/contribute/${type}?target=${encodeURIComponent(id)}&map=${encodeURIComponent('#/map?f1a=field')}`}>{tr(label ?? '', $language)}</a>{/each}</p>
   {/if}
@@ -367,16 +379,18 @@
       {#if coordinateConfidence !== null || record.coordinateConfidenceBand}<div><dt>{tr('Geocoding confidence', $language)}</dt><dd>{#if coordinateConfidence !== null}{coordinateConfidence} ({tr('provider score', $language)}){/if}{#if record.coordinateConfidenceBand}{coordinateConfidence !== null ? ' · ' : ''}{displayGeneratedValue(record.coordinateConfidenceBand)}{/if}</dd></div>{/if}
       {#if defaultMapScope === false}<div><dt>{tr('Map scope', $language)}</dt><dd>{tr('Outside the default map', $language)}{#if mapScopeReason} · {displayGeneratedValue(mapScopeReason)}{/if}</dd></div>{/if}
     </dl>
+    <div class="location-actions">{#if presentation === 'rail' && hasCoordinates && onshowmap}<button class="show-on-map" type="button" onclick={onshowmap}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/><path d="M12 2v4m0 12v4M2 12h4m12 0h4"/></svg>{tr('Show on map', $language)}</button>{/if}{#if mapsHref}<a class="open-in-maps" href={mapsHref} target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">{tr('Open in maps', $language)}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6m0-6L10 14M10 4H4v16h16v-6"/></svg></a>{/if}</div>
   </section>
 
   {#if presentation === 'page' && hasCoordinates}<LocationPreview latitude={record.latitude!} longitude={record.longitude!} precision={precision} category={taxonomy?.primaryCategories[0] ?? activity ?? 'unclassified'} />{/if}
 
+  {#if presentation === 'rail'}<div class="classification-disclosure"><ClassificationSummary record={classificationRecord} presentation="details" /></div>{/if}
+
   {#if sourceFacts}
-    <section aria-labelledby="source-facts-heading">
-      <h2 id="source-facts-heading">{tr('Source facts', $language)}</h2>
+    <svelte:element this={presentation === 'rail' ? 'details' : 'section'} class="source-facts-section" aria-labelledby="source-facts-heading">
+      {#if presentation === 'rail'}<summary id="source-facts-heading">{tr('Source facts', $language)}</summary>{:else}<h2 id="source-facts-heading">{tr('Source facts', $language)}</h2>{/if}
       <dl>
         {#if speciesSlaughtered}<div><dt>{tr('Species slaughtered', $language)}</dt><dd>{speciesSlaughtered}</dd></div>{/if}
-        {#if slaughterRangeText}<div><dt>{tr('Estimated animals slaughtered (last 360 days)', $language)}</dt><dd>{slaughterRangeText}</dd></div>{/if}
         {#if processingRangeText}<div><dt>{tr('Estimated product volume (pounds/month)', $language)}</dt><dd>{processingRangeText}</dd></div>{/if}
         {#if sourceLocationRole === 'aphis_mailing_locality'}<div><dt>{tr('Location role', $language)}</dt><dd>{tr('APHIS mailing locality: approximate locality, not an operating-site location', $language)}</dd></div>{/if}
         {#if sourceFacts.alternateNames?.length}<div><dt>{tr('Also known as', $language)}</dt><dd>{sourceFacts.alternateNames.join(' · ')}</dd></div>{/if}
@@ -386,15 +400,18 @@
         {#if sourceFacts.aphisAnnualReports?.length}{#each sourceFacts.aphisAnnualReports as report (report.fiscalYear)}<div><dt>{tr('FY ', $language)}{report.fiscalYear} {tr('reported animals', $language)}</dt><dd><ul>{#each report.speciesCounts as species (species.species)}<li>{sourceFactLabel(species.species)}: {annualSpeciesCount(species.count)}</li>{/each}</ul>{#if safeHttps(report.sourceUrl)}<a href={safeHttps(report.sourceUrl) ?? ''} target="_blank" rel="noopener noreferrer">{tr('Source report', $language)}</a>{/if}</dd></div>{/each}{/if}
         {#if sourceFacts.aphisDatedInspections?.length}{#each sourceFacts.aphisDatedInspections as inspection (inspection.inspectionDate)}<div><dt>{tr('APHIS inspection', $language)}</dt><dd>{inspection.inspectionDate}{#if safeHttps(inspection.sourceUrl)} <a href={safeHttps(inspection.sourceUrl) ?? ''} target="_blank" rel="noopener noreferrer">{tr('Source record', $language)}</a>{/if}</dd></div>{/each}{/if}
       </dl>
-    </section>
+    </svelte:element>
   {/if}
 
   {#if publicRelease && publicReleaseId && id}
-    <RecordConnections facilityId={id} releaseId={publicReleaseId} sourceId={sourceId ?? undefined} sourceFacts={sourceFacts} rail={presentation === 'rail'} />
+    <svelte:element this={presentation === 'rail' ? 'details' : 'div'} class="connections-disclosure" open={presentation === 'rail' && (connectionsState.count > 0 || connectionsState.error)}>
+    {#if presentation === 'rail'}<summary>{tr('Connections', $language)}{#if connectionsState.loading}<span class="connection-state">{tr('Loading…', $language)}</span>{/if}</summary>{/if}
+    <RecordConnections facilityId={id} releaseId={publicReleaseId} sourceId={sourceId ?? undefined} sourceFacts={sourceFacts} rail={presentation === 'rail'} onstatechange={presentation === 'rail' ? updateConnectionsState : undefined} />
+    </svelte:element>
   {/if}
 
-  <section aria-labelledby="evidence-heading">
-      <h2 id="evidence-heading">{tr('Source and review', $language)}</h2>
+  <svelte:element this={presentation === 'rail' ? 'details' : 'section'} class="evidence-section" aria-labelledby="evidence-heading">
+      {#if presentation === 'rail'}<summary id="evidence-heading">{tr('Source and review', $language)}</summary>{:else}<h2 id="evidence-heading">{tr('Source and review', $language)}</h2>{/if}
     <dl>
       {#if sourceName}<div><dt>{tr('Source', $language)}</dt><dd>{#if onsourcefilter && sourceId}<button class="filter-fact" type="button" onclick={() => onsourcefilter?.(sourceId)}>{sourceName}</button>{#if sourceUrl} <a class="source-reference" href={sourceUrl} target="_blank" rel="noopener noreferrer" aria-label={`${sourceName} (${tr('opens in a new tab', $language)})`}>↗</a>{/if}{:else if sourceUrl}<a href={sourceUrl} target="_blank" rel="noopener noreferrer">{sourceName}<span class="sr-only"> ({tr('opens in a new tab', $language)})</span></a>{:else}{sourceName}{/if}</dd></div>
       {:else if sourceId}<div><dt>{tr('Source ID', $language)}</dt><dd>{sourceId}</dd></div>{/if}
@@ -405,7 +422,9 @@
       {#if publicationStatus}<div><dt>{tr('Publication', $language)}</dt><dd>{displayGeneratedValue(publicationStatus)}</dd></div>{/if}
     </dl>
     {#if evidence}<p class="evidence">{evidence}</p>{/if}
-  </section>
+  </svelte:element>
+
+  {#if presentation === 'rail' && fullRecordHref}<a class="open-facility" href={fullRecordHref}><span>{tr('Open facility page', $language)}</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg></a>{/if}
 
   <footer>
     {#if presentation !== 'page'}<span class="record-id">Record ID · {id || 'Unavailable'}</span>{/if}
@@ -413,6 +432,23 @@
 </article>
 
 <style>
+  .slaughter-estimate { margin:.8rem 0 .3rem;padding:.65rem 0 .65rem .8rem;border-left:2px solid var(--line); }
+  .slaughter-estimate p { margin:0 0 .35rem;color:var(--muted);font-size:.75rem;line-height:1.4; }
+  .slaughter-estimate strong { display:block;font:400 1.3rem/1.3 Georgia,serif;color:var(--ink); }
+  .slaughter-estimate a { display:inline-flex;align-items:center;min-height:36px;font-size:.6875rem;text-underline-offset:3px; }
+  .location-actions { display:flex;align-items:center;flex-wrap:wrap;gap:.25rem 1.4rem; }
+  .open-in-maps { display:inline-flex;align-items:center;gap:.4rem;min-height:44px;margin-top:.45rem;color:var(--ink);font-size:.75rem;text-underline-offset:3px; }
+  .open-in-maps svg { width:1rem;height:1rem;fill:none;stroke:currentColor;stroke-width:1.5; }
+  #record-title { display:flex;align-items:flex-start;gap:.5rem; }
+  .record-name { flex:1 1 auto;min-width:0;overflow-wrap:anywhere; }
+  #record-title .share { flex:0 0 auto;align-self:flex-start; }
+  .connection-state { margin-left:.6rem;color:var(--muted);font-size:.75rem;font-weight:400; }
+  .classification-disclosure { margin-top:1rem;border-top:1px solid var(--line); }
+  .compact-source { color:var(--ui-muted,var(--muted));font-size:.75rem;line-height:1.5;margin:.5rem 0 1rem;overflow-wrap:anywhere; }
+  .detail:not(.page) .show-on-map { display:inline-flex;align-items:center;gap:.45rem;min-height:44px;margin:.45rem 0 0;padding:0;border:0;background:transparent;color:var(--ink);font:inherit;font-size:.75rem;text-decoration:none; }
+  .detail:not(.page) details.source-facts-section,.detail:not(.page) details.evidence-section,.detail:not(.page) details.connections-disclosure { border-top:1px solid var(--line);margin-top:1rem; }
+  .detail:not(.page) details > summary { min-height:48px;padding:.75rem 0;cursor:pointer;font-size:.8125rem; }
+  .detail:not(.page) .connections-disclosure :global(.connections > h2) { display:none; }
   .contribution-actions{display:flex;flex-wrap:wrap;gap:.5rem 1rem}
   .detail {
     --ink: #f1efe8;
@@ -576,8 +612,9 @@
     overflow-wrap: anywhere;
   }
 
-  .detail:not(.page) .open-facility { display: flex; align-items: center; justify-content: space-between; gap: .75rem; width: 100%; min-height: 2.75rem; margin: 0 0 .95rem; padding: .55rem .8rem; border: 1px solid var(--line); color: var(--ink); background: transparent; font-size: .8125rem; font-weight: 500; text-decoration: none; }
-  .detail:not(.page) .open-facility:hover { background: var(--ui-hover); }
+  .detail:not(.page) .open-facility { display: flex; align-items: center; justify-content: space-between; gap: .75rem; width: 100%; min-height: 2.75rem; margin: 1rem 0 0; padding: .55rem .8rem; border: 1px solid #f4f2ec; color: #141414; background: #f4f2ec; font-size: .8125rem; font-weight: 500; text-decoration: none; }
+  .detail:not(.page) .open-facility:hover { background:#e3e0d8;border-color:#e3e0d8; }
+  .detail:not(.page) .open-facility:focus-visible { outline:2px solid var(--ink);outline-offset:3px; }
   .open-facility svg { width: 1rem; height: 1rem; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 
   .detail:not(.page) .share {
@@ -633,4 +670,5 @@
     .detail:not(.page) { border: 0; padding: 1rem; }
     .detail:not(.page) .share { width: 2.75rem; min-height: 2.75rem; }
   }
+  .show-on-map svg { width:1rem;height:1rem;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round; }
 </style>

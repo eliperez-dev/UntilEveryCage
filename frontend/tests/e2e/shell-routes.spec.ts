@@ -30,15 +30,17 @@ test('centered primary navigation and Tools map controls layout across desktop a
   await page.route('**/api/v2/locations?**', route => route.fulfill({ contentType:'application/json', body:JSON.stringify({ api_version:'v2', data:[], meta:{ release_id:'synthetic-release', ruleset_version:'synthetic-rules', profile:'official', next_cursor:null, coverage_note:'Synthetic release.' } }) }));
   await page.goto('./#/map?f1a=field&scenario=dense');
   await expect(page.getByRole('button', { name: 'Search map' })).toBeVisible();
-  const tools = page.getByRole('button', { name: 'Tools', exact: true });
+  const tools = page.getByRole('button', { name: 'More tools', exact: true });
   if (await tools.getAttribute('aria-expanded') === 'false') await tools.click();
   await expect(tools).toHaveAttribute('aria-expanded', 'true');
   const nav = page.getByRole('navigation', { name: 'Primary' });
   await expect(nav.getByRole('link')).toHaveText(['Map','Data','Contribute','About']);
-  const mapControls = page.getByRole('group', { name: 'Map view' });
-  await expect(mapControls.getByText('Right-mouse to rotate / Left-mouse to pan')).toBeVisible();
-  await expect(mapControls.getByLabel('Map style')).toBeVisible();
-  await expect(mapControls.locator('.map-camera-toggle')).toBeVisible();
+  const mapControls = page.locator('.map-navigation');
+  await expect(mapControls.locator('#map-camera-help')).toContainText('Right-drag to tilt and rotate');
+  await expect(page.locator('#shared-tools-menu .map-view-tools')).toHaveCount(0);
+  await expect(page.getByRole('group', { name: 'Map display' })).toBeVisible();
+  await expect(mapControls.getByRole('group', { name: 'Map style' })).toBeVisible();
+  await expect(mapControls.locator('.dimension-button')).toBeVisible();
   const midpoint = async () => page.evaluate(() => {
     const rect = document.querySelector('nav[aria-label="Primary"]')!.getBoundingClientRect();
     return rect.left + rect.width / 2;
@@ -46,11 +48,11 @@ test('centered primary navigation and Tools map controls layout across desktop a
   await page.setViewportSize({ width: 1280, height: 900 });
   await expect.poll(midpoint).toBeCloseTo(640, 0);
   const mapControlGeometry = async () => page.evaluate(() => {
-    const view = document.querySelector('.map-view-tools')!;
+    const view = document.querySelector('.navigation-stack')!;
     const bounds = view.getBoundingClientRect();
     return {
       overflow: view.scrollWidth > view.clientWidth || bounds.left < 0 || bounds.right > innerWidth,
-      touchTargets: [...view.querySelectorAll('select, button')].map(control => control.getBoundingClientRect().height),
+      touchTargets: [...view.querySelectorAll('button')].filter(control => control.getBoundingClientRect().width > 0).map(control => control.getBoundingClientRect().height),
     };
   });
   let inset = await mapControlGeometry();
@@ -63,7 +65,7 @@ test('centered primary navigation and Tools map controls layout across desktop a
   inset = await mapControlGeometry();
   expect(inset.overflow).toBe(false);
   expect(inset.touchTargets.every(height => height >= 44)).toBe(true);
-  await expect(page.getByRole('group', { name: 'Map view' })).toBeVisible();
+  await expect(page.locator('.map-navigation')).toBeVisible();
   await page.setViewportSize({ width: 375, height: 812 });
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   inset = await mapControlGeometry();

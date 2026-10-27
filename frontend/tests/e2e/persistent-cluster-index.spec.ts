@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { expectNearbyScope } from './nearbyMapAssertions';
 import releaseManifest from '../fixtures/release-map/manifest.json' with { type: 'json' };
 
 // Actual records must not become test output or trace artifacts.
@@ -67,9 +68,9 @@ async function fixture(page: Page) {
 
 async function diagnostics(page: Page) {
   if (!await page.locator('#map-diagnostics').isVisible()) {
-    await page.getByRole('button', { name: 'Tools', exact: true }).click();
+    await page.getByRole('button', { name: 'More tools', exact: true }).click();
     await page.getByRole('checkbox', { name: 'Enable debug menu', exact: true }).check();
-    await page.getByRole('button', { name: 'Close Tools', exact: true }).click();
+    await page.getByRole('button', { name: 'Close more tools', exact: true }).click();
     await page.getByRole('button', { name: 'Debug menu', exact: true }).click();
   }
   const renderer = page.locator('#map-diagnostics details').filter({ has: page.locator('summary', { hasText: 'Renderer & timing' }) });
@@ -212,7 +213,7 @@ test('filter membership and radius change the cache, and corrupt persisted data 
   await page.context().grantPermissions(['geolocation']);
   await page.context().setGeolocation(device);
   await page.getByRole('button', { name: 'Your location', exact: true }).click();
-  await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getCenter().lat)).toBeCloseTo(device.latitude, 7);
+  await expectNearbyScope(page, device);
   const beforeArea = (await storedSummary(page)).key;
   await page.getByRole('button', { name: 'Search this area', exact: true }).click();
   await expect.poll(() => page.evaluate(async () => {

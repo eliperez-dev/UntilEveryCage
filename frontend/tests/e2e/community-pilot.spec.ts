@@ -44,7 +44,13 @@ async function mockCommunityApi(page: Page) {
   });
 }
 test.beforeEach(async({page})=>mockCommunityApi(page));
-const task=(page:Page,name:string)=>page.getByRole('navigation',{name:'Contribution tasks'}).getByRole('link',{name,exact:false});
+const task=(page:Page,name:string)=>({click:async()=>{
+  const chooser=page.locator('#contribution-task');
+  if(await chooser.isVisible()){
+    const kind:Record<string,string>={'Add a facility':'facility','Update a record':'correction','Report a problem':'bug','Privacy / removal':'privacy_removal'};
+    await chooser.selectOption(kind[name]!);
+  }else await page.getByRole('navigation',{name:'Contribution tasks'}).getByRole('link',{name,exact:false}).click();
+}});
 const subtype=(page:Page,name:string)=>page.getByRole('navigation',{name:'Type of update'}).getByRole('link',{name,exact:true});
 async function submitAndTrack(page:Page,bug=false){await page.getByRole('button',{name:bug?'Send report':'Send for review',exact:true}).click();await expect(page.getByRole('heading',{name:'Contribution received',exact:true})).toBeVisible();return page.getByRole('link',{name:bug?'Track report':'Track submission',exact:true});}
 
@@ -146,7 +152,7 @@ test('receipt copying reports success/failure and tracking credentials stay in f
   page.on('request',r=>requests.push({url:r.url(),referer:r.headers().referer}));
   await page.route('**/api/community/status',async route=>{statusBody=route.request().postDataJSON();await route.fulfill({contentType:'application/json',body:JSON.stringify({submission_id:id,status:'screened'})});});
   await page.goto('#/contribute');await page.getByLabel('Facility name').fill('Synthetic receipt');await page.getByLabel(/I have permission/).check();
-  const tracker=await submitAndTrack(page);await page.getByRole('button',{name:'Copy tracking link',exact:true}).click();await expect(page.getByRole('alert')).toContainText('could not be copied');
+  const tracker=await submitAndTrack(page);await expect(page.getByText('Save this link. You cannot access your submission again without it.',{exact:true})).toBeVisible();await page.getByRole('button',{name:'Copy tracking link',exact:true}).click();await expect(page.getByRole('alert')).toContainText('could not be copied');
   await page.evaluate(()=>Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async()=>{}}}));
   await page.getByRole('button',{name:'Copy tracking link',exact:true}).click();await expect(page.getByRole('button',{name:'Copied',exact:true})).toBeVisible();
   await tracker.click();await expect(page.getByRole('heading',{name:'Privacy screened',exact:true})).toBeVisible();

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { language, tr } from './language';
   import { onMount } from 'svelte';
   import * as maplibregl from 'maplibre-gl';
   import type { Map as MapLibreMap, Marker as MapLibreMarker } from 'maplibre-gl';
@@ -93,14 +94,14 @@
 </script>
 
 <div class="picker-shell">
-  <div bind:this={host} class="pin-map" role="application" aria-label="Choose a location on the map. Click to place a suggested point, or enter coordinates below." ></div>
-  {#if basemapMessage}<p class="map-error" role="status">{basemapMessage}</p>{/if}
+  <div bind:this={host} class="pin-map" role="application" aria-label={tr('Choose a location on the map. Click to place a suggested point, or enter coordinates below.', $language)} ></div>
+  {#if basemapMessage}<p class="map-error" role="status">{tr(basemapMessage, $language)}</p>{/if}
 </div>
 <div class="coordinate-inputs">
-  <label>Latitude<input aria-label="Latitude" type="number" min="-90" max="90" step="any" value={latitude ?? ''} oninput={(event) => { const value = event.currentTarget.value; const next = value === '' ? undefined : Number(value); numericPoint(next, longitude, next !== undefined && longitude !== undefined ? 'text' : undefined); }} /></label>
-  <label>Longitude<input aria-label="Longitude" type="number" min="-180" max="180" step="any" value={longitude ?? ''} oninput={(event) => { const value = event.currentTarget.value; const next = value === '' ? undefined : Number(value); numericPoint(latitude, next, latitude !== undefined && next !== undefined ? 'text' : undefined); }} /></label>
+  <label>{tr("Latitude", $language)}<input aria-label={tr('Latitude', $language)} type="number" min="-90" max="90" step="any" value={latitude ?? ''} oninput={(event) => { const value = event.currentTarget.value; const next = value === '' ? undefined : Number(value); numericPoint(next, longitude, next !== undefined && longitude !== undefined ? 'text' : undefined); }} /></label>
+  <label>{tr("Longitude", $language)}<input aria-label={tr('Longitude', $language)} type="number" min="-180" max="180" step="any" value={longitude ?? ''} oninput={(event) => { const value = event.currentTarget.value; const next = value === '' ? undefined : Number(value); numericPoint(latitude, next, latitude !== undefined && next !== undefined ? 'text' : undefined); }} /></label>
 </div>
-<button class="clear-point" type="button" onclick={clearPoint} disabled={latitude === undefined && longitude === undefined}>Clear selected point</button>
+<button class="clear-point" type="button" onclick={clearPoint} disabled={latitude === undefined && longitude === undefined}>{tr("Clear selected point", $language)}</button>
 
 <style>
   .picker-shell{position:relative;height:16rem;border:1px solid #67706a;background:#202726}.pin-map{position:absolute;inset:0}.map-error{position:absolute;top:.65rem;left:.65rem;z-index:2;max-width:20rem;margin:0;padding:.35rem .5rem;background:#171a18eb;color:#f0d6c4;font:.75rem system-ui}.pin-map :global(.maplibregl-ctrl-attrib){background:#171a18eb;color:#eee9df;font:.58rem system-ui}.pin-map :global(.maplibregl-ctrl-attrib a){color:#ded1a9}.pin-map :global(.maplibregl-ctrl-group){border:1px solid #69716a;border-radius:2px;background:#171a18}.pin-map :global(.maplibregl-ctrl-group button){width:2rem;height:2rem;background-color:transparent}.pin-map :global(.maplibregl-ctrl-group button+button){border-top:1px solid #4c554f}.pin-map :global(.maplibregl-ctrl-icon){filter:invert(.9)}:global(.contribution-pin){display:block;width:25px;height:41px;filter:drop-shadow(0 1px 3px #000)}.coordinate-inputs{display:grid;grid-template-columns:1fr 1fr;gap:.75rem;max-width:34rem}.coordinate-inputs label{display:grid;gap:.35rem;color:#e6e2d8;font-size:.9rem}.coordinate-inputs input{width:100%;min-height:2.5rem;padding:.45rem .6rem;border:1px solid #59615c;border-radius:2px;background:#202523;color:#f4f1e9;font:inherit}.clear-point{justify-self:start;min-height:2.4rem;padding:.4rem .65rem;border:1px solid #59615c;background:#202523;color:#e5ddcf;font:inherit;cursor:pointer}.clear-point:disabled{opacity:.45;cursor:default}@media(max-width:38rem){.picker-shell{height:13rem}.coordinate-inputs{grid-template-columns:1fr}}

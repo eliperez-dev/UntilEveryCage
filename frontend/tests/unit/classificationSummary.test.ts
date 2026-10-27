@@ -78,7 +78,7 @@ describe('record classification overview', () => {
   it('uses the map’s priority and original pin family for multiple categories and legacy keys', () => {
     const record = { category: 'animal_keeping_and_production', taxonomy: taxonomy({ primaryCategories: ['animal_keeping_and_production', 'processing_and_preparation', 'slaughter'] }) };
     expect(recordCategoryIdentity(record)).toEqual({ key: 'slaughter', label: 'Slaughter', pinFile: 'marker-icon-2x-red.png' });
-    expect(recordCategoryIdentity({ category: 'processing' }).pinFile).toBe('marker-icon-2x-grey.png');
+    expect(recordCategoryIdentity({ category: 'processing' }).pinFile).toBe('marker-icon-2x-graphite.png');
     expect(classificationSummary(record).categories).toEqual(['Animal keeping and production', 'Processing and preparation', 'Slaughter']);
   });
 

@@ -43,18 +43,17 @@ test('Tools map controls operate the active map and keep style values legible in
   await expect(page.getByRole('button', { name: 'Search map' })).toBeVisible();
   await expect(map.locator('.map-controls-wrap')).toHaveCount(0);
 
-  await page.getByRole('button', { name: 'Tools' }).click();
-  const controls = page.getByRole('group', { name: 'Map view' });
-  const style = controls.getByLabel('Map style');
-  const camera = controls.locator('.map-camera-toggle');
-  await expect(style).toBeEnabled();
+  const controls = page.locator('.map-navigation');
+  const style = controls.getByRole('group', { name: 'Map style' });
+  const camera = controls.locator('.dimension-button');
+  await expect(style.getByRole('switch', { name: 'Map style: Street', exact: true })).toBeEnabled();
   await expect(camera).toHaveText('2D');
   const themeToggle = page.locator('.masthead .theme-toggle');
   const expectStyleContrast = async (label: string) => {
-    const colors = await style.evaluate(element => {
-      const select = element as HTMLSelectElement;
-      const computed = getComputedStyle(select);
-      return { label: select.selectedOptions[0]?.textContent?.trim(), foreground: computed.color, background: computed.backgroundColor };
+    const colors = await style.getByRole('switch').evaluate(element => {
+      const selected = element as HTMLButtonElement;
+      const computed = getComputedStyle(selected);
+      return { label: selected.textContent?.trim(), foreground: computed.color, background: computed.backgroundColor };
     });
     expect(colors.label).toBe(label);
     expect(contrastRatio(colors.foreground, colors.background)).toBeGreaterThanOrEqual(4.5);
@@ -62,7 +61,7 @@ test('Tools map controls operate the active map and keep style values legible in
   if (await themeToggle.getAttribute('aria-pressed') !== 'true') await themeToggle.click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   await expectStyleContrast('Street');
-  await style.selectOption('satellite');
+  await style.getByRole('switch').click();
   await expectStyleContrast('Satellite');
   await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getStyle().sources.base.tiles[0])).toContain('World_Imagery');
   await themeToggle.click();
@@ -70,7 +69,7 @@ test('Tools map controls operate the active map and keep style values legible in
   await expectStyleContrast('Satellite');
   await camera.click();
   await expect(camera).toHaveText('3D');
-  await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getPitch())).toBe(45);
+  await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getPitch())).toBe(60);
   await expect(page.getByRole('button', { name: 'Search map' })).toBeVisible();
 });
 

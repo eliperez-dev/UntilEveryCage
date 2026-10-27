@@ -33,7 +33,27 @@ const facts = {
 };
 const meta = { release_id: release, ruleset_version: 'synthetic-rules', profile: 'official', release_created_at: observed };
 
+for(const [bounds,lower,upper,text] of [['exclusive_upper',null,1000,'Less than 1,000 animals'],['inclusive_lower_exclusive_upper',1000,10000,'1,000 to less than 10,000 animals'],['inclusive_lower_unbounded',100000,null,'100,000 or more animals']] as const) test(`verified slaughter estimate preserves exact 360-day ${bounds} bounds in map and full record`,async({page})=>{
+    await mockPublicRecord(page,{derived_source_volume_ranges:[{...facts.derived_source_volume_ranges[0],bounds,lower,upper},facts.derived_source_volume_ranges[1]]});
+    await page.goto(`./#/map?selected=${id}&release_id=${release}`);const panel=page.locator('.reading-sheet[aria-label="Record evidence"]'),estimate=panel.locator('.slaughter-estimate');
+    await expect(estimate).toBeVisible();await expect(estimate.locator('strong')).toHaveText(text);await expect(estimate.getByText('Estimated animals slaughtered (last 360 days)',{exact:true})).toBeVisible();
+    await expect(estimate.getByRole('link',{name:'Source codebook',exact:true})).toHaveAttribute('href','https://example.test/codebook');
+    await expect(panel.locator('.source-facts-section')).not.toHaveAttribute('open','');await expect(panel.locator('.source-facts-section dt').filter({hasText:'Estimated animals slaughtered'})).toHaveCount(0);
+    expect(await estimate.evaluate(node=>Boolean(node.compareDocumentPosition(document.querySelector('#location-heading')!)&Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
+    await panel.getByRole('link',{name:'Open facility page',exact:true}).click();const full=page.locator('.public-record');await expect(full.locator('.slaughter-estimate strong')).toHaveText(text);
+    await expect(full.locator('.source-facts')).toContainText('10,000 to less than 100,000 pounds/month');await expect(full.locator('.source-facts dt').filter({hasText:'Estimated animals slaughtered'})).toHaveCount(0);
+    await expect(full.locator('.slaughter-estimate')).not.toContainText(/365|per year|annually/);
+});
+
+test('missing slaughter range never becomes an estimate from processing volume',async({page})=>{
+  await mockPublicRecord(page,{derived_source_volume_ranges:[facts.derived_source_volume_ranges[1]]});await page.goto(`./#/map?selected=${id}&release_id=${release}`);
+  const panel=page.locator('.reading-sheet[aria-label="Record evidence"]');await expect(panel.locator('.detail h1')).toBeVisible();await expect(panel.locator('.slaughter-estimate')).toHaveCount(0);
+  await panel.getByRole('link',{name:'Open facility page',exact:true}).click();await expect(page.locator('.public-record h1')).toBeVisible();await expect(page.locator('.public-record .slaughter-estimate')).toHaveCount(0);await expect(page.locator('.public-record .source-facts')).toContainText('10,000 to less than 100,000 pounds/month');
+});
+
 async function mockPublicRecord(page: Page, overrides: Record<string, unknown> = {}, options: { failFirstReport?: boolean } = {}) {
+  const detailFields = new Set(['alternate_names','species_slaughtered','processing_activities','source_volume_categories','derived_source_volume_ranges','aphis_annual_reports','aphis_dated_inspections','establishment_id','establishment_number','grant_date','native_activity_code','native_activity_label']);
+  const listOverrides = Object.fromEntries(Object.entries(overrides).filter(([key])=>!detailFields.has(key)));
   await page.route('https://tile.openstreetmap.org/**', route => route.abort());
   await page.route('https://server.arcgisonline.com/**', route => route.abort());
   let reportFailureRemaining = options.failFirstReport ? 1 : 0;
@@ -43,7 +63,7 @@ async function mockPublicRecord(page: Page, overrides: Record<string, unknown> =
     let body: unknown;
     if (path === '/api/v2/releases/manifest') body = { api_version: 'v2', data: { release_id: release, profile: 'official', manifest: {}, manifest_sha256: 'a'.repeat(64), suppression_generation: 1 } };
     else if (path === `/api/v2/locations/${id}`) body = { api_version: 'v2', data: { ...row, ...facts, ...overrides }, meta };
-    else if (path === '/api/v2/locations') body = { api_version: 'v2', data: [{ ...row, ...overrides }], meta: { ...meta, coverage_note: 'Synthetic test coverage.', total_count: 1, next_cursor: null } };
+    else if (path === '/api/v2/locations') body = { api_version: 'v2', data: [{ ...row, ...listOverrides }], meta: { ...meta, coverage_note: 'Synthetic test coverage.', total_count: 1, next_cursor: null } };
     else if (path === `/api/v2/locations/${id}/aphis-report-links`) {
       if (reportFailureRemaining > 0) { reportFailureRemaining -= 1; return route.fulfill({ status: 503, contentType: 'application/json', body: '{}' }); }
       const kind = new URL(route.request().url()).searchParams.get('kind');
@@ -80,14 +100,16 @@ test('map detail shows one category and each activity, preserves facts, and open
   expect(drawerOrder).toBe(true);
   await expect(panel.getByText('Processing and preparation', { exact: true })).toHaveCount(1);
   const overview = panel.locator('.classification-summary .summary');
-  await expect(overview).toContainText('Meat cutting');
-  await expect(overview).toContainText('NRTE chicken processing');
+  await expect(overview).toHaveText('Poultry processing prepares meat from birds for sale or further manufacture.');
   await expect(overview).not.toContainText('Separate activity');
   await panel.locator('.classification-summary summary').click();
+  await expect(panel.locator('.classification-summary details')).toContainText('Meat cutting');
+  await expect(panel.locator('.classification-summary details')).toContainText('NRTE chicken processing');
   await expect(panel).not.toContainText(/synthetic-taxonomy-version|Taxonomy version|Primary categories|Classification provenance|not independently|Source confirmed/);
   await expect(panel.getByText('Source-provided coordinates', { exact: true })).toBeVisible();
   await expect(panel.getByText('55.123457, 10.123457', { exact: true })).toBeVisible();
   await expect(panel.getByText('Location method', { exact: true })).toHaveCount(0);
+  await panel.locator('.source-facts-section > summary').click();
   await expect(panel.getByText('Synthetic former name', { exact: true })).toBeVisible();
   await expect(panel.getByText('SYNTHETIC-1', { exact: true })).toBeVisible();
   await expect(panel.getByText('10,000 to less than 100,000 pounds/month', { exact: true })).toBeVisible();
@@ -152,17 +174,43 @@ test('Spanish processing summary is deduplicated in map detail and the full reco
   const panel = page.locator('.reading-sheet[aria-label="Record evidence"]');
   await expect(panel.getByText('Procesamiento y preparación', { exact: true })).toHaveCount(1);
   const mapActivities = panel.locator('.classification-summary .summary');
-  await expect(mapActivities).toContainText('Procesamiento de pollo (NRTE)');
-  await expect(mapActivities).toContainText('Meat cutting');
+  await expect(mapActivities).toHaveText('El procesamiento de aves prepara su carne para la venta o para su transformación posterior.');
   await expect(mapActivities).not.toHaveText(/(?:^|,\s*)Procesamiento(?:,\s*|$)/);
   await expect(panel.getByRole('link', { name: 'Abrir página de la instalación', exact: true })).toBeVisible();
   await panel.locator(`a[href="#/records/${id}?profile=official&release_id=${release}"]`).click();
   const full = page.locator('.public-record');
   await expect(full.getByText('Procesamiento y preparación', { exact: true })).toHaveCount(1);
   const fullActivities = full.locator('.classification-summary .summary');
-  await expect(fullActivities).toContainText('Procesamiento de pollo (NRTE)');
-  await expect(fullActivities).toContainText('Meat cutting');
+  await expect(fullActivities).toHaveText('El procesamiento de aves prepara su carne para la venta o para su transformación posterior.');
   await expect(fullActivities).not.toHaveText(/(?:^|,\s*)Procesamiento(?:,\s*|$)/);
+});
+
+for (const width of [320,1440]) test(`APHIS carrier explanation is readable at ${width}px and keeps original classification collapsed`,async({page})=>{
+  await page.setViewportSize({width,height:900});
+  await mockPublicRecord(page,{provenance_source_id:'us.aphis',category:'other_regulated_premises',taxonomy_display_category:'other_regulated_premises',taxonomy_primary_categories:['other_regulated_premises'],taxonomy_leaf_activities:[{key:'general_food_business',label:'General food business'}],taxonomy_assignments:[],native_activity_code:'Class T',native_activity_label:'Class T - Carrier',processing_activities:{},species_slaughtered:{},derived_source_volume_ranges:undefined});
+  await page.goto(`./#/map?selected=${id}&release_id=${release}`);
+  const detail=page.locator('.dossier .detail'),explanation=detail.locator('[data-classification-explanation]');
+  await expect(explanation).toHaveText('APHIS Class T carriers transport regulated animals for hire, including by road, air, rail or sea.');
+  await expect(explanation).not.toContainText(/laborator|Recorded activities/);
+  await expect(page.getByText('Local V2 list response was rejected.',{exact:true})).toHaveCount(0);
+  await expect(detail.locator('.classification-disclosure details')).not.toHaveAttribute('open','');
+  if(process.env.UEC_CLASSIFICATION_CAPTURE_DIR) await page.screenshot({path:`${process.env.UEC_CLASSIFICATION_CAPTURE_DIR}/classification-carrier-${width}.png`});
+  await detail.locator('.classification-disclosure summary').click();
+  await expect(detail.locator('.classification-disclosure')).toContainText('Class T - Carrier');
+  await expect(detail.getByRole('link',{name:'APHIS classification guide',exact:true})).toHaveAttribute('href','https://www.aphis.usda.gov/animal_welfare/downloads/graybook.pdf');
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
+});
+
+test('French research narrative labels the exact reported count and year, without a death claim',async({page})=>{
+  await page.setViewportSize({width:390,height:844});
+  await page.addInitScript(()=>localStorage.setItem('uec-language','fr'));
+  await mockPublicRecord(page,{provenance_source_id:'us.aphis',category:'research_and_animal_use',taxonomy_display_category:'research_and_animal_use',taxonomy_primary_categories:['research_and_animal_use'],taxonomy_leaf_activities:[{key:'research',label:'Research'}],taxonomy_assignments:[],native_activity_code:'Class R',processing_activities:{},species_slaughtered:{},derived_source_volume_ranges:undefined,aphis_annual_reports:[{fiscal_year:'2025',species_counts:[{species:'Synthetic species A',count:12},{species:'Synthetic species B',count:3}],source_url:'https://example.test/annual-report',safe_provenance:{source_id:'us.aphis.annual-reports',evidence_type:'annual_reports',match_method:'exact_source_identifier',matched_identifier_types:['certificate_number']}}]});
+  await page.goto(`./#/map?selected=${id}&release_id=${release}`);
+  const explanation=page.locator('.dossier [data-classification-explanation]');
+  await expect(explanation).toContainText('Le rapport de l’exercice 2025 recense 15 animaux parmi les espèces déclarées.');
+  await expect(explanation).not.toContainText(/mort|tués|sacrifi|estimated/);
+  if(process.env.UEC_CLASSIFICATION_CAPTURE_DIR) await page.screenshot({path:`${process.env.UEC_CLASSIFICATION_CAPTURE_DIR}/classification-research-fr-mobile.png`});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
 });
 
 test('city-level geocoding keeps its approximation and actual provider score in one Location section', async ({ page }) => {
@@ -196,7 +244,7 @@ test('city-level geocoding keeps its approximation and actual provider score in 
   await expect(full.getByRole('heading', { name: 'Location', exact: true })).toHaveCount(1);
 });
 
-test('mobile workspace fills the viewport with search, a scrollable dossier, and keyboard dismissal', async ({ page }) => {
+test('mobile detail shares the middle-height sheet with the map and preserves scrolling and dismissal', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await mockPublicRecord(page);
   const open = async () => {
@@ -204,21 +252,32 @@ test('mobile workspace fills the viewport with search, a scrollable dossier, and
     await expect(page.locator('.reading-sheet .detail h1')).toHaveText(row.canonical_name);
   };
   await open();
-  const workspace = page.locator('.workspace > .results');
+  const workspace = page.locator('.workspace .map-tool-shell > .results');
   const panel = page.locator('.reading-sheet.dossier');
   const close = panel.getByRole('button', { name: 'Close record detail' });
   for (const [width, height] of [[375, 812], [375, 667], [320, 667]]) {
     await page.setViewportSize({ width: width!, height: height! });
-    await expect(workspace).toHaveCSS('position', 'fixed');
-    expect(await workspace.boundingBox()).toEqual({ x: 0, y: 0, width, height });
+    await expect(workspace).toHaveCSS('position', 'absolute');
+    const workspaceBox = (await workspace.boundingBox())!;
+    const headerBox = (await page.locator('.field-view > .masthead').boundingBox())!;
+    expect(workspaceBox.x).toBe(0);
+    expect(workspaceBox.width).toBe(width);
+    expect(workspaceBox.y).toBeGreaterThan(headerBox.y + headerBox.height);
+    const mapBox=(await page.locator('.map-stage').boundingBox())!;
+    expect(mapBox.y).toBeCloseTo(headerBox.y+headerBox.height,0);
+    expect(mapBox.y+mapBox.height).toBeCloseTo(height!,0);
+    expect(workspaceBox.height).toBeCloseTo((height!-headerBox.height)*.48,0);
+    expect(workspaceBox.y + workspaceBox.height).toBeCloseTo(height!, 0);
     const search = workspace.locator('#field-search');
-    await expect(search).toBeInViewport();
-    const searchBox = (await search.boundingBox())!;
+    await expect(search).toBeHidden();
+    await expect(workspace.locator('.search-tools')).toBeHidden();
+    await expect(workspace.locator('.csv-download')).toBeHidden();
+    await expect(workspace.locator('.result-status')).toBeHidden();
     const box = (await panel.boundingBox())!;
     expect(box.x).toBe(0);
     expect(box.width).toBe(width);
-    expect(box.y).toBeGreaterThanOrEqual(searchBox.y + searchBox.height);
-    expect(box.height).toBeGreaterThan(200);
+    expect(box.y).toBeCloseTo(workspaceBox.y+45, 0);
+    expect(box.height).toBeGreaterThan(100);
     expect(box.y + box.height).toBeCloseTo(height!, 0);
     expect(await workspace.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
   }
@@ -245,11 +304,69 @@ test('mobile workspace fills the viewport with search, a scrollable dossier, and
   await expect(panel).toHaveCount(0);
 });
 
+test('mobile diagnostics temporarily cover an expanded selected sheet and restore its context on close', async({page})=>{
+  await page.setViewportSize({width:390,height:844});
+  await mockPublicRecord(page);
+  await page.goto(`./#/map?selected=${id}&release_id=${release}`);
+  await expect(page.locator('.dossier h1')).toHaveText(row.canonical_name);
+  const handle=page.getByRole('button',{name:'View facility details',exact:true});
+  await handle.focus();await page.keyboard.press('End');
+  await page.getByRole('button',{name:'More tools',exact:true}).click();
+  await page.getByLabel('Enable debug menu',{exact:true}).check();
+  await page.getByRole('button',{name:'Close more tools',exact:true}).click();
+  await page.getByRole('button',{name:'Debug menu',exact:true}).click();
+  const debug=page.getByRole('complementary',{name:'Debug menu',exact:true});
+  await expect(debug).toBeVisible();
+  expect((await debug.boundingBox())!.height).toBeGreaterThan(300);
+  await expect(page.locator('.results')).toHaveAttribute('inert','');
+  await debug.locator('#debug-sheet-height').press('End');
+  await expect(debug.locator('#debug-sheet-height')).toHaveValue('65');
+  await debug.getByRole('button',{name:'Close debug menu',exact:true}).click();
+  await expect(handle).toBeVisible();
+  await expect(handle).toHaveAttribute('data-sheet-state','expanded');
+  await expect(page.locator('.results')).not.toHaveAttribute('inert','');
+  expect(new URL(page.url()).hash).toContain(`selected=${id}`);
+});
+
 test('unmapped public records do not create a location map', async ({ page }) => {
   await mockPublicRecord(page, { display_precision: 'unmapped', latitude: null, longitude: null });
   await page.goto(`./#/records/${id}?profile=official&release_id=${release}`);
   await expect(page.getByRole('heading', { name: row.canonical_name })).toBeVisible();
   await expect(page.locator('.location-preview')).toHaveCount(0);
+});
+
+test('map detail keeps long-name copy beside its heading, classification above facts, and the facility link at the bottom', async ({ page }) => {
+  await page.setViewportSize({width:320,height:740});
+  await mockPublicRecord(page,{canonical_name:'Synthetic exceptionally long processing and cold storage facility record for the narrow mobile layout'});
+  await page.goto(`./#/map?selected=${id}&release_id=${release}`);
+  const detail=page.locator('.dossier .detail');
+  await expect(detail.locator('.classification-disclosure details')).not.toHaveAttribute('open','');
+  const layout=await detail.evaluate(root=>{
+    const heading=root.querySelector('h1')!.getBoundingClientRect(),copy=root.querySelector('h1 .share')!.getBoundingClientRect();
+    const classification=root.querySelector('.classification-disclosure')!,facts=root.querySelector('.source-facts-section')!,link=root.querySelector('.open-facility')!,review=root.querySelector('.evidence-section')!;
+    return {copyY:copy.y,headingY:heading.y,copyRight:copy.right,headingRight:heading.right,classificationBeforeFacts:Boolean(classification.compareDocumentPosition(facts)&Node.DOCUMENT_POSITION_FOLLOWING),linkAfterReview:Boolean(review.compareDocumentPosition(link)&Node.DOCUMENT_POSITION_FOLLOWING)};
+  });
+  expect(layout.copyY).toBeCloseTo(layout.headingY,0);
+  expect(layout.copyRight).toBeLessThanOrEqual(layout.headingRight);
+  expect(layout.classificationBeforeFacts).toBe(true);
+  expect(layout.linkAfterReview).toBe(true);
+  await expect(detail.locator('.open-facility')).toHaveAttribute('href',`#/records/${id}?profile=official&release_id=${release}`);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
+});
+
+for(const state of ['empty','populated','error'] as const) test(`map connection disclosure defaults correctly for ${state} data`,async({page})=>{
+  await mockPublicRecord(page);
+  await page.route('**/api/v2/graph/**',route=>{
+    if(state==='error')return route.fulfill({status:503,json:{}});
+    const endpoint=(entity_type:string,entity_id:string,display_name:string)=>({entity_type,entity_id,display_name,source_id:'synthetic-source',identifier_type:'synthetic',source_identifier:entity_id});
+    const edge={connection_edge_id:'550e8400-e29b-41d4-a716-446655440009',from:endpoint('facility',id,'Synthetic facility'),to:endpoint('organization','550e8400-e29b-41d4-a716-446655440008','Synthetic research organization'),relationship_type:'source_assertion',connection_type:'exact',confidence:1,confidence_band:'exact',match_method:'exact_source_identifier',signals:{},contradictions:[],provenance:{source_ids:['synthetic-source'],observed_at:observed,release_id:release},source_references:[{source_id:'synthetic-source'}],observed_at:observed,computed_at:observed,ruleset:'synthetic-rules',conflicting:false,publication_warning:'Synthetic connection fixture',disclaimer:'Synthetic evidence only'};
+    return route.fulfill({json:{api_version:'v2-graph-v1',data:state==='populated'?[edge]:[],meta:{...meta,limit:20,page_max:100,next_cursor:null,public_projection:true}}});
+  });
+  await page.goto(`./#/map?selected=${id}&release_id=${release}`);
+  const disclosure=page.locator('.connections-disclosure');
+  if(state==='empty'){await expect(disclosure.locator('.empty')).toHaveText('None');await expect(disclosure).not.toHaveAttribute('open','');await disclosure.locator(':scope > summary').click();await expect(disclosure.getByText('None',{exact:true})).toBeVisible()}
+  else if(state==='populated'){await expect(disclosure.getByText('Synthetic research organization',{exact:true})).toBeVisible();await expect(disclosure).toHaveAttribute('open','');await expect(disclosure).toContainText('Exact source')}
+  else{await expect(disclosure.getByRole('alert')).toBeVisible();await expect(disclosure.getByRole('button',{name:'Retry',exact:true})).toBeVisible()}
 });
 
 test('a failed map image leaves the facility record readable and announces the map limitation', async ({ page }) => {

@@ -35,51 +35,138 @@ API schemas own supported fields. They are not additional roadmaps.
   (`#f2f0e8`) in Light. Keep category pins, clusters and map imagery independent
   of interface theme. Preserve all existing controls and workflow behavior.
 - One centered navigation group: `Map Data | Contribute About`.
-  Brand/logo left, Tools right; all four destinations remain usable on mobile.
+  Brand/logo left, More tools right; all four destinations remain usable on mobile.
   No old hover-subpage navigation, disabled account placeholder or extra header strip.
-- Release selection/history and diagnostics belong in Tools, not a separate
+- Release selection/history and diagnostics belong in More tools, not a separate
   header Release button. Display dataset dates; retain immutable IDs internally.
   Application semver comes from the backend Rust crate, not a frontend constant.
 - The default `/` and `#/` route is the separate outreach landing page. Preserve
   the approved `HIDDEN IN / PLAIN SIGHT.` layout, short copy, documentary pig/cow
   imagery, cream map-preview section and direct `Open the map` links to `#/map`.
-  Use the same shared four-link header, theme control and Tools as the other pages;
+  Use the same shared four-link header, theme control and More tools as the other pages;
   landing does not mark a navigation destination active.
   Its still-image motion has pause/resume and a static reduced-motion fallback.
+  Keep `Open the map` primary and `Find locations near me` secondary. Only that
+  explicit nearby click requests device permission. A one-time in-memory command
+  opens the map and searches within 50 miles; reloads and links never replay it.
+  The discovery section shows current release totals, mapped records and public
+  source counts from validated public aggregates, with activity links into map
+  results. Distinguish unavailable totals from zero; do not add animal-death or
+  other unsupported estimates to this section.
+  Countries mapped is the union of countries in source-reported, approximate and
+  exact precision partitions. Each release/ruleset-bound country facet must sum
+  to that precision's complete count; truncated, duplicate, invalid or failed
+  partitions make this stat unavailable without removing other totals. Never
+  count unmapped-only countries or fetch the full map or records for these stats.
   The map stays lazy until opened. Map search replaces the separate Database page;
   old public Database links open map results. FAQ content lives within About;
   old FAQ links retain their section and map context. API and downloads remain
-  available, including a download link from map search.
+  available from Data; map search has no CSV shortcut.
   Existing informational/download routes remain compatible aliases.
-- Keep Search map on the map. Street/Satellite and 2D/3D remain in header Tools.
-  A compact map navigation toolbar groups compass/reset north, zoom, Your
-  location and Search this area, with expandable pan/rotate controls.
-  The collapsed Search map control sits flush against the map's top-left,
-  directly below the shared header.
-  Preserve the compact controls, theme styles and 44px touch targets.
+- A horizontal map toolbar sits 24px from the desktop map's left edge and 16px
+  below its top. It joins Search map with one Street/Satellite switch, 2D/3D,
+  Your location, Search this area and Search settings. Settings choose visible
+  map bounds or a radius, with a 5–250-mile radius control. Changing settings
+  reruns an active search at its original radius center or current map bounds.
+  The style switch shows the current style
+  and exposes the next style in its tooltip. Search input stays in place as
+  results, detail and filters open flush below the entire toolbar width.
+  Resizing the panel changes both joined widths; bounds keep the controls usable
+  at narrow desktop and zoomed layouts. On mobile, tools stay centered near the map top while
+  search uses the bottom sheet. Keep 44px touch targets and native gestures.
+  The 3D view uses a 60-degree pitch; 2D looks straight down and resets bearing
+  to north, preserving geographic focus and zoom. More tools contains
+  release selection, clustering, icon size, optimized dots and diagnostics;
+  map style and camera controls are not duplicated in that menu.
 - Resize applicable panels by dragging edges, not plus/minus width buttons.
   Do not change panel layout without the maintainer's specific approval.
 - The map stage fills the space below the header, including when navigation
-  wraps. On desktop Search opens a resizable left workspace at one-third width;
-  the map occupies the remaining two-thirds and really resizes, retaining the current
-  camera rather than recentering an existing selection. Search, filters, results and facility detail share that workspace.
+  wraps. On desktop Search opens its anchored resizable workspace at one-third
+  width, with a 448px minimum for the joined toolbar and a viewport-safe maximum;
+  the map remains full-size underneath it. Opening, closing or resizing the
+  overlay preserves the map canvas, camera and marker positions. Search,
+  filters, results and facility detail share that overlay.
   Back to results restores the list and its scroll position. Mobile uses a
-  bottom search sheet and fullscreen detail. Below Search, keep Filters with its
+  bottom search sheet with collapsed, middle and expanded positions. The
+  collapsed sheet is only a 56px Search map pull handle plus the safe area;
+  tapping, keyboard steps or dragging that handle opens it. Normal result
+  scrolling never drags the sheet. The sheet overlays the unchanged map canvas;
+  its handle stays reachable even when expanded. Toolbar and attribution sit
+  above the mobile sheet; the toolbar can hide when a short viewport leaves
+  no usable map strip. The middle and expanded height settings
+  are bounded, temporary controls under Layout & density in the debug menu.
+  Every search action opens results. Preserve an already expanded mobile sheet;
+  reopening a collapsed sheet starts at middle. Short scoped-search viewports
+  compact summary actions and row padding while retaining the middle height.
+  One outer results scroller owns records and pagination; record rows never
+  shrink into a zero-height nested scroller.
+  Mobile detail uses the same three sheet positions and replaces all search,
+  filters, totals and download chrome, including while loading or reporting a
+  detail error. A new selection preserves an expanded sheet; from collapsed
+  or middle it opens at middle. Cold selected deep links start at middle.
+  Its handle remains visible and draggable. Collapsing retains the
+  selected record, and expanding retains its detail. Back restores the previous
+  results position and list context. Show on map
+  collapses the sheet while retaining the selection; View facility details
+  returns to that record. Unmapped records have no Show on map action.
+  Below Search, keep Filters with its
   sliders icon and the result count on one compact row. Keep detail dense and
-  readable, with a prominent outlined `Open facility page` action directly
-  below the facility name.
+  readable, with a white `Open facility page` action with black text at the bottom.
   Keep checkbox multi-selection, totals/pagination, evidence and relationship
-  controls. Public category filters reuse their existing semantic color swatches.
+  controls. Public category filters use short translated labels and existing
+  semantic color swatches in two columns. Country and Source use multi-select
+  disclosures that show their current selections. Location preserves explicit
+  precision choices; Mapped expands to supported mapped precision values,
+  with an indeterminate state for partial selection. Filters fill the available
+  workspace, with a scrolling options region and fixed Clear filters / Show
+  results footer. Opening filters on mobile expands the sheet; closing them
+  restores its previous results height.
 
 ## Map
 
+- Individual pins show a compact, subtly rounded escaped-text name/category label on fine-pointer
+  hover. Labels use the validated release-pinned public detail projection, with
+  debouncing, cancellation and a bounded short-lived in-memory cache. Release,
+  restrictions, filter and active-state changes invalidate labels; clusters and
+  aggregate references never expose a facility tooltip. Hover does not move the
+  camera or obstruct pin selection. The category uses muted text without a
+  colored swatch; the pin already communicates category color.
+  A faint static halo marks the hovered facility for both PNG and optimized
+  pins. Do not pulse clusters or rebuild map data to show the hover cue.
+- Search this area captures fixed bounds and draws a native geographic perimeter.
+  Panning, rotation and style changes retain those bounds. There is no separate
+  Searching this area indicator. With any box, radius or device-derived scope
+  active, the existing toolbar area action becomes a black X on white, labeled
+  Clear map area. Clearing removes only spatial scope and boundary, preserving
+  query, other filters, selection, workspace position and private-camera marker.
+  A removable This map area chip shares the Filters/count row, and the same
+  checked applied filter appears inside Filters for every spatial mode.
+  Radius scopes remain distinct. Queries and spatial scopes are not persisted.
+  Scoped results start with `In this area` (or `Near you` for the device radius),
+  the complete matching mapped total and explicit radius where applicable.
+  Six clickable primary-category bars, source count and location precision live
+  in an Activity breakdown disclosure, collapsed initially so records are visible.
+  Each record counts once by its display category. Clicking a category narrows
+  both map and list; clicking the sole selected category again clears it.
+  The summary has no Explore full map action. Removing the spatial filter does
+  not restore or expose the device camera. Loading or failed matching
+  never retains a previous ready summary.
+  Your location searches a 50-mile radius by default and opens results after permission.
+  It preserves the current query and filters. Device coordinates, radius and
+  camera remain in memory and do not enter browser URLs, history, diagnostics or storage.
+- Facility icons default to 80% size. More tools and the existing debug slider
+  share renderer settings for clustering, icon size and optimized dots; changes
+  retain camera, filters and selection and are not persisted.
 - Use MapLibre, the existing V1 PNG pin family and V2 taxonomy mappings.
   Do not substitute the six legacy type names for the V2 classification model.
-  Processing is grey; do not invent approval for an undocumented palette.
-  Preserve current category meanings until the maintainer agrees a change.
+  Processing uses subdued graphite (`#515B60`), Animal keeping uses ochre yellow
+  (`#D5B84A`), and Unclassified retains pale grey (`#B8B8B8`). Apply the same
+  category mapping to PNG pins, optimized dots, native renderers, filters,
+  results and facility panels. Preserve all other category colors, category
+  meanings and precision cues.
 - Default cluster radius is 50 px and the camera-zoom cutoff is 9.0. Preserve
-  explicit debug overrides. Automatic clustering also stops below 2,800 matching
-  mapped facilities, preserving the V1 population threshold. Panning does not
+  explicit debug overrides. Automatic clustering also stops below 3,000 matching
+  mapped facilities. Panning does not
   toggle clustering or rebuild the index. Clusters group geographically, not into a
   visible square grid. Exact and approximate records participate in clustering;
   do not make areas disappear between zoom levels or clear valid markers while
@@ -89,9 +176,9 @@ API schemas own supported fields. They are not additional roadmaps.
   On selection/inspection, show a red geographic area 500 metres across
   (250-metre radius), not a fixed-pixel circle or invented confidence interval.
   Use supported source extent where available. No permanent approximation legend.
-- Street/Satellite selector and adjacent 2D/3D toggle form one compact Map View
-  group inside Tools. Any desktop gesture hint stays under these options inside
-  Tools. Keep the map navigation toolbar in the map column, above mobile sheets
+- The Street/Satellite switch and adjacent 2D/3D toggle live in the map toolbar,
+  with accessible camera-gesture help. Do not duplicate them in More tools.
+  Keep the map navigation toolbar in the map column, above mobile sheets
   and attribution; no separate gesture banner or default white MapLibre controls.
 - Native terrain is lazy, true-scale and has a usable flat fallback.
   Initial 2D does not request elevation. The first 3D activation waits for
@@ -131,6 +218,10 @@ API schemas own supported fields. They are not additional roadmaps.
   Saved searches are removed. Do not load or write old saved-search storage,
   and do not create automatic search history. Filters wrap into multiple
   columns when space allows, with full readable source labels.
+  Filters extend to the available viewport bottom and scroll within that space.
+  Applying Search this area, nearby searches, query changes and settings reruns all open
+  results while retaining an expanded mobile sheet. Scope and category changes
+  preserve unrelated query and filter dimensions.
 - Browse-record links open the full facility page directly. Do not restore
   the intermediate database preview panel.
 - API offers full-release CSV, explicitly bounded exports, paginated JSON and
@@ -139,28 +230,56 @@ API schemas own supported fields. They are not additional roadmaps.
 
 ## Facility details and connections
 
+- Search result cards show category, locality, precision and source without a
+  redundant Recorded activities summary. Detailed facility classification stays
+  available in the facility panel and full record.
+- A verified source-codebook slaughter range appears directly below the
+  classification summary when available, including for a processing-classified
+  record with slaughter evidence. Preserve exclusive upper and unbounded lower
+  values and the exact `last 360 days` period. Link the HTTPS source codebook;
+  never extrapolate absent ranges or convert them to annual point estimates.
+  Do not repeat the promoted range inside Source facts. Processing monthly
+  volume remains in Source facts.
+
 - Full page order: facility name and chain-icon Copy facility link action;
   category and classification overview; Location facts; single-record map;
   remaining facts. The map panel uses the same overview before Location,
-  with Open facility page directly beneath the name.
+  with Open facility page at the bottom of the map detail.
   No separate copy-record-ID button or repeated Record Evidence heading.
+- Public source-reported and exact facility points also offer `Open in maps`
+  in Location. It sends only the public destination to the external map, never
+  the visitor's origin. Approximate, city, coarse, mailing-locality and unmapped
+  records have no external-map action. Existing Show on map remains available
+  according to its normal mapped-location behavior.
 - Copy actions show a brief checkmark only after the clipboard write succeeds,
   with a localized live-region status. Failure shows an X and accessible status;
   neither state shifts the facility heading or share button.
 - Map detail has an `Open facility page` link, selected-release context and
-  close control. It fills the mobile viewport with scrollable content.
+  close control. It shares the mobile map sheet with scrollable content.
+  Detailed classification follows Location immediately before Source facts,
+  collapsed by default. Connections start collapsed when none exist and expand
+  when connections are available; loading and errors remain accessible.
 - Full mapped records have `Open in Map`, centering/selecting that facility
   in the same release. Unmapped records have no location map/action.
 - Single-record previews use the existing providers/pins: source/exact
   satellite zoom 15; approximate street zoom 9. Do not fetch the global point
   projection for these previews or invent an address from a locality.
 - Show the category pin and short text label in search rows and expanded detail.
-  Summarize classification with deterministic wording from existing source
-  fields and affirmative activities, using the same presenter on the panel
-  and full record. Preserve exact source classification and all supporting
+  Keep explanatory prose in facility details rather than repeating it in result cards.
+  The panel and full record share a source-referenced catalogue of 41 concise
+  definitions, including six broad fallbacks and specific activities and APHIS
+  classes. Use one or two sentences, selecting specific definitions only from
+  recognised structured keys, source-native classes or affirmative facts.
+  Category-level process descriptions must not assert a facility's particular
+  slaughter method. Preserve exact source classification and all supporting
   activities in labeled detail. APHIS registration classes take precedence
   over generic fallback taxonomy in summaries; do not turn registration into
-  an assertion about operations at the displayed location. Format underscores and
+  an assertion about operations at the displayed location. Class T describes
+  animal carriers, not laboratory-only transport. Legacy G/V explanations require
+  their full source-native designation. A valid exact-matched research report
+  may add its fiscal year and total across reported species, never a death count.
+  Definitions and source links remain available in collapsed Classification details.
+  Format underscores and
   technical activity labels; retain original values in data. Show all
   affirmative species/activities and supported slaughter/product estimates.
   Use `animals`, not `head`, in presentation.
@@ -192,7 +311,12 @@ API schemas own supported fields. They are not additional roadmaps.
 Contribute opens Add a facility. Three main tasks are Add a facility, Update a
 record and Report a problem; Update groups correction, evidence and duplicate.
 Keep Privacy/removal directly accessible and Track submission near the page
-heading. Preserve older task URLs and target/return-map context. Bug reports
+heading. On mobile and narrow tablets, use a compact labeled task chooser in place
+of the desktop task cards, with Privacy/removal included. Put the current form
+directly below it, retain the update subtype links, and keep inputs at 16px.
+Mobile forms use the normal page scroll; submit and receipt actions remain fully
+readable without nested frames or fixed overlays. Preserve older task URLs and
+target/return-map context. Bug reports
 save into the system and return confirmation/tracking, never an email draft.
 Use short task-specific forms, with optional location/classification details
 behind a disclosure. Preserve the existing structured fields, category pins,
@@ -209,6 +333,7 @@ approval, and removing intake does not establish removal of its public target.
 Do not show simulated decisions, unsupported reply/email controls or an E2EE
 claim. New messaging and notification features require the actual backend
 capability and verified transport before appearing in the public flow.
+Beside Copy tracking link, show: `Save this link. You cannot access your submission again without it.`
 
 Use one Track submission link, with its capability in the fragment and status
 credentials sent in a POST body. Accounts, uploads, automated email and receipt
@@ -304,7 +429,7 @@ Release/profile eligibility and current restrictions apply to UI, APIs, caches,
 history and exports. Never expose private routes/tokens/raw evidence in the
 public bundle. Keep community submissions separate from curated records.
 Device location is optional and is not persisted by default.
-Request it only after Your location is clicked. Keep its live camera in memory;
+Request it only after Your location or Find locations near me is clicked. Keep its live camera in memory;
 links and browser history retain the prior public camera, including subsequent
 zoom/pan and navigation actions.
 
@@ -321,14 +446,23 @@ and usable narrow/zoomed layouts. Test the actual public built route and real
 approved data where available; synthetic unit/negative tests supplement, not
 replace, real-data acceptance.
 
-English and Spanish are available in Tools. English is the default and missing
-translations fall back to English. Language switching preserves map camera,
-release, filters and selection. Source names, identifiers and evidence retain
-their original language; some secondary community/operator and generated API
-reference strings remain English. Extend the existing dictionary rather than
+English, Spanish, French, German, Dutch and Danish are available from the
+language button between the theme control and Tools. The popover shows native
+language names, closes with Escape or an outside click, and returns keyboard
+focus to its button. Opening it closes Tools and vice versa. English is the
+default; missing translations fall back to English. Additional catalogs load on
+demand, keeping the current language until loading succeeds. Reloading restores
+a saved language without overwriting its preference during loading.
+Language switching preserves map camera,
+release, filters and selection. Public About and methodology, filter labels and
+normalized options, Data/download copy, records and contribution flows use the
+shared dictionaries. Country display names and formatted dates/numbers use the
+selected locale. Source names, identifiers, unknown source facts and user content
+retain their original language. Generated Swagger references and operator/debug
+strings may remain English. Extend the existing dictionary rather than
 creating another localization path or rewriting approved English copy.
 
-The square theme button immediately left of Tools shows a moon in Dark and a
+The square theme button immediately left of the language button shows a moon in Dark and a
 sun in Light, indicating the current mode; clicking switches modes. Theme
 selection does not also appear in Tools. Dark is the default; explicit language
 and theme choices persist as nonsensitive browser preferences. Initialize the theme
@@ -419,6 +553,10 @@ and clear/reset its cache. The preview-opacity slider affects all overview layer
 The TTL control can shorten provider freshness, never extend it. Metrics
 distinguish source updates from actual cache builds/restores and report tile
 hits, misses, evictions and HTTP-cache delegation.
+Satellite requests delegated to the browser are not application cache hits.
+When provider freshness headers are hidden by CORS, an application hit count of
+zero can coexist with browser disk-cache reuse. The browser-managed counter
+records delegation, not verified cache hits or transferred bytes.
 
 Facility clusters and basemap raster LOD use camera zoom rather than bearing or
 distance to individual tiles. Rotation at a fixed center and zoom keeps the
@@ -427,14 +565,19 @@ load. Terrain retains adaptive LOD. Selection flights settle the camera at the
 target's terrain elevation once its DEM is ready, preserving zoom, bearing and
 pitch. Manual movement cancels this pending selection adjustment.
 
-Native cluster splits and merges use one short, geographically anchored canvas
-crossfade per continuous zoom gesture, with existing pin/cluster artwork and
-read-only native child queries. Marks stay at their own map locations; camera
-zoom supplies the separation. The overlay keeps following the camera until
-native marks repaint, avoiding repeated pullbacks and a frozen handoff.
-The default is 210 ms and at most 200 animated marks in total. Debug
-controls tune duration from 0–400 ms (0 disables it) and the mark cap from
-50–300. Pan and bearing-only rotation remain native. Reduced motion, dense
-views, child lookups slower than 100 ms, and camera/style/data changes skip or
-cancel the transition immediately. Animation never changes source data or
+Native cluster animation holds a bounded, geographically anchored snapshot
+throughout a continuous zoom gesture. Once the final hierarchy is ready,
+children travel from their parent cluster to their new positions; merges reverse
+that movement. Native marks are masked before hierarchy changes and the overlay
+remains until their replacement paint is ready. Reuse existing pin/cluster
+artwork and read-only native child queries, without bounce or repeated restarts.
+The default is 210 ms and at most 1,200 animated marks in total. Debug
+controls tune duration from 0–400 ms (0 disables it), the mark cap from
+50–2,000, and camera idle delay from 0–500 ms (default 0). A bounded in-memory
+lineage cache warms native child queries while idle, retaining at most 512
+cluster entries and 4,096 child nodes. Data, index and style changes invalidate
+it; camera gestures reuse it. Local pin artwork loads in parallel. Pan and
+bearing-only rotation remain native. Reduced motion, views beyond the selected
+mark limit, slow lookups and camera/style/data changes may skip or cancel a
+transition; Debug exposes the current state or skip reason. Animation never changes source data or
 rebuilds the cluster index; native marks retain selection behavior.

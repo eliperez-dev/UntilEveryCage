@@ -15,12 +15,11 @@ test('map shell mounts and keeps Search, map modes, and navigation operable', as
   await page.getByRole('button', { name:'Close workspace' }).click();
   await expect(search).toBeVisible();
 
-  await page.getByRole('button', { name: 'Tools' }).click();
-  const mapStyle = page.getByLabel('Map style');
-  await expect(mapStyle).toHaveValue('vector');
-  await expect(mapStyle.locator('option')).toHaveText(['Street', 'Satellite']);
-  await mapStyle.selectOption('satellite');
-  await expect(mapStyle).toHaveValue('satellite');
+  const mapStyle = page.locator('.map-navigation').getByRole('group', { name: 'Map style' });
+  await expect(mapStyle.getByRole('switch', { name: 'Map style: Street', exact: true })).toHaveAttribute('aria-checked', 'false');
+  await expect(mapStyle.getByRole('switch')).toHaveText('Street');
+  await mapStyle.getByRole('switch').click();
+  await expect(mapStyle.getByRole('switch', { name: 'Map style: Satellite', exact: true })).toHaveAttribute('aria-checked', 'true');
 
   await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'About', exact: true }).click();
   await expect(page.getByRole('heading', { name:'About Until Every Cage is Empty' })).toBeVisible();

@@ -40,9 +40,9 @@ async function mockMap(page: Page) {
 }
 
 async function indexUpdates(page: Page) {
-  await page.getByRole('button', { name: 'Tools', exact: true }).click();
+  await page.getByRole('button', { name: 'More tools', exact: true }).click();
   await page.getByRole('checkbox', { name: 'Enable debug menu', exact: true }).check();
-  await page.getByRole('button', { name: 'Tools', exact: true }).click();
+  await page.getByRole('button', { name: 'More tools', exact: true }).click();
   const toggle = page.getByRole('button', { name: 'Debug menu', exact: true });
   if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click();
   const renderer = page.locator('.map-diagnostics details').filter({ has: page.getByText('Renderer & timing', { exact: true }) });
@@ -62,10 +62,13 @@ test('retains the filtered public map and built source on a validated warm retur
   expect(canvas).not.toBeNull();
   await indexUpdates(page);
   await expect(page.locator('.map-diagnostics dl > div').filter({ has: page.locator('dt').filter({ hasText: /^Filtered \/ loaded mapped$/ }) }).locator('dd')).toHaveText('1 / 1');
-  const before = Number(await page.locator('.map-diagnostics dl > div').filter({ has: page.locator('dt').filter({ hasText: /^Index updates$/ }) }).locator('dd').textContent());
   await page.getByRole('button', { name: 'Close debug menu', exact: true }).click();
   await page.getByRole('button', { name: 'Your location', exact: true }).click();
   await expect(page).not.toHaveURL(/12\.345|67\.891/);
+  await expect(page.locator('.area-total strong')).toHaveText('1');
+  // Changing spatial membership may update the source; warm navigation must not.
+  const before = await indexUpdates(page);
+  await page.getByRole('button', { name: 'Close debug menu', exact: true }).click();
   const checked = fixture.manifestRequests;
   await page.getByRole('link', { name: 'About', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'About Until Every Cage is Empty', exact: true }).first()).toBeVisible();
@@ -120,21 +123,32 @@ test('does not show the retained map if fresh release validation fails', async (
 
 test('cancels a pending device-location callback when leaving the map', async ({ page }) => {
   await page.addInitScript(() => {
-    const mock = { completed: 0, getCurrentPosition(done: PositionCallback) {
-      setTimeout(() => {
-        done({ coords: { latitude: 12.3456789, longitude: 67.8912345 } } as GeolocationPosition);
+    const mock = {
+      completed: 0,
+      pending: null as PositionCallback | null,
+      getCurrentPosition(done: PositionCallback) { mock.pending = done; },
+      complete() {
+        const callback = mock.pending;
+        mock.pending = null;
+        callback?.({ coords: { latitude: 12.3456789, longitude: 67.8912345 } } as GeolocationPosition);
         mock.completed++;
-      }, 1000);
-    } };
+      },
+    };
     Object.defineProperty(navigator, 'geolocation', { configurable: true, value: mock });
   });
   await mockMap(page);
   await page.goto(`./#/map?release_id=${releaseId}`);
   await page.getByRole('button', { name: 'Your location', exact: true }).click();
+  expect(await page.evaluate(() => Boolean((navigator.geolocation as Geolocation & { pending: unknown }).pending))).toBe(true);
   await page.getByRole('link', { name: 'About', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'About Until Every Cage is Empty', exact: true }).first()).toBeVisible();
+  // Resolve only after the map action component has unmounted. A timer could
+  // resolve before navigation under parallel CPU load and test a different flow.
+  await expect(page.locator('.map-navigation')).toHaveCount(0);
+  await page.evaluate(() => (navigator.geolocation as Geolocation & { complete(): void }).complete());
+  expect(await page.evaluate(() => (navigator.geolocation as Geolocation & { completed: number }).completed)).toBe(1);
+  await expect(page).not.toHaveURL(/12\.345|67\.891/);
   await page.getByRole('link', { name: 'Map', exact: true }).click();
-  await page.waitForFunction(() => (navigator.geolocation as Geolocation & { completed: number }).completed === 1);
   await indexUpdates(page);
   const camera = page.locator('.map-diagnostics dl > div').filter({ has: page.locator('dt').filter({ hasText: /^Zoom \/ bearing \/ pitch$/ }) }).locator('dd');
   await expect(camera).toHaveText('2.00 / 0.0° / 0.0°');

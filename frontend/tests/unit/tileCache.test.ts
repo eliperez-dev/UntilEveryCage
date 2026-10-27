@@ -104,6 +104,25 @@ describe('viewed map tile cache', () => {
     await expect(cache.load(tileCacheUrl(url), controller.signal)).rejects.toMatchObject({ name: 'AbortError' });
   });
 
+  it('separates app storage hits from browser-managed satellite requests without inventing a freshness deadline', async () => {
+    const fixture = setup();
+    const satellite = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/4/5/8';
+    fixture.fetcher.mockImplementation(async (request?: unknown) => String(request).includes('World_Imagery')
+      ? new Response(bytes.slice(0), { headers: { 'content-type': 'image/jpeg', 'cache-control': 'max-age=86400' } })
+      : response());
+    const updates: Array<Record<string, unknown>> = [];
+    const cache = createViewedTileCache({ ...fixture.environment, onDiagnostics: value => updates.push({ ...value }) });
+    await cache.load(tileCacheUrl(url), signal());
+    await cache.load(tileCacheUrl(url), signal());
+    await cache.load(tileCacheUrl(satellite), signal());
+    await cache.load(tileCacheUrl(satellite), signal());
+    expect(updates.at(-1)).toMatchObject({ hits: 1, misses: 3, policyDelegations: 2,
+      streetHits: 1, streetMisses: 1, streetDelegations: 0,
+      satelliteHits: 0, satelliteMisses: 2, satelliteDelegations: 2 });
+    expect(fixture.memory.values.size).toBe(1);
+    expect(fixture.fetcher).toHaveBeenCalledTimes(3);
+  });
+
   it('applies bounded session controls, shortened TTL and clear to actual stored tiles', async () => {
     const fixture = setup();
     fixture.fetcher.mockImplementation(async () => response({ expires: new Date(now + 7 * 86400_000).toUTCString() }));
