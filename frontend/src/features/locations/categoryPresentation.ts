@@ -1,8 +1,8 @@
 /** Stable taxonomy keys to restrained colors and color-independent shapes. */
 export const CATEGORY_PRESENTATIONS = Object.freeze({
-  animal_keeping_and_production: Object.freeze({ label: 'Animal keeping and production', color: '#009E73', shape: 'circle' }),
+  animal_keeping_and_production: Object.freeze({ label: 'Animal keeping and production', color: '#D5B84A', shape: 'circle' }),
   slaughter: Object.freeze({ label: 'Slaughter', color: '#D55E00', shape: 'diamond' }),
-  processing_and_preparation: Object.freeze({ label: 'Processing and preparation', color: '#86A7FA', shape: 'square' }),
+  processing_and_preparation: Object.freeze({ label: 'Processing and preparation', color: '#515B60', shape: 'square' }),
   research_and_animal_use: Object.freeze({ label: 'Research and animal use', color: '#CC79A7', shape: 'hexagon' }),
   other_regulated_premises: Object.freeze({ label: 'Other regulated premises', color: '#E69F00', shape: 'triangle' }),
   unclassified: Object.freeze({ label: 'Unclassified', color: '#B8B8B8', shape: 'outlined-circle' }),
@@ -11,11 +11,11 @@ export const CATEGORY_PRESENTATIONS = Object.freeze({
 export type CategoryPresentationKey = keyof typeof CATEGORY_PRESENTATIONS;
 
 /** Existing V1 artwork families, shared by previews, feeds and native layers.
- * Blue is the yellow artwork baked once with hue-rotate(170deg) saturate(1.2),
- * matching the approved palette without recoloring pins during rendering. */
+ * Graphite is the grey artwork tinted once, preserving alpha and its white
+ * centre. No per-frame image recoloring is needed. */
 export const CATEGORY_PIN_COLORS: Readonly<Record<CategoryPresentationKey, string>> = Object.freeze({
-  animal_keeping_and_production: 'green', slaughter: 'red',
-  processing_and_preparation: 'blue', research_and_animal_use: 'violet',
+  animal_keeping_and_production: 'yellow', slaughter: 'red',
+  processing_and_preparation: 'graphite', research_and_animal_use: 'violet',
   other_regulated_premises: 'orange', unclassified: 'grey',
 });
 export const CATEGORY_PIN_IMAGES = Object.freeze(Object.fromEntries(

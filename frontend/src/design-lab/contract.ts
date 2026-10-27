@@ -24,9 +24,21 @@ export type LabRecord = Readonly<{
   sourceFacts?: import('../domain/location').LocationSourceFacts | undefined;
 }>;
 export type ViewportBounds = Readonly<{ west: number; south: number; east: number; north: number }>;
+/** Aggregate-only view of the complete identity-validated mapped result set. */
+export type AreaSummary = Readonly<{
+  status: 'loading' | 'ready' | 'error';
+  total: number;
+  categories: readonly Readonly<{ key: import('../domain/taxonomy').TaxonomyPrimaryKey; count: number }>[];
+  sourceCount: number;
+  sourceReportedCount: number;
+  approximateCount: number;
+  bounds: ViewportBounds | null;
+}>;
+/** Consumed once; never encoded in a route or browser storage. */
+export type NearbySearchCommand = Readonly<{ id: number; latitude: number; longitude: number }>;
 export type SearchScope = null
   | Readonly<{ kind: 'area'; bounds: ViewportBounds }>
-  | Readonly<{ kind: 'radius'; label: string; latitude: number; longitude: number; radiusKm: number }>;
+  | Readonly<{ kind: 'radius'; label: string; latitude: number; longitude: number; radiusKm: number; deviceDerived?: true }>;
 export type Viewport = Readonly<{ centerLat: number; centerLon: number; zoom: number; pitch?: number; bearing?: number }>;
 export type MapDiagnostics = Readonly<{
   zoom: number; currentTiles: number; readyTiles: number; cacheEntries: number; cacheCapacity: number;
@@ -50,6 +62,7 @@ export type LabAction =
   | { type: 'cluster'; value: string | null } | { type: 'aggregate'; value: readonly string[] | null } | { type: 'basemap'; value: Basemap }
   | { type: 'list'; value: boolean } | { type: 'viewport'; value: Viewport }
   | { type: 'private-camera'; value: Viewport }
+  | { type: 'near-device'; value: Readonly<{ latitude: number; longitude: number; radiusKm?: number }> }
   | { type: 'filters'; value: LabFilters } | { type: 'reset-filters' }
   | { type: 'scope'; value: SearchScope; preserveWorkspace?: boolean }
   | { type: 'search'; value: { query: string; filters: LabFilters } }
@@ -78,6 +91,9 @@ export interface DirectionViewProps {
   mapError?: string;
   mapTruncated?: boolean;
   mapMatchingIds?: readonly string[] | null;
+  mapMatchesSearchKey?: string | null;
+  mapMatchesTotalCount?: number | null;
+  mapMatchesMappedCount?: number | null;
   mapMatchesStatus?: 'idle' | 'loading' | 'ready' | 'error';
   mapMatchesError?: string;
   onRetryMapMatches?(): void;

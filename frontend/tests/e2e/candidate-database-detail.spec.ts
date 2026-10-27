@@ -166,7 +166,7 @@ test('candidate map keeps mobile controls clear and uses category and reference 
       stroke: map.getPaintProperty('aggregate-outer', 'circle-stroke-color'),
     };
   });
-  expect(paints.coordinate).toContain('#009E73');
+  expect(paints.coordinate).toContain('#D5B84A');
   expect(paints.coordinate).toContain('#0072B2');
   expect(paints.reference).toBe('#d8473f');
   expect(paints.opacity).toContain('0.22');
@@ -220,12 +220,12 @@ test('plain map entry uses the configured candidate projection and preserves its
       hasApproximatePoint: Boolean(approximate),
     };
   });
-  expect(mapState.color).toContain('#009E73');
+  expect(mapState.color).toContain('#D5B84A');
   expect(mapState.color).toContain('#0072B2');
   expect(mapState.referenceColor).toBe('#d8473f');
   expect(mapState.referenceStroke).toBe('#ff695c');
   expect(mapState.referenceOpacity).toContain('0.22');
-  expect(mapState.v1Icons).toContain('v1-pin-green');
+  expect(mapState.v1Icons).toContain('v1-pin-yellow');
   expect(mapState.v1Icons).toContain('v1-pin-yellow');
   expect(mapState.hasApproximatePoint).toBe(true);
   expect(mapState.renderedReferences).toBeGreaterThan(0);

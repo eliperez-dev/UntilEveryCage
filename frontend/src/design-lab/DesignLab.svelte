@@ -2,7 +2,7 @@
   import { onMount, untrack } from 'svelte';
   import { language, tr } from '../app/language';
   import { writable } from 'svelte/store';
-  import type { LabAction, LabRecord, LabState, MapDiagnostics } from './contract';
+  import type { LabAction, LabRecord, LabState, MapDiagnostics, NearbySearchCommand } from './contract';
   import { decodeLabHash, encodeLabHash, reduceLabState } from './state';
   import { createLabViewModel } from './viewModel';
   import { createRealPreviewRepository, mapRealPreviewCandidate, RealPreviewError, type RealPreviewCounts, type RealPreviewFacet } from '../api/RealPreviewRepository';
@@ -23,7 +23,10 @@
   import { createMapResumeGuard, releaseIdentityKey } from './mapResume';
   import { createPinHoverLabels } from './pinHoverLabels';
 
-  let { active = true, activationId = 0 }: { active?: boolean; activationId?: number } = $props();
+  let { active = true, activationId = 0, nearbyCommand = null, onnearbyconsumed }: {
+    active?: boolean; activationId?: number; nearbyCommand?: NearbySearchCommand | null; onnearbyconsumed?(id: number): void;
+  } = $props();
+  let handledNearbyCommand = -1;
   let mounted = $state(false);
   let verifiedActivation = $state(-1);
   let resumeStatus = $state<'checking' | 'ready' | 'error'>('checking');
@@ -49,6 +52,9 @@
   let mapMatchingIds = $state<readonly string[] | null>(null);
   let mapMatchesStatus = $state<'idle' | 'loading' | 'ready' | 'error'>('idle');
   let mapMatchesError = $state('');
+  let mapMatchesSearchKey = $state<string | null>(null);
+  let mapMatchesTotalCount = $state<number | null>(null);
+  let mapMatchesMappedCount = $state<number | null>(null);
   let mapMatchesAttempt = $state(0);
   let matchesAbort: AbortController | undefined;
   let matchesTimer: ReturnType<typeof setTimeout> | undefined;
@@ -215,6 +221,14 @@
     }
   }
 
+  $effect(() => {
+    const command = nearbyCommand;
+    if (!active || mode !== 'public-release' || !command || command.id === handledNearbyCommand) return;
+    handledNearbyCommand = command.id;
+    dispatch({ type: 'near-device', value: { latitude: command.latitude, longitude: command.longitude } });
+    onnearbyconsumed?.(command.id);
+  });
+
   function errorState(error: unknown): 'error' | 'unauthorized' {
     return error instanceof RealPreviewError && error.kind === 'unauthorized' ? 'unauthorized' : 'error';
   }
@@ -336,12 +350,14 @@
     const required = mode === 'public-release' && (!!labState.query.trim() || labState.searchScope !== null);
     const identity = $publicReleaseManifestIdentity;
     if (!required) {
+      mapMatchesSearchKey = null; mapMatchesTotalCount = null; mapMatchesMappedCount = null;
       if (matchesTimer) clearTimeout(matchesTimer);
       matchesAbort?.abort(); observedMatchKey = undefined;
       mapMatchingIds = null; mapMatchesStatus = 'idle'; mapMatchesError = '';
       return;
     }
     if (!identity) {
+      mapMatchesSearchKey = null; mapMatchesTotalCount = null; mapMatchesMappedCount = null;
       if (matchesTimer) clearTimeout(matchesTimer);
       matchesAbort?.abort(); observedMatchKey = undefined;
       mapMatchingIds = []; mapMatchesStatus = 'loading'; mapMatchesError = '';
@@ -350,6 +366,7 @@
     let filters: import('../api/LocalLocationRepository').LocationFilters;
     try { filters = publicSearchFilters(labState); }
     catch {
+      mapMatchesSearchKey = null; mapMatchesTotalCount = null; mapMatchesMappedCount = null;
       if (matchesTimer) clearTimeout(matchesTimer);
       matchesAbort?.abort(); observedMatchKey = undefined;
       mapMatchingIds = []; mapMatchesStatus = 'error'; mapMatchesError = 'The selected search area is invalid.';
@@ -359,6 +376,7 @@
     const requestKey = JSON.stringify([identity.releaseId, identity.manifestSha256, identity.suppressionGeneration, filters, mapMatchesAttempt]);
     if (requestKey === observedMatchKey) return;
     observedMatchKey = requestKey;
+    mapMatchesSearchKey = null; mapMatchesTotalCount = null; mapMatchesMappedCount = null;
     if (matchesTimer) clearTimeout(matchesTimer);
     matchesAbort?.abort();
     const controller = new AbortController();
@@ -368,6 +386,9 @@
       void publicMapMatchesRepository.get(filters, identity, controller.signal).then(matches => {
         if (controller.signal.aborted || matchesAbort !== controller || $publicReleaseManifestIdentity?.releaseId !== identity.releaseId || $publicReleaseManifestIdentity.manifestSha256 !== identity.manifestSha256 || $publicReleaseManifestIdentity.suppressionGeneration !== identity.suppressionGeneration) return;
         mapMatchingIds = matches.facilityIds;
+        mapMatchesSearchKey = JSON.stringify([identity.releaseId, identity.manifestSha256, identity.suppressionGeneration, filters]);
+        mapMatchesTotalCount = matches.totalCount;
+        mapMatchesMappedCount = matches.mappedCount;
         mapMatchesStatus = 'ready';
       }).catch(() => {
         if (controller.signal.aborted || matchesAbort !== controller) return;
@@ -528,7 +549,7 @@
     {#if active && !mapReadyToShow}<main class="resume-status" aria-live="polite">{#if resumeStatus === 'error'}<p role="alert">{tr('The public release could not be checked.', $language)}</p><button type="button" onclick={() => refreshPinnedPublicRelease?.()}>{tr('Retry', $language)}</button>{:else}<p role="status">{tr('Preparing the map…', $language)}</p>{/if}</main>{/if}
     <div class="retained-map-content" hidden={!mapReadyToShow} inert={!mapReadyToShow}>
     <Field active={dataActive} state={labState} {coverageOpen} records={mode !== 'synthetic' ? apiRecords : model.listRecords} mapRecords={mode !== 'synthetic' ? [] : model.mapRecords} {mode} publicReleaseId={$publicReleaseId} selectedPublicReleaseId={$publicReleaseId ?? $pinnedPublicReleaseId ?? null} publicReleaseIdentity={$publicReleaseIdentity} publicReleaseManifestIdentity={$publicReleaseManifestIdentity} publicMapMeta={$publicMapMeta} releaseOptions={publicReleaseOptions} onreleasechange={selectPublicRelease} onMapFeedMeta={(meta) => { $publicMapMeta = meta; }}
-      dataStatus={$dataStatus} dataError={$dataError} {listRefreshing} {mapMatchingIds} {mapMatchesStatus} {mapMatchesError} onRetryMapMatches={() => mapMatchesAttempt += 1}
+      dataStatus={$dataStatus} dataError={$dataError} {listRefreshing} {mapMatchingIds} {mapMatchesStatus} {mapMatchesError} {mapMatchesSearchKey} {mapMatchesTotalCount} {mapMatchesMappedCount} onRetryMapMatches={() => mapMatchesAttempt += 1}
       {detailRecord} {detailStatus} {detailError} {nextCursor} {pageLoading} {resolvePinHover}
       {facets} {facetsStatus} {candidateFacets} {candidateTotalCount} {mapDiagnostics} {aggregateMemberRecords} {aggregateNextCursor} {aggregateLoading} {aggregateError} onMapTiming={timing=>{sourceMaterializeMs=timing.sourceMaterializeMs;clusterReadyMs=timing.clusterReadyMs;if(timing.zoomSettleMs!==undefined)zoomSettleMs=timing.zoomSettleMs;}} onLoadMore={() => void loadPage(labState.query, false)} onMapReference={(key, refSourceId) => void loadReference(key, true, refSourceId)} onLoadMoreAggregate={() => { if (aggregateReferenceKey) void loadReference(aggregateReferenceKey, false); }} {dispatch}/>
     </div>

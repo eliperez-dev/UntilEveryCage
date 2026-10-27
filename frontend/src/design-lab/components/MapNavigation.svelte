@@ -1,31 +1,25 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
-  import type { Basemap, Viewport } from '../contract';
+  import type { Basemap } from '../contract';
   import { language, tr } from '../../app/language';
-  let { viewport, ready, basemap, pitch, compactHidden = false, areaEnabled = false, areaActive = false, onbasemap, onviewtoggle, onarea, onlocate }: {
-    viewport: Viewport; ready: boolean; basemap: Basemap; pitch: number; compactHidden?: boolean; areaEnabled?: boolean; areaActive?: boolean;
-    onbasemap(value: Basemap): void; onviewtoggle(): void; onarea(): void; onlocate(value: Viewport): void;
+  import { requestDeviceLocation } from '../../features/search/nearbySearch';
+  let { ready, basemap, pitch, compactHidden = false, areaEnabled = false, areaActive = false, fitEnabled = false, onbasemap, onviewtoggle, onarea, onlocate, onfit }: {
+    ready: boolean; basemap: Basemap; pitch: number; compactHidden?: boolean; areaEnabled?: boolean; areaActive?: boolean; fitEnabled?: boolean;
+    onbasemap(value: Basemap): void; onviewtoggle(): void; onarea(): void; onlocate(value: {latitude:number;longitude:number}): void; onfit():void;
   } = $props();
   let locating = $state(false);
   let locationError = $state('');
-  let requestGeneration = 0;
-  onDestroy(() => { requestGeneration++; });
-  function locate() {
+  let locationRequest: AbortController | null = null;
+  onDestroy(() => { locationRequest?.abort(); });
+  async function locate() {
     if (locating) return;
     locationError = '';
-    if (!navigator.geolocation) { locationError = 'Your location is unavailable.'; return; }
     locating = true;
-    const generation = ++requestGeneration;
-    try { navigator.geolocation.getCurrentPosition(position => {
-      if (generation !== requestGeneration) return;
-      locating = false;
-      onlocate({ ...viewport, centerLat: position.coords.latitude, centerLon: position.coords.longitude, zoom: 12 });
-    }, error => {
-      if (generation !== requestGeneration) return;
-      locating = false;
-      locationError = error.code === 1 ? 'Location permission was denied.' : error.code === 3 ? 'Location request timed out.' : 'Your location is unavailable.';
-    }, { enableHighAccuracy: false, timeout: 10000, maximumAge: 0 }); }
-    catch { locating = false; locationError = 'Your location is unavailable.'; }
+    const request = new AbortController();
+    locationRequest = request;
+    try { const coordinates = await requestDeviceLocation(request.signal); if (!request.signal.aborted) onlocate(coordinates); }
+    catch (error) { if (!request.signal.aborted) locationError = error instanceof Error ? error.message : 'Your location is unavailable.'; }
+    finally { if (locationRequest === request && !request.signal.aborted) { locating = false; locationRequest = null; } }
   }
 </script>
 <nav class="map-navigation" class:compact-hidden={compactHidden} aria-label={tr('Map navigation', $language)}>
@@ -36,6 +30,7 @@
     <button class="dimension-button" type="button" disabled={!ready} aria-label={tr(pitch > .5 ? 'Switch to 2D' : 'Switch to 3D', $language)} title={tr('Right-drag to tilt and rotate', $language)} aria-describedby="map-camera-help" aria-pressed={pitch > .5} onclick={onviewtoggle}>{pitch > .5 ? '3D' : '2D'}</button>
     <button type="button" disabled={!ready || locating} aria-label={tr(locating ? 'Finding your location…' : 'Your location', $language)} title={tr('Your location', $language)} aria-busy={locating} onclick={locate}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/><path d="M12 2v4m0 12v4M2 12h4m12 0h4"/></svg></button>
     <button type="button" class:active={areaActive} disabled={!ready || (!areaEnabled && !areaActive)} aria-label={tr(areaActive ? 'Clear area search' : 'Search this area', $language)} title={tr(areaActive ? 'Clear area search' : 'Search this area', $language)} onclick={onarea}><svg viewBox="0 0 24 24" aria-hidden="true">{#if areaActive}<path d="m7 7 10 10M17 7 7 17"/>{:else}<path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/><circle cx="11" cy="11" r="4"/><path d="m14 14 4 4"/>{/if}</svg></button>
+    <button type="button" disabled={!ready || !fitEnabled} aria-label={tr('Fit results', $language)} title={tr('Fit results', $language)} onclick={onfit}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/><circle cx="9" cy="9" r="1.5"/><circle cx="15" cy="15" r="1.5"/></svg></button>
   </div>
   <span id="map-camera-help" class="sr-only">{tr('Right-drag to tilt and rotate', $language)}. {tr('On touchscreens, use two fingers to tilt.', $language)}</span>
   {#if locating || locationError}<p class="location-status" role={locationError ? 'alert' : 'status'}>{tr(locationError || 'Finding your location…', $language)}{#if locationError}<button type="button" aria-label={tr('Close', $language)} onclick={() => locationError = ''}>×</button>{/if}</p>{/if}
@@ -60,5 +55,6 @@
   .location-status button { width:44px; }
   @media(max-width:40rem) {
     .style-options { border-left:0; }
+    .style-toggle { width:6rem; }
   }
 </style>

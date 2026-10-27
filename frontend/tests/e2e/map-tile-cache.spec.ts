@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { expectNearbyScope } from './nearbyMapAssertions';
 import releaseManifest from '../fixtures/release-map/manifest.json' with { type: 'json' };
 
 test('viewed basemap tiles survive zoom return and browser reload, expire correctly, and keep a local world fallback', async ({ page }) => {
@@ -179,9 +180,7 @@ test('viewed basemap tiles survive zoom return and browser reload, expire correc
   await page.context().grantPermissions(['geolocation']);
   await page.context().setGeolocation({ latitude: 12.345678, longitude: 98.765432 });
   await page.getByRole('button', { name: 'Your location', exact: true }).click();
-  await expect.poll(() => page.evaluate(() => {
-    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
-    return Math.abs(map.getCenter().lat - 12.345678) < 0.001 && !map.isMoving() && map.isSourceLoaded('base');
-  })).toBe(true);
+  await expectNearbyScope(page, { latitude: 12.345678, longitude: 98.765432 });
+  await waitForBase();
   expect((await storedTiles()).length).toBe(0);
 });

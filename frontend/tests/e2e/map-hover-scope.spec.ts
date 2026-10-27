@@ -186,17 +186,17 @@ test.describe('touch hover exclusion', () => {
 });
 
 
-for (const precision of ['source_reported','approximate','city']) test(`Processing keeps blue artwork in ${precision} pins and optimized dots`, async ({ page }, testInfo) => {
+for (const precision of ['source_reported','approximate','city']) test(`Processing keeps graphite artwork in ${precision} pins and optimized dots`, async ({ page }, testInfo) => {
   await page.setViewportSize({ width:1440, height:900 });
     await install(page, precision, '', 'processing_and_preparation');
     await expect.poll(() => page.evaluate(() => {
       const map=(window as any).__UEC_LOCAL_PREVIEW_MAP__;
       return map.queryRenderedFeatures({ layers:['v1-source-pins','approx-reference-pins','approx-reference-points'] })
-        .some((feature:any)=>map.style.getLayer(feature.layer.id).layout.get('icon-image').evaluate(feature).name==='v1-pin-blue');
+        .some((feature:any)=>map.style.getLayer(feature.layer.id).layout.get('icon-image').evaluate(feature).name==='v1-pin-graphite');
     })).toBe(true);
     await hoverPin(page); await expect(page.getByRole('tooltip')).toContainText('Processing and preparation');
     await expect(page.getByRole('tooltip').locator('i,img')).toHaveCount(0);
-    if (precision==='source_reported') await page.screenshot({path:testInfo.outputPath('processing-blue-hover.png')});
+    if (precision==='source_reported') await page.screenshot({path:testInfo.outputPath('processing-graphite-hover.png')});
     await page.mouse.move(1400,800);
     await page.getByRole('button',{name:'More tools',exact:true}).click();
     await page.getByRole('checkbox',{name:'Use optimized pins',exact:true}).check();
@@ -206,7 +206,7 @@ for (const precision of ['source_reported','approximate','city']) test(`Processi
       return map.queryRenderedFeatures({layers:['source-coordinate-points','approx-reference-circles']})
         .some((feature:any)=>{
           const color=map.style.getLayer(feature.layer.id).paint.get('circle-color').evaluate(feature);
-          return Math.abs(color.r-134/255)<.001 && Math.abs(color.g-167/255)<.001 && Math.abs(color.b-250/255)<.001;
+          return Math.abs(color.r-81/255)<.001 && Math.abs(color.g-91/255)<.001 && Math.abs(color.b-96/255)<.001;
         });
     })).toBe(true);
 });

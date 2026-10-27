@@ -25,7 +25,7 @@ describe('public map compact feed', () => {
   });
   it('retains country codes and uses grey processing pins', () => {
     const feed = parsePublicMapFeed({ api_version: 'v2', data: { format: 'compact-v1', dictionaries: { source_ids: ['source'], category_keys: ['processing_and_preparation'], precisions: ['exact'] }, features: [[id, 1, 2, 0, 0, [0], 0, 'NL']] }, meta }, 'official', 'v0');
-    expect(feed.collection.features[0]?.properties).toMatchObject({ country_code: 'NL', icon: 'v1-pin-blue' });
+    expect(feed.collection.features[0]?.properties).toMatchObject({ country_code: 'NL', icon: 'v1-pin-graphite' });
   });
   it('reports zero and clears safely when Cache Storage is unavailable', async () => {
     const original = (globalThis as { caches?: unknown }).caches;

@@ -12,9 +12,12 @@ describe('category presentation seam', () => {
     expect(CATEGORY_PRIMARY_BY_SOURCE_KEY.fish_processing).toBe('processing_and_preparation');
   });
 
-  it('reserves blue for Processing and grey artwork for Unclassified', () => {
-    expect(CATEGORY_PRESENTATIONS.processing_and_preparation.color).toBe('#86A7FA');
-    expect(CATEGORY_PIN_IMAGES.processing_and_preparation).toBe('v1-pin-blue');
+  it('uses graphite for Processing, ochre for keeping and grey for Unclassified', () => {
+    expect(CATEGORY_PRESENTATIONS.processing_and_preparation.color).toBe('#515B60');
+    expect(CATEGORY_PIN_IMAGES.processing_and_preparation).toBe('v1-pin-graphite');
+    expect(CATEGORY_PRESENTATIONS.animal_keeping_and_production.color).toBe('#D5B84A');
+    expect(CATEGORY_PIN_IMAGES.animal_keeping_and_production).toBe('v1-pin-yellow');
+    expect(CATEGORY_PRESENTATIONS.unclassified.color).toBe('#B8B8B8');
     expect(CATEGORY_PIN_COLORS.unclassified).toBe('grey');
     expect(Object.values(CATEGORY_PIN_COLORS).filter(color => color === 'grey')).toHaveLength(1);
     expect(new Set(Object.values(CATEGORY_PIN_COLORS)).size).toBe(6);

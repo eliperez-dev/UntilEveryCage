@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { expectNearbyScope } from './nearbyMapAssertions';
 import releaseManifest from '../fixtures/release-map/manifest.json' with { type: 'json' };
 
 // Actual records must not become test output or trace artifacts.
@@ -212,7 +213,7 @@ test('filter membership and radius change the cache, and corrupt persisted data 
   await page.context().grantPermissions(['geolocation']);
   await page.context().setGeolocation(device);
   await page.getByRole('button', { name: 'Your location', exact: true }).click();
-  await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getCenter().lat)).toBeCloseTo(device.latitude, 7);
+  await expectNearbyScope(page, device);
   const beforeArea = (await storedSummary(page)).key;
   await page.getByRole('button', { name: 'Search this area', exact: true }).click();
   await expect.poll(() => page.evaluate(async () => {

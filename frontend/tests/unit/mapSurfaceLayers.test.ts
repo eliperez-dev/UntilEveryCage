@@ -66,8 +66,8 @@ describe('MapSurface layer contract', () => {
       filter: ['any', ['==', ['get', 'kind'], 'city_reference'], ['==', ['get', 'kind'], 'coarse_reference']],
       layout: { 'icon-image': expect.any(Array) },
     });
-    expect(JSON.stringify(layers.find((layer) => layer.id === 'mvt-reference-center')?.layout['icon-image'])).toContain('v1-pin-blue');
-    expect(JSON.stringify(layers.find((layer) => layer.id === 'mvt-source-coordinates')?.paint['circle-color'])).toContain('#86A7FA');
+    expect(JSON.stringify(layers.find((layer) => layer.id === 'mvt-reference-center')?.layout['icon-image'])).toContain('v1-pin-graphite');
+    expect(JSON.stringify(layers.find((layer) => layer.id === 'mvt-source-coordinates')?.paint['circle-color'])).toContain('#515B60');
     expect(layers.find((layer) => layer.id === 'mvt-reference-count')?.layout['text-field'])
       .toEqual(['case', ['>', ['coalesce', ['get', 'count'], 1], 1], ['to-string', ['coalesce', ['get', 'count'], 1]], '']);
   });

@@ -10,6 +10,7 @@
     LabFilters,
     MapDisplaySettings,
     MapDisplaySettingsRequest,
+    AreaSummary as AreaSummaryData,
   } from "../../contract";
   import type { RealPreviewFacet } from "../../../api/RealPreviewRepository";
   import type { CandidateFacets } from "../../../api/TestReleaseRepository";
@@ -29,6 +30,8 @@
   import { language, tr } from '../../../app/language';
   import { serializeRoute } from "../../../app/routeState";
   import { parseSearch, searchSuggestions, applySearchSuggestion, areaScopeFromBounds, type SearchSuggestion } from "../../../features/search/powerSearch";
+  import AreaSummary from '../../../features/search/AreaSummary.svelte';
+  import type { TaxonomyPrimaryKey } from '../../../domain/taxonomy';
   let {
     active = true,
     state,
@@ -51,6 +54,7 @@
     mapMatchingIds = null,
     mapMatchesStatus = "idle",
     mapMatchesError = "",
+    mapMatchesSearchKey = null,
     onRetryMapMatches,
     resolvePinHover,
     mapDiagnostics,
@@ -142,6 +146,8 @@
     ),
   );
   const resultCount = $derived(aggregateRecords.length);
+  const areaSummary = writable<AreaSummaryData | null>(null);
+  const fitResultsRequest = writable(0);
   const workspaceOpen = $derived(state.listOpen || Boolean(state.selectedId) || aggregateOpen);
   const railWidth = writable<number | null>(null);
   const layoutTuning = writable<LayoutTuning>({ panelWidthPercent: 100 / 3, rowPadding: 16, typeScale: 1, mobileSheetPercent: 48, mobileExpandedPercent: 90 });
@@ -661,11 +667,18 @@
       dispatch({ type: 'scope', value: null, preserveWorkspace: true });
       return;
     }
+    updateSearchArea();
+  }
+  function updateSearchArea() {
     if (!$currentBounds) return;
     const scope = areaScopeFromBounds($currentBounds);
     if (!scope) { scopeError.set(tr('This map area crosses the date line. Zoom in and try again.', $language)); return; }
     scopeError.set('');
     dispatch({ type: 'scope', value: scope, preserveWorkspace: true });
+  }
+  function summaryCategory(key: TaxonomyPrimaryKey) {
+    const categories = state.filters.categories.length === 1 && state.filters.categories[0] === key ? [] : [key];
+    dispatch({ type:'filters', value:{ ...state.filters, categories } });
   }
   function searchNear(place: PlaceSuggestion) {
     scopeError.set('');
@@ -727,6 +740,9 @@
         {mapMatchingIds}
         {mapMatchesStatus}
         {mapMatchesError}
+        {mapMatchesSearchKey}
+        onAreaSummary={(summary) => { areaSummary.set(summary); }}
+        fitResultsRequest={$fitResultsRequest}
         searchScope={state.searchScope}
         flightTarget={$flightTarget}
         cameraViewRequest={$cameraViewRequest}
@@ -770,7 +786,7 @@
     <div class="map-tool-shell">
       <div class="map-toolbar" class:toolbar-hidden={$mobileLayout && $workspaceHeight - $sheetHeight < 100}>
         <div class="desktop-search search-tools">{#if !$mobileLayout}{@render searchInput()}{/if}</div>
-      {#if active}<MapNavigation viewport={state.viewport} ready={$mapControlsReady} basemap={state.basemap} pitch={$mapCameraPitch} compactHidden={$mobileLayout && $workspaceHeight - $sheetHeight < 100} onbasemap={(value) => dispatch({type:'basemap',value})} onviewtoggle={toggleMapCameraView} areaEnabled={Boolean($currentBounds) && mode === 'public-release'} areaActive={state.searchScope?.kind === 'area'} onarea={searchArea} onlocate={(value) => dispatch({ type: 'private-camera', value })} />{/if}
+      {#if active}<MapNavigation ready={$mapControlsReady} basemap={state.basemap} pitch={$mapCameraPitch} compactHidden={$mobileLayout && $workspaceHeight - $sheetHeight < 100} onbasemap={(value) => dispatch({type:'basemap',value})} onviewtoggle={toggleMapCameraView} areaEnabled={Boolean($currentBounds) && mode === 'public-release'} areaActive={state.searchScope?.kind === 'area'} fitEnabled={$areaSummary?.status === 'ready' && Boolean($areaSummary.bounds) && $areaSummary.total > 0} onfit={() => { fitResultsRequest.update(value => value + 1); }} onarea={searchArea} onlocate={(value) => dispatch({ type: 'near-device', value })} />{/if}
       </div>
     <aside class="results" inert={$debugOpen && $mobileLayout} aria-hidden={$debugOpen && $mobileLayout ? true : undefined} class:rail-collapsed={!workspaceOpen} class:map-preview={detailCollapsed} id="field-record-list" aria-label={tr('Search, filters, and results', $language)}>
       <div class="mobile-sheet-control"><MobileSearchSheet open={workspaceOpen && !detailCollapsed} snap={state.selectedId ? $detailSheetSnap : $resultsSheetSnap} detail={Boolean(state.selectedId)} preview={Boolean(state.selectedId)} available={$workspaceHeight} middlePercent={$layoutTuning.mobileSheetPercent ?? 48} expandedPercent={$layoutTuning.mobileExpandedPercent ?? 90} onchange={changeMobileSheet} onheight={height => sheetHeight.set(height)} /></div>
@@ -785,7 +801,7 @@
             {#each state.filters.precisions as value}<button type="button" aria-label={`${tr('Remove filter', $language)}: ${tr(value, $language)}`} onclick={() => removeFilter('precisions', value)}>{tr(value, $language)} <span aria-hidden="true">×</span></button>{/each}
             {#each state.filters.activities as value}<button type="button" aria-label={`${tr('Remove filter', $language)}: ${value}`} onclick={() => removeFilter('activities', value)}>{value} <span aria-hidden="true">×</span></button>{/each}
             {#if state.sourceId}<button type="button" aria-label={`${tr('Remove filter', $language)}: ${sourceName(state.sourceId)}`} onclick={() => chooseSource(null)}>{sourceName(state.sourceId)} <span aria-hidden="true">×</span></button>{/if}
-            {#if state.searchScope}<button type="button" aria-label={tr('Remove filter', $language)} onclick={() => dispatch({ type: 'scope', value: null })}>{state.searchScope.kind === 'area' ? tr('This map area', $language) : `${state.searchScope.radiusKm} km · ${state.searchScope.label}`} <span aria-hidden="true">×</span></button>{/if}
+            {#if state.searchScope}<button type="button" aria-label={tr('Remove filter', $language)} onclick={() => dispatch({ type: 'scope', value: null })}>{state.searchScope.kind === 'area' ? tr('This map area', $language) : state.searchScope.deviceDerived ? tr('Within 100 miles', $language) : `${state.searchScope.radiusKm} km · ${state.searchScope.label}`} <span aria-hidden="true">×</span></button>{/if}
           </div>
           <div class="search-toolbar">
           <details class="filters" bind:this={$filterDisclosure} ontoggle={filterToggled}>
@@ -834,6 +850,7 @@
       {#if mapMatchesStatus === 'error'}<p class="search-error" hidden={Boolean(state.selectedId) || !workspaceOpen} role="alert">{mapMatchesError} {#if onRetryMapMatches}<button type="button" onclick={() => onRetryMapMatches?.()}>{tr('Retry', $language)}</button>{/if}</p>{/if}
       <div class="workspace-body" id="field-detail-content">
         <div class="list-content" hidden={Boolean(state.selectedId) || !workspaceOpen}>
+        {#if mode === 'public-release' && state.searchScope && !aggregateOpen}<AreaSummary summary={$areaSummary} selectedCategories={state.filters.categories} nearby={state.searchScope.kind === 'radius' && Boolean(state.searchScope.deviceDerived)} canUpdate={Boolean($currentBounds)} oncategory={summaryCategory} onclear={() => dispatch({type:'scope', value:null, preserveWorkspace:true})} onupdate={updateSearchArea} />{/if}
 {#if aggregateOpen}<details
         class="reading-sheet aggregate-sheet"
         aria-labelledby="aggregate-title"
@@ -886,13 +903,13 @@
         >
       </details>{/if}
         {#if $placeSuggestions.length > 0}
-          <section class="place-suggestions" aria-label="Places">
+          <section class="place-suggestions" aria-label={tr('Places', $language)}>
             <div class="results-heading"><strong>{tr('Places', $language)}</strong><label class="radius-choice">{tr('Radius', $language)} <select bind:value={$nearbyRadius}>{#each [5,25,50,100] as km}<option value={km}>{km} km</option>{/each}</select></label>{#if $placeSuggestions.length > 1}<button class="places-expand" type="button" aria-label={tr('Places', $language)} aria-expanded={$placesExpanded} onclick={() => placesExpanded.update(value => !value)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d={$placesExpanded ? 'm6 15 6-6 6 6' : 'm6 9 6 6 6-6'}/></svg></button>{/if}</div>
             <ol>
               {#each $placeSuggestions as place, index (place.id)}
                 <li class:extra-place={index > 0 && !$placesExpanded}><button type="button" onclick={(event) => { event.stopPropagation(); selectPlace(place); }}>
                   <strong>{place.label}</strong>
-                  <small>Navigate to city centre · Natural Earth, not a facility location</small>
+                  <small>{tr('Navigate to city centre · Natural Earth, not a facility location', $language)}</small>
                 </button>{#if mode === 'public-release'}<button type="button" class="nearby-search" aria-label={`${tr('Search nearby', $language)}: ${place.label}, ${$nearbyRadius} km`} onclick={() => searchNear(place)}><span class="nearby-label">{tr('Search nearby', $language)} · </span>{$nearbyRadius} km</button>{/if}</li>
               {/each}
             </ol>
@@ -1113,9 +1130,14 @@
   .csv-download { display: inline-flex; align-items: center; justify-content: center; gap: .3rem; flex: 0 0 auto; min-height: 2.75rem; padding: .3rem .4rem; color: var(--ink); text-decoration: none; font-size: .6875rem; }
   .csv-download:hover { background: var(--panel-hover); }
   .csv-download svg { width: .9rem; height: .9rem; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
-  .places-expand { display: none; }
-  .radius-choice { display: flex; align-items: center; gap: .35rem; color: var(--muted); font-size: .6875rem; }
-  .radius-choice select { min-height: 2.25rem; padding: .25rem; border: 1px solid var(--line); border-radius: 0; color: var(--ink); background: var(--panel); font: inherit; }
+  .place-suggestions .results-heading { min-height:44px;align-items:center;flex-wrap:nowrap;gap:.35rem;padding:0 .8rem; }
+  .place-suggestions .places-expand { display:grid;place-items:center;flex:0 0 44px;width:44px;height:44px;min-width:44px;min-height:44px;padding:0;border:0;color:var(--ink);background:transparent; }
+  .place-suggestions .places-expand svg { display:block;width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round; }
+  .place-suggestions .extra-place { display:none; }
+  .place-suggestions li { display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center; }
+  .place-suggestions li > button { min-width:0;min-height:44px;overflow-wrap:anywhere; }
+  .radius-choice { display:flex;align-items:center;gap:.35rem;min-width:0;margin-left:auto;color:var(--muted);font-size:.6875rem; }
+  .radius-choice select { width:5.25rem;max-width:100%;min-height:44px;padding:.25rem;border:1px solid var(--line);border-radius:0;color:var(--ink);background:var(--panel);font:inherit; }
   .place-suggestions .nearby-search { min-height: 2.75rem; padding-top: .25rem; color: var(--muted); font-size: .6875rem; text-decoration: underline; text-underline-offset: .2rem; }
   @media (max-width: 60rem) {
     .search-toolbar { flex-wrap: wrap; gap: 0 .25rem; }
@@ -1148,9 +1170,6 @@
     .place-suggestions .results-heading { min-height: 2.75rem; gap: .4rem; padding: 0 .65rem; }
     .radius-choice { margin-left: auto; }
     .radius-choice select { min-height: 2.75rem; }
-    .places-expand { display: grid; place-items: center; min-width: 2.75rem; min-height: 2.75rem; padding: .4rem; border: 0; color: var(--ink); background: transparent; }
-    .places-expand svg { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 1.5; }
-    .place-suggestions .extra-place { display: none; }
     .place-suggestions li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
     .place-suggestions li > button { min-width: 0; min-height: 2.75rem; padding: .45rem .65rem; }
     .place-suggestions strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

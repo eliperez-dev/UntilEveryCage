@@ -1,12 +1,15 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
   import { language, tr } from './language';
+  import { CATEGORY_PRESENTATIONS } from '../features/locations/categoryPresentation';
+  import type { TaxonomyPrimaryKey } from '../domain/taxonomy';
+  import { landingCategoryHref, loadLandingReleaseSummary, type LandingReleaseSummary } from './landingReleaseSummary';
   import PreviewMasthead from './PreviewMasthead.svelte';
   import pig from '../assets/landing/pig.jpg';
   import cow from '../assets/landing/cow.jpg';
   import mapPreview from '../assets/landing/map-preview.jpg';
 
-  let { mapHref = '#/map' }: { mapHref?: string } = $props();
+  let { mapHref = '#/map', onfindnearby }: { mapHref?: string; onfindnearby?: (signal: AbortSignal) => Promise<void> } = $props();
   const databaseHref = $derived.by(() => {
     const query = mapHref.split('?')[1];
     return query ? `#/database?${query}` : '#/database';
@@ -14,6 +17,38 @@
   let paused = $state(false);
   let reducedMotion = $state(true);
   let pageHidden = $state(false);
+  let nearbyBusy = $state(false);
+  let nearbyError = $state('');
+  let nearbyController: AbortController | null = null;
+  let summary = $state<LandingReleaseSummary | null>(null);
+  let summaryState = $state<'loading' | 'ready' | 'unavailable'>('loading');
+  let summaryController: AbortController | null = null;
+  let summaryRetry = $state(0);
+  const categoryLinks: readonly { key: TaxonomyPrimaryKey; label: string }[] = [
+    { key: 'slaughter', label: 'Slaughter' }, { key: 'animal_keeping_and_production', label: 'Animal keeping' },
+    { key: 'processing_and_preparation', label: 'Processing' }, { key: 'research_and_animal_use', label: 'Research' },
+    { key: 'other_regulated_premises', label: 'Other premises' }, { key: 'unclassified', label: 'Unclassified' },
+  ];
+  $effect(() => {
+    void summaryRetry;
+    const requestedRelease = new URLSearchParams(mapHref.split('?')[1] ?? '').get('release_id') ?? undefined;
+    const controller = new AbortController(); summaryController = controller;
+    summary = null; summaryState = 'loading';
+    void loadLandingReleaseSummary(controller.signal, requestedRelease).then(value => {
+      if (!controller.signal.aborted) { summary = value; summaryState = value ? 'ready' : 'unavailable'; }
+    }).catch(() => { if (!controller.signal.aborted) summaryState = 'unavailable'; });
+    return () => controller.abort();
+  });
+  async function findNearby() {
+    if (!onfindnearby || nearbyBusy) return;
+    const controller = new AbortController(); nearbyController = controller;
+    nearbyBusy = true; nearbyError = '';
+    try { await onfindnearby(controller.signal); }
+    catch (error) {
+      if (!controller.signal.aborted) nearbyError = error instanceof Error ? error.message : 'Your location is unavailable.';
+    } finally { if (!controller.signal.aborted) nearbyBusy = false; }
+  }
+  onDestroy(() => { nearbyController?.abort(); summaryController?.abort(); });
 
   onMount(() => {
     const preference = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -47,7 +82,14 @@
       <div class="hero-copy">
         <h1 id="landing-title">{tr('HIDDEN IN', $language)}<br />{tr('PLAIN SIGHT.', $language)}</h1>
         <p>{tr('Behind closed doors, animals are bred, confined, experimented on and killed. Until Every Cage maps the industries responsible.', $language)}</p>
-        <a class="action" href={mapHref}>{tr('Open the map', $language)} {@render arrow()}</a>
+        <div class="hero-actions">
+          <a class="action" href={mapHref}>{tr('Open the map', $language)} {@render arrow()}</a>
+          {#if onfindnearby}<button class="nearby-action" type="button" disabled={nearbyBusy} aria-busy={nearbyBusy} onclick={findNearby}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="6" /><circle cx="12" cy="12" r="2" /><path d="M12 2v3m0 14v3M2 12h3m14 0h3" /></svg>
+            {tr(nearbyBusy ? 'Finding your location…' : 'Find locations near me', $language)}
+          </button>{/if}
+        </div>
+        {#if nearbyError}<p class="nearby-error" role="alert">{tr(nearbyError, $language)}</p>{/if}
       </div>
       {#if !reducedMotion}
         <button class="motion-toggle" type="button" aria-label={tr(paused ? 'Resume background animation' : 'Pause background animation', $language)} title={tr(paused ? 'Resume background animation' : 'Pause background animation', $language)} onclick={() => paused = !paused}>
@@ -59,6 +101,22 @@
       <div class="discovery-heading">
         <h2 id="discovery-title">{tr('See how far', $language)}<br />{tr('it reaches.', $language)}</h2>
         <p>{tr('Explore farms, slaughterhouses, laboratories and the businesses around them.', $language)}</p>
+      </div>
+      <div class="release-discovery">
+        {#if summaryState === 'ready' && summary}
+          <dl class="release-totals">
+            <div><dt>{tr('Records in this release', $language)}</dt><dd>{summary.records.toLocaleString($language)}</dd></div>
+            <div><dt>{tr('With map locations', $language)}</dt><dd>{summary.mapped.toLocaleString($language)}</dd></div>
+            <div><dt>{tr('Public sources', $language)}</dt><dd>{summary.sources.toLocaleString($language)}</dd></div>
+          </dl>
+          <nav class="activity-links" aria-label={tr('Explore by activity', $language)}>
+            {#each categoryLinks as category}<a href={landingCategoryHref(mapHref, summary.releaseId, category.key)}><span class="category-swatch" style:background={CATEGORY_PRESENTATIONS[category.key].color}></span><span>{tr(category.label, $language)}</span>{@render arrow()}</a>{/each}
+          </nav>
+        {:else if summaryState === 'loading'}
+          <p class="release-state" role="status">{tr('Loading release totals…', $language)}</p>
+        {:else}
+          <div class="release-state"><span>{tr('Release totals are unavailable.', $language)}</span><button type="button" onclick={() => summaryRetry += 1}>{tr('Try again', $language)}</button></div>
+        {/if}
       </div>
       <div class="preview-frame">
         <a class="preview" href={mapHref} aria-label={tr('Open the map', $language)}>
@@ -89,10 +147,12 @@
   h1{font:500 clamp(58px,7.1vw,88px)/.91 system-ui,sans-serif;letter-spacing:-.065em;margin:0 0 30px;max-width:11ch}
   .hero-copy p{max-width:39ch;font-size:16px;line-height:1.6;margin:0 0 30px;color:var(--photo-ink)}
   .action{display:inline-flex;gap:32px;align-items:center;min-height:48px;padding:13px 20px;color:#171d17;background:var(--button-bg);font-weight:500}.action:hover{background:#fffbed;text-decoration:none}
+  .hero-actions{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center}.nearby-action{display:inline-flex;align-items:center;justify-content:center;gap:10px;min-height:48px;padding:12px 0;background:none;color:var(--photo-ink);border:0;border-bottom:1px solid #f5f1e67a;font:500 14px/1.4 system-ui,sans-serif;cursor:pointer}.nearby-action:hover{border-color:var(--photo-ink)}.nearby-action:disabled{opacity:.7;cursor:wait}.hero-copy .nearby-error{margin:14px 0 0;font-size:13px;max-width:43ch}
   .motion-toggle{position:absolute;right:24px;bottom:22px;display:grid;place-items:center;width:44px;height:44px;min-height:44px;padding:0;color:var(--photo-ink);background:#14141499;border:1px solid #f5f1e680;border-radius:0}.motion-toggle:hover{background:#141414e6}.motion-toggle svg{width:21px;height:21px}
   .paused .hero-photo{animation-play-state:paused}.reduced-motion .hero-photo{animation:none;will-change:auto}.reduced-motion .cow{display:none}
   .discovery{padding:64px 48px 56px}.discovery-heading{display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:end;margin-bottom:34px}
   h2{font:400 clamp(34px,4.5vw,52px)/1.02 Georgia,serif;letter-spacing:-.035em;margin:0}.discovery-heading p{max-width:38ch;margin:0 0 14px;font-size:16px;line-height:1.55;color:var(--landing-muted)}
+  .release-discovery{margin-bottom:28px;border-top:1px solid var(--landing-line)}.release-totals{display:grid;grid-template-columns:1.2fr 1.2fr 1fr;margin:0;padding:24px 0 22px;border-bottom:1px solid var(--landing-line);gap:24px}.release-totals>div{display:flex;flex-direction:column-reverse;gap:5px}.release-totals dt{font-size:13px;color:var(--landing-muted)}.release-totals dd{margin:0;font:400 clamp(32px,3.8vw,48px)/1.05 Georgia,serif;font-variant-numeric:tabular-nums;letter-spacing:-.035em}.activity-links{display:flex;flex-wrap:wrap;gap:0 22px;padding-top:12px}.activity-links a{display:inline-flex;min-width:0;align-items:center;gap:8px;min-height:44px;font-size:13px}.activity-links a>span:nth-child(2){min-width:0;overflow-wrap:anywhere}.activity-links svg{width:13px;height:13px}.category-swatch{width:7px;height:7px;border-radius:50%;flex-shrink:0}.release-state{display:flex;align-items:center;flex-wrap:wrap;gap:10px;min-height:80px;margin:0;color:var(--landing-muted);font-size:13px}.release-state button{min-height:44px;padding:4px 8px;border:0;background:none;color:var(--landing-ink);font:inherit;text-decoration:underline;cursor:pointer}
   .preview-frame{position:relative}.preview{position:relative;display:block;overflow:hidden;height:350px;border:1px solid var(--landing-line);background:#a8d3df}.preview>img{display:block;width:100%;height:112%;margin-top:-4%;object-fit:cover;object-position:center}
   .preview-action{position:absolute;right:18px;bottom:18px;display:flex;align-items:center;gap:28px;padding:12px 16px;min-height:44px;background:var(--landing-bg);color:var(--landing-ink);font-weight:500}.preview:hover .preview-action,.preview:focus-visible .preview-action{text-decoration:underline;text-underline-offset:4px}
   .map-attribution{position:absolute;bottom:1px;left:1px;max-width:calc(100% - 2px);padding:1px 4px;background:#f2f0e8ed;color:#263529;font-size:10px;line-height:1.3}
@@ -101,4 +161,5 @@
   @keyframes crossfade{0%,43%{opacity:0}50%,93%{opacity:1}100%{opacity:0}}
   @media(prefers-reduced-motion:reduce){.hero-photo{animation:none;will-change:auto}.cow,.motion-toggle{display:none}}
   @media(max-width:700px){.hero{min-height:650px}.hero-photo{object-position:40% center}.cow{object-position:40% center}.shade{background:linear-gradient(0deg,rgba(5,10,6,.96),rgba(5,10,6,.75) 38%,rgba(5,10,6,.05) 78%,rgba(5,10,6,.56))}.hero-copy{padding:214px 24px 42px;max-width:440px}h1{font-size:clamp(38px,11.8vw,66px);letter-spacing:-.06em;margin-bottom:22px}.hero-copy p{font-size:14px;max-width:38ch;margin-bottom:24px}.motion-toggle{right:20px;bottom:20px}.discovery{padding:38px 24px}.discovery-heading{grid-template-columns:minmax(0,1fr);gap:22px;margin-bottom:26px}h2{font-size:38px}.discovery-heading p{font-size:14px}.preview{height:290px}.preview>img{width:185%;max-width:none;height:100%;margin-top:0;margin-left:-40%;object-position:center}.preview-action{right:10px;bottom:20px;font-size:12px;gap:18px}.landing-footer{color-scheme:light;padding:24px;align-items:flex-start;flex-direction:column;gap:8px}.landing-footer>span{font-size:22px}}
+  @media(max-width:700px){.hero-actions{gap:8px 18px}.hero-actions .action{gap:24px}.nearby-action{font-size:13px}.release-totals{grid-template-columns:1fr 1fr;gap:22px 16px;padding:20px 0}.release-totals>div:last-child{grid-column:1/-1;flex-direction:row-reverse;justify-content:flex-end;align-items:baseline;gap:8px}.release-totals>div:last-child dd{font-size:25px}.release-totals dt{font-size:12px}.release-totals dd{font-size:37px}.activity-links{display:grid;grid-template-columns:1fr 1fr;column-gap:12px}.activity-links a{font-size:12px;gap:6px}.activity-links a svg{margin-left:auto}}
 </style>

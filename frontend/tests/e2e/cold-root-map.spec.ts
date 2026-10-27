@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { expectNearbyScope } from './nearbyMapAssertions';
 import releaseManifest from '../fixtures/release-map/manifest.json' with { type: 'json' };
 
 const exactId = '123e4567-e89b-42d3-a456-426614174000';
@@ -341,10 +342,7 @@ test('cold landing entry and warmed reload keep map controls and exact/approxima
   await page.context().grantPermissions(['geolocation']);
   await page.context().setGeolocation({ latitude: 12.345678, longitude: 98.765432 });
   await navigation.getByRole('button', { name: 'Your location', exact: true }).click();
-  await expect.poll(() => page.evaluate(() => {
-    const center = (window as any).__UEC_LOCAL_PREVIEW_MAP__.getCenter();
-    return Math.abs(center.lat - 12.345678) + Math.abs(center.lng - 98.765432);
-  })).toBeLessThan(.00001);
+  await expectNearbyScope(page, { latitude: 12.345678, longitude: 98.765432 });
   const canvas=(await page.locator('.maplibregl-canvas').boundingBox())!;
   await page.mouse.move(canvas.x+canvas.width/2,canvas.y+canvas.height/2);
   await page.mouse.wheel(0,120);

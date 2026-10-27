@@ -3,6 +3,7 @@
   import { language, tr } from './language';
   import RecordConnections from './RecordConnections.svelte';
   import LocationPreview from './LocationPreview.svelte';
+  import { externalMapLink } from '../features/locations/externalMapLink';
   import { serializeRoute } from './routeState';
   import type { LabRecord } from '../design-lab/contract';
   import CategoryBadge from '../features/locations/CategoryBadge.svelte';
@@ -230,6 +231,7 @@
     ),
   );
   const sourceLocationRole = $derived(value('sourceLocationRole' in record ? record.sourceLocationRole : null, 'source_location_role' in record ? record.source_location_role : null));
+  const mapsHref = $derived(publicRelease ? externalMapLink({latitude:record.latitude, longitude:record.longitude, precision, coordinatePrecision:record.coordinatePrecision, sourceLocationRole}) : null);
   const locationText = $derived(
     [value(record.locality), value(record.country)].filter(Boolean).join(', ') ||
       'Location unavailable',
@@ -375,7 +377,7 @@
       {#if coordinateConfidence !== null || record.coordinateConfidenceBand}<div><dt>{tr('Geocoding confidence', $language)}</dt><dd>{#if coordinateConfidence !== null}{coordinateConfidence} ({tr('provider score', $language)}){/if}{#if record.coordinateConfidenceBand}{coordinateConfidence !== null ? ' · ' : ''}{displayGeneratedValue(record.coordinateConfidenceBand)}{/if}</dd></div>{/if}
       {#if defaultMapScope === false}<div><dt>{tr('Map scope', $language)}</dt><dd>{tr('Outside the default map', $language)}{#if mapScopeReason} · {displayGeneratedValue(mapScopeReason)}{/if}</dd></div>{/if}
     </dl>
-    {#if presentation === 'rail' && hasCoordinates && onshowmap}<button class="show-on-map" type="button" onclick={onshowmap}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/><path d="M12 2v4m0 12v4M2 12h4m12 0h4"/></svg>{tr('Show on map', $language)}</button>{/if}
+    <div class="location-actions">{#if presentation === 'rail' && hasCoordinates && onshowmap}<button class="show-on-map" type="button" onclick={onshowmap}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/><path d="M12 2v4m0 12v4M2 12h4m12 0h4"/></svg>{tr('Show on map', $language)}</button>{/if}{#if mapsHref}<a class="open-in-maps" href={mapsHref} target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">{tr('Open in maps', $language)}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6m0-6L10 14M10 4H4v16h16v-6"/></svg></a>{/if}</div>
   </section>
 
   {#if presentation === 'page' && hasCoordinates}<LocationPreview latitude={record.latitude!} longitude={record.longitude!} precision={precision} category={taxonomy?.primaryCategories[0] ?? activity ?? 'unclassified'} />{/if}
@@ -429,6 +431,9 @@
 </article>
 
 <style>
+  .location-actions { display:flex;align-items:center;flex-wrap:wrap;gap:.25rem 1.4rem; }
+  .open-in-maps { display:inline-flex;align-items:center;gap:.4rem;min-height:44px;margin-top:.45rem;color:var(--ink);font-size:.75rem;text-underline-offset:3px; }
+  .open-in-maps svg { width:1rem;height:1rem;fill:none;stroke:currentColor;stroke-width:1.5; }
   #record-title { display:flex;align-items:flex-start;gap:.5rem; }
   .record-name { flex:1 1 auto;min-width:0;overflow-wrap:anywhere; }
   #record-title .share { flex:0 0 auto;align-self:flex-start; }

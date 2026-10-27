@@ -62,10 +62,13 @@ test('retains the filtered public map and built source on a validated warm retur
   expect(canvas).not.toBeNull();
   await indexUpdates(page);
   await expect(page.locator('.map-diagnostics dl > div').filter({ has: page.locator('dt').filter({ hasText: /^Filtered \/ loaded mapped$/ }) }).locator('dd')).toHaveText('1 / 1');
-  const before = Number(await page.locator('.map-diagnostics dl > div').filter({ has: page.locator('dt').filter({ hasText: /^Index updates$/ }) }).locator('dd').textContent());
   await page.getByRole('button', { name: 'Close debug menu', exact: true }).click();
   await page.getByRole('button', { name: 'Your location', exact: true }).click();
   await expect(page).not.toHaveURL(/12\.345|67\.891/);
+  await expect(page.locator('.area-total strong')).toHaveText('1');
+  // Changing spatial membership may update the source; warm navigation must not.
+  const before = await indexUpdates(page);
+  await page.getByRole('button', { name: 'Close debug menu', exact: true }).click();
   const checked = fixture.manifestRequests;
   await page.getByRole('link', { name: 'About', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'About Until Every Cage is Empty', exact: true }).first()).toBeVisible();

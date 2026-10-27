@@ -17,14 +17,14 @@ describe('native cluster transition identities and artwork', () => {
   it('preserves the native multi-category priority and serialized rendered properties', () => {
     expect(clusterMotionImage({ category_keys: ['processing_and_preparation', 'slaughter'], category_key: 'research' })).toBe('v1-pin-red');
     expect(clusterMotionImage({ category_keys: '["research_and_animal_use"]', category_key: 'slaughter' })).toBe('v1-pin-violet');
-    expect(clusterMotionImage({ category_keys: 'bad-json', category_key: 'farm' })).toBe('v1-pin-green');
+    expect(clusterMotionImage({ category_keys: 'bad-json', category_key: 'farm' })).toBe('v1-pin-yellow');
     expect(clusterMotionImage({ category_key: 'general_food_business' })).toBe('v1-pin-orange');
   });
   it('retains category artwork across coarse and ordinary approximate references', () => {
     expect(clusterMotionImage({ precision: 'city', category_key: 'slaughter' })).toBe('v1-pin-red');
     expect(clusterMotionImage({ precision: 'approximate', category_key: 'slaughter' })).toBe('v1-pin-red');
-    expect(clusterMotionImage({ precision: 'city', category_key: 'processing' })).toBe('v1-pin-blue');
-    expect(clusterMotionImage({ category_keys: ['processing_and_preparation'] })).toBe('v1-pin-blue');
+    expect(clusterMotionImage({ precision: 'city', category_key: 'processing' })).toBe('v1-pin-graphite');
+    expect(clusterMotionImage({ category_keys: ['processing_and_preparation'] })).toBe('v1-pin-graphite');
     expect(clusterMotionImage({})).toBe('v1-pin-grey');
   });
 });

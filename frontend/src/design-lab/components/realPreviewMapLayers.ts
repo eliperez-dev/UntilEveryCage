@@ -250,7 +250,7 @@ export function addRealPreviewMapLayers(
 
 const pinImageLoads = new WeakMap<MapLibreMap, Promise<void>>();
 const pinModeGenerations = new WeakMap<MapLibreMap, number>();
-const V1_PIN_IMAGES = [['v1-pin-red', 'marker-icon-2x-red.png'], ['v1-pin-green', 'marker-icon-2x-green.png'], ['v1-pin-yellow', 'marker-icon-2x-yellow.png'], ['v1-pin-blue', 'marker-icon-2x-blue.png'], ['v1-pin-violet', 'marker-icon-2x-violet.png'], ['v1-pin-orange', 'marker-icon-2x-orange.png'], ['v1-pin-grey', 'marker-icon-2x-grey.png'], ['v1-pin-shadow', 'marker-shadow.png']] as const;
+const V1_PIN_IMAGES = [['v1-pin-red', 'marker-icon-2x-red.png'], ['v1-pin-green', 'marker-icon-2x-green.png'], ['v1-pin-yellow', 'marker-icon-2x-yellow.png'], ['v1-pin-blue', 'marker-icon-2x-blue.png'], ['v1-pin-graphite', 'marker-icon-2x-graphite.png'], ['v1-pin-violet', 'marker-icon-2x-violet.png'], ['v1-pin-orange', 'marker-icon-2x-orange.png'], ['v1-pin-grey', 'marker-icon-2x-grey.png'], ['v1-pin-shadow', 'marker-shadow.png']] as const;
 
 function createApproximationMarkImage(): ImageData | null {
   const canvas = document.createElement('canvas');

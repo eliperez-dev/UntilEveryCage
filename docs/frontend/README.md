@@ -46,6 +46,13 @@ API schemas own supported fields. They are not additional roadmaps.
   Use the same shared four-link header, theme control and More tools as the other pages;
   landing does not mark a navigation destination active.
   Its still-image motion has pause/resume and a static reduced-motion fallback.
+  Keep `Open the map` primary and `Find locations near me` secondary. Only that
+  explicit nearby click requests device permission. A one-time in-memory command
+  opens the map and searches within 100 miles; reloads and links never replay it.
+  The discovery section shows current release totals, mapped records and public
+  source counts from validated public aggregates, with activity links into map
+  results. Distinguish unavailable totals from zero; do not add animal-death or
+  other unsupported estimates to this section.
   The map stays lazy until opened. Map search replaces the separate Database page;
   old public Database links open map results. FAQ content lives within About;
   old FAQ links retain their section and map context. API and downloads remain
@@ -53,7 +60,8 @@ API schemas own supported fields. They are not additional roadmaps.
   Existing informational/download routes remain compatible aliases.
 - A horizontal map toolbar sits 24px from the desktop map's left edge and 16px
   below its top. It joins Search map with one Street/Satellite switch, 2D/3D,
-  Your location and Search this area. The style switch shows the current style
+  Your location, Search this area and Fit results. Fit results bounds the complete
+  matching mapped collection, rather than the loaded page. The style switch shows the current style
   and exposes the next style in its tooltip. Search input stays in place as
   results, detail and filters open flush below the entire toolbar width.
   Resizing the panel changes both joined widths; bounds keep the controls usable
@@ -117,12 +125,24 @@ API schemas own supported fields. They are not additional roadmaps.
   and the removable scope chip remains in results. Clearing either removes only
   this scope and its graphic; neither applying nor clearing opens the search sheet.
   Radius scopes remain distinct. Queries and spatial scopes are not persisted.
+  Scoped results start with `In this area` (or `Near you` for the device radius),
+  the complete matching mapped total and six clickable primary-category bars.
+  Each record counts once by its display category. Clicking a category narrows
+  both map and list; clicking the sole selected category again clears it.
+  Source count and location precision are available in a compact disclosure.
+  Clear area removes only the scope. Update to this view explicitly replaces
+  the fixed perimeter with the current map bounds. Loading or failed matching
+  never retains a previous ready summary.
+  Your location searches a 100-mile radius and opens results after permission.
+  It preserves the current query and filters. Device coordinates, radius and
+  camera remain in memory and do not enter browser URLs, history, diagnostics or storage.
 - Facility icons default to 80% size. More tools and the existing debug slider
   share renderer settings for clustering, icon size and optimized dots; changes
   retain camera, filters and selection and are not persisted.
 - Use MapLibre, the existing V1 PNG pin family and V2 taxonomy mappings.
   Do not substitute the six legacy type names for the V2 classification model.
-  Processing is blue, and grey is reserved for Unclassified. Apply the same
+  Processing uses subdued graphite (`#515B60`), Animal keeping uses ochre yellow
+  (`#D5B84A`), and Unclassified retains pale grey (`#B8B8B8`). Apply the same
   category mapping to PNG pins, optimized dots, native renderers, filters,
   results and facility panels. Preserve all other category colors, category
   meanings and precision cues.
@@ -196,6 +216,11 @@ API schemas own supported fields. They are not additional roadmaps.
   remaining facts. The map panel uses the same overview before Location,
   with Open facility page at the bottom of the map detail.
   No separate copy-record-ID button or repeated Record Evidence heading.
+- Public source-reported and exact facility points also offer `Open in maps`
+  in Location. It sends only the public destination to the external map, never
+  the visitor's origin. Approximate, city, coarse, mailing-locality and unmapped
+  records have no external-map action. Existing Show on map remains available
+  according to its normal mapped-location behavior.
 - Copy actions show a brief checkmark only after the clipboard write succeeds,
   with a localized live-region status. Failure shows an X and accessible status;
   neither state shifts the facility heading or share button.
@@ -367,7 +392,7 @@ Release/profile eligibility and current restrictions apply to UI, APIs, caches,
 history and exports. Never expose private routes/tokens/raw evidence in the
 public bundle. Keep community submissions separate from curated records.
 Device location is optional and is not persisted by default.
-Request it only after Your location is clicked. Keep its live camera in memory;
+Request it only after Your location or Find locations near me is clicked. Keep its live camera in memory;
 links and browser history retain the prior public camera, including subsequent
 zoom/pan and navigation actions.
 

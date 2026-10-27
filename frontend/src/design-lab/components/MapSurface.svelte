@@ -16,7 +16,7 @@
    * in-memory native cluster source; camera movement must never reload it.
    * Synthetic fixtures retain their own transition controller.
    */
-  import { onMount, tick } from "svelte";
+  import { onMount, tick, untrack } from "svelte";
   import * as maplibregl from "maplibre-gl";
   import mapLibreWorkerUrl from "../../map/persistentMapWorker.ts?worker&url";
   import type { GeoJSONSource, Map as MapLibreMap } from "maplibre-gl";
@@ -32,6 +32,8 @@
     PinHoverLabel,
     MapDisplaySettings,
     MapDisplaySettingsRequest,
+    AreaSummary,
+    SearchScope,
   } from "../contract";
   import { MvtMotionController } from "./mvtMotionController";
   import { JsonClusterMotionController } from "./jsonClusterMotionController";
@@ -78,6 +80,9 @@
   import { individualHoverPin } from '../pinHoverLabels';
   import { applyFacilityPinScale, DEFAULT_FACILITY_PIN_SCALE } from './facilityPinScale';
   import { mergeMapDisplaySettings } from './mapDisplaySettings';
+  import { emptyAreaSummary, summarizeMappedArea } from '../../features/search/areaSummary';
+  import { publicSearchFilters } from '../../features/search/powerSearch';
+  import { nearbyCameraBounds } from '../../features/search/nearbySearch';
 
   let {
     active = true,
@@ -93,6 +98,7 @@
     mapError = "",
     mapTruncated = false,
     mapMatchingIds = null,
+    mapMatchesSearchKey = null,
     mapMatchesStatus = 'idle',
     mapMatchesError = '',
     searchScope = null,
@@ -119,6 +125,8 @@
     resolvePinHover,
     displaySettingsRequest = null,
     onDisplaySettingsChange,
+    onAreaSummary,
+    fitResultsRequest = 0,
   }: {
     active?: boolean;
     records: readonly LabRecord[];
@@ -139,9 +147,10 @@
     mapError?: string;
     mapTruncated?: boolean;
     mapMatchingIds?: readonly string[] | null;
+    mapMatchesSearchKey?: string | null;
     mapMatchesStatus?: 'idle' | 'loading' | 'ready' | 'error';
     mapMatchesError?: string;
-    searchScope?: null | Readonly<{ kind: 'area'; bounds: ViewportBounds }> | Readonly<{ kind: 'radius'; label: string; latitude: number; longitude: number; radiusKm: number }>;
+    searchScope?: SearchScope;
     mapDiagnostics?: MapDiagnostics | undefined;
     referenceLoading?: boolean;
     flightTarget?: Readonly<{ id: number; longitude: number; latitude: number; zoom: number }> | null;
@@ -165,6 +174,8 @@
     resolvePinHover?(id: string, signal: AbortSignal): Promise<PinHoverLabel | null>;
     displaySettingsRequest?: MapDisplaySettingsRequest | null;
     onDisplaySettingsChange?(settings: MapDisplaySettings): void;
+    onAreaSummary?(summary: AreaSummary): void;
+    fitResultsRequest?: number;
   } = $props();
   let host: HTMLDivElement;
   let map: MapLibreMap | undefined;
@@ -257,6 +268,8 @@
   let appliedNativeClustering: boolean | undefined;
   let visibleNativeCollection: JsonMapCollection | undefined;
   const matchingIdSet = $derived(mapMatchingIds === null ? null : new Set(mapMatchingIds));
+  let handledFitResultsRequest = 0;
+  let handledDeviceScope: SearchScope = null;
   let appliedMvtTileSignature: string | undefined;
   let feedStatus = $state<"loading" | "ready" | "error">("loading");
   // These are milestones, not a guessed byte or worker percentage.
@@ -1157,6 +1170,80 @@
       : collection;
     return filterTestReleaseMapCollection(collection, { sourceIds, countryCodes: mapState.filters.countries, categoryKeys: mapState.filters.categories, activityKeys: mapState.filters.activities });
   }
+  const areaSummaryFilterKey = $derived(JSON.stringify([
+    mapState.query, mapState.sourceId, mapState.filters, searchScope,
+  ]));
+  const areaSummaryNeedsMatches = $derived(!!mapState.query.trim() || searchScope !== null);
+  const areaSummary = $derived.by((): AreaSummary => {
+    // Match results must describe this exact release, restrictions and query.
+    // A newly changed scope cannot briefly display the previous area's figures.
+    if (!active || mode !== 'public-release') return emptyAreaSummary('loading');
+    if (feedStatus === 'error') return emptyAreaSummary('error');
+    if (feedStatus !== 'ready' || !nativeFullCollection || !publicReleaseManifestIdentity
+      || requestedPublicReleaseId !== publicReleaseId || requestedPublicReleaseIdentity !== publicReleaseIdentity)
+      return emptyAreaSummary('loading');
+    areaSummaryFilterKey;
+    if (areaSummaryNeedsMatches) {
+      if (mapMatchesStatus === 'error') return emptyAreaSummary('error');
+      const identity = publicReleaseManifestIdentity;
+      let expectedKey: string;
+      try { expectedKey = JSON.stringify([identity.releaseId, identity.manifestSha256, identity.suppressionGeneration,
+        untrack(() => publicSearchFilters({ ...mapState, searchScope }))]); }
+      catch { return emptyAreaSummary('error'); }
+      if (mapMatchesStatus !== 'ready' || mapMatchesSearchKey !== expectedKey || mapMatchingIds === null)
+        return emptyAreaSummary('loading');
+    }
+    const result = untrack(() => summarizeMappedArea(filteredNativeCollection(nativeFullCollection!)));
+    if (areaSummaryNeedsMatches && result.total !== mapMatchingIds?.length) return emptyAreaSummary('error');
+    return result;
+  });
+  $effect(() => {
+    const value = areaSummary;
+    untrack(() => onAreaSummary?.(value));
+  });
+  function resultCameraPadding() {
+    const frame = host.getBoundingClientRect();
+    const workspace = host.closest('.workspace');
+    const rail = workspace?.querySelector<HTMLElement>('.results');
+    const toolbar = workspace?.querySelector<HTMLElement>('.map-toolbar');
+    const padding = { top: 32, right: 32, bottom: 32, left: 32 };
+    if (toolbar?.getClientRects().length) padding.top = Math.max(32, toolbar.getBoundingClientRect().bottom - frame.top + 24);
+    if (rail?.getClientRects().length) {
+      const rect = rail.getBoundingClientRect();
+      if (matchMedia('(max-width:40rem)').matches) padding.bottom = Math.max(32, frame.bottom - rect.top + 24);
+      else padding.left = Math.max(32, rect.right - frame.left + 24);
+    }
+    // Keep a usable projection viewport even in unusually narrow/zoomed layouts.
+    padding.left = Math.min(padding.left, Math.max(32, frame.width - 192));
+    padding.bottom = Math.min(padding.bottom, Math.max(32, frame.height - padding.top - 160));
+    return padding;
+  }
+  $effect(() => {
+    const request = fitResultsRequest;
+    const value = areaSummary;
+    if (!active || !map || request <= handledFitResultsRequest || value.status !== 'ready' || !value.bounds) return;
+    handledFitResultsRequest = request;
+    clearPinHover(); pendingSelectionFocus = null; selectionFocus = null;
+    const bounds = value.bounds;
+    // Fitting never changes membership. A single point keeps a useful limit.
+    activeFlight = true;
+    map.fitBounds([[bounds.west, bounds.south], [bounds.east, bounds.north]], {
+      padding: resultCameraPadding(), maxZoom: 14, bearing: map.getBearing(),
+      duration: matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 450,
+    });
+  });
+  $effect(() => {
+    const scope = searchScope;
+    if (!active || !map || !nativeStyleReady || scope?.kind !== 'radius' || !scope.deviceDerived || scope === handledDeviceScope) return;
+    handledDeviceScope = scope;
+    // Location is already private in the atomic state before this camera move.
+    setTileCachePersistenceAllowed(false); cancelWorldBaselineWarmup();
+    map.stop(); clearPinHover(); pendingSelectionFocus = null; selectionFocus = null; activeFlight = true;
+    map.fitBounds(nearbyCameraBounds(scope, scope.radiusKm), {
+      padding: resultCameraPadding(), bearing: map.getBearing(),
+      duration: matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 450,
+    });
+  });
   function nativeFilterSignature(sourceId: string | null): string {
     return JSON.stringify([sourceId, mapState.filters.countries, mapState.filters.sources, mapState.filters.categories, mapState.filters.activities, mapState.filters.precisions]);
   }
