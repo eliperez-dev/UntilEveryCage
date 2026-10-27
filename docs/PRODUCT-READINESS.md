@@ -49,6 +49,11 @@ The encrypted inbox remains development-only; production activation and email
 are not part of that deployment. Dataset membership and database controls are unchanged.
 The source inventory owns graph package/runtime details and source-specific evidence.
 
+The completed frontend delivery through `5faae199` is now merged with the
+country-release backend checkpoint. This includes the reviewed mobile workspace,
+additional languages, map tools and area search. Its CI and Render rollout are
+pending; do not treat this integration as a dataset or hosting change.
+
 ## Launch gates
 
 All items below remain required before replacing the original website.
