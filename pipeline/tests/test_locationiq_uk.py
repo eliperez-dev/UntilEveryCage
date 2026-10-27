@@ -41,7 +41,7 @@ class LocationIqUnitedKingdomTests(unittest.TestCase):
             seen["request"] = request
             return Response(payload)
 
-        return (LocationIqAdapter(api_key="synthetic-key", opener=opener,
+        return (LocationIqAdapter(api_key="example-key", opener=opener,
                                   country_code="gb", private_source_profile=True), seen)
 
     def test_canonical_query_uses_only_unambiguous_numbered_road_locality_postcode(self):
@@ -98,7 +98,7 @@ class LocationIqUnitedKingdomTests(unittest.TestCase):
 
     def test_invalid_uk_query_does_not_call_provider(self):
         calls = []
-        adapter = LocationIqAdapter(api_key="synthetic-key", country_code="gb",
+        adapter = LocationIqAdapter(api_key="example-key", country_code="gb",
                                     private_source_profile=True,
                                     opener=lambda *_args, **_kwargs: calls.append(True))
         outcome = adapter.geocode("12 Example Road, London, no-postcode, United Kingdom")
