@@ -125,6 +125,21 @@ ALLOWED_SKIPPED_TESTS.update(
     for prefix in ("", "pipeline.tests.")
 )
 
+# The retained-response proof needs the same approved local V0 copy and has
+# been run there. CI has no retained provider responses; exempt these exact
+# test IDs only, without accepting this skip reason for other tests.
+ALLOWED_SKIPPED_TESTS.update(
+    (
+        f"{prefix}test_germany_retained_reconciliation_postgis.RetainedGermanyPostgisTests.{method}",
+        "assigned disposable real-data database required",
+    )
+    for prefix in ("", "pipeline.tests.")
+    for method in (
+        "test_independent_sql_street_rule_matches_python",
+        "test_real_replay_is_mapped_idempotent_and_does_not_rewrite_parent_results",
+    )
+)
+
 # These six acceptance cases require the approved disposable V0 copy. Their
 # exact local run is mandatory; public CI contains only synthetic fixtures.
 # Do not add the reason globally: an unrelated/new skip must still fail CI.
