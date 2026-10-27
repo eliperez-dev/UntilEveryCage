@@ -22,7 +22,7 @@
   import type { LayoutTuning } from "../../components/mapDebug";
   import RecordDetail from "../../../app/RecordDetail.svelte";
   import PreviewMasthead from "../../../app/PreviewMasthead.svelte";
-  import { encodeLabHash, encodeMapNavigationHash } from "../../state";
+  import { encodeMapNavigationHash } from "../../state";
   import type { PlaceSuggestion } from "../../../features/placeSearch/placeSearch";
   import { publicReleaseLabel } from "../../../features/locations/releasePresentation";
   import { CATEGORY_PRESENTATIONS } from "../../../features/locations/categoryPresentation";
@@ -147,7 +147,6 @@
   );
   const resultCount = $derived(aggregateRecords.length);
   const areaSummary = writable<AreaSummaryData | null>(null);
-  const fitResultsRequest = writable(0);
   const workspaceOpen = $derived(state.listOpen || Boolean(state.selectedId) || aggregateOpen);
   const railWidth = writable<number | null>(null);
   const layoutTuning = writable<LayoutTuning>({ panelWidthPercent: 100 / 3, rowPadding: 16, typeScale: 1, mobileSheetPercent: 48, mobileExpandedPercent: 90 });
@@ -471,7 +470,14 @@
       void tick().then(() => document.querySelector<HTMLButtonElement>('.dossier .detail-close')?.focus());
       return;
     }
+    if (!state.listOpen) resultsSheetSnap.set('middle');
     dispatch({ type: 'list', value: true });
+  }
+  function openSearchResults() {
+    const expanded = state.selectedId ? get(detailSheetSnap) === 'expanded' : state.listOpen && get(resultsSheetSnap) === 'expanded';
+    resultsSheetSnap.set(expanded ? 'expanded' : 'middle');
+    detailMapPreview.set(false);
+    dispatch({type:'results'});
   }
   function collapseMobileSearch() {
     autocompleteOpen.set(false);
@@ -543,7 +549,7 @@
     if (state.listOpen) dispatch({ type: "list", value: false });
   }
   function onKeydown(event: KeyboardEvent) {
-    if (!active) return;
+    if (!active || event.defaultPrevented) return;
     if (document.querySelector('#shared-language-menu, #shared-tools-menu')) return;
     const target = event.target;
     const editing = target instanceof HTMLElement && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
@@ -555,7 +561,7 @@
       void tick().then(() => document.querySelector<HTMLInputElement>("#field-search")?.focus());
       return;
     }
-    if (event.key === 'Escape' && document.querySelector('.map-navigation #map-navigation-view')) return;
+    if (event.key === 'Escape' && document.querySelector('.map-navigation #map-navigation-view, #map-search-settings')) return;
     if (event.key === "Escape" && $autocompleteOpen) {
       event.preventDefault(); autocompleteOpen.set(false); return;
     }
@@ -600,18 +606,14 @@
     })(),
   );
   const mapHref = $derived(encodeMapNavigationHash(databaseHref, mode === "public-release" ? undefined : state.scenario));
-  const downloadsHref = $derived.by(() => {
-    const context = encodeLabHash(state, mode === 'real-preview' || mode === 'candidate-preview', mode === 'public-release');
-    const params = new URLSearchParams(context.split('?')[1] ?? '');
-    if (mode === 'public-release' && (selectedPublicReleaseId || publicReleaseId)) params.set('release_id', selectedPublicReleaseId || publicReleaseId!);
-    return serializeRoute({ kind: 'downloads', returnMapHref: `#/map?${params}` });
-  });
 
   const currentBounds = writable<ViewportBounds | null>(null);
   const autocompleteOpen = writable(false);
   const suggestionIndex = writable(-1);
   const scopeError = writable("");
   const nearbyRadius = writable(25);
+  const searchMode = writable<'box' | 'radius'>('box');
+  const radiusMiles = writable(50);
   const filterDisclosure = writable<HTMLDetailsElement | undefined>(undefined);
   let beforeFilterSnap: SheetSnap | null = null;
   function filterToggled() {
@@ -637,11 +639,13 @@
     dispatch({ type: 'results' });
   }
   function applyParsedSearch() {
+    openSearchResults();
     const parsed = parseSearch(state.query, state.filters, candidateFacets, $language);
     dispatch({ type: 'search', value: parsed });
     autocompleteOpen.set(false);
   }
   function applySuggestion(suggestion: SearchSuggestion) {
+    openSearchResults();
     dispatch({ type: 'search', value: applySearchSuggestion(suggestion, state.filters) });
     autocompleteOpen.set(false);
     void tick().then(() => { document.querySelector<HTMLInputElement>('#field-search')?.focus(); autocompleteOpen.set(false); });
@@ -662,25 +666,38 @@
     dispatch({ type: 'close-workspace' });
   }
   function searchArea() {
-    if (state.searchScope?.kind === 'area') {
-      scopeError.set('');
-      dispatch({ type: 'scope', value: null, preserveWorkspace: true });
-      return;
-    }
-    updateSearchArea();
+    if (state.searchScope?.kind === 'radius' || $searchMode === 'radius') runRadiusSearch();
+    else updateSearchArea();
+  }
+  function runRadiusSearch() {
+    openSearchResults();
+    const prior = state.searchScope?.kind === 'radius' ? state.searchScope : null;
+    dispatch({type:'scope',value:{kind:'radius', label:prior?.label ?? 'This map area',
+      latitude:prior?.latitude ?? state.viewport.centerLat, longitude:prior?.longitude ?? state.viewport.centerLon,
+      radiusKm:$radiusMiles * 1.609344, ...(prior?.deviceDerived ? {deviceDerived:true} : {})}});
+    dispatch({type:'results'});
+  }
+  function searchSettings(value: {mode:'box'|'radius';radiusMiles:number}) {
+    searchMode.set(value.mode); radiusMiles.set(value.radiusMiles);
+    if (!state.searchScope) return;
+    if(value.mode === 'radius') runRadiusSearch(); else updateSearchArea();
   }
   function updateSearchArea() {
     if (!$currentBounds) return;
     const scope = areaScopeFromBounds($currentBounds);
     if (!scope) { scopeError.set(tr('This map area crosses the date line. Zoom in and try again.', $language)); return; }
     scopeError.set('');
-    dispatch({ type: 'scope', value: scope, preserveWorkspace: true });
+    openSearchResults();
+    dispatch({ type: 'scope', value: scope });
+    dispatch({ type:'results' });
   }
   function summaryCategory(key: TaxonomyPrimaryKey) {
+    openSearchResults();
     const categories = state.filters.categories.length === 1 && state.filters.categories[0] === key ? [] : [key];
     dispatch({ type:'filters', value:{ ...state.filters, categories } });
   }
   function searchNear(place: PlaceSuggestion) {
+    openSearchResults();
     scopeError.set('');
     dispatch({ type: 'search', value: { query: '', filters: state.filters } });
     dispatch({ type: 'scope', value: { kind: 'radius', label: place.label, latitude: place.latitude, longitude: place.longitude, radiusKm: $nearbyRadius } });
@@ -701,7 +718,7 @@
             <label for="field-search">{tr(mode === "public-release" ? 'Search across public release records' : 'Search across preview records', $language)}</label>
             {#if !$mobileLayout}<button class="search-toggle" bind:this={$searchToggle} type="button" aria-label={tr($detailMapPreview ? 'View facility details' : 'Search map', $language)} aria-expanded={workspaceOpen} aria-controls="field-record-list" onclick={openMobileSearch}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg></button>{:else}<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg>{/if}
             <input id="field-search" type="search" role="combobox" aria-autocomplete="list" aria-haspopup="listbox" maxlength="120" placeholder={tr(!$mobileLayout && !workspaceOpen ? 'Search map' : 'Name, activity, source, or place', $language)}
-              value={state.query} aria-activedescendant={$autocompleteOpen && $suggestionIndex >= 0 ? `field-suggestion-${$suggestionIndex}` : undefined} aria-expanded={$autocompleteOpen && suggestions.length > 0} aria-controls="search-suggestions" onfocus={() => { if (!$mobileLayout) { if (state.selectedId) dispatch({ type:'results' }); dispatch({ type:'list', value:true }); } autocompleteOpen.set(true); suggestionIndex.set(-1); }} onblur={(event) => { if (!(event.relatedTarget instanceof HTMLElement) || !event.relatedTarget.closest('.search-autocomplete')) autocompleteOpen.set(false); }} oninput={(event) => { autocompleteOpen.set(true); suggestionIndex.set(-1); dispatch({ type: 'search', value: { query: event.currentTarget.value, filters: state.filters } }); }} onkeydown={(event) => {
+              value={state.query} aria-activedescendant={$autocompleteOpen && $suggestionIndex >= 0 ? `field-suggestion-${$suggestionIndex}` : undefined} aria-expanded={$autocompleteOpen && suggestions.length > 0} aria-controls="search-suggestions" onfocus={() => { if (!$mobileLayout) { if (state.selectedId) openSearchResults(); else openMobileSearch(); } autocompleteOpen.set(true); suggestionIndex.set(-1); }} onblur={(event) => { if (!(event.relatedTarget instanceof HTMLElement) || !event.relatedTarget.closest('.search-autocomplete')) autocompleteOpen.set(false); }} oninput={(event) => { autocompleteOpen.set(true); suggestionIndex.set(-1); dispatch({ type: 'search', value: { query: event.currentTarget.value, filters: state.filters } }); }} onkeydown={(event) => {
                 if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && suggestions.length) { event.preventDefault(); autocompleteOpen.set(true); suggestionIndex.update(index => (index + (event.key === 'ArrowDown' ? 1 : -1) + suggestions.length) % suggestions.length); }
                 if (event.key === 'Enter') { event.preventDefault(); if ($autocompleteOpen && $suggestionIndex >= 0 && suggestions[$suggestionIndex]) applySuggestion(suggestions[$suggestionIndex]!); else applyParsedSearch(); }
               }} />
@@ -742,7 +759,6 @@
         {mapMatchesError}
         {mapMatchesSearchKey}
         onAreaSummary={(summary) => { areaSummary.set(summary); }}
-        fitResultsRequest={$fitResultsRequest}
         searchScope={state.searchScope}
         flightTarget={$flightTarget}
         cameraViewRequest={$cameraViewRequest}
@@ -786,7 +802,7 @@
     <div class="map-tool-shell">
       <div class="map-toolbar" class:toolbar-hidden={$mobileLayout && $workspaceHeight - $sheetHeight < 100}>
         <div class="desktop-search search-tools">{#if !$mobileLayout}{@render searchInput()}{/if}</div>
-      {#if active}<MapNavigation ready={$mapControlsReady} basemap={state.basemap} pitch={$mapCameraPitch} compactHidden={$mobileLayout && $workspaceHeight - $sheetHeight < 100} onbasemap={(value) => dispatch({type:'basemap',value})} onviewtoggle={toggleMapCameraView} areaEnabled={Boolean($currentBounds) && mode === 'public-release'} areaActive={state.searchScope?.kind === 'area'} fitEnabled={$areaSummary?.status === 'ready' && Boolean($areaSummary.bounds) && $areaSummary.total > 0} onfit={() => { fitResultsRequest.update(value => value + 1); }} onarea={searchArea} onlocate={(value) => dispatch({ type: 'near-device', value })} />{/if}
+      {#if active}<MapNavigation ready={$mapControlsReady} basemap={state.basemap} pitch={$mapCameraPitch} compactHidden={$mobileLayout && $workspaceHeight - $sheetHeight < 100} onbasemap={(value) => dispatch({type:'basemap',value})} onviewtoggle={toggleMapCameraView} areaEnabled={Boolean($currentBounds) && mode === 'public-release'} areaActive={Boolean(state.searchScope)} searchMode={state.searchScope?.kind === 'radius' ? 'radius' : $searchMode} radiusMiles={state.searchScope?.kind === 'radius' ? Math.round(state.searchScope.radiusKm / 1.609344) : $radiusMiles} onsettings={searchSettings} onarea={searchArea} onlocate={(value) => { openSearchResults(); searchMode.set('radius'); dispatch({ type: 'near-device', value:{...value,radiusKm:$radiusMiles * 1.609344} }); }} />{/if}
       </div>
     <aside class="results" inert={$debugOpen && $mobileLayout} aria-hidden={$debugOpen && $mobileLayout ? true : undefined} class:rail-collapsed={!workspaceOpen} class:map-preview={detailCollapsed} id="field-record-list" aria-label={tr('Search, filters, and results', $language)}>
       <div class="mobile-sheet-control"><MobileSearchSheet open={workspaceOpen && !detailCollapsed} snap={state.selectedId ? $detailSheetSnap : $resultsSheetSnap} detail={Boolean(state.selectedId)} preview={Boolean(state.selectedId)} available={$workspaceHeight} middlePercent={$layoutTuning.mobileSheetPercent ?? 48} expandedPercent={$layoutTuning.mobileExpandedPercent ?? 90} onchange={changeMobileSheet} onheight={height => sheetHeight.set(height)} /></div>
@@ -801,7 +817,7 @@
             {#each state.filters.precisions as value}<button type="button" aria-label={`${tr('Remove filter', $language)}: ${tr(value, $language)}`} onclick={() => removeFilter('precisions', value)}>{tr(value, $language)} <span aria-hidden="true">×</span></button>{/each}
             {#each state.filters.activities as value}<button type="button" aria-label={`${tr('Remove filter', $language)}: ${value}`} onclick={() => removeFilter('activities', value)}>{value} <span aria-hidden="true">×</span></button>{/each}
             {#if state.sourceId}<button type="button" aria-label={`${tr('Remove filter', $language)}: ${sourceName(state.sourceId)}`} onclick={() => chooseSource(null)}>{sourceName(state.sourceId)} <span aria-hidden="true">×</span></button>{/if}
-            {#if state.searchScope}<button type="button" aria-label={tr('Remove filter', $language)} onclick={() => dispatch({ type: 'scope', value: null })}>{state.searchScope.kind === 'area' ? tr('This map area', $language) : state.searchScope.deviceDerived ? tr('Within 100 miles', $language) : `${state.searchScope.radiusKm} km · ${state.searchScope.label}`} <span aria-hidden="true">×</span></button>{/if}
+            {#if state.searchScope && mode !== 'public-release'}<button type="button" aria-label={tr('Remove filter', $language)} onclick={() => dispatch({ type: 'scope', value: null })}>{state.searchScope.kind === 'area' ? tr('This map area', $language) : `${state.searchScope.radiusKm} km · ${state.searchScope.label}`} <span aria-hidden="true">×</span></button>{/if}
           </div>
           <div class="search-toolbar">
           <details class="filters" bind:this={$filterDisclosure} ontoggle={filterToggled}>
@@ -842,7 +858,6 @@
               </div><footer class="filter-actions"><button type="button" class="clear-filters" onclick={clearSearch}>{tr('Clear filters', $language)}</button><button type="button" class="show-results" onclick={() => { if ($filterDisclosure) $filterDisclosure.open = false; }}>{tr('Show results', $language)}</button></footer>
             </div>
           </details>
-          {#if mode === 'public-release'}<a class="csv-download" href={downloadsHref} aria-label={tr('Download CSV', $language)} title={tr('Download CSV', $language)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 16v5h14v-5"/></svg><span>CSV</span></a>{/if}
           <div class="result-status"><strong class="sr-only">{tr(aggregateOpen ? 'Members' : 'Facility records', $language)}</strong><span role="status" aria-live="polite">{!aggregateOpen && listRefreshing ? tr(resultCount ? 'Searching · showing previous results' : 'Searching…', $language) : !aggregateOpen && (dataStatus === 'error' || dataStatus === 'unauthorized') && resultCount ? tr('Search unavailable · showing previous results', $language) : !aggregateOpen && (mode === 'candidate-preview' || mode === 'public-release') && candidateTotalCount !== null ? tr('{count} matching · {shown} shown', $language).replace('{count}', new Intl.NumberFormat($language).format(candidateTotalCount)).replace('{shown}', new Intl.NumberFormat($language).format(resultCount)) : tr('{count} loaded', $language).replace('{count}', new Intl.NumberFormat($language).format(resultCount))}</span></div>
           </div>
         </div>
@@ -850,7 +865,7 @@
       {#if mapMatchesStatus === 'error'}<p class="search-error" hidden={Boolean(state.selectedId) || !workspaceOpen} role="alert">{mapMatchesError} {#if onRetryMapMatches}<button type="button" onclick={() => onRetryMapMatches?.()}>{tr('Retry', $language)}</button>{/if}</p>{/if}
       <div class="workspace-body" id="field-detail-content">
         <div class="list-content" hidden={Boolean(state.selectedId) || !workspaceOpen}>
-        {#if mode === 'public-release' && state.searchScope && !aggregateOpen}<AreaSummary summary={$areaSummary} selectedCategories={state.filters.categories} nearby={state.searchScope.kind === 'radius' && Boolean(state.searchScope.deviceDerived)} canUpdate={Boolean($currentBounds)} oncategory={summaryCategory} onclear={() => dispatch({type:'scope', value:null, preserveWorkspace:true})} onupdate={updateSearchArea} />{/if}
+        {#if mode === 'public-release' && state.searchScope && !aggregateOpen}<AreaSummary summary={$areaSummary} selectedCategories={state.filters.categories} nearby={state.searchScope.kind === 'radius' && Boolean(state.searchScope.deviceDerived)} radiusKm={state.searchScope.kind === 'radius' ? state.searchScope.radiusKm : null} oncategory={summaryCategory} onexplore={() => dispatch({type:'explore-map'})} />{/if}
 {#if aggregateOpen}<details
         class="reading-sheet aggregate-sheet"
         aria-labelledby="aggregate-title"
@@ -1039,7 +1054,7 @@
   .rail-resize::after { content: ""; position: absolute; top: 45%; left: .34rem; width: 2px; height: 2.5rem; background: var(--muted); opacity: .6; }
   .results > header { position: absolute; z-index: 2; top: .25rem; right: .25rem; }
   .results > header button { display: grid; place-items: center; width: 2.75rem; height: 2.75rem; padding: 0; border: 0; color: var(--muted); background: transparent; font: 400 1.3rem/1 system-ui, sans-serif; cursor: pointer; }
-  .results :global(.record-list) { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; border: 0; background: transparent; }
+  .results :global(.record-list) { flex:0 0 auto;min-height:auto;overflow:visible;border:0;background:transparent; }
   .results :global(.record-list h2) { display: none; }
   .results :global(.record-list ol) { margin: 0; padding: 0; list-style: none; }
   .results :global(.record-list li) { border: 0; }
@@ -1088,7 +1103,7 @@
   .back { margin: .8rem 1.5rem 0; }
   .continuation-note { margin: .6rem 0; font-size: .75rem; line-height: 1.5; }
   .search-toggle:hover, .filters summary:hover, .results > header button:hover, .dossier-header button:hover, .close:hover, .load-more:hover:not(:disabled), .filter-sheet button:hover, .back:hover, .open-members:hover, .continue-members:hover { background: var(--panel-hover); }
-  button:focus-visible, summary:focus-visible, a:focus-visible, .filter-sheet input:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+  button:focus-visible, summary:focus-visible, .filter-sheet input:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
   .rail-resize:focus-visible { outline-offset: -3px; }
   .field-view [hidden] { display: none !important; }
   .workspace { position: relative; display: block; grid-template-columns: none; grid-template-rows: none; flex: 1 1 auto; min-height: 0; height: auto; border: 0; }
@@ -1103,6 +1118,7 @@
   .results :global(.record-list small) { font-size:calc(.75rem * var(--result-type-scale,1)); }
   .workspace-body { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
   .list-content { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+  .list-content > :global(*) { flex-shrink:0; }
   .list-empty { margin: 1rem; color: var(--muted); font-size: .8125rem; }
   .workspace .reading-sheet { position: relative; inset: auto; width: 100%; max-width: none; border: 0; background: var(--panel); }
   .workspace .dossier { flex: 1 1 auto; min-height: 0; padding: 0; overflow: auto; scroll-padding-top:4rem; }
@@ -1127,9 +1143,6 @@
   .filters { flex: 0 0 auto; }
   .filters summary { max-width: none; }
   .result-status { position: static; width: auto; min-width: 0; min-height: auto; margin-left: auto; padding: .25rem 0; text-align: right; font-size: .6875rem; }
-  .csv-download { display: inline-flex; align-items: center; justify-content: center; gap: .3rem; flex: 0 0 auto; min-height: 2.75rem; padding: .3rem .4rem; color: var(--ink); text-decoration: none; font-size: .6875rem; }
-  .csv-download:hover { background: var(--panel-hover); }
-  .csv-download svg { width: .9rem; height: .9rem; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
   .place-suggestions .results-heading { min-height:44px;align-items:center;flex-wrap:nowrap;gap:.35rem;padding:0 .8rem; }
   .place-suggestions .places-expand { display:grid;place-items:center;flex:0 0 44px;width:44px;height:44px;min-width:44px;min-height:44px;padding:0;border:0;color:var(--ink);background:transparent; }
   .place-suggestions .places-expand svg { display:block;width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round; }
@@ -1178,10 +1191,14 @@
     .nearby-label { display: none; }
     .workspace .dossier-header { padding-top: .35rem; }
     .filter-chips button { min-height:2.75rem;font-size:.75rem; }
-    .result-status,.csv-download { font-size:.75rem; }
+    .result-status { font-size:.75rem; }
     .search-toolbar { gap:0 .4rem;padding-right:.75rem; }
   }
   @media (pointer: coarse) { .filter-chips button { min-height: 2.75rem; } }
+  @media(max-width:40rem) and (max-height:700px) {
+    .search { height:44px; }
+    .results :global(.record-list button) { padding-block:8px; }
+  }
 
 /* The search input stays anchored as its joined results surface opens below. */
 .map-tool-shell { position:absolute;z-index:5;top:1rem;left:1.5rem;width:clamp(28rem,var(--workspace-width),calc(100% - 3rem));max-width:calc(100% - 3rem);height:calc(100% - 2rem);pointer-events:none; }

@@ -865,5 +865,13 @@
   "Loading release totals…": "Versionssummen werden geladen…",
   "Release totals are unavailable.": "Versionssummen sind nicht verfügbar.",
   "Navigate to city centre · Natural Earth, not a facility location": "Zum Stadtzentrum · Natural Earth, kein Standort einer Einrichtung",
-  "Places": "Orte"
+  "Places": "Orte",
+  "Search settings": "Sucheinstellungen",
+  "Search area": "Suchgebiet",
+  "Visible map": "Sichtbare Karte",
+  "Search radius": "Suchradius",
+  "{count} miles": "{count} Meilen",
+  "{count} mile radius": "Radius von {count} Meilen",
+  "Explore full map": "Gesamte Karte erkunden",
+  "Source codebook": "Codebuch der Quelle"
 }

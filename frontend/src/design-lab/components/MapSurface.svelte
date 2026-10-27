@@ -180,6 +180,7 @@
   let host: HTMLDivElement;
   let map: MapLibreMap | undefined;
   let hoverLabel = $state<(PinHoverLabel & { x: number; y: number; below: boolean }) | null>(null);
+  let hoverMark = $state<{ x: number; y: number } | null>(null);
   let hoverPin: ReturnType<typeof individualHoverPin> = null;
   let hoverTimer: ReturnType<typeof setTimeout> | undefined;
   let hoverAbort: AbortController | undefined;
@@ -189,7 +190,7 @@
     if (hoverTimer) clearTimeout(hoverTimer);
     hoverTimer = undefined;
     hoverAbort?.abort(); hoverAbort = undefined;
-    hoverPin = null; hoverLabel = null;
+    hoverPin = null; hoverLabel = null; hoverMark = null;
   }
   function updatePinHover(event: maplibregl.MapMouseEvent) {
     if (!active || mode !== 'public-release' || !resolvePinHover || !map || map.isMoving()
@@ -203,6 +204,8 @@
     if (!pin) { clearPinHover(); return; }
     if (hoverPin?.id === pin.id) return;
     clearPinHover(); hoverPin = pin;
+    const hoverPoint = map.project(pin.coordinates);
+    hoverMark = { x: hoverPoint.x, y: hoverPoint.y };
     const ticket = hoverGeneration;
     const controller = new AbortController(); hoverAbort = controller;
     hoverTimer = setTimeout(() => {
@@ -219,6 +222,7 @@
   let nativeStyleReady = $state(false);
   let resumePending = false;
   let lifecyclePaused = false;
+  let privateCameraWasActive = false;
   let nativeStyleGeneration = 0;
   let appliedBasemap = $state<Basemap | undefined>();
   let cameraPitch = $state(0);
@@ -2033,7 +2037,25 @@
     clearPinHover();
   });
   $effect(() => {
-    setTileCachePersistenceAllowed(!active || (mode === 'public-release' && !mapState.navigationViewport));
+    nativeStyleReady;
+    if (mapState.navigationViewport) {
+      privateCameraWasActive = true;
+      setTileCachePersistenceAllowed(false);
+      return;
+    }
+    if (privateCameraWasActive) {
+      // Explore full map restores its prior public camera atomically in state.
+      // Restore the live camera before reopening persistent tile writes, even
+      // when it interrupts a still-running nearby or selected-record flight.
+      setTileCachePersistenceAllowed(false);
+      if (!active || !map) return;
+      syncing = true; map.stop(); activeFlight = false;
+      pendingSelectionFocus = null; selectionFocus = null; clearPinHover();
+      const view = mapState.viewport;
+      map.jumpTo({ center: [view.centerLon, view.centerLat], zoom: view.zoom, pitch: view.pitch ?? 0, bearing: view.bearing ?? 0 });
+      syncing = false; privateCameraWasActive = false;
+    }
+    setTileCachePersistenceAllowed(!active || mode === 'public-release');
   });
   $effect(() => {
     const enabled = active && mode === 'public-release' && !mapState.navigationViewport && worldTuning.enabled;
@@ -2190,6 +2212,7 @@
   aria-label={tr('Map showing records', $language)}
 >
   <div class="map-host" bind:this={host}></div>
+  {#if hoverMark}<div class="pin-hover-halo" aria-hidden="true" style:left={`${hoverMark.x}px`} style:top={`${hoverMark.y}px`} style:--hover-halo-size={`${useV1Pins ? Math.max(32, 50 * pinScale) : coordinateRadius * 2 + 20}px`} style:--hover-halo-offset={`${useV1Pins ? -22 * pinScale : 0}px`}></div>{/if}
   {#if hoverLabel}<div class="pin-hover-label" class:below={hoverLabel.below} role="tooltip" style:left={`${hoverLabel.x}px`} style:top={`${hoverLabel.y}px`} style:--hover-pin-height={`${useV1Pins ? 41 * pinScale + 3 : coordinateRadius + 5}px`}>
     <strong>{hoverLabel.name}</strong>
     <span>{tr(categoryPresentation(hoverLabel.categoryKey).label, $language)}</span>
@@ -2299,6 +2322,7 @@
 </section>
 
 <style>
+  .pin-hover-halo { position:absolute;z-index:2;width:var(--hover-halo-size);height:var(--hover-halo-size);transform:translate(-50%,calc(-50% + var(--hover-halo-offset)));border-radius:50%;box-sizing:border-box;border:1px solid color-mix(in srgb,var(--ink,#f2f0e8) 24%,transparent);background:color-mix(in srgb,var(--ink,#f2f0e8) 10%,transparent);pointer-events:none; }
   .map-surface {
     position: relative;
     overflow: hidden;

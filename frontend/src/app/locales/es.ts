@@ -1,5 +1,13 @@
 // English source labels are the stable interface keys.
 export const es = {
+  "Source codebook": "Manual de códigos de la fuente",
+  "Search settings": "Ajustes de búsqueda",
+  "Search area": "Zona de búsqueda",
+  "Visible map": "Mapa visible",
+  "Search radius": "Radio de búsqueda",
+  "{count} miles": "{count} millas",
+  "{count} mile radius": "Radio de {count} millas",
+  "Explore full map": "Explorar todo el mapa",
   "Places": "Lugares",
   "Navigate to city centre · Natural Earth, not a facility location": "Ir al centro de la ciudad · Natural Earth, no es la ubicación de un centro",
   "In this area": "En esta zona",

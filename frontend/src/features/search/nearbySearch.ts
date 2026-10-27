@@ -1,4 +1,4 @@
-export const DEFAULT_NEARBY_RADIUS_KM = 160.9344;
+export const DEFAULT_NEARBY_RADIUS_KM = 80.4672;
 export type DeviceLocation = Readonly<{ latitude: number; longitude: number }>;
 
 export function validDeviceLocation(value: DeviceLocation): boolean {

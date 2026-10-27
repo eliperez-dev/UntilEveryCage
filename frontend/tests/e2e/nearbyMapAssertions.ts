@@ -16,7 +16,7 @@ export async function expectNearbyScope(page: Page, center: { latitude: number; 
     const distanceKm = 6371 * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
     const pixel = map.project([point.longitude, point.latitude]);
     const canvas = map.getCanvas().getBoundingClientRect();
-    return Math.abs(distanceKm - 160.9344) < 1 && map.getZoom() < 12
+    return Math.abs(distanceKm - 80.4672) < 1 && map.getZoom() < 12
       && pixel.x >= 0 && pixel.x <= canvas.width && pixel.y >= 0 && pixel.y <= canvas.height;
   }, center), { timeout: 20_000 }).toBe(true);
 }

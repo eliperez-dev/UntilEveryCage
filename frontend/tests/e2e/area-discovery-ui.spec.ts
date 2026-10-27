@@ -34,7 +34,7 @@ async function install(page:Page) {
       (!params.radius_km || row.latitude !== null));
     let body:unknown;
     if(path === '/api/v2/releases/manifest') body = {api_version:'v2',data:{...identity,manifest:{}}};
-    else if(path === '/api/v2/locations') body = {api_version:'v2',data:filtered.slice(0,100),meta:{...meta,total_count:filtered.length,next_cursor:null,coverage_note:'Synthetic interface checks.'}};
+    else if(path === '/api/v2/locations') body = {api_version:'v2',data:filtered.slice(params.cursor ? 100 : 0,params.cursor ? 200 : 100),meta:{...meta,total_count:filtered.length,next_cursor:filtered.length > 100 && !params.cursor ? 'synthetic-page-two' : null,coverage_note:'Synthetic interface checks.'}};
     else if(path.startsWith('/api/v2/locations/')) body = {api_version:'v2',data:rows.find(row => row.facility_id === path.split('/').pop()),meta};
     else if(path === '/api/v2/map/feed') body = {api_version:'v2',data:{type:'FeatureCollection',features:rows.filter(row => row.latitude !== null).map(row => ({type:'Feature',id:row.facility_id,geometry:{type:'Point',coordinates:[row.longitude,row.latitude]},properties:{facility_id:row.facility_id,source_id:row.provenance_source_id,category_key:row.category,category_keys:[row.category],precision:row.display_precision,weight:1}}))},meta:{...identity,feature_count:130,public_record_count:132,unmapped_count:2,release_label:'Synthetic area fixture',dataset_version:'synthetic'}};
     else if(path === '/api/v2/map/matches') body = {api_version:'v2',data:{facility_ids:filtered.filter(row => row.latitude !== null).map(row => row.facility_id)},meta:{...identity,total_count:filtered.length,mapped_count:filtered.filter(row => row.latitude !== null).length}};
@@ -55,27 +55,33 @@ test('area overview uses the complete mapped set, category narrows both views, a
   await page.setViewportSize({width:1440,height:900}); const calls = await install(page); await open(page);
   const canvas = await page.locator('.map-stage').boundingBox();
   await page.getByRole('button',{name:'Search this area',exact:true}).click();
-  await expect(page.locator('.results')).toBeHidden(); await page.locator('#field-search').click();
+  await expect(page.locator('.results')).toBeVisible();
   const summary = page.locator('.area-summary'); await expect(summary.locator('.area-total strong')).toHaveText('130');
   await expect(page.locator('[data-record-id]')).toHaveCount(100);
-  await expect(summary.getByRole('button',{name:'Processing: 22',exact:true})).toBeVisible();
+  await expect(summary.locator('.area-details')).not.toHaveAttribute('open','');
+  const first = page.locator('[data-record-id]').first();
+  await expect(first).toBeInViewport(); expect((await first.boundingBox())!.height).toBeGreaterThan(44);
+  expect((await page.locator('.record-list').boundingBox())!.height).toBeGreaterThan(1000);
+  await expect(page.locator('.csv-download')).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'Fit results',exact:true})).toHaveCount(0);
   if(process.env.UEC_AREA_CAPTURE_DIR) {
     await expect.poll(() => page.evaluate(() => { const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__; return map?.getLayer('v1-source-pins') ? map.queryRenderedFeatures({layers:['v1-source-pins','approx-reference-pins','approx-reference-points']}).length : 0; }), {timeout:15_000}).toBeGreaterThan(0);
     await page.screenshot({path:`${process.env.UEC_AREA_CAPTURE_DIR}/area-desktop.png`});
   }
-  await summary.locator('.area-evidence > summary').click(); await expect(summary.locator('.area-evidence')).toContainText('2 sources');
+  await summary.locator('.area-details > summary').click(); await expect(summary.getByRole('button',{name:'Processing: 22',exact:true})).toBeVisible();
+  await expect(summary.locator('.area-evidence')).toContainText('2 sources');
   await expect(summary.locator('dd')).toHaveText(['65','65']);
   await summary.getByRole('button',{name:'Processing: 22',exact:true}).click();
   await expect(summary.locator('.area-total strong')).toHaveText('22'); await expect(page.locator('[data-record-id]')).toHaveCount(22);
   await expect.poll(() => calls.filter(call => call.path === '/api/v2/map/matches').at(-1)?.params.category_keys).toBe('processing_and_preparation');
   await page.locator('#field-search').fill('Synthetic');
   await expect(summary.locator('.area-total strong')).toHaveText('22');
-  await summary.getByRole('button',{name:'Update to this view',exact:true}).click();
+  await page.getByRole('button',{name:'Search this area',exact:true}).click();
   await expect(page.locator('#field-search')).toHaveValue('Synthetic');
   await expect(page.locator('.filter-chips')).toContainText('Processing');
-  await summary.getByRole('button',{name:'Clear area',exact:true}).click();
-  await expect(summary).toHaveCount(0); await expect(page.locator('#field-search')).toHaveValue('Synthetic');
-  await expect(page.locator('.filter-chips')).toContainText('Processing');
+  await summary.getByRole('button',{name:'Explore full map',exact:true}).click();
+  await expect(page.locator('.results')).toBeHidden(); await expect(page.locator('#field-search')).toHaveValue('Synthetic');
+  await page.locator('#field-search').click(); await expect(summary).toHaveCount(0); await expect(page.locator('.filter-chips')).toContainText('Processing');
   expect(await page.locator('.map-stage').boundingBox()).toEqual(canvas);
 });
 
@@ -92,7 +98,7 @@ test('public exact destinations offer external maps while approximate records do
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
 });
 
-test('Your location searches 100 miles with existing query and keeps coordinates out of the route', async ({page}) => {
+test('Your location searches 50 miles with existing query and keeps coordinates out of the route', async ({page}) => {
   await page.setViewportSize({width:320,height:844});
   await page.addInitScript(() => { (window as any).__locationCalls = 0; Object.defineProperty(navigator,'geolocation',{value:{getCurrentPosition(success:PositionCallback){(window as any).__locationCalls++; success({coords:{latitude:39.2777,longitude:-94.4333}} as GeolocationPosition)}}}); });
   const calls = await install(page); await open(page);
@@ -100,8 +106,8 @@ test('Your location searches 100 miles with existing query and keeps coordinates
   await page.locator('.mobile-sheet-handle').click(); await page.locator('#field-search').fill('Synthetic');
   await page.getByRole('button',{name:'Your location',exact:true}).click();
   await expect(page.locator('.area-summary h2')).toHaveText('Near you');
-  await expect(page.locator('.filter-chips')).toContainText('Within 100 miles');
-  await expect.poll(() => calls.filter(call => call.path === '/api/v2/locations').at(-1)?.params.radius_km).toBe('160.9344');
+  await expect(page.locator('.scope-radius')).toHaveText('50 mile radius');
+  await expect.poll(() => calls.filter(call => call.path === '/api/v2/locations').at(-1)?.params.radius_km).toBe('80.4672');
   expect(calls.filter(call => call.path === '/api/v2/locations').at(-1)?.params.q).toBe('Synthetic');
   expect(await page.evaluate(() => (window as any).__locationCalls)).toBe(1);
   expect(page.url()).not.toMatch(/39\.2777|94\.4333|radius|latitude|longitude/);
@@ -142,4 +148,43 @@ for (const width of [320,390,1440]) test(`Places has a bounded unfilled chevron 
   await expand.click(); await expect(expand).toHaveAttribute('aria-expanded','false'); await expect(places.locator('li:visible')).toHaveCount(1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
   if(process.env.UEC_AREA_CAPTURE_DIR) await page.screenshot({path:`${process.env.UEC_AREA_CAPTURE_DIR}/places-${width}.png`});
+});
+
+for(const [width,height] of [[320,568],[390,844],[1280,620]]) test(`scoped search opens readable rows and paginates through the outer scroll at ${width}×${height}`,async({page})=>{
+  await page.setViewportSize({width:width!,height:height!});await install(page);await open(page);
+  await page.getByRole('button',{name:'Search this area',exact:true}).click();await expect(page.locator('.results')).toBeVisible();
+  const handle=page.locator('.mobile-sheet-handle');if(width!<641) await expect(handle).toHaveAttribute('data-sheet-state','middle');
+  const first=page.locator('[data-record-id]').first();await expect(first).toBeInViewport();
+  const body=await page.locator('.list-content').boundingBox(),name=await first.locator(':scope > strong').boundingBox();
+  expect(name!.y).toBeLessThan(body!.y+body!.height);expect((await first.boundingBox())!.height).toBeGreaterThan(44);
+  expect(await page.locator('[data-record-id]').evaluateAll(nodes=>nodes.every(node=>node.getBoundingClientRect().height>=44))).toBe(true);
+  await expect(page.locator('.activity-summary')).toHaveCount(0);
+  expect((await page.locator('.area-summary').boundingBox())!.height).toBeLessThan(150);
+  if(process.env.UEC_AREA_CAPTURE_DIR)await page.screenshot({path:`${process.env.UEC_AREA_CAPTURE_DIR}/compact-${width}-${height}.png`});
+  await page.locator('.load-more').scrollIntoViewIfNeeded();await page.locator('.load-more').click();await expect(page.locator('[data-record-id]')).toHaveCount(130);
+  await page.locator('[data-record-id]').last().scrollIntoViewIfNeeded();await expect(page.locator('[data-record-id]').last()).toBeInViewport();
+  expect(await page.locator('.list-content').evaluate(node=>node.scrollHeight>node.clientHeight)).toBe(true);
+  expect(await page.locator('.record-list').evaluate(node=>getComputedStyle(node).overflow)).toBe('visible');
+  if(width!<641){await handle.focus();await page.keyboard.press('End');await page.locator('#field-search').fill('Synthetic');await page.locator('#field-search').press('Enter');await expect(handle).toHaveAttribute('data-sheet-state','expanded');await handle.focus();await page.keyboard.press('Home');await page.getByRole('button',{name:'Search this area',exact:true}).click();await expect(handle).toHaveAttribute('data-sheet-state','middle');}
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
+});
+
+test('search settings rerun radius at the same private center and full-map exit restores the public camera',async({page})=>{
+  await page.setViewportSize({width:1440,height:850});await page.addInitScript(()=>Object.defineProperty(navigator,'geolocation',{value:{getCurrentPosition(success:PositionCallback){success({coords:{latitude:39.2777,longitude:-94.4333}}as GeolocationPosition)}}}));
+  const calls=await install(page);await open(page);await page.locator('#field-search').fill('Synthetic');
+  const settings=page.getByRole('button',{name:'Search settings',exact:true});await settings.click();const initialPanel=page.locator('#map-search-settings');
+  const visibleMap=initialPanel.getByRole('radio',{name:'Visible map',exact:true}),radius=initialPanel.getByRole('radio',{name:'Radius',exact:true});
+  await expect(visibleMap).toBeChecked();await expect(initialPanel.getByRole('slider',{name:'Search radius',exact:true})).toHaveCount(0);await expect(initialPanel.locator('output')).toHaveCount(0);
+  await visibleMap.focus();await page.keyboard.press('ArrowRight');await expect(radius).toBeChecked();await expect(initialPanel.getByRole('slider',{name:'Search radius',exact:true})).toBeVisible();await expect(initialPanel.locator('output')).toHaveText('50 miles');
+  await page.keyboard.press('ArrowLeft');await expect(visibleMap).toBeChecked();await expect(initialPanel.getByRole('slider',{name:'Search radius',exact:true})).toHaveCount(0);
+  await page.keyboard.press('Escape');await expect(settings).toHaveAttribute('aria-expanded','false');await page.getByRole('button',{name:'Your location',exact:true}).click();
+  await expect(page.locator('.scope-radius')).toHaveText('50 mile radius');await settings.click();
+  await expect(settings).toHaveAttribute('aria-expanded','true');const panel=page.locator('#map-search-settings');await panel.getByRole('slider',{name:'Search radius',exact:true}).fill('75');
+  await expect(page.locator('.scope-radius')).toHaveText('75 mile radius');await expect.poll(()=>Number(calls.filter(call=>call.path==='/api/v2/locations').at(-1)?.params.radius_km)).toBeCloseTo(120.7008,6);
+  const parameters=calls.filter(call=>call.path==='/api/v2/locations').at(-1)!.params;expect(parameters.latitude).toBe('39.2777');expect(parameters.longitude).toBe('-94.4333');expect(parameters.q).toBe('Synthetic');
+  await page.keyboard.press('Escape');await expect(settings).toHaveAttribute('aria-expanded','false');await expect(settings).toBeFocused();
+  await page.locator('.area-summary').getByRole('button',{name:'Explore full map',exact:true}).click();await expect(page.locator('.results')).toBeHidden();
+  await expect.poll(()=>new URLSearchParams(page.url().split('?')[1]).get('lat')).toBe('39.25');
+  await expect.poll(()=>page.evaluate(()=>{const c=(window as any).__UEC_LOCAL_PREVIEW_MAP__.getCenter();return [Number(c.lat.toFixed(2)),Number(c.lng.toFixed(2))]})).toEqual([39.25,-94.45]);
+  await page.locator('#field-search').click();await expect(page.locator('#field-search')).toHaveValue('Synthetic');await expect(page.locator('.area-summary')).toHaveCount(0);
 });

@@ -66,7 +66,7 @@ export type LabAction =
   | { type: 'filters'; value: LabFilters } | { type: 'reset-filters' }
   | { type: 'scope'; value: SearchScope; preserveWorkspace?: boolean }
   | { type: 'search'; value: { query: string; filters: LabFilters } }
-  | { type: 'results' } | { type: 'close-workspace' };
+  | { type: 'results' } | { type: 'close-workspace' } | { type: 'explore-map' };
 
 export type PinHoverLabel = Readonly<{ name: string; categoryKey: string }>;
 export type MapDisplaySettings = Readonly<{ clusterMode: 'auto' | 'on' | 'off'; pinScale: number; optimizedPins: boolean; coordinateRadius: number }>;

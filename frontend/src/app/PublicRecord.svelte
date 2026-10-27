@@ -52,7 +52,9 @@
     if (range.bounds === 'inclusive_lower_exclusive_upper' && range.lower !== null && range.upper !== null) return `${number(range.lower)} ${tr('to less than', $language)} ${number(range.upper)}`;
     return null;
   };
-  const slaughterRanges = (ranges: readonly DerivedSourceVolumeRange[] | undefined) => ranges?.filter(range => range.unit === 'head' && range.period === 'trailing_360_days') ?? [];
+  const slaughterRanges = (ranges: readonly DerivedSourceVolumeRange[] | undefined) => ranges?.filter(range => range.unit === 'head' && range.period === 'trailing_360_days' && range.verificationState === 'source_codebook_verified') ?? [];
+  const slaughterRangeText = $derived(slaughterRanges(record?.sourceFacts?.derivedSourceVolumeRanges).map(range => formattedRangeLocalized(range) ? `${formattedRangeLocalized(range)} ${tr('animals', $language)}` : null).filter(Boolean).join(', '));
+  const slaughterCodebooks = $derived([...new Set(slaughterRanges(record?.sourceFacts?.derivedSourceVolumeRanges).map(range => { try { const url=new URL(range.sourceCodebookUrl); return url.protocol === 'https:' ? url.href : null; } catch { return null; } }).filter((url):url is string=>Boolean(url)))]);
   const processingRanges = (ranges: readonly DerivedSourceVolumeRange[] | undefined) => ranges?.filter(range => range.unit === 'pounds' && range.period === 'month') ?? [];
   const annualSpeciesCount = (count: number) => new Intl.NumberFormat($language).format(count);
   const recordLink = $derived(`${window.location.origin}${window.location.pathname}${serializeRoute({kind:'record',facilityId:id,profile,...(currentRelease ? {releaseId:currentRelease} : {}),returnMapHref})}`);
@@ -82,6 +84,7 @@
       <h2 id="activities-heading" class="sr-only">{tr('Activities and classification', $language)}</h2>
       <div class="record-category"><CategoryBadge {record} /></div>
       <ClassificationSummary {record} />
+      {#if slaughterRangeText}<section class="slaughter-estimate" aria-label={tr('Estimated animals slaughtered (last 360 days)', $language)}><p>{tr('Estimated animals slaughtered (last 360 days)', $language)}</p><strong>{slaughterRangeText}</strong>{#each slaughterCodebooks as href}<a href={href} target="_blank" rel="noopener noreferrer">{tr('Source codebook', $language)}</a>{/each}</section>{/if}
     </section>
     <section aria-labelledby="location-heading">
       <h2 id="location-heading">{tr('Location', $language)}</h2>
@@ -105,7 +108,6 @@
           {#if record.sourceFacts.establishmentNumber}<div><dt>{tr('Establishment number', $language)}</dt><dd>{record.sourceFacts.establishmentNumber}</dd></div>{/if}
           {#if record.sourceFacts.grantDate}<div><dt>{tr('Grant date', $language)}</dt><dd>{record.sourceFacts.grantDate}</dd></div>{/if}
           {#if affirmativeEntries(record.sourceFacts.speciesSlaughtered).length}<div><dt>{tr('Species slaughtered', $language)}</dt><dd>{affirmativeEntries(record.sourceFacts.speciesSlaughtered).map(([key, value]) => `${sourceFlagLabel(key)}${typeof value === 'string' ? `: ${sourceFlag(value)}` : ''}`).join(', ')}</dd></div>{/if}
-          {#if slaughterRanges(record.sourceFacts.derivedSourceVolumeRanges).length}<div><dt>{tr('Estimated animals slaughtered (last 360 days)', $language)}</dt><dd>{slaughterRanges(record.sourceFacts.derivedSourceVolumeRanges).map(range => formattedRangeLocalized(range) ? `${formattedRangeLocalized(range)} ${tr('animals', $language)}` : null).filter(Boolean).join(', ')}</dd></div>{/if}
           {#if processingRanges(record.sourceFacts.derivedSourceVolumeRanges).length}<div><dt>{tr('Estimated product volume (pounds/month)', $language)}</dt><dd>{processingRanges(record.sourceFacts.derivedSourceVolumeRanges).map(range => formattedRangeLocalized(range) ? `${formattedRangeLocalized(range)} ${tr('pounds/month', $language)}` : null).filter(Boolean).join(', ')}</dd></div>{/if}
           {#if record.sourceFacts.aphisAnnualReports?.length}{#each record.sourceFacts.aphisAnnualReports as report (report.fiscalYear)}<div><dt>{tr('FY', $language)}{report.fiscalYear} {tr('reported animals', $language)}</dt><dd><ul>{#each report.speciesCounts as species (species.species)}<li>{sourceFlagLabel(species.species)}: {annualSpeciesCount(species.count)}</li>{/each}</ul><a href={report.sourceUrl} target="_blank" rel="noopener noreferrer">{tr('Source report', $language)}</a></dd></div>{/each}{/if}
         </dl>
@@ -120,6 +122,10 @@
   {/if}
 </section>
 <style>
+  .slaughter-estimate { margin:1rem 0;padding:.7rem 0 .7rem 1rem;border-left:2px solid var(--line,#3c4640); }
+  .slaughter-estimate p { margin:0 0 .35rem;font-size:.8rem; }
+  .slaughter-estimate strong { display:block;font:400 1.65rem/1.3 Georgia,serif; }
+  .slaughter-estimate a { display:inline-flex;align-items:center;min-height:36px;font-size:.75rem; }
   .public-record { width: min(100% - 3rem, 46rem); margin: auto; padding: 1.5rem 0 2rem; color: #edf0e9; font: .9rem/1.5 system-ui, sans-serif; }
   h1 { margin: 0 0 .75rem; font: 500 2rem/1.2 Georgia, serif; overflow-wrap: anywhere; }
   h2 { margin: 1.5rem 0 0; font: 600 1.05rem/1.3 Georgia, serif; }

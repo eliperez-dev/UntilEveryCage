@@ -91,12 +91,12 @@ test('leaving or moving the camera cancels slow hover; a restricted response nev
   await hoverPin(page); await expect.poll(() => state.details).toBe(3);
   await page.waitForTimeout(220); await expect(page.getByRole('tooltip')).toHaveCount(0);
 });
-test('area search outlines the exact snapshot through pan and basemap changes, then clears without reopening', async ({ page }, testInfo) => {
+test('area search outlines the exact snapshot through pan and basemap changes, opens results and clears its scope', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const state = await install(page);
   await page.getByRole('button', { name: 'Search this area', exact: true }).click();
-  const handle = page.getByRole('button', { name: 'Search map', exact: true });
-  await expect(handle).toHaveAttribute('data-sheet-state', 'collapsed');
+  const handle = page.locator('.mobile-sheet-handle');
+  await expect(handle).toHaveAttribute('data-sheet-state', 'middle');
   const readArea = () => page.evaluate(async () => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getSource('search-area')?.getData());
   await expect.poll(async () => (await readArea())?.features?.length).toBe(1);
   const before = await readArea();
@@ -106,7 +106,7 @@ test('area search outlines the exact snapshot through pan and basemap changes, t
   await page.getByRole('switch', { name: 'Map style: Street', exact: true }).click();
   await expect.poll(async () => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getPaintProperty('search-area-outline', 'line-opacity'))).toBe(1);
   expect(await readArea()).toEqual(before); expect(state.feeds).toBe(1);
-  await page.getByRole('button', { name: 'Clear area search', exact: true }).first().click();
+  await page.getByRole('button', { name: 'Explore full map', exact: true }).click();
   await expect.poll(async () => (await readArea())?.features?.length).toBe(0);
   await expect(handle).toHaveAttribute('data-sheet-state', 'collapsed');
 });

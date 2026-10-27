@@ -179,23 +179,27 @@ test('reduced motion and zero-duration debug controls skip the overlay and reset
   await expect(page.locator('#cluster-motion-limit')).toHaveValue('200');
 });
 
-test('one continuous zoom uses one cue and keeps its final marks geographically anchored', async ({ page }, testInfo) => {
+test('one continuous zoom holds native marks then moves children once from their parent without pullbacks', async ({ page }, testInfo) => {
   await fixture(page);
   await page.evaluate(async () => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__, canvas = document.querySelector('.native-cluster-motion')!;
     const loaded = map.isSourceLoaded.bind(map);
     let holdUntil = 0, previous: string | null = null;
-    const samples = { starts: 0, frozenMs: 0, samples: 0, addedDisplacement: 0 };
+    const samples = { starts: 0, frozenMs: 0, samples: 0, addedDisplacement: 0, held: 0, exposed: 0, progress: [] as number[] };
     (window as any).__zoomContinuity = samples;
     const moduleUrl = performance.getEntriesByType('resource').find(entry => entry.name.includes('/nativeClusterMotion.ts'))?.name;
     if (!moduleUrl) throw new Error('Native motion module was not loaded');
     const { NativeClusterMotionController } = await import(moduleUrl);
     const draw = NativeClusterMotionController.prototype.drawNode;
+    let lastDraw = performance.now(), childKey: string | undefined;
     NativeClusterMotionController.prototype.drawNode = function (...args: any[]) {
       const [, node, from, to, progress, opacity] = args;
-      if (opacity > .2 && node.key === to.key && from.key !== to.key) {
+      lastDraw = performance.now();
+      if (node.key === to.key && from.key !== to.key) {
+        childKey ??= node.key;
+        if (childKey === node.key) samples.progress.push(progress);
         const actual = map.project(node.coordinates), start = map.project(from.coordinates), end = map.project(to.coordinates);
-        samples.addedDisplacement = Math.max(samples.addedDisplacement, Math.hypot(start.x + (end.x - start.x) * progress - actual.x, start.y + (end.y - start.y) * progress - actual.y));
+        if (opacity > .1) samples.addedDisplacement = Math.max(samples.addedDisplacement, Math.hypot(start.x + (end.x - start.x) * progress - actual.x, start.y + (end.y - start.y) * progress - actual.y));
       }
       return draw.apply(this, args);
     };
@@ -208,16 +212,19 @@ test('one continuous zoom uses one cue and keeps its final marks geographically 
       previous = direction;
     }).observe(canvas, { attributes: true, attributeFilter: ['data-direction'] });
     const sample = () => {
-      if (canvas.hasAttribute('data-direction') && map.isMoving()) {
-        const last = (window as any).__motionFrames.at(-1);
-        if (last) { samples.frozenMs = Math.max(samples.frozenMs, performance.now() - last.time); samples.samples++; }
+      if (canvas.hasAttribute('data-phase')) {
+        samples.frozenMs = Math.max(samples.frozenMs, performance.now() - lastDraw); samples.samples++;
+        if (map.isMoving()) {
+          samples.held++;
+          if (map.getPaintProperty('clusters', 'icon-opacity') !== 0) samples.exposed++;
+        }
       }
-      if (map.isMoving() || canvas.hasAttribute('data-direction')) requestAnimationFrame(sample);
+      if (map.isMoving() || canvas.hasAttribute('data-phase')) requestAnimationFrame(sample);
     };
     map.easeTo({ zoom: 8.8, duration: 1800 }); requestAnimationFrame(sample);
   });
   await page.waitForFunction(() => !(window as any).__UEC_LOCAL_PREVIEW_MAP__.isMoving() && !document.querySelector('.native-cluster-motion')?.hasAttribute('data-direction'));
-  const continuity = await page.evaluate(() => (window as any).__zoomContinuity as { starts: number; frozenMs: number; samples: number; addedDisplacement: number });
+  const continuity = await page.evaluate(() => (window as any).__zoomContinuity as { starts: number; frozenMs: number; samples: number; addedDisplacement: number; held: number; exposed: number; progress: number[] });
   await testInfo.attach('zoom-continuity', { body: JSON.stringify(continuity), contentType: 'application/json' });
   await page.screenshot({ path: testInfo.outputPath('continuous-zoom.png') });
   // Sample coverage is not an FPS benchmark for the CI software renderer.
@@ -225,7 +232,12 @@ test('one continuous zoom uses one cue and keeps its final marks geographically 
   expect(continuity.samples).toBeGreaterThan(2);
   expect(continuity.starts, JSON.stringify(continuity)).toBe(1);
   expect(continuity.frozenMs).toBeLessThan(80);
-  expect(continuity.addedDisplacement).toBeLessThan(1);
+  expect(continuity.held).toBeGreaterThan(2);
+  expect(continuity.exposed).toBe(0);
+  expect(continuity.addedDisplacement).toBeGreaterThan(1);
+  expect(continuity.progress[0]).toBeLessThan(.2);
+  expect(continuity.progress.at(-1)).toBe(1);
+  expect(continuity.progress.every((progress, index) => index === 0 || progress >= continuity.progress[index - 1]!)).toBe(true);
 });
 
 test('animation on and off keep the same 3D camera path and mobile wheel zoom remains monotonic', async ({ page }, testInfo) => {
@@ -279,7 +291,7 @@ test('animation on and off keep the same 3D camera path and mobile wheel zoom re
     expect(path.length).toBeGreaterThan(1);
     expect(path.some(sample => sample.zoom > 6 && sample.zoom < 8.8)).toBe(true);
     expect(path.every((sample, index) => index === 0 || sample.zoom >= path[index - 1]!.zoom - .000001)).toBe(true);
-    expect(path.every(sample => sample.pitch === 45 && Math.abs(sample.lat - 51.19) < .000001 && Math.abs(sample.lon - 4.93) < .000001)).toBe(true);
+    expect(path.every(sample => sample.pitch === 60 && Math.abs(sample.lat - 51.19) < .000001 && Math.abs(sample.lon - 4.93) < .000001)).toBe(true);
     expect(path.at(-1)!.zoom).toBeCloseTo(8.8, 8);
   }
   await resetCamera();

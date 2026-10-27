@@ -865,5 +865,13 @@
   "Loading release totals…": "Totalen van de versie laden…",
   "Release totals are unavailable.": "Totalen van de versie zijn niet beschikbaar.",
   "Navigate to city centre · Natural Earth, not a facility location": "Naar het stadscentrum · Natural Earth, geen locatie van een faciliteit",
-  "Places": "Plaatsen"
+  "Places": "Plaatsen",
+  "Search settings": "Zoekinstellingen",
+  "Search area": "Zoekgebied",
+  "Visible map": "Zichtbare kaart",
+  "Search radius": "Zoekstraal",
+  "{count} miles": "{count} mijl",
+  "{count} mile radius": "Straal van {count} mijl",
+  "Explore full map": "Hele kaart verkennen",
+  "Source codebook": "Codeboek van de bron"
 }

@@ -286,9 +286,10 @@
     return null;
   }
   function annualSpeciesCount(count: number): string { return new Intl.NumberFormat($language).format(count); }
-  const slaughterRanges = $derived(sourceFacts?.derivedSourceVolumeRanges?.filter(range => range.unit === 'head' && range.period === 'trailing_360_days') ?? []);
+  const slaughterRanges = $derived(sourceFacts?.derivedSourceVolumeRanges?.filter(range => range.unit === 'head' && range.period === 'trailing_360_days' && range.verificationState === 'source_codebook_verified') ?? []);
   const processingRanges = $derived(sourceFacts?.derivedSourceVolumeRanges?.filter(range => range.unit === 'pounds' && range.period === 'month') ?? []);
   const slaughterRangeText = $derived(slaughterRanges.map(formattedRange).filter((range): range is string => Boolean(range)).map(range => `${range} ${tr('animals', $language)}`).join(', '));
+  const slaughterCodebooks = $derived([...new Set(slaughterRanges.map(range => safeHttps(range.sourceCodebookUrl)).filter((url):url is string=>Boolean(url)))]);
   const processingRangeText = $derived(processingRanges.map(formattedRange).filter((range): range is string => Boolean(range)).map(range => `${range} ${tr('pounds/month', $language)}`).join(', '));
 
   function safeHttps(raw: string | null): string | null {
@@ -355,6 +356,7 @@
     <h2 id="taxonomy-heading" class="sr-only">{tr('Activities and classification', $language)}</h2>
     <div class="record-category"><CategoryBadge record={classificationRecord} onfilter={oncategoryfilter} /></div>
     <ClassificationSummary record={classificationRecord} presentation={presentation === 'rail' ? 'summary' : 'all'} />
+    {#if slaughterRangeText}<section class="slaughter-estimate" aria-label={tr('Estimated animals slaughtered (last 360 days)', $language)}><p>{tr('Estimated animals slaughtered (last 360 days)', $language)}</p><strong>{slaughterRangeText}</strong>{#each slaughterCodebooks as href}<a href={href} target="_blank" rel="noopener noreferrer">{tr('Source codebook', $language)}</a>{/each}</section>{/if}
   </section>
   {#if presentation === 'rail' && (sourceName || observed || retrieved)}<p class="compact-source">{#if sourceName}<span>{sourceName}</span>{/if}{#if observed || retrieved}<span>{sourceName ? ' · ' : ''}{tr(observed ? 'Observed' : 'Retrieved', $language)} <time datetime={observed ?? retrieved ?? undefined} title={observed ?? retrieved ?? undefined}>{shortDate(observed ?? retrieved ?? '')}</time></span>{/if}</p>{/if}
   {#if presentation === 'page' && import.meta.env.VITE_COMMUNITY_PILOT === 'true' && id}
@@ -389,7 +391,6 @@
       {#if presentation === 'rail'}<summary id="source-facts-heading">{tr('Source facts', $language)}</summary>{:else}<h2 id="source-facts-heading">{tr('Source facts', $language)}</h2>{/if}
       <dl>
         {#if speciesSlaughtered}<div><dt>{tr('Species slaughtered', $language)}</dt><dd>{speciesSlaughtered}</dd></div>{/if}
-        {#if slaughterRangeText}<div><dt>{tr('Estimated animals slaughtered (last 360 days)', $language)}</dt><dd>{slaughterRangeText}</dd></div>{/if}
         {#if processingRangeText}<div><dt>{tr('Estimated product volume (pounds/month)', $language)}</dt><dd>{processingRangeText}</dd></div>{/if}
         {#if sourceLocationRole === 'aphis_mailing_locality'}<div><dt>{tr('Location role', $language)}</dt><dd>{tr('APHIS mailing locality: approximate locality, not an operating-site location', $language)}</dd></div>{/if}
         {#if sourceFacts.alternateNames?.length}<div><dt>{tr('Also known as', $language)}</dt><dd>{sourceFacts.alternateNames.join(' · ')}</dd></div>{/if}
@@ -431,6 +432,10 @@
 </article>
 
 <style>
+  .slaughter-estimate { margin:.8rem 0 .3rem;padding:.65rem 0 .65rem .8rem;border-left:2px solid var(--line); }
+  .slaughter-estimate p { margin:0 0 .35rem;color:var(--muted);font-size:.75rem;line-height:1.4; }
+  .slaughter-estimate strong { display:block;font:400 1.3rem/1.3 Georgia,serif;color:var(--ink); }
+  .slaughter-estimate a { display:inline-flex;align-items:center;min-height:36px;font-size:.6875rem;text-underline-offset:3px; }
   .location-actions { display:flex;align-items:center;flex-wrap:wrap;gap:.25rem 1.4rem; }
   .open-in-maps { display:inline-flex;align-items:center;gap:.4rem;min-height:44px;margin-top:.45rem;color:var(--ink);font-size:.75rem;text-underline-offset:3px; }
   .open-in-maps svg { width:1rem;height:1rem;fill:none;stroke:currentColor;stroke-width:1.5; }

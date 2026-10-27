@@ -48,7 +48,7 @@ API schemas own supported fields. They are not additional roadmaps.
   Its still-image motion has pause/resume and a static reduced-motion fallback.
   Keep `Open the map` primary and `Find locations near me` secondary. Only that
   explicit nearby click requests device permission. A one-time in-memory command
-  opens the map and searches within 100 miles; reloads and links never replay it.
+  opens the map and searches within 50 miles; reloads and links never replay it.
   The discovery section shows current release totals, mapped records and public
   source counts from validated public aggregates, with activity links into map
   results. Distinguish unavailable totals from zero; do not add animal-death or
@@ -56,12 +56,14 @@ API schemas own supported fields. They are not additional roadmaps.
   The map stays lazy until opened. Map search replaces the separate Database page;
   old public Database links open map results. FAQ content lives within About;
   old FAQ links retain their section and map context. API and downloads remain
-  available, including a download link from map search.
+  available from Data; map search has no CSV shortcut.
   Existing informational/download routes remain compatible aliases.
 - A horizontal map toolbar sits 24px from the desktop map's left edge and 16px
   below its top. It joins Search map with one Street/Satellite switch, 2D/3D,
-  Your location, Search this area and Fit results. Fit results bounds the complete
-  matching mapped collection, rather than the loaded page. The style switch shows the current style
+  Your location, Search this area and Search settings. Settings choose visible
+  map bounds or a radius, with a 5–250-mile radius control. Changing settings
+  reruns an active search at its original radius center or current map bounds.
+  The style switch shows the current style
   and exposes the next style in its tooltip. Search input stays in place as
   results, detail and filters open flush below the entire toolbar width.
   Resizing the panel changes both joined widths; bounds keep the controls usable
@@ -88,6 +90,11 @@ API schemas own supported fields. They are not additional roadmaps.
   above the mobile sheet; the toolbar can hide when a short viewport leaves
   no usable map strip. The middle and expanded height settings
   are bounded, temporary controls under Layout & density in the debug menu.
+  Every search action opens results. Preserve an already expanded mobile sheet;
+  reopening a collapsed sheet starts at middle. Short scoped-search viewports
+  compact summary actions and row padding while retaining the middle height.
+  One outer results scroller owns records and pagination; record rows never
+  shrink into a zero-height nested scroller.
   Mobile detail uses the same three sheet positions and replaces all search,
   filters, totals and download chrome, including while loading or reporting a
   detail error. A new selection preserves an expanded sheet; from collapsed
@@ -119,21 +126,25 @@ API schemas own supported fields. They are not additional roadmaps.
   aggregate references never expose a facility tooltip. Hover does not move the
   camera or obstruct pin selection. The category uses muted text without a
   colored swatch; the pin already communicates category color.
+  A faint static halo marks the hovered facility for both PNG and optimized
+  pins. Do not pulse clusters or rebuild map data to show the hover cue.
 - Search this area captures fixed bounds and draws a native geographic perimeter.
   Panning, rotation and style changes retain those bounds. There is no separate
-  Searching this area indicator. The toolbar action changes to Clear area search,
-  and the removable scope chip remains in results. Clearing either removes only
-  this scope and its graphic; neither applying nor clearing opens the search sheet.
+  Searching this area indicator. The toolbar action reruns the chosen search and
+  opens results. The compact summary supplies scope context instead of a
+  duplicate area chip.
   Radius scopes remain distinct. Queries and spatial scopes are not persisted.
   Scoped results start with `In this area` (or `Near you` for the device radius),
-  the complete matching mapped total and six clickable primary-category bars.
+  the complete matching mapped total and explicit radius where applicable.
+  Six clickable primary-category bars, source count and location precision live
+  in an Activity breakdown disclosure, collapsed initially so records are visible.
   Each record counts once by its display category. Clicking a category narrows
   both map and list; clicking the sole selected category again clears it.
-  Source count and location precision are available in a compact disclosure.
-  Clear area removes only the scope. Update to this view explicitly replaces
-  the fixed perimeter with the current map bounds. Loading or failed matching
+  Explore full map clears scope and selection, collapses the sheet and retains
+  the query and nonspatial filters. A device view restores its prior public
+  camera before its privacy marker is removed. Loading or failed matching
   never retains a previous ready summary.
-  Your location searches a 100-mile radius and opens results after permission.
+  Your location searches a 50-mile radius by default and opens results after permission.
   It preserves the current query and filters. Device coordinates, radius and
   camera remain in memory and do not enter browser URLs, history, diagnostics or storage.
 - Facility icons default to 80% size. More tools and the existing debug slider
@@ -147,8 +158,8 @@ API schemas own supported fields. They are not additional roadmaps.
   results and facility panels. Preserve all other category colors, category
   meanings and precision cues.
 - Default cluster radius is 50 px and the camera-zoom cutoff is 9.0. Preserve
-  explicit debug overrides. Automatic clustering also stops below 2,800 matching
-  mapped facilities, preserving the V1 population threshold. Panning does not
+  explicit debug overrides. Automatic clustering also stops below 3,000 matching
+  mapped facilities. Panning does not
   toggle clustering or rebuild the index. Clusters group geographically, not into a
   visible square grid. Exact and approximate records participate in clustering;
   do not make areas disappear between zoom levels or clear valid markers while
@@ -201,8 +212,9 @@ API schemas own supported fields. They are not additional roadmaps.
   and do not create automatic search history. Filters wrap into multiple
   columns when space allows, with full readable source labels.
   Filters extend to the available viewport bottom and scroll within that space.
-  Search this area applies without opening or changing the workspace position;
-  its active clear action removes only the spatial scope, retaining other filters.
+  Search this area, nearby searches, query changes and settings reruns all open
+  results while retaining an expanded mobile sheet. Scope and category changes
+  preserve unrelated query and filter dimensions.
 - Browse-record links open the full facility page directly. Do not restore
   the intermediate database preview panel.
 - API offers full-release CSV, explicitly bounded exports, paginated JSON and
@@ -210,6 +222,17 @@ API schemas own supported fields. They are not additional roadmaps.
   in the browser to render a map or open a facility.
 
 ## Facility details and connections
+
+- Search result cards show category, locality, precision and source without a
+  redundant Recorded activities summary. Detailed facility classification stays
+  available in the facility panel and full record.
+- A verified source-codebook slaughter range appears directly below the
+  classification summary when available, including for a processing-classified
+  record with slaughter evidence. Preserve exclusive upper and unbounded lower
+  values and the exact `last 360 days` period. Link the HTTPS source codebook;
+  never extrapolate absent ranges or convert them to annual point estimates.
+  Do not repeat the promoted range inside Source facts. Processing monthly
+  volume remains in Source facts.
 
 - Full page order: facility name and chain-icon Copy facility link action;
   category and classification overview; Location facts; single-record map;
@@ -524,11 +547,12 @@ load. Terrain retains adaptive LOD. Selection flights settle the camera at the
 target's terrain elevation once its DEM is ready, preserving zoom, bearing and
 pitch. Manual movement cancels this pending selection adjustment.
 
-Native cluster splits and merges use one short, geographically anchored canvas
-crossfade per continuous zoom gesture, with existing pin/cluster artwork and
-read-only native child queries. Marks stay at their own map locations; camera
-zoom supplies the separation. The overlay keeps following the camera until
-native marks repaint, avoiding repeated pullbacks and a frozen handoff.
+Native cluster animation holds a bounded, geographically anchored snapshot
+throughout a continuous zoom gesture. Once the final hierarchy is ready,
+children travel from their parent cluster to their new positions; merges reverse
+that movement. Native marks are masked before hierarchy changes and the overlay
+remains until their replacement paint is ready. Reuse existing pin/cluster
+artwork and read-only native child queries, without bounce or repeated restarts.
 The default is 210 ms and at most 200 animated marks in total. Debug
 controls tune duration from 0–400 ms (0 disables it) and the mark cap from
 50–300. Pan and bearing-only rotation remain native. Reduced motion, dense

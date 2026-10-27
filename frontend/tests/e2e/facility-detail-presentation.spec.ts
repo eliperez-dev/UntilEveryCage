@@ -33,6 +33,24 @@ const facts = {
 };
 const meta = { release_id: release, ruleset_version: 'synthetic-rules', profile: 'official', release_created_at: observed };
 
+for(const [bounds,lower,upper,text] of [['exclusive_upper',null,1000,'Less than 1,000 animals'],['inclusive_lower_exclusive_upper',1000,10000,'1,000 to less than 10,000 animals'],['inclusive_lower_unbounded',100000,null,'100,000 or more animals']] as const) test(`verified slaughter estimate preserves exact 360-day ${bounds} bounds in map and full record`,async({page})=>{
+    await mockPublicRecord(page,{derived_source_volume_ranges:[{...facts.derived_source_volume_ranges[0],bounds,lower,upper},facts.derived_source_volume_ranges[1]]});
+    await page.goto(`./#/map?selected=${id}&release_id=${release}`);const panel=page.locator('.reading-sheet[aria-label="Record evidence"]'),estimate=panel.locator('.slaughter-estimate');
+    await expect(estimate).toBeVisible();await expect(estimate.locator('strong')).toHaveText(text);await expect(estimate.getByText('Estimated animals slaughtered (last 360 days)',{exact:true})).toBeVisible();
+    await expect(estimate.getByRole('link',{name:'Source codebook',exact:true})).toHaveAttribute('href','https://example.test/codebook');
+    await expect(panel.locator('.source-facts-section')).not.toHaveAttribute('open','');await expect(panel.locator('.source-facts-section dt').filter({hasText:'Estimated animals slaughtered'})).toHaveCount(0);
+    expect(await estimate.evaluate(node=>Boolean(node.compareDocumentPosition(document.querySelector('#location-heading')!)&Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
+    await panel.getByRole('link',{name:'Open facility page',exact:true}).click();const full=page.locator('.public-record');await expect(full.locator('.slaughter-estimate strong')).toHaveText(text);
+    await expect(full.locator('.source-facts')).toContainText('10,000 to less than 100,000 pounds/month');await expect(full.locator('.source-facts dt').filter({hasText:'Estimated animals slaughtered'})).toHaveCount(0);
+    await expect(full.locator('.slaughter-estimate')).not.toContainText(/365|per year|annually/);
+});
+
+test('missing slaughter range never becomes an estimate from processing volume',async({page})=>{
+  await mockPublicRecord(page,{derived_source_volume_ranges:[facts.derived_source_volume_ranges[1]]});await page.goto(`./#/map?selected=${id}&release_id=${release}`);
+  const panel=page.locator('.reading-sheet[aria-label="Record evidence"]');await expect(panel.locator('.detail h1')).toBeVisible();await expect(panel.locator('.slaughter-estimate')).toHaveCount(0);
+  await panel.getByRole('link',{name:'Open facility page',exact:true}).click();await expect(page.locator('.public-record h1')).toBeVisible();await expect(page.locator('.public-record .slaughter-estimate')).toHaveCount(0);await expect(page.locator('.public-record .source-facts')).toContainText('10,000 to less than 100,000 pounds/month');
+});
+
 async function mockPublicRecord(page: Page, overrides: Record<string, unknown> = {}, options: { failFirstReport?: boolean } = {}) {
   await page.route('https://tile.openstreetmap.org/**', route => route.abort());
   await page.route('https://server.arcgisonline.com/**', route => route.abort());

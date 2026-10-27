@@ -39,19 +39,43 @@ describe('complete mapped area summary', () => {
 });
 
 describe('explicit nearby search', () => {
-  it('atomically searches100miles while retaining query, filters and the public navigation camera', () => {
+  it('atomically searches50miles while retaining query, filters and the public navigation camera', () => {
     const before = { ...DEFAULT_LAB_STATE, query: 'synthetic evidence', selectedId: 'synthetic-id',
       filters: { ...DEFAULT_LAB_STATE.filters, categories: ['slaughter'], countries: ['US'] } };
     const next = reduceLabState(before, { type: 'near-device', value: { latitude: 39.12512, longitude: -95.74883 } });
     expect(next.query).toBe(before.query); expect(next.filters).toBe(before.filters);
     expect(next.searchScope).toMatchObject({ kind: 'radius', radiusKm: DEFAULT_NEARBY_RADIUS_KM, deviceDerived: true });
     expect(next).toMatchObject({ selectedId: null, listOpen: true, navigationViewport: before.viewport });
-    expect(publicSearchFilters(next)).toMatchObject({ q: before.query, latitude: 39.12512, longitude: -95.74883, radius_km: 160.9344 });
+    expect(publicSearchFilters(next)).toMatchObject({ q: before.query, latitude: 39.12512, longitude: -95.74883, radius_km: 80.4672 });
     const panned = reduceLabState(next, { type: 'viewport', value: { ...next.viewport, centerLat: 39.2, centerLon: -95.8 } });
     const encoded = encodeLabHash(panned, false, true);
     for (const value of ['39.12512', '-95.74883', '39.2', '-95.8', 'radius', 'synthetic%20evidence']) expect(encoded).not.toContain(value);
     expect(encoded).toContain('country=US');
     expect(reduceLabState(before, { type: 'near-device', value: { latitude: NaN, longitude: 0 } })).toBe(before);
+  });
+  it('explores the full map from the saved public camera before releasing device privacy', () => {
+    const publicState = { ...DEFAULT_LAB_STATE, query: 'synthetic query', sourceId: 'synthetic-register',
+      viewport: { centerLat: 22, centerLon: 11, zoom: 6, pitch: 30, bearing: 12 },
+      filters: { ...DEFAULT_LAB_STATE.filters, categories: ['slaughter'] } };
+    const located = reduceLabState(publicState, { type: 'near-device', value: { latitude: 39.12512, longitude: -95.74883 } });
+    const selected = { ...located, selectedId: 'synthetic-id', aggregateMemberIds: ['synthetic-id'],
+      viewport: { ...located.viewport, centerLat: 39.5, centerLon: -95.2 } };
+    const explored = reduceLabState(selected, { type: 'explore-map' });
+    expect(explored).toMatchObject({ viewport: publicState.viewport, searchScope: null, selectedId: null,
+      aggregateMemberIds: null, listOpen: false, query: publicState.query, sourceId: publicState.sourceId, filters: publicState.filters });
+    expect(explored).not.toHaveProperty('navigationViewport');
+    expect(encodeLabHash(explored, false, true)).toContain('lat=22');
+    expect(encodeLabHash(explored, false, true)).not.toContain('39.5');
+    const ordinary = reduceLabState({ ...publicState, listOpen: true }, { type: 'explore-map' });
+    expect(ordinary.viewport).toBe(publicState.viewport);
+  });
+  it('opens results for every query and nonempty spatial search while preserving the active selection when requested', () => {
+    const selected = { ...DEFAULT_LAB_STATE, selectedId: 'synthetic-selected' };
+    expect(reduceLabState(DEFAULT_LAB_STATE, { type: 'query', value: 'synthetic' }).listOpen).toBe(true);
+    const scope = { kind: 'area' as const, bounds: { west: 1, east: 2, south: 3, north: 4 } };
+    const scoped = reduceLabState(selected, { type: 'scope', value: scope, preserveWorkspace: true });
+    expect(scoped).toMatchObject({ searchScope: scope, selectedId: 'synthetic-selected', listOpen: true });
+    expect(reduceLabState(DEFAULT_LAB_STATE, { type: 'scope', value: null, preserveWorkspace: true }).listOpen).toBe(false);
   });
   it('only requests permission on invocation and ignores callbacks after cancellation', async () => {
     let success: PositionCallback | undefined;

@@ -1,3 +1,4 @@
+import { CLUSTERING_POPULATION_THRESHOLD } from './mapWorkspace';
 export type LayoutTuning = Readonly<{ panelWidthPercent: number; rowPadding: number; typeScale: number; mobileSheetPercent?: number; mobileExpandedPercent?: number }>;
 export type CacheTuning = Readonly<{
   indexEnabled: boolean;
@@ -74,7 +75,7 @@ export function safeDiagnosticSnapshot(input: DiagnosticInput) {
       matchingMappedCount: finite(input.search?.matchingMappedCount ?? null),
       scope: input.search?.scope === 'area' || input.search?.scope === 'radius' ? input.search.scope : null,
     },
-    population: { loaded: finite(input.loadedMapped), filtered: finite(input.filteredMapped), renderedMarks: finite(input.renderedMarks), clusteringThreshold: 2800 },
+    population: { loaded: finite(input.loadedMapped), filtered: finite(input.filteredMapped), renderedMarks: finite(input.renderedMarks), clusteringThreshold: CLUSTERING_POPULATION_THRESHOLD },
     projection: { requests: finite(input.feedRequests), decodedBytes: finite(input.decodedBytes), cacheEntries: finite(input.cacheEntries), indexUpdates: finite(input.indexUpdates ?? null) },
     timingMs: { feed: finite(input.feedMs), index: finite(input.indexMs), rebuild: finite(input.rebuildMs), cameraMoveend: finite(input.cameraMoveendMs), cameraIdle: finite(input.cameraIdleMs) },
     viewport: { width: finite(input.width), height: finite(input.height), canvasWidth: finite(input.canvasWidth), canvasHeight: finite(input.canvasHeight), zoom: finite(input.zoom), bearing: finite(input.bearing), pitch: finite(input.pitch) },

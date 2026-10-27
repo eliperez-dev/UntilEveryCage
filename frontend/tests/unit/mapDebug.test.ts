@@ -31,7 +31,7 @@ describe('explicit map diagnostic export', () => {
   it('includes useful complete matching counts, actual timings and settings', () => {
     const snapshot = safeDiagnosticSnapshot(input);
     expect(snapshot.search).toEqual(input.search);
-    expect(snapshot.population).toEqual({ loaded: 5000, filtered: 850, renderedMarks: 120, clusteringThreshold: 2800 });
+    expect(snapshot.population).toEqual({ loaded: 5000, filtered: 850, renderedMarks: 120, clusteringThreshold: 3000 });
     expect(snapshot.timingMs).toEqual({ feed: 30, index: 50, rebuild: 20, cameraMoveend: 40, cameraIdle: 120 });
     expect(snapshot.tuning.clusterMode).toBe('auto');
   });

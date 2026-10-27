@@ -865,5 +865,13 @@
   "Loading release totals…": "Chargement des totaux de la version…",
   "Release totals are unavailable.": "Les totaux de la version sont indisponibles.",
   "Navigate to city centre · Natural Earth, not a facility location": "Aller au centre-ville · Natural Earth, pas la position d’un établissement",
-  "Places": "Lieux"
+  "Places": "Lieux",
+  "Search settings": "Paramètres de recherche",
+  "Search area": "Zone de recherche",
+  "Visible map": "Carte visible",
+  "Search radius": "Rayon de recherche",
+  "{count} miles": "{count} miles",
+  "{count} mile radius": "Rayon de {count} miles",
+  "Explore full map": "Explorer toute la carte",
+  "Source codebook": "Manuel des codes de la source"
 }

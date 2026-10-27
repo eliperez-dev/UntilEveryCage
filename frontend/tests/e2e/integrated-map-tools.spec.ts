@@ -44,7 +44,7 @@ test('desktop toolbar and entire dropdown resize together while narrow layouts a
   for(const width of [641,768]){await page.setViewportSize({width,height:800});toolbar=(await page.locator('.map-toolbar').boundingBox())!;panel=(await page.locator('.results').boundingBox())!;expect(toolbar.x).toBeCloseTo(24,0);expect(toolbar.x+toolbar.width).toBeLessThanOrEqual(width-23);expect(panel.width).toBeCloseTo(toolbar.width,0);expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);}
 });
 
-test('one style switch serves desktop and mobile, and area scope clears without extra indicator or opening search',async({page})=>{
+test('one style switch serves desktop and mobile, and area search opens results with compact context',async({page})=>{
   await page.setViewportSize({width:1440,height:900});await install(page);
   const tile=await page.evaluate(()=>{const canvas=document.createElement('canvas');canvas.width=canvas.height=256;canvas.getContext('2d')!.fillRect(0,0,256,256);return canvas.toDataURL('image/png').split(',')[1]!});
   const raster=(route:import('@playwright/test').Route)=>route.fulfill({status:200,contentType:'image/png',body:Buffer.from(tile,'base64')});await page.route('**/World_Imagery/**',raster);await page.route('https://tile.openstreetmap.org/**',raster);await open(page);
@@ -53,8 +53,8 @@ test('one style switch serves desktop and mobile, and area scope clears without 
   await expect.poll(()=>page.evaluate(()=>(window as any).__UEC_LOCAL_PREVIEW_MAP__?.getStyle().sources.base.tiles[0])).toContain('World_Imagery');
   await page.getByRole('switch',{name:'Map style: Satellite',exact:true}).click();await expect(style).toHaveAttribute('aria-checked','false');
   await expect.poll(()=>page.evaluate(()=>(window as any).__UEC_LOCAL_PREVIEW_MAP__?.getStyle().sources.base.tiles[0])).toContain('tile.openstreetmap.org');
-  const area=page.getByRole('button',{name:'Search this area',exact:true});await expect(area).toBeEnabled();await area.click();await expect(page.locator('.results')).toBeHidden();await expect(page.locator('.area-indicator')).toHaveCount(0);await expect(page.getByText('Searching this area',{exact:true})).toHaveCount(0);await expect(page.getByRole('button',{name:'Clear area search',exact:true})).toHaveClass(/active/);
-  await page.locator('#field-search').click();await expect(page.locator('.filter-chips')).toContainText('This map area');await page.getByRole('button',{name:'Close workspace',exact:true}).click();await page.getByRole('button',{name:'Clear area search',exact:true}).click();await expect(area).toBeVisible();await expect(page.locator('.results')).toBeHidden();
+  const area=page.getByRole('button',{name:'Search this area',exact:true});await expect(area).toBeEnabled();await area.click();await expect(page.locator('.results')).toBeVisible();await expect(page.locator('.area-indicator')).toHaveCount(0);await expect(page.getByText('Searching this area',{exact:true})).toHaveCount(0);await expect(page.getByRole('button',{name:'Search this area',exact:true})).toHaveClass(/active/);
+  await page.locator('#field-search').click();await expect(page.locator('.area-summary')).toContainText('In this area');await page.getByRole('button',{name:'Explore full map',exact:true}).click();await expect(area).toBeVisible();await expect(page.locator('.results')).toBeHidden();
   await page.setViewportSize({width:320,height:844});await expect(style).toBeVisible();await expect(page.locator('.style-options button')).toHaveCount(1);await expect(page.locator('.mobile-sheet-handle')).toHaveAttribute('data-sheet-state','collapsed');const bounds=(await style.boundingBox())!;expect(bounds.height).toBeGreaterThanOrEqual(44);
 });
 

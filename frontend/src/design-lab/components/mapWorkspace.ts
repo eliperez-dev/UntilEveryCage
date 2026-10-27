@@ -1,7 +1,7 @@
 import type { JsonMapCollection } from './jsonMapFallback';
 
 /** V1 enabled clustering for the filtered population, never viewport density. */
-export const CLUSTERING_POPULATION_THRESHOLD = 2800;
+export const CLUSTERING_POPULATION_THRESHOLD = 3000;
 
 export function representedMappedCount(collection: JsonMapCollection): number {
   return collection.features.reduce((total, feature) => {

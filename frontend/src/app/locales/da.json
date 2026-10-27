@@ -865,5 +865,13 @@
   "Loading release totals…": "Indlæser totaler for udgivelsen…",
   "Release totals are unavailable.": "Totaler for udgivelsen er ikke tilgængelige.",
   "Navigate to city centre · Natural Earth, not a facility location": "Gå til bymidten · Natural Earth, ikke en facilitets placering",
-  "Places": "Steder"
+  "Places": "Steder",
+  "Search settings": "Søgeindstillinger",
+  "Search area": "Søgeområde",
+  "Visible map": "Synligt kort",
+  "Search radius": "Søgeradius",
+  "{count} miles": "{count} miles",
+  "{count} mile radius": "Radius på {count} miles",
+  "Explore full map": "Udforsk hele kortet",
+  "Source codebook": "Kildens kodebog"
 }
