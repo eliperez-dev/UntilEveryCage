@@ -35,7 +35,7 @@ test('satellite imagery stays backed by bounded local tiles through detailed 2D 
   });
   await page.goto('./#/map?release_id=synthetic-release-2026-09&lat=48&lon=10&z=8');
   await page.waitForFunction(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.isStyleLoaded());
-  await page.locator('.map-navigation').getByRole('button', { name: 'Satellite', exact: true }).click();
+  await page.locator('.map-navigation').getByRole('switch', { name: 'Map style: Street', exact: true }).click();
   await expect.poll(() => page.evaluate(() => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     return map.getStyle().sources.base.tiles[0].includes('World_Imagery') && !map.getLayer('candidate-base') && map.isSourceLoaded('base');
@@ -110,7 +110,7 @@ test('real local world streets and satellite warm through z5 and survive a full 
   });
   await expect.poll(cacheStats, { timeout: 30_000 }).toEqual({ entries: 12, bytes: 16899100, local: true });
   await page.screenshot({ path: testInfo.outputPath('world-streets.png') });
-  await page.locator('.map-navigation').getByRole('button', { name: 'Satellite', exact: true }).click();
+  await page.locator('.map-navigation').getByRole('switch', { name: 'Map style: Street', exact: true }).click();
   await expect.poll(() => page.evaluate(() => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     return map.getLayoutProperty('world-satellite', 'visibility') === 'visible' && map.getLayoutProperty('world-streets-roads', 'visibility') === 'none';

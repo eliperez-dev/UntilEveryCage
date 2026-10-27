@@ -24,10 +24,12 @@ describe('real-preview native clustering layers', () => {
     expect(layers.find(layer => layer.id === 'clusters')?.layout['icon-image'])
       .toEqual(['step', ['get', 'representedCount'], 'cluster-low', 10, 'cluster-mid', 100, 'cluster-high', 1001, 'cluster-very-high']);
     expect(layers.find(layer => layer.id === 'approx-reference-points')?.maxzoom).toBeUndefined();
+    expect(JSON.stringify(layers.find(layer => layer.id === 'approx-reference-points')?.layout['icon-image'])).toContain('v1-pin-blue');
+    expect(JSON.stringify(layers.find(layer => layer.id === 'source-coordinate-points')?.paint['circle-color'])).toContain('#86A7FA');
     expect(layers.find(layer => layer.id === 'approx-reference-points')).toMatchObject({
       type: 'symbol',
       layout: {
-        'icon-image': 'v1-pin-grey', 'icon-anchor': 'bottom', 'icon-size': 0.4,
+        'icon-image': expect.any(Array), 'icon-anchor': 'bottom', 'icon-size': 0.4,
         'text-field': ['case', ['>', ['get', 'weight'], 1], ['to-string', ['get', 'weight']], ''],
       },
       paint: { 'text-color': '#172019' },

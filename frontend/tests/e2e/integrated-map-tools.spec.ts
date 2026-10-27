@@ -29,9 +29,33 @@ test('desktop search stays anchored, shares its surface with results, and never 
   const input=page.locator('#field-search'),before=await input.boundingBox(),canvas=await page.locator('.map-stage').boundingBox();
   await page.locator('.maplibregl-canvas').evaluate(el=>{(window as any).__originalToolsCanvas=el});await input.click();
   await expect(page.locator('[data-record-id]')).toHaveCount(3);expect(await input.boundingBox()).toEqual(before);expect(await page.locator('.map-stage').boundingBox()).toEqual(canvas);
-  const rail=(await page.locator('.results').boundingBox())!,toolbar=(await page.locator('.map-toolbar').boundingBox())!;expect(rail.x).toBeCloseTo(toolbar.x,0);expect(rail.y).toBeCloseTo(toolbar.y+toolbar.height-1,0);expect(rail.width).toBeCloseTo(480,0);
+  const rail=(await page.locator('.results').boundingBox())!,toolbar=(await page.locator('.map-toolbar').boundingBox())!;expect(toolbar.x).toBeCloseTo(24,0);expect(rail.x).toBeCloseTo(toolbar.x,0);expect(rail.y).toBeCloseTo(toolbar.y+toolbar.height-1,0);expect(rail.width).toBeCloseTo(toolbar.width,0);expect(rail.width).toBeCloseTo(480,0);
   await expect(input).toHaveCount(1);await page.getByRole('button',{name:'Close workspace',exact:true}).click();expect(await input.boundingBox()).toEqual(before);
   expect(await page.locator('.maplibregl-canvas').evaluate(el=>el===(window as any).__originalToolsCanvas)).toBe(true);
+});
+
+test('desktop toolbar and entire dropdown resize together while narrow layouts and camera remain stable',async({page})=>{
+  await page.setViewportSize({width:1440,height:900});await install(page);await open(page);await page.locator('#field-search').click();
+  const canvas=await page.locator('.map-stage').boundingBox(),input=page.locator('#field-search'),inputNode=await input.elementHandle();
+  const resize=page.getByRole('button',{name:'Resize search panel',exact:true});await resize.focus();await page.keyboard.press('ArrowRight');
+  let toolbar=(await page.locator('.map-toolbar').boundingBox())!,panel=(await page.locator('.results').boundingBox())!;expect(toolbar.width).toBeCloseTo(504,0);expect(panel.width).toBeCloseTo(toolbar.width,0);expect(panel.x).toBe(toolbar.x);
+  const grip=(await resize.boundingBox())!;await page.mouse.move(grip.x+grip.width/2,grip.y+grip.height/2);await page.mouse.down();await page.mouse.move(grip.x+grip.width/2+80,grip.y+grip.height/2,{steps:6});await page.mouse.up();
+  toolbar=(await page.locator('.map-toolbar').boundingBox())!;panel=(await page.locator('.results').boundingBox())!;expect(toolbar.width).toBeCloseTo(584,0);expect(panel.width).toBeCloseTo(toolbar.width,0);expect(await page.locator('.map-stage').boundingBox()).toEqual(canvas);expect(await input.evaluate((node,original)=>node===original,inputNode)).toBe(true);
+  for(const width of [641,768]){await page.setViewportSize({width,height:800});toolbar=(await page.locator('.map-toolbar').boundingBox())!;panel=(await page.locator('.results').boundingBox())!;expect(toolbar.x).toBeCloseTo(24,0);expect(toolbar.x+toolbar.width).toBeLessThanOrEqual(width-23);expect(panel.width).toBeCloseTo(toolbar.width,0);expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);}
+});
+
+test('one style switch serves desktop and mobile, and area scope clears without extra indicator or opening search',async({page})=>{
+  await page.setViewportSize({width:1440,height:900});await install(page);
+  const tile=await page.evaluate(()=>{const canvas=document.createElement('canvas');canvas.width=canvas.height=256;canvas.getContext('2d')!.fillRect(0,0,256,256);return canvas.toDataURL('image/png').split(',')[1]!});
+  const raster=(route:import('@playwright/test').Route)=>route.fulfill({status:200,contentType:'image/png',body:Buffer.from(tile,'base64')});await page.route('**/World_Imagery/**',raster);await page.route('https://tile.openstreetmap.org/**',raster);await open(page);
+  const style=page.getByRole('switch',{name:'Map style: Street',exact:true});await expect(style).toBeEnabled();await expect(style).toHaveAttribute('aria-checked','false');await expect(style).toHaveAttribute('title','Street → Satellite');await expect(page.locator('.style-options button')).toHaveCount(1);await style.focus();await page.keyboard.press('Space');
+  await expect(page.getByRole('switch',{name:'Map style: Satellite',exact:true})).toHaveAttribute('aria-checked','true');
+  await expect.poll(()=>page.evaluate(()=>(window as any).__UEC_LOCAL_PREVIEW_MAP__?.getStyle().sources.base.tiles[0])).toContain('World_Imagery');
+  await page.getByRole('switch',{name:'Map style: Satellite',exact:true}).click();await expect(style).toHaveAttribute('aria-checked','false');
+  await expect.poll(()=>page.evaluate(()=>(window as any).__UEC_LOCAL_PREVIEW_MAP__?.getStyle().sources.base.tiles[0])).toContain('tile.openstreetmap.org');
+  const area=page.getByRole('button',{name:'Search this area',exact:true});await expect(area).toBeEnabled();await area.click();await expect(page.locator('.results')).toBeHidden();await expect(page.locator('.area-indicator')).toHaveCount(0);await expect(page.getByText('Searching this area',{exact:true})).toHaveCount(0);await expect(page.getByRole('button',{name:'Clear area search',exact:true})).toHaveClass(/active/);
+  await page.locator('#field-search').click();await expect(page.locator('.filter-chips')).toContainText('This map area');await page.getByRole('button',{name:'Close workspace',exact:true}).click();await page.getByRole('button',{name:'Clear area search',exact:true}).click();await expect(area).toBeVisible();await expect(page.locator('.results')).toBeHidden();
+  await page.setViewportSize({width:320,height:844});await expect(style).toBeVisible();await expect(page.locator('.style-options button')).toHaveCount(1);await expect(page.locator('.mobile-sheet-handle')).toHaveAttribute('data-sheet-state','collapsed');const bounds=(await style.boundingBox())!;expect(bounds.height).toBeGreaterThanOrEqual(44);
 });
 
 test('compact filters preserve multi-selection, Mapped uses existing precisions, and the footer docks to the panel',async({page})=>{

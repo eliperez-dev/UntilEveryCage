@@ -222,6 +222,7 @@
   let pendingBasemap = $state<Basemap | undefined>();
   let basemapError = $state("");
   let basemapRequest = 0;
+  let basemapAbort: AbortController | undefined;
   let syncing = false;
   let activeFlight = false;
   let handledFlightId = 0;
@@ -453,7 +454,7 @@
     const generation = ++terrainViewGeneration;
     terrainViewAbort?.abort();
     terrainPending = false;
-    if (!enable3d && cameraPitch <= 0.5) return;
+    if (!enable3d && cameraPitch <= 0.5 && Math.abs(instance.getBearing()) <= 0.5) return;
     terrainError = "";
     if (enable3d) {
       setTerrain(true, true);
@@ -480,7 +481,7 @@
     // Keep healthy terrain in overhead mode once activated. Removing it would
     // reset the camera elevation to sea level and change the geographic focus.
     const center = instance.getCenter();
-    instance.easeTo({ center: [center.lng, center.lat], zoom: instance.getZoom(), bearing: instance.getBearing(),
+    instance.easeTo({ center: [center.lng, center.lat], zoom: instance.getZoom(), bearing: enable3d ? instance.getBearing() : 0,
       pitch: enable3d ? 60 : 0, duration: matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 450 });
   }
   $effect(() => {
@@ -513,7 +514,7 @@
     instance.setPaintProperty("transport", "raster-opacity", basemap === "satellite" ? 0.72 : 0);
   }
   /** A source can report loaded after an error, so tile failures reject the handoff. */
-  function waitForRaster(instance: MapLibreMap, sourceId: string): Promise<void> {
+  function waitForRaster(instance: MapLibreMap, sourceId: string, signal?: AbortSignal): Promise<void> {
     return new Promise((resolve, reject) => {
       let settled = false;
       const timeout = setTimeout(() => finish(false), 10000);
@@ -524,17 +525,21 @@
         if (event?.sourceId === sourceId && instance.isSourceLoaded(sourceId))
           finish(true);
       };
+      const onAbort = () => finish(false);
       function finish(ok: boolean) {
         if (settled) return;
         settled = true;
         clearTimeout(timeout);
         instance.off("error", onError);
         instance.off("sourcedata", onData);
+        signal?.removeEventListener('abort', onAbort);
         ok ? resolve() : reject(new Error("Basemap tiles unavailable"));
       }
       instance.on("error", onError);
       instance.on("sourcedata", onData);
-      if (instance.isSourceLoaded(sourceId)) finish(true);
+      signal?.addEventListener('abort', onAbort, { once: true });
+      if (signal?.aborted) finish(false);
+      else if (instance.isSourceLoaded(sourceId)) finish(true);
     });
   }
   async function applyBasemapTiles(basemap: Basemap) {
@@ -549,6 +554,8 @@
       return;
     }
     const request = ++basemapRequest;
+    const controller = new AbortController();
+    basemapAbort = controller;
     nativeMotionController?.cancel();
     basemapSwitching = true;
     pendingBasemap = basemap;
@@ -568,37 +575,49 @@
         { id: "candidate-base", type: "raster", source: "candidate-base", paint: { 'raster-fade-duration': 0 } },
         "transport",
       );
-      await waitForRaster(instance, "candidate-base");
+      await waitForRaster(instance, "candidate-base", controller.signal);
       if (request !== basemapRequest || map !== instance) return;
+      if (mapState.basemap !== basemap) controller.abort();
+      controller.signal.throwIfAborted();
       const base = instance.getSource("base") as any;
       if (typeof base?.setTiles !== "function") throw new Error("Basemap source cannot switch");
       base.setTiles(rasterTiles(basemap));
       baseChanged = true;
-      await waitForRaster(instance, "base");
+      await waitForRaster(instance, "base", controller.signal);
       if (request !== basemapRequest || map !== instance) return;
+      if (mapState.basemap !== basemap) controller.abort();
+      controller.signal.throwIfAborted();
       applyBaseAppearance(instance, basemap);
       // Source-loaded precedes the raster's first fade completing. Keep the
       // opaque candidate covering the base until that bounded transition ends.
       if (!terrainEnabled && cacheTuning.tileFadeMs > 0)
         await new Promise<void>(resolve => setTimeout(resolve, cacheTuning.tileFadeMs));
       if (request !== basemapRequest || map !== instance) return;
+      if (mapState.basemap !== basemap) controller.abort();
+      controller.signal.throwIfAborted();
       appliedBasemap = basemap;
       onbasemap(basemap);
     } catch {
-      if (map === instance) {
+      if (map === instance && request === basemapRequest) {
         if (baseChanged) {
           (instance.getSource("base") as any)?.setTiles?.(rasterTiles(previous));
           try { await waitForRaster(instance, "base"); } catch { /* keep the last selected mode */ }
+          if (map === instance) applyBaseAppearance(instance, previous);
         }
-        onbasemap(previous);
-        basemapError = `${basemapLabel(basemap)} imagery is unavailable. ${basemapLabel(previous)} remains selected.`;
+        // A superseded request must never overwrite the latest toolbar/URL
+        // intent. Its candidate is removed before the next handoff starts.
+        if (!controller.signal.aborted && mapState.basemap === basemap) {
+          onbasemap(previous);
+          basemapError = `${basemapLabel(basemap)} imagery is unavailable. ${basemapLabel(previous)} remains selected.`;
+        }
       }
     } finally {
-      if (map === instance) {
+      if (map === instance && request === basemapRequest) {
         if (instance.getLayer("candidate-base")) instance.removeLayer("candidate-base");
         if (instance.getSource("candidate-base")) instance.removeSource("candidate-base");
       }
       if (request === basemapRequest) {
+        if (basemapAbort === controller) basemapAbort = undefined;
         basemapSwitching = false;
         pendingBasemap = undefined;
       }
@@ -1908,6 +1927,7 @@
       resizeObserver.disconnect();
       terrainViewGeneration++; terrainViewAbort?.abort();
       if (resizeFrame !== undefined) cancelAnimationFrame(resizeFrame);
+      basemapAbort?.abort();
       basemapRequest++;
       feedAbort?.abort();
       if (boundsTimer) clearTimeout(boundsTimer);
@@ -1981,8 +2001,9 @@
   $effect(() => {
     const basemap = mapState.basemap;
     if (active && nativeStyleReady && map) applyWorldBaselineBasemap(map, basemap);
-    if (active && nativeStyleReady && map && appliedBasemap !== basemap) {
-      void applyBasemapTiles(basemap);
+    if (active && nativeStyleReady && map) {
+      if (basemapSwitching && pendingBasemap !== basemap) basemapAbort?.abort();
+      else if (!basemapSwitching && appliedBasemap !== basemap) void applyBasemapTiles(basemap);
     }
   });
   $effect(() => {
@@ -2084,7 +2105,7 @@
   <div class="map-host" bind:this={host}></div>
   {#if hoverLabel}<div class="pin-hover-label" class:below={hoverLabel.below} role="tooltip" style:left={`${hoverLabel.x}px`} style:top={`${hoverLabel.y}px`} style:--hover-pin-height={`${useV1Pins ? 41 * pinScale + 3 : coordinateRadius + 5}px`}>
     <strong>{hoverLabel.name}</strong>
-    <span><i style:background={categoryPresentation(hoverLabel.categoryKey).color}></i>{tr(categoryPresentation(hoverLabel.categoryKey).label, $language)}</span>
+    <span>{tr(categoryPresentation(hoverLabel.categoryKey).label, $language)}</span>
   </div>{/if}
   {#if rendererUnavailable}<p class="map-status" role="alert">{tr('Map unavailable in this browser.', $language)}</p>{/if}
   {#if terrainError}<small class="map-status terrain-status" role="alert">{terrainError}</small>{/if}
@@ -2200,11 +2221,10 @@
     position: absolute;
     inset: 0;
   }
-  .pin-hover-label { position:absolute; z-index:3; pointer-events:none; transform:translate(-50%,calc(-100% - var(--hover-pin-height))); width:max-content; max-width:min(16rem,calc(100% - 20px)); padding:.55rem .7rem; box-sizing:border-box; background:var(--panel,#1c1c1c); color:var(--ink,#f2f0e8); border:1px solid var(--line,#494949); box-shadow:0 3px 12px #0004; font-size:.8rem; line-height:1.35; }
+  .pin-hover-label { position:absolute; z-index:3; pointer-events:none; transform:translate(-50%,calc(-100% - var(--hover-pin-height))); width:max-content; max-width:min(16rem,calc(100% - 20px)); padding:.45rem .65rem; box-sizing:border-box; background:var(--panel,#1c1c1c); color:var(--ink,#f2f0e8); border:1px solid color-mix(in srgb,var(--line,#494949) 60%,transparent); border-radius:8px; box-shadow:0 4px 14px #0003; font-size:.78rem; line-height:1.3; }
   .pin-hover-label.below { transform:translate(-50%,12px); }
   .pin-hover-label strong { display:-webkit-box; -webkit-line-clamp:2; line-clamp:2; -webkit-box-orient:vertical; max-height:2.7em; overflow:hidden; overflow-wrap:anywhere; text-overflow:ellipsis; font-weight:600; }
-  .pin-hover-label span { display:flex; align-items:center; gap:.4rem; margin-top:.25rem; font-size:.72rem; }
-  .pin-hover-label i { width:.45rem; height:.45rem; flex:none; border-radius:50%; }
+  .pin-hover-label span { display:block; margin-top:.18rem; color:var(--muted,#b9b9b1); font-size:.7rem; }
   .terrain-status { top:6.8rem; left:.65rem; transform:none; }
   .feature-list-toggle,
   .diagnostics-toggle {

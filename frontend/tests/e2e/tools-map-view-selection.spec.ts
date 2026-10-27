@@ -46,11 +46,11 @@ test('Tools map controls operate the active map and keep style values legible in
   const controls = page.locator('.map-navigation');
   const style = controls.getByRole('group', { name: 'Map style' });
   const camera = controls.locator('.dimension-button');
-  await expect(style.getByRole('button', { name: 'Street', exact: true })).toBeEnabled();
+  await expect(style.getByRole('switch', { name: 'Map style: Street', exact: true })).toBeEnabled();
   await expect(camera).toHaveText('2D');
   const themeToggle = page.locator('.masthead .theme-toggle');
   const expectStyleContrast = async (label: string) => {
-    const colors = await style.locator('.desktop-style[aria-pressed=true]').evaluate(element => {
+    const colors = await style.getByRole('switch').evaluate(element => {
       const selected = element as HTMLButtonElement;
       const computed = getComputedStyle(selected);
       return { label: selected.textContent?.trim(), foreground: computed.color, background: computed.backgroundColor };
@@ -61,7 +61,7 @@ test('Tools map controls operate the active map and keep style values legible in
   if (await themeToggle.getAttribute('aria-pressed') !== 'true') await themeToggle.click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   await expectStyleContrast('Street');
-  await style.getByRole('button', { name: 'Satellite', exact: true }).click();
+  await style.getByRole('switch').click();
   await expectStyleContrast('Satellite');
   await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getStyle().sources.base.tiles[0])).toContain('World_Imagery');
   await themeToggle.click();

@@ -2,13 +2,25 @@
 export const CATEGORY_PRESENTATIONS = Object.freeze({
   animal_keeping_and_production: Object.freeze({ label: 'Animal keeping and production', color: '#009E73', shape: 'circle' }),
   slaughter: Object.freeze({ label: 'Slaughter', color: '#D55E00', shape: 'diamond' }),
-  processing_and_preparation: Object.freeze({ label: 'Processing and preparation', color: '#999999', shape: 'square' }),
+  processing_and_preparation: Object.freeze({ label: 'Processing and preparation', color: '#86A7FA', shape: 'square' }),
   research_and_animal_use: Object.freeze({ label: 'Research and animal use', color: '#CC79A7', shape: 'hexagon' }),
   other_regulated_premises: Object.freeze({ label: 'Other regulated premises', color: '#E69F00', shape: 'triangle' }),
   unclassified: Object.freeze({ label: 'Unclassified', color: '#B8B8B8', shape: 'outlined-circle' }),
 } as const);
 
 export type CategoryPresentationKey = keyof typeof CATEGORY_PRESENTATIONS;
+
+/** Existing V1 artwork families, shared by previews, feeds and native layers.
+ * Blue is the yellow artwork baked once with hue-rotate(170deg) saturate(1.2),
+ * matching the approved palette without recoloring pins during rendering. */
+export const CATEGORY_PIN_COLORS: Readonly<Record<CategoryPresentationKey, string>> = Object.freeze({
+  animal_keeping_and_production: 'green', slaughter: 'red',
+  processing_and_preparation: 'blue', research_and_animal_use: 'violet',
+  other_regulated_premises: 'orange', unclassified: 'grey',
+});
+export const CATEGORY_PIN_IMAGES = Object.freeze(Object.fromEntries(
+  Object.entries(CATEGORY_PIN_COLORS).map(([key, color]) => [key, `v1-pin-${color}`]),
+)) as Readonly<Record<CategoryPresentationKey, string>>;
 
 // Older preview fixtures and third-party consumers may still send the short
 // V1-compatible keys. Resolve them for display without changing API values.

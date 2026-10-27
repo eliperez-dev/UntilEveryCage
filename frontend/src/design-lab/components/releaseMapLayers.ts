@@ -2,6 +2,7 @@
  * clustered by the server; the browser never receives a facility feed. */
 
 export const RELEASE_MAP_SOURCE_LAYER = 'uec_map';
+import { CATEGORY_PRESENTATIONS, CATEGORY_PRIMARY_BY_SOURCE_KEY } from '../../features/locations/categoryPresentation';
 
 /** The only properties the public map projection may expose. */
 export const RELEASE_MAP_PROPERTIES = [
@@ -175,11 +176,7 @@ export function addReleaseMapLayers(
     },
     paint: {
       'text-color': ['match', ['get', 'category_key'],
-        'animal_keeping_and_production', '#009E73', 'animal_production', '#009E73', 'farm', '#009E73',
-        'slaughter', '#D55E00',
-        'processing_and_preparation', '#0072B2', 'processing', '#0072B2',
-        'research_and_animal_use', '#CC79A7', 'research', '#CC79A7', 'laboratory', '#CC79A7',
-        'other_regulated_premises', '#E69F00', 'other_regulated', '#E69F00', 'dealer', '#E69F00', 'exhibitor', '#E69F00', '#B8B8B8'],
+        ...Object.entries(CATEGORY_PRIMARY_BY_SOURCE_KEY).flatMap(([key, primary]) => [key, CATEGORY_PRESENTATIONS[primary].color]), CATEGORY_PRESENTATIONS.unclassified.color],
       'text-halo-color': '#171a18', 'text-halo-width': 1.5,
       'text-opacity': 0.98 * opacity,
     },

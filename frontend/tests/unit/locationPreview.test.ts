@@ -18,7 +18,7 @@ describe('location preview presentation', () => {
 
   it('uses the canonical V1 pin family and a neutral pin for unknown categories', () => {
     expect(locationPreviewPinFile('slaughter', CATEGORY_PRIMARY_BY_SOURCE_KEY)).toBe('marker-icon-2x-red.png');
-    expect(locationPreviewPinFile('processing_and_preparation', CATEGORY_PRIMARY_BY_SOURCE_KEY)).toBe('marker-icon-2x-grey.png');
+    expect(locationPreviewPinFile('processing_and_preparation', CATEGORY_PRIMARY_BY_SOURCE_KEY)).toBe('marker-icon-2x-blue.png');
     expect(locationPreviewPinFile('unknown_source_activity', CATEGORY_PRIMARY_BY_SOURCE_KEY)).toBe('marker-icon-2x-grey.png');
   });
 });

@@ -35,15 +35,15 @@ API schemas own supported fields. They are not additional roadmaps.
   (`#f2f0e8`) in Light. Keep category pins, clusters and map imagery independent
   of interface theme. Preserve all existing controls and workflow behavior.
 - One centered navigation group: `Map Data | Contribute About`.
-  Brand/logo left, Tools right; all four destinations remain usable on mobile.
+  Brand/logo left, More tools right; all four destinations remain usable on mobile.
   No old hover-subpage navigation, disabled account placeholder or extra header strip.
-- Release selection/history and diagnostics belong in Tools, not a separate
+- Release selection/history and diagnostics belong in More tools, not a separate
   header Release button. Display dataset dates; retain immutable IDs internally.
   Application semver comes from the backend Rust crate, not a frontend constant.
 - The default `/` and `#/` route is the separate outreach landing page. Preserve
   the approved `HIDDEN IN / PLAIN SIGHT.` layout, short copy, documentary pig/cow
   imagery, cream map-preview section and direct `Open the map` links to `#/map`.
-  Use the same shared four-link header, theme control and Tools as the other pages;
+  Use the same shared four-link header, theme control and More tools as the other pages;
   landing does not mark a navigation destination active.
   Its still-image motion has pause/resume and a static reduced-motion fallback.
   The map stays lazy until opened. Map search replaces the separate Database page;
@@ -51,18 +51,23 @@ API schemas own supported fields. They are not additional roadmaps.
   old FAQ links retain their section and map context. API and downloads remain
   available, including a download link from map search.
   Existing informational/download routes remain compatible aliases.
-- A centered horizontal map toolbar joins desktop Search map with direct
-  Street/Satellite controls, 2D/3D, Your location and Search this area. The input
-  stays in place as its resizable results/detail surface opens directly below
-  the search segment. On mobile, tools stay centered near the map top while
+- A horizontal map toolbar sits 24px from the desktop map's left edge and 16px
+  below its top. It joins Search map with one Street/Satellite switch, 2D/3D,
+  Your location and Search this area. The style switch shows the current style
+  and exposes the next style in its tooltip. Search input stays in place as
+  results, detail and filters open flush below the entire toolbar width.
+  Resizing the panel changes both joined widths; bounds keep the controls usable
+  at narrow desktop and zoomed layouts. On mobile, tools stay centered near the map top while
   search uses the bottom sheet. Keep 44px touch targets and native gestures.
-  The 3D view uses a 60-degree pitch; 2D looks straight down. More tools contains
+  The 3D view uses a 60-degree pitch; 2D looks straight down and resets bearing
+  to north, preserving geographic focus and zoom. More tools contains
   release selection, clustering, icon size, optimized dots and diagnostics;
   map style and camera controls are not duplicated in that menu.
 - Resize applicable panels by dragging edges, not plus/minus width buttons.
   Do not change panel layout without the maintainer's specific approval.
 - The map stage fills the space below the header, including when navigation
-  wraps. On desktop Search opens its anchored resizable workspace at one-third width;
+  wraps. On desktop Search opens its anchored resizable workspace at one-third
+  width, with a 448px minimum for the joined toolbar and a viewport-safe maximum;
   the map remains full-size underneath it. Opening, closing or resizing the
   overlay preserves the map canvas, camera and marker positions. Search,
   filters, results and facility detail share that overlay.
@@ -99,24 +104,28 @@ API schemas own supported fields. They are not additional roadmaps.
 
 ## Map
 
-- Individual pins show an escaped-text name/category label on fine-pointer
+- Individual pins show a compact, subtly rounded escaped-text name/category label on fine-pointer
   hover. Labels use the validated release-pinned public detail projection, with
   debouncing, cancellation and a bounded short-lived in-memory cache. Release,
   restrictions, filter and active-state changes invalidate labels; clusters and
   aggregate references never expose a facility tooltip. Hover does not move the
-  camera or obstruct pin selection.
+  camera or obstruct pin selection. The category uses muted text without a
+  colored swatch; the pin already communicates category color.
 - Search this area captures fixed bounds and draws a native geographic perimeter.
-  Panning, rotation and style changes retain those bounds. The persistent
-  Searching this area indication includes a clear action that removes only this
-  scope and its graphic; neither applying nor clearing it opens the search sheet.
+  Panning, rotation and style changes retain those bounds. There is no separate
+  Searching this area indicator. The toolbar action changes to Clear area search,
+  and the removable scope chip remains in results. Clearing either removes only
+  this scope and its graphic; neither applying nor clearing opens the search sheet.
   Radius scopes remain distinct. Queries and spatial scopes are not persisted.
 - Facility icons default to 80% size. More tools and the existing debug slider
   share renderer settings for clustering, icon size and optimized dots; changes
   retain camera, filters and selection and are not persisted.
 - Use MapLibre, the existing V1 PNG pin family and V2 taxonomy mappings.
   Do not substitute the six legacy type names for the V2 classification model.
-  Processing is grey; do not invent approval for an undocumented palette.
-  Preserve current category meanings until the maintainer agrees a change.
+  Processing is blue, and grey is reserved for Unclassified. Apply the same
+  category mapping to PNG pins, optimized dots, native renderers, filters,
+  results and facility panels. Preserve all other category colors, category
+  meanings and precision cues.
 - Default cluster radius is 50 px and the camera-zoom cutoff is 9.0. Preserve
   explicit debug overrides. Automatic clustering also stops below 2,800 matching
   mapped facilities, preserving the V1 population threshold. Panning does not
@@ -129,9 +138,9 @@ API schemas own supported fields. They are not additional roadmaps.
   On selection/inspection, show a red geographic area 500 metres across
   (250-metre radius), not a fixed-pixel circle or invented confidence interval.
   Use supported source extent where available. No permanent approximation legend.
-- Street/Satellite selector and adjacent 2D/3D toggle form one compact Map View
-  group inside Tools. Any desktop gesture hint stays under these options inside
-  Tools. Keep the map navigation toolbar in the map column, above mobile sheets
+- The Street/Satellite switch and adjacent 2D/3D toggle live in the map toolbar,
+  with accessible camera-gesture help. Do not duplicate them in More tools.
+  Keep the map navigation toolbar in the map column, above mobile sheets
   and attribution; no separate gesture banner or default white MapLibre controls.
 - Native terrain is lazy, true-scale and has a usable flat fallback.
   Initial 2D does not request elevation. The first 3D activation waits for

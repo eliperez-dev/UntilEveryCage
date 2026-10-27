@@ -1,6 +1,6 @@
 /** A bounded visual bridge between native Supercluster levels. Never changes source data. */
 import type { GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl';
-import { CATEGORY_PRIMARY_BY_SOURCE_KEY } from '../../features/locations/categoryPresentation';
+import { CATEGORY_PRIMARY_BY_SOURCE_KEY, CATEGORY_PIN_IMAGES } from '../../features/locations/categoryPresentation';
 import { resizeMotionCanvas } from './mapSurfaceMotion';
 
 export const DEFAULT_CLUSTER_MOTION_MS = 210;
@@ -25,13 +25,11 @@ export function clusterMotionImage(properties: Properties): string {
     const count = Number(properties.representedCount ?? properties.point_count);
     return `cluster-${count >= 1001 ? 'very-high' : count >= 100 ? 'high' : count >= 10 ? 'mid' : 'low'}`;
   }
-  if (['city', 'city_reference_approximate', 'provider_locality_approximate', 'locality_reference_coarse'].includes(String(properties.precision))) return 'v1-pin-grey';
   let keys = properties.category_keys;
   if (typeof keys === 'string') { try { keys = JSON.parse(keys); } catch { keys = []; } }
-  const order = ['slaughter', 'research_and_animal_use', 'processing_and_preparation', 'animal_keeping_and_production', 'other_regulated_premises'];
+  const order = ['slaughter', 'research_and_animal_use', 'processing_and_preparation', 'animal_keeping_and_production', 'other_regulated_premises'] as const;
   const category = order.find(key => Array.isArray(keys) && keys.includes(key)) ?? CATEGORY_PRIMARY_BY_SOURCE_KEY[String(properties.category_key)];
-  const colors: Record<string, string> = { slaughter: 'red', research_and_animal_use: 'violet', processing_and_preparation: 'grey', animal_keeping_and_production: 'green', other_regulated_premises: 'orange' };
-  return `v1-pin-${colors[category ?? ''] ?? 'grey'}`;
+  return CATEGORY_PIN_IMAGES[category ?? 'unclassified'] ?? CATEGORY_PIN_IMAGES.unclassified;
 }
 
 export class NativeClusterMotionController {

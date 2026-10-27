@@ -179,7 +179,7 @@ test('cold landing entry and warmed reload keep map controls and exact/approxima
   await page.getByRole('button', { name: 'Close workspace', exact: true }).click();
   await expectMapWidth();
 
-  await page.locator('.map-navigation').getByRole('button', { name: 'Satellite', exact: true }).click();
+  await page.locator('.map-navigation').getByRole('switch', { name: 'Map style: Street', exact: true }).click();
   await expect.poll(() => new URL(page.url()).hash).toContain('basemap=satellite');
   await expect.poll(() => page.evaluate(() => Boolean((window as any).__UEC_LOCAL_PREVIEW_MAP__?.getLayer('approx-reference-pins')))).toBe(true);
   await expect(page.locator('.startup-status')).toHaveCount(0);
@@ -209,7 +209,7 @@ test('cold landing entry and warmed reload keep map controls and exact/approxima
   await expect(page.getByRole('combobox', { name: 'Search across public release records' })).toBeVisible();
   expect(new URL(page.url()).hash).toContain('list=open');
   await page.getByRole('button', { name: 'Close workspace', exact: true }).click();
-  await page.locator('.map-navigation').getByRole('button', { name: 'Satellite', exact: true }).click();
+  await page.locator('.map-navigation').getByRole('switch', { name: 'Map style: Street', exact: true }).click();
   await expect.poll(() => new URL(page.url()).hash).toContain('basemap=satellite');
   await expect(page.locator('.startup-status')).toHaveCount(0);
 
@@ -324,10 +324,10 @@ test('cold landing entry and warmed reload keep map controls and exact/approxima
   await expect(navigation.getByRole('button',{name:'More map controls',exact:true})).toHaveCount(0);
   await expect(navigation.getByRole('button',{name:'Zoom out',exact:true})).toHaveCount(0);
   await navigation.getByRole('button',{name:'View',exact:true}).click();
-  await navigation.getByRole('button',{name:'Satellite',exact:true}).click();
+  await navigation.getByRole('switch',{name:'Map style: Street',exact:true}).click();
   await expect.poll(()=>page.evaluate(()=>(window as any).__UEC_LOCAL_PREVIEW_MAP__.getStyle().sources.base.tiles[0])).toContain('World_Imagery');
   await navigation.getByRole('button',{name:'View',exact:true}).click();
-  await navigation.getByRole('button',{name:'Street',exact:true}).click();
+  await navigation.getByRole('switch',{name:'Map style: Satellite',exact:true}).click();
   await expect(navigation.getByRole('button',{name:'Switch to 3D',exact:true})).toBeEnabled();
   // Native camera gestures remain supported; the toolbar uses the terrain-aware
   // shared request handler when returning to an overhead view.

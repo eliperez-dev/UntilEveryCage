@@ -142,7 +142,7 @@ test('candidate map retains native overlays and V1 selection across route and ba
   await page.goto('/v2-preview/#/database?f1a=field&source=us.fsis');
   await page.goto('/v2-preview/#/map?f1a=field&source=us.fsis');
   await ready();
-  await page.locator('.map-navigation').getByRole('button', { name: 'Satellite', exact: true }).click();
+  await page.locator('.map-navigation').getByRole('switch', { name: 'Map style: Street', exact: true }).click();
   await page.waitForFunction(() => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     return map?.isSourceLoaded('locations') && ['clusters', 'aggregate-outer', 'source-coordinate-points', 'v1-source-pins'].every(id => map.getLayer(id));

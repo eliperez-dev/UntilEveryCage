@@ -80,7 +80,7 @@ test('viewed basemap tiles survive zoom return and browser reload, expire correc
     };
     map.on('render', listener); (window as any).__stopTileHandoffFrames = () => map.off('render', listener);
   });
-  await page.locator('.map-navigation').getByRole('button', { name: 'Satellite', exact: true }).click();
+  await page.locator('.map-navigation').getByRole('switch', { name: 'Map style: Street', exact: true }).click();
   await expect.poll(() => page.evaluate(() => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     return map.getStyle().sources.base.tiles[0].includes('World_Imagery') && !map.getLayer('candidate-base') && map.isSourceLoaded('base');
@@ -96,7 +96,7 @@ test('viewed basemap tiles survive zoom return and browser reload, expire correc
 
   // Exercise the actual debug callbacks against storage and MapLibre, rather
   // than only checking that range controls display their chosen value.
-  await page.locator('.map-navigation').getByRole('button', { name: 'Street', exact: true }).click();
+  await page.locator('.map-navigation').getByRole('switch', { name: 'Map style: Satellite', exact: true }).click();
   await expect.poll(() => page.evaluate(() => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     return map.getStyle().sources.base.tiles[0].includes('openstreetmap') && !map.getLayer('candidate-base') && map.isSourceLoaded('base');

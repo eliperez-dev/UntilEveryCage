@@ -1,7 +1,7 @@
 import type { Map as MapLibreMap } from 'maplibre-gl';
 import '../../map/installPublicMapSourceTransport';
 import type { JsonMapCollection } from './jsonMapFallback';
-import { CATEGORY_PRESENTATIONS, CATEGORY_PRIMARY_BY_SOURCE_KEY } from '../../features/locations/categoryPresentation';
+import { CATEGORY_PRESENTATIONS, CATEGORY_PRIMARY_BY_SOURCE_KEY, CATEGORY_PIN_IMAGES } from '../../features/locations/categoryPresentation';
 import { applyFacilityPinScale, DEFAULT_FACILITY_PIN_SCALE } from './facilityPinScale';
 
 export const DEFAULT_CLUSTER_RADIUS = 50;
@@ -53,14 +53,7 @@ export type RealPreviewVisualSettings = Readonly<{
 const cityReference = ['any', ['==', ['get', 'precision'], 'city'], ['==', ['get', 'precision'], 'city_reference_approximate'], ['==', ['get', 'precision'], 'provider_locality_approximate'], ['==', ['get', 'precision'], 'locality_reference_coarse']];
 const categoryPairs = Object.entries(CATEGORY_PRIMARY_BY_SOURCE_KEY);
 const categoryColorBySourceKey = ['match', ['get', 'category_key'], ...categoryPairs.flatMap(([sourceKey, primaryKey]) => [sourceKey, CATEGORY_PRESENTATIONS[primaryKey].color]), CATEGORY_PRESENTATIONS.unclassified.color];
-const v1PinByPrimary = {
-  animal_keeping_and_production: 'v1-pin-green',
-  slaughter: 'v1-pin-red',
-  processing_and_preparation: 'v1-pin-grey',
-  research_and_animal_use: 'v1-pin-violet',
-  other_regulated_premises: 'v1-pin-orange',
-  unclassified: 'v1-pin-grey',
-} as const;
+const v1PinByPrimary = CATEGORY_PIN_IMAGES;
 const v1PinBySourceKey = ['match', ['get', 'category_key'], ...categoryPairs.flatMap(([sourceKey, primaryKey]) => [sourceKey, v1PinByPrimary[primaryKey]]), 'v1-pin-grey'];
 // Corrected feeds provide complete taxonomy keys. Prefer those over a legacy
 // scalar category so normal circles and V1 assets always share one palette.
@@ -208,9 +201,9 @@ export function addRealPreviewMapLayers(
     id: 'approx-reference-points', type: 'symbol', source: 'locations',
     filter: ['all', ...aggregateReference.slice(1), cityReference],
     layout: {
-      // A singleton remains an ordinary muted pin, not a misleading numeric
+      // A singleton retains its category pin, not a misleading numeric
       // cluster badge. A small ≈ mark makes its precision legible before selection.
-      'icon-image': 'v1-pin-grey', 'icon-anchor': 'bottom', 'icon-size': 0.5 * DEFAULT_FACILITY_PIN_SCALE,
+      'icon-image': v1CategoryPin, 'icon-anchor': 'bottom', 'icon-size': 0.5 * DEFAULT_FACILITY_PIN_SCALE,
       'icon-allow-overlap': true, 'icon-ignore-placement': true,
       'text-field': ['case', ['>', weight, 1], ['to-string', weight], ''], 'text-font': ['Open Sans Bold'], 'text-size': 11,
       'text-allow-overlap': true, 'text-ignore-placement': true,
@@ -257,7 +250,7 @@ export function addRealPreviewMapLayers(
 
 const pinImageLoads = new WeakMap<MapLibreMap, Promise<void>>();
 const pinModeGenerations = new WeakMap<MapLibreMap, number>();
-const V1_PIN_IMAGES = [['v1-pin-red', 'marker-icon-2x-red.png'], ['v1-pin-green', 'marker-icon-2x-green.png'], ['v1-pin-yellow', 'marker-icon-2x-yellow.png'], ['v1-pin-violet', 'marker-icon-2x-violet.png'], ['v1-pin-orange', 'marker-icon-2x-orange.png'], ['v1-pin-grey', 'marker-icon-2x-grey.png'], ['v1-pin-shadow', 'marker-shadow.png']] as const;
+const V1_PIN_IMAGES = [['v1-pin-red', 'marker-icon-2x-red.png'], ['v1-pin-green', 'marker-icon-2x-green.png'], ['v1-pin-yellow', 'marker-icon-2x-yellow.png'], ['v1-pin-blue', 'marker-icon-2x-blue.png'], ['v1-pin-violet', 'marker-icon-2x-violet.png'], ['v1-pin-orange', 'marker-icon-2x-orange.png'], ['v1-pin-grey', 'marker-icon-2x-grey.png'], ['v1-pin-shadow', 'marker-shadow.png']] as const;
 
 function createApproximationMarkImage(): ImageData | null {
   const canvas = document.createElement('canvas');

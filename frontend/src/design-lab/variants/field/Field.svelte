@@ -209,16 +209,24 @@
     layoutTuning.set({ panelWidthPercent: 100 / 3, rowPadding: 16, typeScale: 1, mobileSheetPercent: 48, mobileExpandedPercent: 90 });
     railWidth.set(null);
   }
+  function boundedRailWidth(width: number) {
+    const available = Math.max(0, window.innerWidth - 48);
+    const minimum = Math.min(448, available);
+    const maximum = Math.min(available, Math.max(minimum, Math.floor(window.innerWidth * .55)));
+    return Math.max(minimum, Math.min(maximum, width));
+  }
   function resizeRail(event: PointerEvent) {
     const startX = event.clientX;
-    const startWidth = $railWidth ?? window.innerWidth * $layoutTuning.panelWidthPercent / 100;
-    const resize = (move: PointerEvent) => { railWidth.set(Math.max(300, Math.min(Math.floor(window.innerWidth * 0.55), startWidth + move.clientX - startX))); };
+    const startWidth = event.currentTarget instanceof HTMLElement ? event.currentTarget.closest('.results')?.getBoundingClientRect().width ?? 448 : 448;
+    const resize = (move: PointerEvent) => { railWidth.set(boundedRailWidth(startWidth + move.clientX - startX)); };
     const stop = () => { window.removeEventListener('pointermove', resize); window.removeEventListener('pointerup', stop); };
     window.addEventListener('pointermove', resize); window.addEventListener('pointerup', stop, { once: true });
   }
   function resizeRailKey(event: KeyboardEvent) {
     if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
-      event.preventDefault(); railWidth.update(width => Math.max(300, Math.min(Math.floor(window.innerWidth * 0.55), (width ?? window.innerWidth * $layoutTuning.panelWidthPercent / 100) + (event.key === 'ArrowRight' ? 24 : -24))));
+      event.preventDefault();
+      const width = event.currentTarget instanceof HTMLElement ? event.currentTarget.closest('.results')?.getBoundingClientRect().width ?? 448 : 448;
+      railWidth.set(boundedRailWidth(width + (event.key === 'ArrowRight' ? 24 : -24)));
     }
   }
   const activeFilters = $derived(
@@ -975,8 +983,8 @@
   .field-view :global(.masthead) { position: relative; z-index: 6; flex: 0 0 auto; }
   .map-stage { position: relative; flex: 1 1 auto; min-height: 0; padding: 0; }
   .map-stage :global(.map-surface), .map-stage :global(.map-host) { position: absolute; inset: 0; }
-  .workspace .map-stage :global(.diagnostics-toggle) { left:.65rem;z-index:8; }
-  .workspace .map-stage :global(.map-diagnostics) { left:.65rem;width:min(25rem,calc(100% - 1.3rem)); }
+  .workspace .map-stage :global(.diagnostics-toggle) { left:auto;right:.65rem;z-index:8; }
+  .workspace .map-stage :global(.map-diagnostics) { left:auto;right:.65rem;width:min(25rem,calc(100% - 1.3rem)); }
   .search { display: flex; align-items: center; gap: .65rem; min-width: 0; height: 3.25rem; padding: 0 3.25rem 0 1rem; }
   .search label, .results > header strong, .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
   .search svg, .search-toggle svg { width: 1.1rem; height: 1.1rem; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; color: var(--muted); }
@@ -1121,8 +1129,8 @@
     .workspace .results { position:absolute;inset:auto 0 0;width:100%;height:var(--mobile-sheet-height,56px);border-right:0;border-top:1px solid var(--line);border-radius:12px 12px 0 0; }
     .map-stage :global(.maplibregl-ctrl-bottom-left), .map-stage :global(.maplibregl-ctrl-bottom-right) { left:auto;right:.5rem;bottom:calc(var(--mobile-sheet-height,56px) + .15rem); }
     .map-stage :global(.maplibregl-ctrl-attrib) { box-sizing:border-box;width:128px;margin:0;white-space:normal;overflow-wrap:anywhere; }
-    .workspace .map-stage :global(.diagnostics-toggle) { left:.65rem;bottom:min(calc(var(--mobile-sheet-height,56px) + 3rem),calc(100% - 3rem)); }
-    .workspace .map-stage :global(.map-diagnostics) { left:.65rem;width:calc(100% - 1.3rem);bottom:calc(var(--mobile-sheet-height,56px) + .4rem);max-height:calc(100% - var(--mobile-sheet-height,56px) - 1rem); }
+    .workspace .map-stage :global(.diagnostics-toggle) { left:.65rem;right:auto;bottom:min(calc(var(--mobile-sheet-height,56px) + 3rem),calc(100% - 3rem)); }
+    .workspace .map-stage :global(.map-diagnostics) { left:.65rem;right:auto;width:calc(100% - 1.3rem);bottom:calc(var(--mobile-sheet-height,56px) + .4rem);max-height:calc(100% - var(--mobile-sheet-height,56px) - 1rem); }
     .workspace.debug-active .map-stage { z-index:9; }
     .workspace.debug-active .map-stage :global(.diagnostics-toggle) { top:.65rem;bottom:auto; }
     .workspace.debug-active .map-stage :global(.map-diagnostics) { bottom:.65rem;max-height:calc(100% - 4.5rem); }
@@ -1157,15 +1165,15 @@
   @media (pointer: coarse) { .filter-chips button { min-height: 2.75rem; } }
 
 /* The search input stays anchored as its joined results surface opens below. */
-.map-tool-shell { --search-segment-width:clamp(18rem,var(--workspace-width),calc(100vw - 22rem));position:absolute;z-index:5;top:1rem;left:50%;transform:translateX(-50%);width:max-content;max-width:calc(100% - 2rem);height:calc(100% - 2rem);pointer-events:none; }
-.map-toolbar { position:relative;display:flex;align-items:stretch;width:max-content;max-width:100%;border:1px solid var(--line);background:var(--panel);box-shadow:0 3px 14px #0002;pointer-events:auto; }
-.desktop-search { width:var(--search-segment-width);flex:none;min-width:0; }
+.map-tool-shell { position:absolute;z-index:5;top:1rem;left:1.5rem;width:clamp(28rem,var(--workspace-width),calc(100% - 3rem));max-width:calc(100% - 3rem);height:calc(100% - 2rem);pointer-events:none; }
+.map-toolbar { position:relative;display:flex;align-items:stretch;width:100%;max-width:100%;border:1px solid var(--line);background:var(--panel);box-shadow:0 3px 14px #0002;pointer-events:auto; }
+.desktop-search { flex:1;min-width:0; }
 .desktop-search .search { height:44px;padding:0 .8rem 0 0;gap:0; }
 .desktop-search .search-toggle { position:static;display:grid;place-items:center;min-width:44px;width:44px;height:44px;min-height:44px;padding:0;border:0;background:transparent; }
 .desktop-search .search-toggle:hover { background:var(--panel-hover); }
 .desktop-search .search input { height:44px;font-size:.8125rem; }
 .desktop-search .search-autocomplete { top:100%;left:-1px;right:-1px; }
-.workspace .map-tool-shell .results { top:45px;bottom:0;left:0;width:var(--search-segment-width);border:1px solid var(--line);border-top:0;pointer-events:auto;box-shadow:0 7px 16px #0002; }
+.workspace .map-tool-shell .results { top:45px;bottom:0;left:0;width:100%;border:1px solid var(--line);border-top:0;pointer-events:auto;box-shadow:0 7px 16px #0002; }
 .workspace .map-tool-shell .results > header { top:0;right:0; }
 .workspace .map-tool-shell .search-toolbar { padding-right:3rem;border-top:0; }
 .filter-sheet { display:flex;flex-direction:column;padding:0;overflow:hidden;box-shadow:none; }
@@ -1182,7 +1190,7 @@
 .filter-actions .show-results:hover { opacity:.9;background:var(--ink); }
 @media(max-width:40rem) {
   .map-tool-shell { position:static;transform:none;width:auto;height:auto;max-width:none; }
-  .map-toolbar { position:absolute;z-index:7;top:.8rem;left:50%;transform:translateX(-50%);max-width:calc(100% - 1.2rem); }
+  .map-toolbar { position:absolute;z-index:7;top:.8rem;left:50%;width:max-content;transform:translateX(-50%);max-width:calc(100% - 1.2rem); }
   .map-toolbar.toolbar-hidden { visibility:hidden;pointer-events:none; }
   .desktop-search { display:none; }
   .workspace .map-tool-shell .results { inset:auto 0 0;width:100%;height:var(--mobile-sheet-height,56px);border:0;border-top:1px solid var(--line);border-radius:0; }

@@ -371,7 +371,7 @@ test('cluster bodies render on cold and warm public maps through satellite, 3D a
   await page.reload();
   await expectClusterBody('warm');
   const tools = page.getByRole('button', { name: 'More tools', exact: true }); await tools.click();
-  await page.getByRole('navigation',{name:'Map navigation'}).getByRole('button',{name:'Satellite',exact:true}).click();
+  await page.getByRole('navigation',{name:'Map navigation'}).getByRole('switch',{name:'Map style: Street',exact:true}).click();
   await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getStyle().sources.base.tiles[0]), { timeout: basemapHandoffTimeout }).toContain('World_Imagery');
   await expectClusterBody('satellite');
   const toggle = page.locator('.map-navigation .dimension-button'); await toggle.click();
@@ -456,18 +456,18 @@ test('delayed high-elevation terrain keeps the selected geographic focus anchore
       const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
       return { zoom: map.getZoom(), bearing: map.getBearing() };
     });
-    const assertFocus = async () => {
+    const assertFocus = async (bearing = camera.bearing) => {
       await expect.poll(() => page.evaluate(({ coordinate, previous }) => {
         const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__, pixel = map.project(coordinate), box = map.getCanvas().getBoundingClientRect();
         return Math.max(Math.abs(pixel.x - box.width / 2), Math.abs(pixel.y - box.height / 2), Math.abs(map.getZoom() - previous.zoom), Math.abs(map.getBearing() - previous.bearing));
-      }, { coordinate: cameraFixturePoint, previous: camera })).toBeLessThan(1);
+      }, { coordinate: cameraFixturePoint, previous: { ...camera, bearing } })).toBeLessThan(1);
     };
     await assertFocus(); await toggle.click();
     await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getPitch())).toBe(0);
     await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getTerrain())).toMatchObject({ source: 'mapterhorn-terrain', exaggeration: 1 });
-    await assertFocus(); await toggle.click();
+    await assertFocus(0); await toggle.click();
     await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getPitch())).toBe(60);
-    await assertFocus();
+    await assertFocus(0);
   } finally { release(); }
 });
 
@@ -565,32 +565,33 @@ test('camera tilt, map style, and URL state preserve the map view without compas
   await expect(viewToggle).toHaveText('2D');
   await expect(viewToggle).toHaveAttribute('aria-pressed', 'false');
   await expect.poll(() => new URL(page.url()).hash).not.toMatch(/pitch=/);
-  await expect.poll(() => new URL(page.url()).hash).toContain('bearing=24');
+  await expect.poll(() => new URL(page.url()).hash).not.toMatch(/bearing=/);
   await viewToggle.click();
   await expect(viewToggle).toHaveText('3D');
   await expect(viewToggle).toHaveAttribute('aria-pressed', 'true');
   await expect.poll(() => new URL(page.url()).hash).toContain('pitch=60');
-  await expect.poll(() => new URL(page.url()).hash).toContain('bearing=24');
+  await expect.poll(() => new URL(page.url()).hash).not.toMatch(/bearing=/);
   await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getPitch())).toBe(60);
   await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getTerrain())).toMatchObject({ source: 'mapterhorn-terrain', exaggeration: 1 });
 
-  const mapStyle = controls.getByRole('group', { name:'Map style' });
-  await expect(mapStyle.locator('.desktop-style')).toHaveText(['Street','Satellite']);
-  await expect(mapStyle.getByRole('button',{name:'Street',exact:true})).toHaveAttribute('aria-pressed','true');
+  const mapStyle = controls.getByRole('switch', { name:'Map style: Street', exact:true });
+  await expect(mapStyle).toContainText('Street');
+  await expect(mapStyle).toHaveAttribute('aria-checked','false');
   const mapState = await page.evaluate(() => {
     const instance = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     const center = instance.getCenter();
     return { lat: Number(center.lat.toFixed(5)), lon: Number(center.lng.toFixed(5)), zoom: instance.getZoom() };
   });
-  await mapStyle.getByRole('button',{name:'Satellite',exact:true}).click();
-  await expect(mapStyle.getByRole('button',{name:'Satellite',exact:true})).toHaveAttribute('aria-pressed','true');
+  await mapStyle.click();
+  const satelliteSwitch = controls.getByRole('switch',{name:'Map style: Satellite',exact:true});
+  await expect(satelliteSwitch).toHaveAttribute('aria-checked','true');
   await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getStyle().sources.base.tiles[0]), { timeout: basemapHandoffTimeout }).toContain('World_Imagery');
   await expect.poll(() => page.evaluate(() => {
     const instance = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     return [instance.getPitch(), instance.getBearing(), instance.getZoom(), Boolean(instance.getLayer('clusters'))];
-  })).toEqual([60, 24, mapState.zoom, true]);
-  await mapStyle.getByRole('button',{name:'Street',exact:true}).click();
-  await expect(mapStyle.getByRole('button',{name:'Street',exact:true})).toHaveAttribute('aria-pressed','true');
+  })).toEqual([60, 0, mapState.zoom, true]);
+  await satelliteSwitch.click();
+  await expect(mapStyle).toHaveAttribute('aria-checked','false');
   await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getStyle().sources.base.tiles[0]), { timeout: basemapHandoffTimeout }).toContain('tile.openstreetmap.org');
 });
 
@@ -616,7 +617,7 @@ test('flat camera URLs stay compact and the camera control remains usable on tou
   await expect.poll(() => new URL(page.url()).hash).toContain('pitch=60');
 });
 
-test('centered map tools toggle 3D and preserve accessible gesture guidance without compass controls', async ({ page }, testInfo) => {
+test('map tools toggle 3D and preserve accessible gesture guidance without compass controls', async ({ page }, testInfo) => {
   test.setTimeout(60_000);
   await installTerrainFixture(page);
   await page.goto('./#/map?f1a=field&scenario=dense&lat=38&lon=-96&z=4');
@@ -626,10 +627,10 @@ test('centered map tools toggle 3D and preserve accessible gesture guidance with
   });
   const controls = page.getByRole('navigation', { name:'Map navigation' });
   const viewToggle = controls.locator('.dimension-button');
-  const styleSelect = controls.getByRole('group', { name:'Map style' });
+  const styleSelect = controls.getByRole('switch', { name:'Map style: Street', exact:true });
   await expect(controls.locator('#map-camera-help')).toContainText('Right-drag to tilt and rotate');
   await expect(page.locator('.maplibregl-ctrl-compass')).toHaveCount(0);
-  await expect(styleSelect.locator('.desktop-style')).toHaveText(['Street','Satellite']);
+  await expect(styleSelect).toContainText('Street');
   await expect(viewToggle).toHaveText('2D');
   await expect(controls.locator('#map-camera-help')).toHaveClass(/sr-only/);
   const rowTops = await Promise.all([styleSelect.boundingBox(), viewToggle.boundingBox()]);
@@ -897,4 +898,37 @@ test('flat maps do not request elevation and a DEM failure returns to a flat map
     return { pitch: map.getPitch(), terrain: map.getTerrain(), source: map.getSource('mapterhorn-terrain') };
   })).toMatchObject({ pitch: 0, terrain: null, source: undefined });
   expect(demRequests).toBeGreaterThan(0);
+});
+for (const heldStage of ['candidate','base'] as const) test(`rapid style toggles keep the latest Street choice during the ${heldStage} handoff`, async ({ page }) => {
+  const requests=await installPublicCameraFixture(page);
+  const tile=await mockCameraRaster(page);
+  await page.goto('./#/map?release_id=synthetic-release-2026-09&lat=50.95&lon=4.45&z=13');
+  await page.waitForFunction(()=>{
+    const map=(window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    return map?.getLayer('clusters') && map.isSourceLoaded('base');
+  });
+  let imageRequests=0, release!:()=>void;
+  const gate=new Promise<void>(resolve=>release=resolve);
+  await page.route('**/World_Imagery/**',async route=>{
+    imageRequests++;
+    const mapHasBase=await page.evaluate(()=>String((window as any).__UEC_LOCAL_PREVIEW_MAP__?.getStyle().sources.base.tiles[0]).includes('World_Imagery'));
+    if(heldStage==='candidate' || mapHasBase) await gate;
+    await route.fulfill({contentType:'image/png',body:tile}).catch(()=>{});
+  });
+  try {
+    await page.getByRole('switch',{name:'Map style: Street',exact:true}).click();
+    await expect.poll(()=>imageRequests).toBeGreaterThan(0);
+    if(heldStage==='base') await expect.poll(()=>page.evaluate(()=>String((window as any).__UEC_LOCAL_PREVIEW_MAP__?.getStyle().sources.base.tiles[0]))).toContain('World_Imagery');
+    await page.getByRole('switch',{name:'Map style: Satellite',exact:true}).click();
+    await expect(page.getByRole('switch',{name:'Map style: Street',exact:true})).toBeVisible();
+    release();
+    await expect(page.getByText('Loading Satellite imagery…',{exact:true})).toBeHidden();
+    await expect.poll(()=>page.evaluate(()=>{
+      const map=(window as any).__UEC_LOCAL_PREVIEW_MAP__;
+      return {base:String(map.getStyle().sources.base.tiles[0]),candidate:!!map.getSource('candidate-base')};
+    })).toEqual({base:expect.stringContaining('tile.openstreetmap.org'),candidate:false});
+    await expect(page.getByRole('switch',{name:'Map style: Street',exact:true})).toHaveAttribute('aria-checked','false');
+    expect(new URL(page.url()).hash).not.toContain('basemap=satellite');
+    expect(requests.feeds).toBe(1);
+  } finally {release();}
 });

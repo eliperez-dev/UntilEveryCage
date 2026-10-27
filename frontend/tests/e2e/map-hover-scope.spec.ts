@@ -5,16 +5,16 @@ import { expect, test, type Page } from '@playwright/test';
 const release = 'synthetic-hover-scope';
 const id = '550e8400-e29b-41d4-a716-446655440000';
 const point: [number, number] = [5, 45];
-async function install(page: Page, precision = 'source_reported', filters = '') {
+async function install(page: Page, precision = 'source_reported', filters = '', category = 'slaughter') {
   const state = { details: 0, delay: 0, status: 200, generation: 1, feeds: 0 };
   const meta = { profile: 'official', release_id: release, ruleset_version: 'synthetic-rules', release_created_at: '2026-01-01T00:00:00Z' };
-  const row = { facility_id: id, canonical_name: 'Synthetic <img src=x onerror=alert(1)> facility', country_code: 'BE', city: 'Synthetic city', category: 'slaughter', taxonomy_display_category: 'slaughter', taxonomy_primary_categories: ['slaughter'], publication_profile: 'official', factual_review_status: 'reviewed', privacy_screening_status: 'passed', project_approval: 'approved', reviewer_role: null, publication_warning: null, display_precision: precision, latitude: point[1], longitude: point[0], first_observed_at: null, last_observed_at: null, observation_count: 1, lifecycle_status: 'status_unknown', source_type: 'official', source_rights_status: 'cleared', provenance_source: null, release_id: release, release_ruleset_version: 'synthetic-rules', provenance_source_id: 'synthetic-source', provenance_source_name: 'Synthetic source', provenance_source_url: 'https://example.test/source', provenance_retrieved_at: '2026-01-01T00:00:00Z' };
+  const row = { facility_id: id, canonical_name: 'Synthetic <img src=x onerror=alert(1)> facility', country_code: 'BE', city: 'Synthetic city', category, taxonomy_display_category: category, taxonomy_primary_categories: [category], publication_profile: 'official', factual_review_status: 'reviewed', privacy_screening_status: 'passed', project_approval: 'approved', reviewer_role: null, publication_warning: null, display_precision: precision, latitude: point[1], longitude: point[0], first_observed_at: null, last_observed_at: null, observation_count: 1, lifecycle_status: 'status_unknown', source_type: 'official', source_rights_status: 'cleared', provenance_source: null, release_id: release, release_ruleset_version: 'synthetic-rules', provenance_source_id: 'synthetic-source', provenance_source_name: 'Synthetic source', provenance_source_url: 'https://example.test/source', provenance_retrieved_at: '2026-01-01T00:00:00Z' };
   await page.route('https://**/*', route => route.abort());
   await page.route('**/api/v2/**', async route => {
     const url = new URL(route.request().url()), path = url.pathname;
     const identity = { profile: 'official', release_id: release, manifest_sha256: 'a'.repeat(64), suppression_generation: state.generation };
     if (path === '/api/v2/releases/manifest') return route.fulfill({ json: { api_version: 'v2', data: { ...identity, manifest: {} } } });
-    if (path === '/api/v2/map/feed') { state.feeds++; return route.fulfill({ json: { api_version: 'v2', data: { type: 'FeatureCollection', features: [{ type: 'Feature', id, geometry: { type: 'Point', coordinates: point }, properties: { facility_id: id, source_id: 'synthetic-source', country_code: 'BE', category_key: 'slaughter', category_keys: ['slaughter'], precision, weight: 1 } }] }, meta: { ...identity, feature_count: 1, public_record_count: 1, unmapped_count: 0, release_label: 'Synthetic release', dataset_version: 'synthetic' } } }); }
+    if (path === '/api/v2/map/feed') { state.feeds++; return route.fulfill({ json: { api_version: 'v2', data: { type: 'FeatureCollection', features: [{ type: 'Feature', id, geometry: { type: 'Point', coordinates: point }, properties: { facility_id: id, source_id: 'synthetic-source', country_code: 'BE', category_key: category, category_keys: [category], precision, weight: 1 } }] }, meta: { ...identity, feature_count: 1, public_record_count: 1, unmapped_count: 0, release_label: 'Synthetic release', dataset_version: 'synthetic' } } }); }
     // Simulate a public pin outside the already loaded result page.
     if (path === '/api/v2/locations') return route.fulfill({ json: { api_version: 'v2', data: [{ ...row, facility_id: '550e8400-e29b-41d4-a716-446655440001', canonical_name: 'Another synthetic result' }], meta: { ...meta, coverage_note: 'Synthetic renderer checks.', next_cursor: null, total_count: 2 } } });
     if (path === `/api/v2/locations/${id}`) {
@@ -51,7 +51,8 @@ test('hover shows safe name/category without moving the camera, caches labels an
   const pixel = await hoverPin(page);
   const tooltip = page.getByRole('tooltip');
   await expect(tooltip).toContainText('Synthetic <img src=x onerror=alert(1)> facility');
-  await expect(tooltip).toContainText('Slaughter'); await expect(tooltip.locator('img')).toHaveCount(0);
+  await expect(tooltip).toContainText('Slaughter'); await expect(tooltip.locator('img, i')).toHaveCount(0);
+  expect(await tooltip.evaluate(element => parseFloat(getComputedStyle(element).borderRadius))).toBeGreaterThanOrEqual(6);
   await page.screenshot({ path: testInfo.outputPath('public-pin-hover.png') });
   await page.getByRole('button', { name: 'Dark theme', exact: true }).click();
   await hoverPin(page); await expect(tooltip).toBeVisible();
@@ -102,7 +103,7 @@ test('area search outlines the exact snapshot through pan and basemap changes, t
   await page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.panBy([70, 20], { duration: 0 }));
   expect(await readArea()).toEqual(before);
   await page.screenshot({ path: testInfo.outputPath('public-area-perimeter.png') });
-  await page.getByRole('button', { name: 'Map style: Street', exact: true }).click();
+  await page.getByRole('switch', { name: 'Map style: Street', exact: true }).click();
   await expect.poll(async () => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getPaintProperty('search-area-outline', 'line-opacity'))).toBe(1);
   expect(await readArea()).toEqual(before); expect(state.feeds).toBe(1);
   await page.getByRole('button', { name: 'Clear area search', exact: true }).first().click();
@@ -182,4 +183,30 @@ test.describe('touch hover exclusion', () => {
     const state = await install(page); await hoverPin(page);
     await page.waitForTimeout(300); expect(state.details).toBe(0); await expect(page.getByRole('tooltip')).toHaveCount(0);
   });
+});
+
+
+for (const precision of ['source_reported','approximate','city']) test(`Processing keeps blue artwork in ${precision} pins and optimized dots`, async ({ page }, testInfo) => {
+  await page.setViewportSize({ width:1440, height:900 });
+    await install(page, precision, '', 'processing_and_preparation');
+    await expect.poll(() => page.evaluate(() => {
+      const map=(window as any).__UEC_LOCAL_PREVIEW_MAP__;
+      return map.queryRenderedFeatures({ layers:['v1-source-pins','approx-reference-pins','approx-reference-points'] })
+        .some((feature:any)=>map.style.getLayer(feature.layer.id).layout.get('icon-image').evaluate(feature).name==='v1-pin-blue');
+    })).toBe(true);
+    await hoverPin(page); await expect(page.getByRole('tooltip')).toContainText('Processing and preparation');
+    await expect(page.getByRole('tooltip').locator('i,img')).toHaveCount(0);
+    if (precision==='source_reported') await page.screenshot({path:testInfo.outputPath('processing-blue-hover.png')});
+    await page.mouse.move(1400,800);
+    await page.getByRole('button',{name:'More tools',exact:true}).click();
+    await page.getByRole('checkbox',{name:'Use optimized pins',exact:true}).check();
+    await page.getByRole('button',{name:'More tools',exact:true}).click();
+    await expect.poll(()=>page.evaluate(()=>{
+      const map=(window as any).__UEC_LOCAL_PREVIEW_MAP__;
+      return map.queryRenderedFeatures({layers:['source-coordinate-points','approx-reference-circles']})
+        .some((feature:any)=>{
+          const color=map.style.getLayer(feature.layer.id).paint.get('circle-color').evaluate(feature);
+          return Math.abs(color.r-134/255)<.001 && Math.abs(color.g-167/255)<.001 && Math.abs(color.b-250/255)<.001;
+        });
+    })).toBe(true);
 });

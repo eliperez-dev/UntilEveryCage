@@ -7,6 +7,7 @@
 import type { Map as MapLibreMap } from 'maplibre-gl';
 import { baseRasterPaint, createBaseStyle, type BasemapKind } from '../../map/baseMapStyle';
 import { DEFAULT_FACILITY_PIN_SCALE } from './facilityPinScale';
+import { CATEGORY_PRESENTATIONS, CATEGORY_PRIMARY_BY_SOURCE_KEY, CATEGORY_PIN_IMAGES } from '../../features/locations/categoryPresentation';
 export { baseRasterPaint, createBaseStyle };
 export type { BasemapKind };
 
@@ -197,6 +198,9 @@ export function addMvtLocationLayers(map: MapLike, sourceId?: string): void {
   const count = ['coalesce', ['get', 'count'], 1];
   const references = ['any', kind('city_reference'), kind('coarse_reference')];
   const referenceStroke = ['match', ['get', 'kind'], 'city_reference', '#86aeca', '#c9a36e'];
+  const categoryPairs = Object.entries(CATEGORY_PRIMARY_BY_SOURCE_KEY);
+  const categoryPin = ['match', ['get', 'category_key'], ...categoryPairs.flatMap(([key, primary]) => [key, CATEGORY_PIN_IMAGES[primary]]), CATEGORY_PIN_IMAGES.unclassified];
+  const categoryColor = ['match', ['get', 'category_key'], ...categoryPairs.flatMap(([key, primary]) => [key, CATEGORY_PRESENTATIONS[primary].color]), CATEGORY_PRESENTATIONS.unclassified.color];
   const source = MVT_SOURCE_ID;
   const sourceLayer = MVT_SOURCE_LAYER;
 
@@ -223,7 +227,7 @@ export function addMvtLocationLayers(map: MapLike, sourceId?: string): void {
     id: 'mvt-reference-center', type: 'symbol', source, 'source-layer': sourceLayer,
     filter: references,
     layout: {
-      'icon-image': 'v1-pin-grey', 'icon-anchor': 'bottom', 'icon-size': 0.5 * DEFAULT_FACILITY_PIN_SCALE,
+      'icon-image': categoryPin, 'icon-anchor': 'bottom', 'icon-size': 0.5 * DEFAULT_FACILITY_PIN_SCALE,
       'icon-allow-overlap': true, 'icon-ignore-placement': true,
     },
     paint: { 'icon-opacity': 0.95 },
@@ -243,7 +247,7 @@ export function addMvtLocationLayers(map: MapLike, sourceId?: string): void {
   map.addLayer({
     id: 'mvt-source-coordinates', type: 'circle', source, 'source-layer': sourceLayer,
     filter: kind('source_coordinate'),
-    paint: { 'circle-radius': 7, 'circle-color': ['match', ['get', 'precision'], 'source_provided_unverified', '#e0a45d', '#d8c99b'], 'circle-opacity': 0.94, 'circle-stroke-color': '#171a18', 'circle-stroke-width': 2.5 },
+    paint: { 'circle-radius': 7, 'circle-color': categoryColor, 'circle-opacity': 0.94, 'circle-stroke-color': '#171a18', 'circle-stroke-width': 2.5 },
   });
   map.addLayer({
     id: 'mvt-v1-source-shadows', type: 'symbol', source, 'source-layer': sourceLayer,
@@ -254,7 +258,7 @@ export function addMvtLocationLayers(map: MapLike, sourceId?: string): void {
   map.addLayer({
     id: 'mvt-v1-source-pins', type: 'symbol', source, 'source-layer': sourceLayer,
     filter: kind('source_coordinate'),
-    layout: { visibility: 'none', 'icon-image': 'v1-pin-red', 'icon-anchor': 'bottom', 'icon-size': 0.5 * DEFAULT_FACILITY_PIN_SCALE,
+    layout: { visibility: 'none', 'icon-image': categoryPin, 'icon-anchor': 'bottom', 'icon-size': 0.5 * DEFAULT_FACILITY_PIN_SCALE,
       'icon-allow-overlap': true, 'icon-ignore-placement': true },
   });
 }

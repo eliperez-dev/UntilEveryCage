@@ -20,9 +20,11 @@ describe('native cluster transition identities and artwork', () => {
     expect(clusterMotionImage({ category_keys: 'bad-json', category_key: 'farm' })).toBe('v1-pin-green');
     expect(clusterMotionImage({ category_key: 'general_food_business' })).toBe('v1-pin-orange');
   });
-  it('retains coarse reference grey and ordinary approximate category pins', () => {
-    expect(clusterMotionImage({ precision: 'city', category_key: 'slaughter' })).toBe('v1-pin-grey');
+  it('retains category artwork across coarse and ordinary approximate references', () => {
+    expect(clusterMotionImage({ precision: 'city', category_key: 'slaughter' })).toBe('v1-pin-red');
     expect(clusterMotionImage({ precision: 'approximate', category_key: 'slaughter' })).toBe('v1-pin-red');
+    expect(clusterMotionImage({ precision: 'city', category_key: 'processing' })).toBe('v1-pin-blue');
+    expect(clusterMotionImage({ category_keys: ['processing_and_preparation'] })).toBe('v1-pin-blue');
     expect(clusterMotionImage({})).toBe('v1-pin-grey');
   });
 });
