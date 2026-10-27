@@ -54,6 +54,24 @@ async function fixture(page: Page, focusedCount?: number) {
   return requests;
 }
 
+async function monitorMotion(page: Page) {
+  await page.evaluate(async () => {
+    const moduleUrl = performance.getEntriesByType('resource').find(entry => entry.name.includes('/nativeClusterMotion.ts'))?.name;
+    const { NativeClusterMotionController } = await import(moduleUrl!);
+    const events: unknown[] = []; (window as any).__motionLifecycle = events;
+    const report = NativeClusterMotionController.prototype.report;
+    NativeClusterMotionController.prototype.report = function (state: string) {
+      if (events.length < 256) events.push({ time: performance.now(), state, phase: this.canvas?.getAttribute('data-phase'), direction: this.canvas?.getAttribute('data-direction'), moving: this.options.getMap()?.isMoving() });
+      return report.call(this, state);
+    };
+    const cancel = NativeClusterMotionController.prototype.cancel;
+    NativeClusterMotionController.prototype.cancel = function (...args: any[]) {
+      if (events.length < 256) events.push({ time: performance.now(), cancel: args[1] ?? 'interrupted', phase: this.canvas?.getAttribute('data-phase'), moving: this.options.getMap()?.isMoving(), stack: new Error().stack?.split('\n').slice(0, 5).join('\n') });
+      return cancel.apply(this, args);
+    };
+  });
+}
+
 test('a slow pairing worker skips decorative motion without blocking camera movement', async ({ page }) => {
   await fixture(page);
   await page.evaluate(async () => {
@@ -266,6 +284,7 @@ test('reduced motion and zero-duration debug controls skip the overlay and reset
 
 test('one continuous zoom holds native marks then moves children once from their parent without pullbacks', async ({ page }, testInfo) => {
   await fixture(page);
+  await monitorMotion(page);
   await page.evaluate(async () => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__, canvas = document.querySelector('.native-cluster-motion')!;
     const loaded = map.isSourceLoaded.bind(map);
@@ -308,8 +327,13 @@ test('one continuous zoom holds native marks then moves children once from their
     };
     map.easeTo({ zoom: 8.8, duration: 1800 }); requestAnimationFrame(sample);
   });
-  await page.waitForFunction(() => !(window as any).__UEC_LOCAL_PREVIEW_MAP__.isMoving() && !document.querySelector('.native-cluster-motion')?.hasAttribute('data-direction'));
-  const continuity = await page.evaluate(() => (window as any).__zoomContinuity as { starts: number; frozenMs: number; samples: number; addedDisplacement: number; held: number; exposed: number; progress: number[] });
+  await expect.poll(() => page.evaluate(() => (window as any).__zoomContinuity.starts)).toBe(1);
+  // Camera movement ends before the holding/pairing/paint handoff phases.
+  // No direction yet does not mean that the transition has completed.
+  await page.waitForFunction(() => !(window as any).__UEC_LOCAL_PREVIEW_MAP__.isMoving() && !document.querySelector('.native-cluster-motion')?.hasAttribute('data-phase'));
+  await expect(page.locator('.native-cluster-motion')).toHaveAttribute('data-state', 'complete');
+  const continuity = await page.evaluate(() => ({ ...(window as any).__zoomContinuity, sampledPhase: document.querySelector('.native-cluster-motion')?.getAttribute('data-phase'), sampledState: document.querySelector('.native-cluster-motion')?.getAttribute('data-state') }) as { starts: number; frozenMs: number; samples: number; addedDisplacement: number; held: number; exposed: number; progress: number[] });
+  await testInfo.attach('motion-completion', { body: JSON.stringify(await page.evaluate(() => ({ events: (window as any).__motionLifecycle, phase: document.querySelector('.native-cluster-motion')?.getAttribute('data-phase'), state: document.querySelector('.native-cluster-motion')?.getAttribute('data-state') }))), contentType: 'application/json' });
   await testInfo.attach('zoom-continuity', { body: JSON.stringify(continuity), contentType: 'application/json' });
   await page.screenshot({ path: testInfo.outputPath('continuous-zoom.png') });
   // Sample coverage is not an FPS benchmark for the CI software renderer.
@@ -329,6 +353,7 @@ test('animation on and off keep the same 3D camera path and mobile wheel zoom re
   test.setTimeout(60_000);
   await page.setViewportSize({ width: 390, height: 844 });
   await fixture(page);
+  await monitorMotion(page);
   const elevation = Buffer.from(await page.evaluate(() => {
     const canvas = document.createElement('canvas'); canvas.width = canvas.height = 512;
     const context = canvas.getContext('2d')!; context.fillStyle = 'rgb(128,0,0)'; context.fillRect(0, 0, 512, 512);
@@ -354,7 +379,7 @@ test('animation on and off keep the same 3D camera path and mobile wheel zoom re
     await page.waitForFunction(expected => {
       const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
       const clusters = [...new Set(map.queryRenderedFeatures({ layers: ['clusters'] }).map((feature: any) => feature.properties.cluster_id))].sort();
-      return !map.isMoving() && map.isSourceLoaded('locations') && JSON.stringify(clusters) === JSON.stringify(expected);
+      return !map.isMoving() && map.isSourceLoaded('locations') && !document.querySelector('.native-cluster-motion')?.hasAttribute('data-phase') && JSON.stringify(clusters) === JSON.stringify(expected);
     }, coarse);
   };
   const paths: { zoom: number; lat: number; lon: number; pitch: number }[][] = [];
@@ -367,7 +392,7 @@ test('animation on and off keep the same 3D camera path and mobile wheel zoom re
       map.on('move', sample); map.once('moveend', () => map.off('move', sample));
       map.easeTo({ zoom: 8.8, duration: 1000 });
     });
-    await page.waitForFunction(() => !(window as any).__UEC_LOCAL_PREVIEW_MAP__.isMoving() && !document.querySelector('.native-cluster-motion')?.hasAttribute('data-direction'));
+    await page.waitForFunction(() => !(window as any).__UEC_LOCAL_PREVIEW_MAP__.isMoving() && !document.querySelector('.native-cluster-motion')?.hasAttribute('data-phase'));
     paths.push(await page.evaluate(() => (window as any).__cameraMotionPath));
   }
   for (const path of paths) {
@@ -389,10 +414,37 @@ test('animation on and off keep the same 3D camera path and mobile wheel zoom re
     const bounds = (window as any).__UEC_LOCAL_PREVIEW_MAP__.getCanvas().getBoundingClientRect();
     return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
   });
+  const expansionZoom = await page.evaluate(async () => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__, source = map.getSource('locations');
+    const ids = [...new Set<number>(map.queryRenderedFeatures({ layers: ['clusters'] }).map((feature: any) => Number(feature.properties.cluster_id)))];
+    return Math.min(...await Promise.all(ids.map(id => source.getClusterExpansionZoom(id))));
+  });
+  expect(Number.isFinite(expansionZoom)).toBe(true);
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-  for (let step = 0; step < 6; step++) { await page.mouse.wheel(0, -120); await page.waitForTimeout(40); }
-  await page.waitForFunction(() => !(window as any).__UEC_LOCAL_PREVIEW_MAP__.isMoving() && !document.querySelector('.native-cluster-motion')?.hasAttribute('data-direction'));
+  // Keep rapid input/momentum coverage. Wheel delta conversion differs across
+  // platforms, so a burst alone does not always reach a native expansion level.
+  const burstStartZoom = await page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getZoom());
+  for (let step = 0; step < 6; step++) {
+    await page.mouse.wheel(0, -120);
+    await page.waitForTimeout(40); // Input cadence, not an animation completion wait.
+  }
+  await page.waitForFunction(previous => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getZoom() > previous, burstStartZoom);
+  await page.waitForFunction(() => !(window as any).__UEC_LOCAL_PREVIEW_MAP__.isMoving() && !document.querySelector('.native-cluster-motion')?.hasAttribute('data-phase'));
+  // If necessary, use bounded extra real inputs to observe an actual split.
+  for (let step = 6; step < 24; step++) {
+    if (await page.evaluate(() => (window as any).__motionFrames.some((frame: any) => frame.direction === 'split'))) break;
+    expect(await page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getZoom()), `No split after the native expansion zoom ${expansionZoom}`).toBeLessThan(expansionZoom + 1);
+    const previousZoom = await page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getZoom());
+    await page.mouse.wheel(0, -120);
+    await page.waitForFunction(previous => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getZoom() > previous, previousZoom);
+    await page.waitForFunction(() => !(window as any).__UEC_LOCAL_PREVIEW_MAP__.isMoving() && !document.querySelector('.native-cluster-motion')?.hasAttribute('data-phase'));
+    if (await page.evaluate(() => (window as any).__motionFrames.some((frame: any) => frame.direction === 'split'))) break;
+  }
+  await expect.poll(() => page.evaluate(() => (window as any).__motionFrames.filter((frame: any) => frame.direction === 'split').length)).toBeGreaterThan(0);
+  await page.waitForFunction(() => !(window as any).__UEC_LOCAL_PREVIEW_MAP__.isMoving() && !document.querySelector('.native-cluster-motion')?.hasAttribute('data-phase'));
+  await expect(page.locator('.native-cluster-motion')).toHaveAttribute('data-state', 'complete');
   const wheel = await page.evaluate(() => (window as any).__wheelCameraZooms as number[]);
+  await testInfo.attach('wheel-completion', { body: JSON.stringify(await page.evaluate(() => ({ events: (window as any).__motionLifecycle, phase: document.querySelector('.native-cluster-motion')?.getAttribute('data-phase'), state: document.querySelector('.native-cluster-motion')?.getAttribute('data-state') }))), contentType: 'application/json' });
   expect(wheel.length).toBeGreaterThan(1);
   expect(wheel.some(zoom => zoom > 6 && zoom < wheel.at(-1)!)).toBe(true);
   expect(wheel.every((zoom, index) => index === 0 || zoom >= wheel[index - 1]! - .000001)).toBe(true);

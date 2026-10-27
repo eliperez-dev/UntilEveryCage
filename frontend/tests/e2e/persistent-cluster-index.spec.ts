@@ -215,6 +215,8 @@ test('filter membership and radius change the cache, and corrupt persisted data 
   await page.getByRole('button', { name: 'Your location', exact: true }).click();
   await expectNearbyScope(page, device);
   const beforeArea = (await storedSummary(page)).key;
+  await page.getByRole('button', { name: 'Clear map area', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Search this area', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Search this area', exact: true }).click();
   await expect.poll(() => page.evaluate(async () => {
     const data = await (window as any).__UEC_LOCAL_PREVIEW_MAP__.getSource('locations').getData();

@@ -77,7 +77,7 @@ test('a reloaded public map reports its cached projection and uses one loading m
   await page.waitForFunction(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.isSourceLoaded('locations'));
   await page.getByRole('button', { name: 'More tools', exact: true }).click();
   await page.getByRole('checkbox', { name: 'Enable debug menu', exact: true }).check();
-  await page.getByRole('button', { name: 'Close More tools', exact: true }).click();
+  await page.getByRole('button', { name: 'Close more tools', exact: true }).click();
   await page.getByRole('button', { name: 'Debug menu', exact: true }).click();
   const renderer = page.locator('#map-diagnostics summary').filter({ hasText: 'Renderer & timing' });
   await renderer.click();
@@ -90,7 +90,7 @@ test('a reloaded public map reports its cached projection and uses one loading m
   await page.waitForFunction(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.isSourceLoaded('locations'));
   await page.getByRole('button', { name: 'More tools', exact: true }).click();
   await page.getByRole('checkbox', { name: 'Enable debug menu', exact: true }).check();
-  await page.getByRole('button', { name: 'Close More tools', exact: true }).click();
+  await page.getByRole('button', { name: 'Close more tools', exact: true }).click();
   await page.getByRole('button', { name: 'Debug menu', exact: true }).click(); await renderer.click();
   await expect(metric('Cache')).toHaveText(/^hit · 1 entries$/);
   await expect(metric('Decoded projection')).toHaveText(decoded!);
@@ -111,7 +111,7 @@ test('world preload controls change actual cached zoom coverage, budget, layers 
   });
   await page.getByRole('button', { name: 'More tools', exact: true }).click();
   await page.getByRole('checkbox', { name: 'Enable debug menu', exact: true }).check();
-  await page.getByRole('button', { name: 'Close More tools', exact: true }).click();
+  await page.getByRole('button', { name: 'Close more tools', exact: true }).click();
   await page.getByRole('button', { name: 'Debug menu', exact: true }).click();
   const debug = page.getByRole('complementary', { name: 'Debug menu', exact: true });
   await debug.locator('details.cache-controls > summary').click();
@@ -165,9 +165,13 @@ for (const viewport of [{ width: 1280, height: 720 }, { width: 390, height: 844 
     await expect(page.getByRole('button', { name: /Search map/ })).toBeVisible();
     await page.getByRole('button', { name: 'More tools', exact: true }).click();
     await page.getByRole('checkbox', { name: 'Enable debug menu', exact: true }).check();
-    await page.getByRole('button', { name: 'Close More tools', exact: true }).click();
+    await page.getByRole('button', { name: 'Close more tools', exact: true }).click();
     await page.getByRole('button', { name: 'Debug menu', exact: true }).click();
-    await expect(page.getByRole('button', { name: /Search map/ })).toBeHidden();
+    // Desktop keeps the joined toolbar beside Debug; the mobile sheet yields
+    // its controls while Debug owns the narrow viewport.
+    const search = page.getByRole('button', { name: /Search map/ });
+    if (viewport.width < 768) await expect(search).toBeHidden();
+    else await expect(search).toBeVisible();
     for (const target of [page.locator('#map-diagnostics > header strong'), page.getByRole('button', { name: 'Close debug menu', exact: true })]) {
       await expect(target).toBeVisible();
       expect(await target.evaluate(node => {
@@ -250,7 +254,7 @@ test('bearing rotation keeps common-area cluster memberships at one level withou
   await page.waitForFunction(() => { const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__; return map?.getLayer('clusters') && map.isSourceLoaded('locations'); });
   await page.getByRole('button', { name: 'More tools', exact: true }).click();
   await page.getByRole('checkbox', { name: 'Enable debug menu', exact: true }).check();
-  await page.getByRole('button', { name: 'Close More tools', exact: true }).click();
+  await page.getByRole('button', { name: 'Close more tools', exact: true }).click();
   await page.getByRole('button', { name: 'Debug menu', exact: true }).click();
   await page.locator('#map-diagnostics summary').filter({ hasText: 'Renderer & timing' }).click();
   const counter = page.locator('#map-diagnostics dt').filter({ hasText: /^Index updates$/ }).locator('..').locator('dd');
@@ -443,7 +447,6 @@ test('delayed high-elevation terrain keeps the selected geographic focus anchore
     expect(demRequests).toBe(0);
     await clickCameraFixturePin(page);
     await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.isMoving())).toBe(false);
-    const tools = page.getByRole('button', { name: 'More tools', exact: true }); await tools.click();
     const toggle = page.locator('.map-navigation .dimension-button');
     await toggle.click();
     await expect.poll(() => demRequests).toBeGreaterThan(0);
@@ -451,6 +454,9 @@ test('delayed high-elevation terrain keeps the selected geographic focus anchore
     await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.isMoving())).toBe(false);
     await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getPitch())).toBe(0);
     release();
+    // DEM readiness has its own bounded 10s lifecycle. The 450ms tilt starts
+    // after it, so do not spend the tilt assertion's budget decoding terrain.
+    await page.waitForFunction(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.isSourceLoaded('mapterhorn-terrain'), null, { timeout: 10_000 });
     await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getPitch())).toBe(60);
     const camera = await page.evaluate(() => {
       const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
@@ -482,7 +488,7 @@ test('returning from About revalidates the release and reuses the live canvas an
   await expect.poll(() => new URL(page.url()).hash).toContain(`selected=${cameraFixtureId}`);
   const tools = page.getByRole('button', { name: 'More tools', exact: true }); await tools.click();
   await page.getByRole('checkbox', { name: 'Enable debug menu', exact: true }).check();
-  await page.getByRole('button', { name: 'Close More tools', exact: true }).click();
+  await page.getByRole('button', { name: 'Close more tools', exact: true }).click();
   await page.getByRole('button', { name: 'Debug menu', exact: true }).click();
   await page.locator('#map-diagnostics summary').filter({ hasText: 'Renderer & timing' }).click();
   const counter = page.locator('#map-diagnostics dt').filter({ hasText: /^Index updates$/ }).locator('..').locator('dd');

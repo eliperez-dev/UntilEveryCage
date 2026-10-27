@@ -564,6 +564,9 @@ same cluster hierarchy and raster resolution; newly visible tiles may still
 load. Terrain retains adaptive LOD. Selection flights settle the camera at the
 target's terrain elevation once its DEM is ready, preserving zoom, bearing and
 pitch. Manual movement cancels this pending selection adjustment.
+Raster handoffs and terrain activation check their own source after native
+render updates as well as source events, with a ten-second readiness bound.
+An unavailable or cancelled source still follows the existing fallback.
 
 Native cluster animation holds a bounded, geographically anchored snapshot
 throughout a continuous zoom gesture. Once the final hierarchy is ready,

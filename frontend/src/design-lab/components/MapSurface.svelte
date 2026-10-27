@@ -8,7 +8,7 @@
   import { BASE_RASTER_FADE_MS } from '../../map/baseMapStyle';
   import { applyWorldBaselineBasemap, applyWorldBaselineOpacity, getWorldBaselineSettings, updateWorldBaselineSettings, resetWorldBaselineSettings, getWorldBaselineDiagnostics, subscribeWorldBaselineDiagnostics, warmWorldBaseline, cancelWorldBaselineWarmup, clearWorldBaselineCache } from '../../map/worldBaseline';
   import { syncSelectionOverlayWhenReady } from './selectionOverlay';
-  import { waitForTerrainSource } from './terrainReady';
+  import { waitForSourceReady, waitForTerrainSource } from './terrainReady';
   import { settleTerrainSelection, useCameraZoomLod, type CameraLodSource } from './selectionCamera';
   /**
    * MapSurface is the composition boundary:
@@ -533,33 +533,9 @@
     instance.setPaintProperty("transport", "raster-opacity", basemap === "satellite" ? 0.72 : 0);
   }
   /** A source can report loaded after an error, so tile failures reject the handoff. */
-  function waitForRaster(instance: MapLibreMap, sourceId: string, signal?: AbortSignal): Promise<void> {
-    return new Promise((resolve, reject) => {
-      let settled = false;
-      const timeout = setTimeout(() => finish(false), 10000);
-      const onError = (event: any) => {
-        if (event?.sourceId === sourceId) finish(false);
-      };
-      const onData = (event: any) => {
-        if (event?.sourceId === sourceId && instance.isSourceLoaded(sourceId))
-          finish(true);
-      };
-      const onAbort = () => finish(false);
-      function finish(ok: boolean) {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timeout);
-        instance.off("error", onError);
-        instance.off("sourcedata", onData);
-        signal?.removeEventListener('abort', onAbort);
-        ok ? resolve() : reject(new Error("Basemap tiles unavailable"));
-      }
-      instance.on("error", onError);
-      instance.on("sourcedata", onData);
-      signal?.addEventListener('abort', onAbort, { once: true });
-      if (signal?.aborted) finish(false);
-      else if (instance.isSourceLoaded(sourceId)) finish(true);
-    });
+  async function waitForRaster(instance: MapLibreMap, sourceId: string, signal?: AbortSignal): Promise<void> {
+    const ready = await waitForSourceReady(instance, sourceId, signal ?? new AbortController().signal);
+    if (!ready) throw new Error("Basemap tiles unavailable");
   }
   async function applyBasemapTiles(basemap: Basemap) {
     const instance = map;
