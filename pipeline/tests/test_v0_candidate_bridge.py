@@ -902,6 +902,35 @@ class CandidateBridgeTests(unittest.TestCase):
         self.assertEqual(source[-1], "source_coordinates")
         self.assertEqual(bridge._point_sql_parameters(*source[:2]), (12.5, 55.7))
 
+    def test_france_out_of_scope_source_point_is_not_promoted_or_reintroduced_by_fallback(self):
+        candidate = [None] * 34
+        candidate[11:13] = [46.0, 3.0]
+        candidate[27:30] = [None, None, None]
+        normalized = {"coordinates": {"latitude": 46.0, "longitude": 3.0,
+                                      "jurisdiction_extent": "outside-configured-france-extents"},
+                      "in_default_map_scope": False}
+        scope_revision = bridge._coordinate_scope_revision("fr.georisques.icpe.animal", normalized)
+        self.assertEqual(scope_revision, "france-source-coordinate-scope-v1")
+        self.assertFalse(bridge._source_coordinates_allowed("fr.georisques.icpe.animal", normalized))
+        self.assertEqual(bridge._coordinate(normalized, tuple(candidate), allow_display=True,
+                                            source="fr.georisques.icpe.animal"),
+                         (None, None, None, None, None, None))
+        self.assertEqual(bridge._coordinate_scope_revision("dk.smiley", {"in_default_map_scope": False}), None)
+        self.assertTrue(bridge._source_coordinates_allowed("dk.smiley", {"in_default_map_scope": False}))
+        denmark = bridge._coordinate({"coordinates": {"latitude": 55.7, "longitude": 12.5},
+                                     "in_default_map_scope": False}, tuple(candidate),
+                                    allow_display=True, source="dk.smiley")
+        self.assertEqual(denmark[:2], (55.7, 12.5))
+        provider_candidate = list(candidate)
+        provider_candidate[24], provider_candidate[27:30] = "house_number", ["id", "geoapify", "accepted"]
+        provider_point = bridge._coordinate(normalized, tuple(provider_candidate), allow_display=True,
+                                            source="fr.georisques.icpe.animal")
+        self.assertEqual(provider_point[-1], "provider_derived")
+        contract = {"crosswalk_document": {"rules": []}, "classification_ruleset_version": "rules-v1"}
+        revision = bridge._projection_revision("b" * 64, contract, scope_revision)
+        key = bridge._correction_source_record_key("c" * 64, "native-id", revision, scope_revision)
+        self.assertTrue(key.startswith("v0-correction-v6:"))
+
     def test_restricted_private_address_is_not_mistaken_for_public_clearance(self):
         normalized = {"privacy_gate": "restricted", "source_address_restricted": True,
                       "exact_geocode_candidate": {"source_eligible": True},

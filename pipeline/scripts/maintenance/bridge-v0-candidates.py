@@ -42,6 +42,7 @@ SPEC.loader.exec_module(IMPORTER)
 SCHEMA = "v0-candidate-freeze-v1"
 PROFILE = "official"
 CORRECTION_PROJECTION_VERSION = "v0-correction-v4"
+CORRECTION_SCOPE_PROJECTION_VERSION = "v0-correction-v6"
 PUBLIC_PROJECTION_RELATIONS = (
     "uec.map_facilities_public_discovery",
     "uec.map_facilities_public_discovery_read_model",
@@ -749,22 +750,27 @@ def _uuid(namespace: str, *parts: str) -> str:
 
 
 def _correction_source_record_key(snapshot_sha256: str, source_identifier: str,
-                                  projection_revision: str | None = None) -> str:
+                                  projection_revision: str | None = None,
+                                  projection_policy_revision: str | None = None) -> str:
     """Append correction-derived evidence without colliding with frozen V0 rows."""
     if projection_revision:
         if not re.fullmatch(r"[0-9a-f]{64}", projection_revision):
             raise BridgeError("projection_revision_invalid")
-        return f"v0-correction-v5:{snapshot_sha256}:{source_identifier}:{projection_revision}"
+        version = CORRECTION_SCOPE_PROJECTION_VERSION if projection_policy_revision else "v0-correction-v5"
+        return f"{version}:{snapshot_sha256}:{source_identifier}:{projection_revision}"
     return f"{CORRECTION_PROJECTION_VERSION}:{snapshot_sha256}:{source_identifier}"
 
 
-def _projection_revision(display_evidence_revision: str, contract: Mapping[str, Any]) -> str:
+def _projection_revision(display_evidence_revision: str, contract: Mapping[str, Any],
+                         projection_policy_revision: str | None = None) -> str:
     """Version only derived display/taxonomy projection, never source evidence."""
     payload = {
         "display_evidence_revision": display_evidence_revision,
         "crosswalk_document": contract.get("crosswalk_document"),
         "classification_ruleset_version": contract.get("classification_ruleset_version"),
     }
+    if projection_policy_revision:
+        payload["projection_policy_revision"] = projection_policy_revision
     return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode()).hexdigest()
 
 
@@ -822,12 +828,30 @@ def _facility_display_name(source: str, normalized: Any, source_values: Any = No
     return None
 
 
-def _coordinate(normalized: dict[str, Any], preview_candidate: tuple[Any, ...], *, allow_display: bool) -> tuple[float | None, float | None, str | None, str | None, str | None, str | None]:
+def _coordinate_scope_revision(source: str, normalized: dict[str, Any]) -> str | None:
+    if source != "fr.georisques.icpe.animal":
+        return None
+    coordinates = normalized.get("coordinates") if isinstance(normalized.get("coordinates"), dict) else {}
+    if (coordinates.get("jurisdiction_extent") == "outside-configured-france-extents"
+            or normalized.get("in_default_map_scope") is False):
+        return "france-source-coordinate-scope-v1"
+    return None
+
+
+def _source_coordinates_allowed(source: str, normalized: dict[str, Any]) -> bool:
+    return _coordinate_scope_revision(source, normalized) is None
+
+
+def _coordinate(normalized: dict[str, Any], preview_candidate: tuple[Any, ...], *, allow_display: bool,
+                source: str | None = None) -> tuple[float | None, float | None, str | None, str | None, str | None, str | None]:
     coords = normalized.get("coordinates") if isinstance(normalized.get("coordinates"), dict) else {}
     lat, lon = coords.get("latitude"), coords.get("longitude")
     precision = coords.get("precision") or normalized.get("coordinate_precision") or normalized.get("geography_precision")
     method = coords.get("method") or normalized.get("coordinate_method")
     provider = coords.get("provider") or normalized.get("coordinate_provider")
+    excluded_france_coordinate = source is not None and not _source_coordinates_allowed(source, normalized)
+    if excluded_france_coordinate:
+        lat = lon = None
     try:
         lat, lon = float(lat), float(lon)
     except (TypeError, ValueError):
@@ -1482,6 +1506,7 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                 artifact_id = _ensure_artifact(connection, entry, retrieved)
                 candidate_rows = preview_check["candidates"]
                 projection_revisions: dict[str, str] = {}
+                projection_policy_revisions: dict[str, str | None] = {}
                 facility_checks = target_facility_checks[source]
                 # Source-native group identity remains stable across snapshots;
                 # no name/address-based cross-source matching is attempted.
@@ -1493,10 +1518,13 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                     contract = preview_check["taxonomy"][identifier]
                     candidate = candidate_rows[group]
                     candidate_display_revision = _candidate_display_evidence_revision(candidate)
-                    projection_revision = _projection_revision(candidate_display_revision, contract)
+                    projection_policy_revision = _coordinate_scope_revision(source, normalized)
+                    projection_policy_revisions[identifier] = projection_policy_revision
+                    projection_revision = _projection_revision(candidate_display_revision, contract,
+                                                                projection_policy_revision)
                     projection_revisions[identifier] = projection_revision
                     source_record_key = _correction_source_record_key(
-                        entry["snapshot_sha256"], identifier, projection_revision)
+                        entry["snapshot_sha256"], identifier, projection_revision, projection_policy_revision)
                     raw_fields = {"evidence_kind": "authenticated_normalized_handoff",
                                   "snapshot_sha256": entry["snapshot_sha256"],
                                   "source_identifier": identifier,
@@ -1540,15 +1568,18 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                     observed_basis = "source_asserted_at" if source_observed else "project_retrieved_at"
                     is_representative = preview_check["representatives"].get(group) == identifier
                     latitude, longitude, coord_method, coord_precision, coord_provider, point_origin = _coordinate(
-                        normalized, candidate, allow_display=is_representative)
-                    if latitude is None and parsed[5] is not None and parsed[6] is not None:
+                        normalized, candidate, allow_display=is_representative, source=source)
+                    if (latitude is None and parsed[5] is not None and parsed[6] is not None
+                            and _source_coordinates_allowed(source, normalized)):
                         latitude, longitude = parsed[5], parsed[6]
                         coord_method = str(parsed[19] or "source_method_unknown")
                         coord_precision = str(parsed[7] or "source_precision_unknown")
                         coord_provider = parsed[20]
                         point_origin = "source_coordinates"
                     coord_geom = ("ST_SetSRID(ST_MakePoint(%s,%s),4326)::geography" if latitude is not None else "NULL")
-                    if is_representative and candidate[11] is not None:
+                    candidate_display_allowed = (_source_coordinates_allowed(source, normalized)
+                                                  or point_origin in {"provider_derived", "verified_coarse_reference"})
+                    if is_representative and candidate[11] is not None and candidate_display_allowed:
                         if candidate[27] is not None and candidate[29] == "accepted":
                             display_location = {"latitude": candidate[11], "longitude": candidate[12],
                                 "method": coord_method, "precision": candidate[24],
@@ -1659,7 +1690,8 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                         raise BridgeError("representative_source_mismatch")
                     identifier = str(rep[0])
                     source_record_key = _correction_source_record_key(
-                        entry["snapshot_sha256"], identifier, projection_revisions[identifier])
+                        entry["snapshot_sha256"], identifier, projection_revisions[identifier],
+                        projection_policy_revisions[identifier])
                     record_row = connection.execute("SELECT source_record_id,artifact_id FROM uec.source_records WHERE source_id=%s AND source_record_key=%s",
                                                     (source, source_record_key)).fetchone()
                     if record_row is None:

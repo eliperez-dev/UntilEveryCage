@@ -1,6 +1,27 @@
 {
   "schema_version": "1.0",
   "purpose": "Evidence-backed source readiness baseline; not a runtime health monitor or publication approval register.",
+  "next_release_candidate": {
+    "checked_date": "2026-10-27",
+    "release_id": "release-2026-10-27-r2",
+    "status": "private_candidate_assembled_not_published",
+    "database": "uec_country_release_test_20261027",
+    "replacement_sources": ["de.locations", "es.locations", "fr.georisques.icpe.animal", "mx.locations", "nz.locations", "fsa_approved_establishments", "fss_approved_establishments"],
+    "retained_other_sources": 12,
+    "candidate_members": 124264,
+    "candidate_named_records": 114919,
+    "candidate_coordinate_points": 93058,
+    "default_visible_members": 0,
+    "counts_are_publication_totals": false,
+    "france_scope_correction": {"points_kept_unmapped": 20, "original_evidence_retained": true, "existing_candidates_unchanged": true},
+    "retained_current_graph_edges": 60263,
+    "retained_current_report_references": 1024,
+    "historical_manifests_preserved": true,
+    "new_candidate_graph_projection_verified": false,
+    "hosted_dataset_changed": false,
+    "evidence": ["data/reports/country-release-20261027-freeze.json", "data/staging/country-release-20261027/acceptance.json"],
+    "next_action": "Complete source-scoped release checks and exact graph/report projection, then validate the serving package and API before Render cutover. Do not repeat unchanged German geocoding."
+  },
   "whole_dataset_graph": {
     "as_of": "2026-10-24",
     "release_id": "release-2026-10-18",

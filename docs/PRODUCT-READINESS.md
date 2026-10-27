@@ -49,10 +49,12 @@ The encrypted inbox remains development-only; production activation and email
 are not part of that deployment. Dataset membership and database controls are unchanged.
 The source inventory owns graph package/runtime details and source-specific evidence.
 
-The completed frontend delivery through `5faae199` is now merged with the
+The completed frontend delivery through `eb505d4d` is merged with the
 country-release backend checkpoint. This includes the reviewed mobile workspace,
-additional languages, map tools and area search. Its CI and Render rollout are
-pending; do not treat this integration as a dataset or hosting change.
+additional languages, map tools and area search, plus the source-readiness race
+fix and updated browser checks. The previous CI run failed frontend checks;
+the corrected integration is being checked again. Render rollout is pending.
+This integration has not changed the hosted dataset or serving database.
 
 ## Launch gates
 
@@ -67,7 +69,7 @@ All items below remain required before replacing the original website.
 | France, broader Spain, Germany, Mexico | France and Spain private map checks passed; Germany first-pass geocoding retained; Mexico national capture and private database/API checks passed | Use the source inventory to prepare the new dated dataset. These private cohorts have not changed public dataset membership |
 | United Kingdom and New Zealand | UK FSA/FSS fresh capture, import and private API checks passed. NZ supplied MPI export has 1,638 programme records and 321 audited address points after 486 requests; real API checks passed | Include the verified cohorts in the final dated dataset. NZ export automation remains unverified; programme rows are not a premises census. Report jurisdiction and mapped coverage explicitly |
 | APHIS history | Reliability and on-demand historical recovery implemented | Six real endpoint cases passed locally: two eligible facilities return pre-2025 annual and inspection links, sampled PDFs open, and the original no-report case returns an empty page; sample history reaches 2014, not a complete archive audit |
-| New default dated dataset | Local assembly in progress | Fresh acquisition and required location enrichment for included cohorts, measured map membership/counts, retained history and current restrictions |
+| New default dated dataset | Private candidate assembled: 124,264 records across 19 sources, 93,058 coordinate points | Complete source-scoped release checks, current restrictions, graph/report projection and serving-package/API acceptance before publication |
 | Final cutover | Not started | Maintainer frontend/data acceptance; verified monitoring, recovery and contribution operations; domain/canonical/redirect checks and rollback |
 
 Country implementation and UI features may run in independent lanes. Do not
@@ -106,8 +108,13 @@ retained at `D:/UntilEveryCage-Operations/release-preparation/country-coverage-2
 (digest `39849bc852183d668ad2367ef49b54018193a0520f0ddb8e1e81f8b1098f1504`).
 It is preparation evidence, not a frozen or promoted release.
 
-Country-release assembly is in progress on an isolated copy of the current
-release. UK enrichment queried 714 addresses and retained 32 audited matches;
+Country-release assembly completed on an isolated copy of the current
+release. The corrected private candidate `release-2026-10-27-r2` has 124,264
+members, 114,919 named records and 93,058 coordinate points across 19 sources.
+These are candidate counts, not approved public/map totals. Twenty French
+out-of-scope points remain searchable but unmapped; their source evidence is
+retained. Existing candidates and public releases were not rewritten.
+UK enrichment queried 714 addresses and retained 32 audited matches;
 682 unmatched attempts remain available for later work. The secondary account
 has 701 requests left. The seven source cohorts passed read-only handoff and
 taxonomy checks. Their input selection and retained raw
@@ -119,8 +126,9 @@ The copy retains the current 60,263 connections, 1,024 report references and V0.
 1. Documentation cleanup is complete.
 2. Retain the implemented UI consistency, current-mode theme
    toggle and copy feedback without redesigning the interface. Keep APHIS
-   recovery and Spanish support. Persistent cluster reuse remains deferred;
-   the remaining launch languages still need translation.
+   recovery and Spanish support. Persistent cluster reuse and additional
+   languages are implemented in the reviewed integration; hosted acceptance
+   remains required.
    Keep the deployed Swagger/FAQ contrast and generated Spanish record-label
    translations, Tools map controls, and exact/approximate pin centering.
    The cluster cutoff defaults to camera zoom 9.0 with radius 50 px.
