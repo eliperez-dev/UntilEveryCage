@@ -544,7 +544,7 @@
       "metadata": "verified",
       "acquisition": "verified",
       "runtime_health": "unknown",
-      "runtime_health_scope": "A retained fresh BLtU capture, shared private import, complete address staging, 3,000 current-day Geoapify requests and 5,000 LocationIQ request reservations were verified on 2026-10-25 Pacific. Remaining jobs are recorded below; this is not recurring monitoring.",
+      "runtime_health_scope": "The retained BLtU capture and private import remain the source baseline. Local enrichment completed on 2026-10-27 UTC with both provider budgets respected; latest_private_enrichment owns current map and queue counts. No recurring monitor or new public release is claimed.",
       "publication_eligibility": "blocked",
       "private_e2e_status": "live_capture_shared_import_and_exact_api_map_membership_verified_enrichment_partial",
       "map_readiness": "bounded_private_address_enrichment_verified_remaining_addresses_pending",
@@ -574,8 +574,8 @@
         "taxonomy_crosswalk_version": "de-bltu-source-crosswalk-v1",
         "taxonomy_assignment_sets": 15755,
         "source_addresses_retained_privately": true,
-        "private_map_visible_candidates": 2809,
-        "unmapped_candidates": 12946,
+        "private_map_visible_candidates": 5698,
+        "unmapped_candidates": 10057,
         "retained_business_street_addresses": 15731,
         "local_address_queue_entries": 15731,
         "records_without_business_street_address": 24,
@@ -590,7 +590,8 @@
         "durable_provider_jobs_created": 15731,
         "geocoding_provider": "Geoapify private profile geoapify-de-bltu; LocationIQ fallback locationiq-de-bltu",
         "external_provider_requests": 8423,
-        "external_provider_requests_scope": "3,424 Geoapify requests and 4,999 outbound LocationIQ geocoding requests; LocationIQ reserved 5,000 requests conservatively, including one pilot query rejected locally before HTTP",
+        "external_provider_requests_scope": "Historical checkpoint before the 2026-10-27 batch: 3,424 Geoapify and 4,999 outbound LocationIQ requests. Current-day requests are separate in latest_private_enrichment; one earlier pre-HTTP reservation remains conservative.",
+        "geocoding_results_scope": "The following provider-result and context_audit figures are the earlier checkpoint, not current merged map totals; latest_private_enrichment owns current counts.",
         "geocoding_results": {
           "accepted_provider_results": 1579,
           "review_required_provider_results": 1845,
@@ -610,7 +611,7 @@
         "private_database": "uec_launch_sources_test_20261025",
         "idempotent_replay_verified": true,
         "idempotency_evidence": "Same-handoff replay ledger reports idempotent_replay=true and unchanged source counts; the original immutable source_preview_runs row remains false.",
-        "api_acceptance": "Earlier API acceptance verified all 1,091 map reference groups against 1,093 eligible SQL candidate IDs, with no-store and unauthenticated rejection. Subsequent worker results increased the SQL display count to 2,809; the earlier API membership digest below applies only to that earlier 1,093-record checkpoint.",
+        "api_acceptance": "Earlier API acceptance verified all 1,091 map reference groups against 1,093 eligible SQL candidate IDs, with no-store and unauthenticated rejection. The earlier API membership digest below applies only to that checkpoint. Newer SQL map/cache verification is recorded in latest_private_enrichment, not a new API membership certificate.",
         "refresh_command": "python scripts/real_preview.py refresh --source de.locations",
         "effective_date": "unknown",
         "adapter_version": "de-bltu-private-v2",
@@ -695,25 +696,35 @@
         ]
       },
       "latest_private_enrichment": {
-        "checked_at_utc": "2026-10-27T02:28:15Z",
-        "status": "parallel_provider_batch_running_local_only",
+        "checked_at_utc": "2026-10-27T03:24:00Z",
+        "status": "parallel_provider_batch_completed_verified_local_only",
         "private_database": "uec_launch_sources_test_20261025",
         "source_qualified_candidates": 15755,
-        "mapped_candidates": 4505,
-        "unmapped_candidates": 11250,
+        "mapped_candidates": 5698,
+        "unmapped_candidates": 10057,
         "mapped_candidates_before_batch": 2809,
+        "new_mapped_candidates": 2889,
+        "never_queried_candidates": 1219,
         "provider_budget_date_utc": "2026-10-27",
         "provider_request_reservations": {
-          "geoapify": {"reserved_requests": 2058, "daily_limit": 3000},
-          "locationiq": {"reserved_requests": 2342, "daily_limit": 5000}
+          "geoapify": {"reserved_requests": 3000, "daily_limit": 3000},
+          "locationiq": {"reserved_requests": 5000, "daily_limit": 5000}
         },
+        "provider_outcomes": {
+          "geoapify": {"accepted": 1336, "review_required": 1664, "audited_map_points_added": 1329, "accepted_without_context_audit": 7},
+          "locationiq": {"accepted": 1301, "review_required": 3667, "unresolved": 32, "audited_map_points_added": 1301}
+        },
+        "secondary_locationiq_key": {"requests": 367, "accepted": 102, "review_required": 262, "unresolved": 3, "additional_daily_allowance": 0, "scope": "Both keys shared the existing 5,000-request provider ceiling and rate limiter; no second free allowance was combined or reset."},
         "request_accounting": "Committed shared reservations, not result-row counts; saved-response evaluations consume no credits. Dashboard balances were not independently refreshed.",
         "selection": "LocationIQ targets are staged first, prioritizing unqueried addresses then previous-provider misses. Geoapify excludes all LocationIQ-targeted candidates. Bounded helper workers share the same job leases, rate limiter and daily ledger.",
         "retained_response_reconciliation": {
           "ruleset": "german-street-spelling-v1",
           "method": "locationiq_retained_street_v1",
-          "examined": 4455,
-          "accepted_points": 159,
+          "initial_pass_examined": 4455,
+          "latest_pass_examined": 5000,
+          "latest_pass_new_points": 100,
+          "accepted_points": 259,
+          "idempotent_replay_new_points": 0,
           "database_rejected": 0,
           "provider_calls": 0,
           "parent_results_modified": 0,
@@ -722,7 +733,12 @@
         },
         "new_public_rows": 0,
         "baseline_unchanged": true,
-        "scope": "Operational checkpoint, not a completed batch or a new API membership certificate. Earlier capture and API acceptance figures remain historical. Query the durable queue and budget ledger for progress after this timestamp."
+        "current_enrichment_states": {"resolved": 5698, "conflict": 8766, "queued": 1193, "unresolved": 72, "retryable": 2, "coarse_eligible": 24},
+        "active_jobs_after_batch": 0,
+        "duplicate_requested_jobs_today": 0,
+        "display_cache_and_audited_view_parity_failures": 0,
+        "derived_parent_lineage_mismatches": 0,
+        "scope": "Completed local enrichment and SQL audit; the frozen V0 baseline and current public releases are unchanged. Earlier API membership figures remain historical. Original provider responses and native source fields are retained."
       },
       "evidence": [
         "docs/germany-source-assessment.md",
@@ -747,7 +763,7 @@
         "pipeline/migrations/100_germany_retained_geocode_reconciliation.sql",
         "pipeline/tests/test_germany_retained_reconciliation_postgis.py"
       ],
-      "next_action": "Prepare the measured 15,755-record source cohort with 2,809 address points and 12,946 unmapped records. The 2026-10-26 UTC LocationIQ allowance is exhausted; do not raise or reset its ledger. Preserve 15 queued retries for a future allowance and keep new-address and prior-provider retry cohorts separate. The read-only street audit found 136 potential recoveries, not yet promoted; implement versioned reconciliation with independent database checks before counting them as mapped. Validate locality differences separately without accepting road-only matches. Exact public BKG locality batch joining remains unverified. Preserve native labels, activities and source dates in the dated release."
+      "next_action": "Prepare the 15,755-record cohort with 5,698 address points and 10,057 unmapped records for the next dated release, retaining native names, activities, source dates and LocationIQ attribution. Both 2026-10-27 UTC provider budgets are used; retain 1,193 queued jobs and two retryable jobs for a later allowance without resetting history. Investigate seven accepted Geoapify responses lacking context audits from retained evidence. Assess official Destatis municipality references as a separate approximate fallback, with unique municipality/state matching and explicit provenance; no such fallback is implemented or counted here."
     },
     {"source_id":"ca.ontario.meat-plants","metadata":"verified","acquisition":"verified","runtime_health":"not_run","publication_eligibility":"blocked","e2e_verified":true,"last_verified_run":{"verified_at_utc":"2026-10-02T01:55:47.890787Z","parsed":460,"accepted_private_candidates":460,"quarantined":0,"mapped":0,"unmapped":460,"numeric_coordinates_persisted":0,"taxonomy_assignment_sets":460,"taxonomy_assignment_rows":1021,"public_rows":0,"idempotent_replay":true},"preview_eligible":true,"included_in_active_preview_database":true,"evidence":["data/manifests/ontario-private-e2e-20261002.json","pipeline/preview-enabled-sources.json","scripts/real_preview.py","scripts/certify_real_preview.py","docs/countries/canada/meat-plants-pipeline.md","pipeline/sources/canada/adapter.py","pipeline/sources/canada/acquire.py","pipeline/sources/canada/refresh.py","pipeline/source_registry.json"],"next_action":"One-time strict private E2E passed and exact certified run imported to the retained private preview (460 current-source candidates); list/search/detail pass, but all remain unmapped because source coordinates/address remain withheld pending privacy/location review. Zero map pins/public rows. Ontario only; freshness/completeness are not guaranteed. Do not publish without separate review/approval."},
     {"source_id":"ca.cfia.federal-meat","metadata":"verified","acquisition":"verified","runtime_health":"unknown","publication_eligibility":"blocked","e2e_verified":true,"last_verified_run":{"verified_at_utc":"2026-10-01T03:54:16Z","parsed":874,"accepted_private_candidates":858,"quarantined":16,"mapped":0,"unmapped":858},"preview_eligible":true,"included_in_active_preview_database":false,"evidence":["docs/country-recon-ca.md","docs/countries/canada/meat-plants-pipeline.md","pipeline/sources/canada/adapter.py","pipeline/sources/canada/acquire.py","pipeline/sources/canada/refresh.py","pipeline/sources/canada/geocode_queue.py","pipeline/sources/canada/fixtures/cfia.csv","pipeline/preview-enabled-sources.json","scripts/real_preview.py","scripts/certify_real_preview.py","pipeline/common/review_packet.py","pipeline/source_registry.json"],"next_action":"Latest strict private-preview E2E verified 2026-10-01T03:54:16Z: 874 parsed, 858 accepted private candidates, 16 quarantined, 0 mapped and 858 unmapped. Configured for private preview but not present in the active preview DB; the one-time isolated E2E used a disposable DB. A temporary restricted geocode queue was removed and no external request was made. Effective date/Last-Modified is absent; completeness, privacy clearance, recurring health, and publication remain unresolved."},
