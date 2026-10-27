@@ -2,7 +2,7 @@
 
 **Canonical authority:** this document is the sole product-level readiness and overall V2 roadmap authority.
 
-**Owner:** project maintainer. **Updated:** 2026-10-26, Pacific.
+**Owner:** project maintainer. **Updated:** 2026-10-27, Pacific.
 This is the only product roadmap. Source readiness belongs in
 [source-status.json](source-status.json); current frontend instructions belong
 in [frontend/README.md](frontend/README.md). [ETHICS.md](ETHICS.md) governs data work.
@@ -97,8 +97,8 @@ mismatch, stale private enrichment states and German display-cache disagreement
 were repaired. Source business labels are retained for the release bridge.
 The older German private candidate cache is still unnamed; its retained handoff
 contains the business labels. The measured row-free release input inventory is
-retained at `D:/UntilEveryCage-Operations/release-preparation/country-coverage-20261027/candidate-inventory-reconciled.json`
-(digest `5fb6490761cda12335c02677f04dec52841a76ad8caa00fc511acc4eb1cb9626`).
+retained at `D:/UntilEveryCage-Operations/release-preparation/country-coverage-20261027/candidate-inventory-nz-geocoded.json`
+(digest `f6c27e7eb116238c5e498dc7ef7629e7eb5ca77e894ea64cc0f4fc0f1871698e`).
 It is preparation evidence, not a frozen or promoted release.
 
 ## Roadmap
