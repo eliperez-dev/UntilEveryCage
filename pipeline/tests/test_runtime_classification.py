@@ -27,6 +27,8 @@ PRIVATE_PIPELINE_ALLOWLIST = {
     "it.853-2004",
     "it.1069-2009",
     "nl.nvwa.approved-food",
+    "mx.locations",
+    "nz.locations",
     "no.fiskeridir.aquaculture",
     "gb.scot.marine.aquaculture",
     "us.epa.echo-animal-production",
@@ -49,9 +51,9 @@ class RuntimeClassificationTests(unittest.TestCase):
 
     def test_known_blocked_unlisted_source_is_not_production_e2e(self):
         sources = build_runtime_classification_index()["sources"]
-        self.assertEqual(sources["mx.locations"]["classification"], "research-blocked")
+        self.assertEqual(sources["al.aku.approved-food"]["classification"], "research-blocked")
         with self.assertRaises(RuntimeClassificationError):
-            require_production_preview_source("mx.locations")
+            require_production_preview_source("al.aku.approved-food")
 
     def test_each_enabled_source_must_carry_the_private_production_boundary(self):
         # The production allowlist is validated at load time against the joined

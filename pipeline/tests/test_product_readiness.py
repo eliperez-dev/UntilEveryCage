@@ -86,7 +86,11 @@ class ProductReadinessDocumentationTests(unittest.TestCase):
         by_id = {row["source_id"]: row for row in payload["sources"]}
         for source_id in expected:
             self.assertEqual(by_id[source_id]["acquisition"], "verified")
-            self.assertEqual(by_id[source_id]["runtime_health"], "not_run")
+            if by_id[source_id]["runtime_health"] == "healthy":
+                self.assertTrue(by_id[source_id].get("runtime_health_scope"))
+                self.assertTrue(by_id[source_id].get("runtime_health_evidence"))
+            else:
+                self.assertEqual(by_id[source_id]["runtime_health"], "not_run")
             self.assertEqual(by_id[source_id]["publication_eligibility"], "blocked")
 
     def test_real_preview_candidate_schema_covers_additive_taxonomy_projection(self):
