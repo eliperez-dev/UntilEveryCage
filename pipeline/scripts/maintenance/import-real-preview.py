@@ -296,16 +296,23 @@ def merge_activity_contracts(contracts: list[dict[str, Any]], source_id: str | N
         }]
     categories = sorted({value for contract in contracts for value in contract["activity_categories"]}, key=lambda item: (
         PRIMARY_PRECEDENCE.index(item) if item in PRIMARY_PRECEDENCE else len(PRIMARY_PRECEDENCE), item))
-    assignment_map: dict[tuple[str, str, str], dict[str, Any]] = {}
+    assignment_map: dict[tuple[str, ...], dict[str, Any]] = {}
     for contract in contracts:
         for assignment in contract["taxonomy_assignments"]:
-            key = (assignment["leaf_activity"], assignment["primary"], assignment["method"])
+            # Candidate-level assignments are persistence rows, not merely
+            # distinct taxonomy leaves. Keep assignments that share a leaf
+            # when their native evidence differs, and collapse only rows with
+            # identical persisted semantics.
+            key = tuple(str(assignment.get(field) or "") for field in (
+                "primary", "leaf_activity", "leaf_label", "source_code_reference",
+                "source_label_reference", "source_code", "source_label", "method", "status",
+            ))
             prior = assignment_map.get(key)
             if prior is None or json.dumps(assignment, sort_keys=True) < json.dumps(prior, sort_keys=True):
                 assignment_map[key] = assignment
     ordered_assignments = [assignment_map[key] for key in sorted(assignment_map)]
-    codes = list(dict.fromkeys(value for contract in contracts for value in contract["source_activity_codes"]))
-    labels = list(dict.fromkeys(value for contract in contracts for value in contract["source_activity_labels"]))
+    codes = sorted({value for contract in contracts for value in contract["source_activity_codes"]})
+    labels = sorted({value for contract in contracts for value in contract["source_activity_labels"]})
     source_rulesets = sorted({contract.get("classification_ruleset_version") for contract in contracts
                               if contract.get("classification_ruleset_version")})
     source_ruleset = ";".join(source_rulesets) if source_rulesets else TAXONOMY_VERSION

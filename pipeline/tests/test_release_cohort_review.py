@@ -25,6 +25,19 @@ OWNED_DATABASE = "uec_v0_cohort_review_test20261005"
 
 
 class CohortReviewContractTests(unittest.TestCase):
+    def test_country_review_target_is_exact_and_cannot_override_routing(self):
+        target = "uec_country_release_test_20261027"
+        url = "postgresql://synthetic@127.0.0.1:55433/" + target
+        recorder._validate_database_url(url, target)
+        for unsafe in (url.replace("127.0.0.1", "example.invalid"),
+                       url.replace(target, "uec_v0_review_r3"),
+                       *(url + "?" + name + "=example.invalid"
+                         for name in ("host", "hostaddr", "service", "servicefile", "HOST"))):
+            with self.subTest(url=unsafe), self.assertRaises(contract.CohortReviewError):
+                recorder._validate_database_url(unsafe, target)
+        with self.assertRaises(contract.CohortReviewError):
+            recorder._validate_database_url(url + "_other", target + "_other")
+
     def test_document_requires_explicit_operator_evidence_and_safe_allowlist(self):
         document = {
             "schema_version": "uec-release-cohort-review-v1", "release_id": "candidate",

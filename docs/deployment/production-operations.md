@@ -349,16 +349,23 @@ schema's pre-data archive; ensure `pg_trgm` exists in `uec` (the archive may
 already create it); run the selected-column
 package restore; then restore the filtered post-data archive. Record SHA-256
 for both schema archives with the package using repeated `--schema-artifact
-NAME=SHA256` arguments. The serving derivative excludes exactly these two
+NAME=SHA256` arguments. The serving derivative excludes exactly these five
 private acquisition-preview callbacks from post-data restoration:
 
 - `uec.geocode_results.aaa_aphis_mailing_locality_geoapify_display`
 - `uec.geocode_results.geocode_results_geoapify_preview_display`
+- `uec.geocode_results.geocode_results_locationiq_private_display` (migration 098, DE)
+- `uec.geocode_results.geocode_results_new_zealand_locationiq_private_display` (migration 102, NZ)
+- `uec.geocode_results.geocode_results_uk_locationiq_private_display` (migration 104, UK)
 
-They depend on the private `real_preview` acquisition/geocoder schema and are
-not public eligibility, restriction, review, or cache-generation gates. Do
-not omit any other constraint, index, trigger, or function without a separate
-review. The package manifest records both exclusions and schema-archive hashes.
+All five are `AFTER INSERT` callbacks on `uec.geocode_results` that populate
+private `real_preview` acquisition display evidence. They do not participate
+in public eligibility, restriction, review, or cache-generation gates. The v8
+package contract accepts only the historical two-callback omission set or the
+current five-callback set, preserving already-verified v8 packages while
+rejecting arbitrary omissions. Do not omit any other constraint, index,
+trigger, or function without a separate review. The package manifest binds the
+selected omission set and schema-archive hashes into its checksum.
 
 When a safe graph source is available, build its indexed release projection
 before export using the configured private graph target and an explicit
@@ -413,7 +420,7 @@ Reject more than one matching statement and retain every other statement.
 Record whether zero or one statement was omitted and the compared owner/ACL
 in the restricted receipt. Do not
 drop or recreate the schema, or omit any additional schema object. The canonical
-schema derivative still omits only the two documented preview callback
+schema derivative still omits only the five documented preview callback
 triggers listed in `SERVING_SCHEMA_OMISSIONS`.
 
 After pre-data DDL and before package restore, assert the release tables and

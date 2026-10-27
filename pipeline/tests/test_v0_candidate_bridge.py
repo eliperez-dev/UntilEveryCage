@@ -21,6 +21,218 @@ def _canonical(value):
 
 
 class CandidateBridgeTests(unittest.TestCase):
+    def test_preview_timeline_binds_first_handoff_and_latest_verified_acquisition(self):
+        first = "2026-10-25T15:18:37Z"
+        latest = "2026-10-25T22:54:43Z"
+        inventory_source = {"snapshot": {
+            "first_manifest_retrieved_at": first,
+            "retrieved_at": latest,
+        }}
+        entry = {"latest_retrieved_at": latest}
+        handoff, acquisition = bridge._validate_preview_timeline(
+            first, first, latest, inventory_source, entry)
+        self.assertEqual(handoff.isoformat(), "2026-10-25T15:18:37+00:00")
+        self.assertEqual(acquisition.isoformat(), "2026-10-25T22:54:43+00:00")
+        latest_handoff, latest_acquisition = bridge._validate_preview_timeline(
+            latest, first, latest, inventory_source, entry)
+        self.assertEqual(latest_handoff, latest_acquisition)
+
+        # Older inventories without a distinct first-manifest time retain the
+        # previous exact-pair rule.
+        legacy = {"snapshot": {"retrieved_at": first}}
+        self.assertEqual(bridge._validate_preview_timeline(first, first, first, legacy, {})[0],
+                         bridge._utc(first, "expected"))
+
+        bad_cases = (
+            ("2026-10-25T18:00:00Z", first, latest, inventory_source, entry),  # no arbitrary intermediate handoff
+            (first, latest, latest, inventory_source, entry),  # manifest timestamp is immutable
+            (first, first, first, inventory_source, entry),  # preview run must be latest acquisition
+            (first, first, "2026-10-25T14:00:00Z", inventory_source, entry),  # reversed timeline
+            (first, first, latest, inventory_source, {"latest_retrieved_at": first}),
+            (first, first, "2026-10-28T00:00:00Z", {
+                "snapshot": {"first_manifest_retrieved_at": first,
+                             "retrieved_at": "2026-10-28T00:00:00Z"}},
+             {"latest_retrieved_at": "2026-10-28T00:00:00Z"}),
+        )
+        for values in bad_cases:
+            with self.subTest(values=values), self.assertRaises(bridge.BridgeError):
+                bridge._validate_preview_timeline(*values)
+
+    def test_release_baseline_mode_is_narrowly_bound_and_separate_from_v0_api(self):
+        source = SCRIPT.read_text(encoding="utf-8")
+        self.assertIn('"release-2026-10-18"', source)
+        self.assertIn('"f06aa554f2b49aa8e4a285df948b8baa47952f60bfb344251109b9788cc2a661"', source)
+        self.assertIn('"uec_country_release_test_20261027"', source)
+        self.assertIn('release_baseline_graph_aggregate_mismatch', source)
+        self.assertIn('"graph_edges": graph_edges', source)
+        self.assertIn("build.release_id=%s AND build.active AND build.status='completed'", source)
+        self.assertIn("graph_evidence_references", source)
+        self.assertIn('parser.add_argument("--append-to-release-baseline"', source)
+        self.assertIn('parser.add_argument("--retained-release-id", action="append"', source)
+        self.assertIn('expected_status="validated" if append_to_release_baseline else "promoted"', source)
+        self.assertIn("_release_baseline_snapshot(connection, baseline_release_id, baseline_manifest_sha256)", source)
+        self.assertIn('baseline_before["shared"] = _shared_baseline_snapshot(connection, shared_release_ids)', source)
+        self.assertIn("_retained_release_snapshots(connection, retained_release_ids)", source)
+        self.assertIn("approved_release_baseline_changed", source)
+
+    def test_append_mode_shared_fact_union_hashes_each_canonical_row_once(self):
+        release_ids = tuple(sorted(("v0-candidate-2026-10-04-r3", bridge.RELEASE_BASELINE_ID,
+                                    *bridge.RETAINED_RELEASE_IDS)))
+        queries = bridge._shared_fact_queries(release_ids)
+        self.assertEqual(set(queries), {"facilities", "observations", "source_records"})
+        for query, params in queries.values():
+            self.assertIn("WHERE EXISTS", query)
+            self.assertIn("member.release_id=ANY(%s)", query)
+            self.assertEqual(params, (list(release_ids),))
+            self.assertIn("ORDER BY", query)
+
+        class Cursor:
+            def __init__(self):
+                self.calls = []
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def execute(self, query, params):
+                self.calls.append((query, params))
+
+            def __iter__(self):
+                return iter(())
+
+        class Connection:
+            def __init__(self):
+                self.c = Cursor()
+
+            def cursor(self):
+                return self.c
+
+        connection = Connection()
+        snapshot = bridge._release_facts_snapshot(connection, "candidate-r2", include_facts=False)
+        self.assertEqual(set(snapshot), {"aggregates", "release", "manifest", "members"})
+        self.assertEqual(len(connection.c.calls), 3)
+        self.assertNotIn("facilities", snapshot)
+        self.assertNotIn("observations", snapshot)
+        self.assertNotIn("source_records", snapshot)
+
+    def test_release_append_scope_requires_both_baselines_and_exact_retained_inventory(self):
+        class Connection:
+            def __init__(self, release_ids, manifest_ids):
+                self.release_ids = release_ids
+                self.manifest_ids = manifest_ids
+
+            def execute(self, query):
+                if query.startswith("SELECT release_id FROM uec.releases"):
+                    rows = self.release_ids
+                    return type("Result", (), {"fetchall": lambda _: rows})()
+                if query.startswith("SELECT release_id FROM uec.release_manifests"):
+                    rows = self.manifest_ids
+                    return type("Result", (), {"fetchall": lambda _: rows})()
+                raise AssertionError(query)
+
+        baselines = ("v0-candidate-2026-10-04-r3", "release-2026-10-18")
+        retained = ("old-candidate",)
+        candidate = "launch-country-candidate-2026-10-27"
+        releases = [(value,) for value in (*baselines, *retained, candidate)]
+        manifests = [(baselines[0],), (baselines[1],), (retained[0],)]
+        bridge._release_append_scope_is_valid(Connection(releases, manifests), baselines, retained, candidate)
+
+        with self.assertRaisesRegex(bridge.BridgeError, "candidate_append_has_unexpected_release"):
+            bridge._release_append_scope_is_valid(
+                Connection([*releases, ("unexpected-release",)], manifests), baselines, retained, candidate)
+        with self.assertRaisesRegex(bridge.BridgeError, "candidate_append_manifest_scope_mismatch"):
+            bridge._release_append_scope_is_valid(
+                Connection(releases, [(baselines[0],), (retained[0],)]), baselines, retained, candidate)
+        with self.assertRaisesRegex(bridge.BridgeError, "candidate_append_manifest_scope_mismatch"):
+            bridge._release_append_scope_is_valid(
+                Connection(releases, [*manifests, (candidate,)]), baselines, retained, candidate)
+
+    def test_release_append_summary_reconciles_inherited_and_replacement_source_sets(self):
+        class Connection:
+            def __init__(self, inherited, actual):
+                self.results = [inherited, actual]
+                self.queries = []
+
+            def execute(self, query, params):
+                self.queries.append((query, params))
+                return type("Result", (), {"fetchall": lambda _self: self.results.pop(0)})()
+
+        replacements = ("de.locations", "nz.locations")
+        connection = Connection([("usda.fsis",), ("usda.aphis",), ("de.locations",)],
+                                [("usda.fsis",), ("usda.aphis",), ("de.locations",), ("nz.locations",)])
+        full = bridge._reconcile_release_source_cohort(
+            connection, "candidate-full", "release-2026-10-18", replacements)
+        self.assertEqual(full, ["de.locations", "nz.locations", "usda.aphis", "usda.fsis"])
+        self.assertEqual(len(connection.queries), 2)
+        self.assertIn("SELECT DISTINCT record.source_id", connection.queries[0][0])
+        self.assertIn("NOT (record.source_id = ANY(%s))", connection.queries[0][0])
+        self.assertEqual(connection.queries[0][1], ("release-2026-10-18", list(replacements)))
+        self.assertIn("SELECT DISTINCT record.source_id", connection.queries[1][0])
+        self.assertIn('summary["replacement_sources"] = sorted(entries)', SCRIPT.read_text(encoding="utf-8"))
+        self.assertIn('summary["selected_sources"] = actual_sources', SCRIPT.read_text(encoding="utf-8"))
+
+        mismatch = Connection([("usda.fsis",)], [("unexpected.source",)])
+        with self.assertRaisesRegex(bridge.BridgeError, "candidate_source_cohort_reconciliation_mismatch"):
+            bridge._reconcile_release_source_cohort(mismatch, "candidate-full", "release-2026-10-18", replacements)
+
+    def test_release_append_scope_rejects_preexisting_candidate_manifest(self):
+        class Connection:
+            def __init__(self):
+                self.calls = 0
+
+            def execute(self, query):
+                self.calls += 1
+                rows = ([ ("v0-candidate-2026-10-04-r3",), ("release-2026-10-18",),
+                          ("launch-country-candidate-2026-10-27",) ]
+                        if query.startswith("SELECT release_id FROM uec.releases") else
+                        [("v0-candidate-2026-10-04-r3",), ("release-2026-10-18",),
+                         ("launch-country-candidate-2026-10-27",)])
+                return type("Result", (), {"fetchall": lambda _self: rows})()
+
+        with self.assertRaisesRegex(bridge.BridgeError, "candidate_append_manifest_scope_mismatch"):
+            bridge._release_append_scope_is_valid(
+                Connection(), ("v0-candidate-2026-10-04-r3", "release-2026-10-18"), (),
+                "launch-country-candidate-2026-10-27")
+
+    def test_retained_release_inventory_and_manifest_are_fixed(self):
+        self.assertEqual(len(bridge.RETAINED_RELEASE_IDS), 5)
+        self.assertEqual(set(bridge.RETAINED_MANIFEST_SHA256), {bridge.RETAINED_RELEASE_IDS[1]})
+        self.assertEqual(bridge.RELEASE_BASELINE_PUBLIC_ROWS, 69220)
+        self.assertEqual(bridge.RELEASE_BASELINE_MANIFEST_SHA256,
+                         "f06aa554f2b49aa8e4a285df948b8baa47952f60bfb344251109b9788cc2a661")
+
+    def test_new_release_mode_reads_preview_only_from_allowlisted_loopback_db(self):
+        bridge._validate_preview_source_database_url(
+            "postgresql://user:secret@127.0.0.1/uec_launch_sources_test_20261025")
+        bridge._validate_preview_source_database_url(
+            "postgresql://user:secret@localhost/uec_launch_sources_test_20261025")
+        for dsn in (
+            "postgresql://user:secret@example.test/uec_launch_sources_test_20261025",
+            "postgresql://user:secret@127.0.0.1/other_database",
+            "postgresql://user:secret@127.0.0.1/uec_launch_sources_test_20261025?host=remote.test",
+        ):
+            with self.subTest(dsn=dsn), self.assertRaisesRegex(
+                    bridge.BridgeError, "preview_source_database_not_allowlisted"):
+                bridge._validate_preview_source_database_url(dsn)
+
+    def test_new_release_mode_inherits_oct18_when_no_candidate_parent_is_given(self):
+        self.assertEqual(bridge._inheritance_parent_id(True, "release-2026-10-18", None),
+                         "release-2026-10-18")
+        self.assertIsNone(bridge._inheritance_parent_id(False, "", None))
+        self.assertEqual(bridge._inheritance_parent_id(True, "release-2026-10-18", "explicit-parent-r2"),
+                         "explicit-parent-r2")
+        source = SCRIPT.read_text(encoding="utf-8")
+        self.assertEqual(bridge.RELEASE_REPLACEMENT_SOURCES, {
+            "de.locations", "es.locations", "fr.georisques.icpe.animal", "mx.locations",
+            "nz.locations", "fsa_approved_establishments", "fss_approved_establishments"})
+        self.assertTrue("set(entries) != RELEASE_REPLACEMENT_SOURCES" in source,
+                        "new mode must require the exact country cohort set")
+        self.assertIn("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY", source)
+        self.assertIn("release_baseline.verify_connection(preview_connection, contract)", source)
+        self.assertIn("_verify_preview_source(\n                        preview_connection or connection", source)
+
     def test_new_country_cohorts_retain_source_typed_business_labels(self):
         for source, field in (("de.locations", "name"), ("es.locations", "name"),
                               ("fr.georisques.icpe.animal", "trading_name")):
@@ -88,7 +300,7 @@ class CandidateBridgeTests(unittest.TestCase):
 
     def test_append_candidate_keeps_shared_facility_name_and_uses_safe_status_label(self):
         source = SCRIPT.read_text(encoding="utf-8")
-        self.assertIn('facility_conflict = "DO NOTHING" if append_to_v0_baseline', source)
+        self.assertIn('facility_conflict = "DO NOTHING" if append_mode', source)
         self.assertIn('"facility_display_name"', source)
 
     def test_successor_append_allows_only_verified_candidate_predecessors(self):
@@ -480,6 +692,54 @@ class CandidateBridgeTests(unittest.TestCase):
             with self.assertRaisesRegex(bridge.BridgeError, "not_retained_artifact_metadata_must_be_null"):
                 bridge.load_freeze(freeze_path, inventory_path)
 
+    def test_france_retained_page_set_uses_adapter_manifest_and_ordered_page_bytes(self):
+        with tempfile.TemporaryDirectory(dir=bridge.ROOT) as temporary:
+            root = Path(temporary)
+            snapshot = root / "snapshot"
+            pages = snapshot / "pages"
+            pages.mkdir(parents=True)
+            page_bytes = []
+            page_facts = []
+            for number in (1, 2):
+                raw = _canonical({"page": number, "total_pages": 2, "results": 2,
+                                  "data": [{"synthetic": number}]})
+                (pages / f"page-{number:05d}.json").write_bytes(raw)
+                page_bytes.append(raw)
+                page_facts.append({"page": number, "sha256": hashlib.sha256(raw).hexdigest(),
+                                   "byte_size": len(raw), "rows": 1})
+            concatenated = b"".join(page_bytes)
+            manifest = {"source_id": "fr.georisques.icpe.animal", "page_size": 1,
+                        "pages": page_facts, "sha256": hashlib.sha256(concatenated).hexdigest(),
+                        "byte_size": len(concatenated), "results": 2, "total_pages": 2}
+            (snapshot / "snapshot-manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+            self.assertEqual(bridge._retained_source_artifact_digest(
+                "fr.georisques.icpe.animal", pages), (manifest["sha256"], len(concatenated)))
+
+            manifest["pages"][0]["sha256"] = "0" * 64
+            (snapshot / "snapshot-manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+            with self.assertRaisesRegex(bridge.BridgeError, "retained_artifact_verification_failed"):
+                bridge._retained_source_artifact_digest("fr.georisques.icpe.animal", pages)
+            manifest["pages"][0]["sha256"] = page_facts[0]["sha256"]
+            manifest["pages"].reverse()
+            (snapshot / "snapshot-manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+            with self.assertRaisesRegex(bridge.BridgeError, "retained_artifact_verification_failed"):
+                bridge._retained_source_artifact_digest("fr.georisques.icpe.animal", pages)
+            manifest["pages"] = page_facts
+            (snapshot / "snapshot-manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+            (pages / "page-00002.json").unlink()
+            with self.assertRaisesRegex(bridge.BridgeError, "retained_artifact_verification_failed"):
+                bridge._retained_source_artifact_digest("fr.georisques.icpe.animal", pages)
+            with self.assertRaisesRegex(bridge.BridgeError, "retained_artifact_locator_invalid"):
+                bridge._retained_source_artifact_digest("dk.smiley", pages)
+            link = root / "pages-link"
+            try:
+                link.symlink_to(pages, target_is_directory=True)
+            except (OSError, NotImplementedError):
+                pass
+            else:
+                with self.assertRaisesRegex(bridge.BridgeError, "retained_artifact_locator_invalid"):
+                    bridge._retained_source_artifact_digest("fr.georisques.icpe.animal", link)
+
     def test_database_guard_requires_loopback_candidate_only_ack_and_separate_name(self):
         freeze = {"release_id": "v0-candidate-test"}
         with self.assertRaisesRegex(bridge.BridgeError, "database_must_be_loopback"):
@@ -494,6 +754,18 @@ class CandidateBridgeTests(unittest.TestCase):
         with self.assertRaisesRegex(bridge.BridgeError, "append_candidate_database_not_allowlisted"):
             bridge.bridge("postgresql://127.0.0.1/uec_v0_review", "uec_v0_review", freeze, {},
                           candidate_only_ack=True, append_to_v0_baseline=True)
+
+    def test_target_libpq_routing_overrides_fail_before_connect(self):
+        # An empty freeze/inventory proves target URL validation precedes all
+        # input-dependent bridge work and, critically, opening a connection.
+        freeze, inventory = {}, {}
+        for option in ("host=remote.test", "hostaddr=192.0.2.9", "service=remote"):
+            dsn = "postgresql://user:secret@127.0.0.1/uec_v0_review?" + option
+            with self.subTest(option=option), patch.object(bridge.psycopg, "connect") as connect:
+                with self.assertRaisesRegex(bridge.BridgeError, "database_must_be_loopback"):
+                    bridge.bridge(dsn, "uec_v0_review", freeze, inventory,
+                                  candidate_only_ack=True)
+                connect.assert_not_called()
 
     def test_launch_database_is_explicitly_allowed_for_baseline_preserving_append(self):
         class ConnectReached(Exception):

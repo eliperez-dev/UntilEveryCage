@@ -11,6 +11,10 @@ ENABLED = "enabled-private-only"
 SPAIN_ADDRESS_PROFILE_ID = "geoapify-es-aesan-rgseaa"
 SPAIN_MUNICIPALITY_PROFILE_ID = "geoapify-es-aesan-verified-municipality"
 NEW_ZEALAND_LOCATIONIQ_PROFILE_ID = "locationiq-nz-mpi-rmp"
+UK_LOCATIONIQ_PROFILES = {
+    "locationiq-gb-fsa-approved-establishments": "fsa_approved_establishments",
+    "locationiq-gb-fss-approved-establishments": "fss_approved_establishments",
+}
 
 
 def profiles() -> list[dict[str, Any]]:
@@ -36,6 +40,7 @@ def profiles() -> list[dict[str, Any]]:
         if provider == "locationiq" and (profile_id, source_id, row.get("country_code")) not in {
                 ("locationiq-de-bltu", "de.locations", "DE"),
                 (NEW_ZEALAND_LOCATIONIQ_PROFILE_ID, "nz.locations", "NZ"),
+                *((key, source, "GB") for key, source in UK_LOCATIONIQ_PROFILES.items()),
         }:
             raise ValueError("LocationIQ private profile identity is invalid")
         if row.get("country_code") not in {"GB", "DK", "NL", "US", "ES", "DE", "NZ"}:

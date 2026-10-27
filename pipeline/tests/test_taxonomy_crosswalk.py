@@ -249,6 +249,32 @@ class TaxonomyCrosswalkTests(unittest.TestCase):
         self.assertEqual({row["mapping_method"] for row in merged["taxonomy_assignment_rows"]}, {"direct"})
         self.assertEqual(merged["taxonomy_mapping_method"], "direct")
 
+    def test_group_merge_preserves_distinct_native_evidence_and_deduplicates_exact_rows(self):
+        def contract(code, label):
+            assignment = {
+                "leaf_activity": "processing", "primary": "processing_and_preparation",
+                "method": "direct", "status": "mapped", "source_code_reference": "source.activity_code",
+                "source_label_reference": "source.activity_label", "source_code": code,
+                "source_label": label,
+            }
+            return {"category": "processing_and_preparation",
+                    "activity_categories": ["processing_and_preparation"],
+                    "taxonomy_assignments": [assignment],
+                    "taxonomy_mapping_method": "direct", "crosswalk_document": None,
+                    "source_activity_codes": [code], "source_activity_labels": [label],
+                    "activity_mapping_status": "mapped", "classification_ruleset_version": "rules-v1"}
+
+        first, second = contract("CP-1", "Cutting and processing"), contract("CP-2", "Processing")
+        forward = IMPORTER.merge_activity_contracts([first, second, first])
+        reverse = IMPORTER.merge_activity_contracts([second, first])
+        self.assertEqual(forward, reverse)
+        self.assertEqual(len(forward["taxonomy_assignments"]), 2)
+        self.assertEqual(len(forward["taxonomy_assignment_rows"]), 2)
+        self.assertEqual({row["source_code"] for row in forward["taxonomy_assignment_rows"]}, {"CP-1", "CP-2"})
+        self.assertEqual({row["source_label"] for row in forward["taxonomy_assignment_rows"]},
+                         {"Cutting and processing", "Processing"})
+        self.assertEqual({row["assignment_ordinal"] for row in forward["taxonomy_assignment_rows"]}, {1, 2})
+
     def test_assignment_rows_match_core_adapter_shape(self):
         projected = project_observation(self.by_name["multiple-activities"])
         rows = persistence_assignments(projected)

@@ -62,7 +62,7 @@ All items below remain required before replacing the original website.
 | France, broader Spain, Germany, Mexico | France and Spain private map checks passed; Germany first-pass geocoding retained; Mexico national capture and private database/API checks passed | Use the source inventory to prepare the new dated dataset. These private cohorts have not changed public dataset membership |
 | United Kingdom and New Zealand | UK FSA/FSS fresh capture, import and private API checks passed. NZ supplied MPI export has 1,638 programme records and 321 audited address points after 486 requests; real API checks passed | Include the verified cohorts in the final dated dataset. NZ export automation remains unverified; programme rows are not a premises census. Report jurisdiction and mapped coverage explicitly |
 | APHIS history | Reliability and on-demand historical recovery implemented | Six real endpoint cases passed locally: two eligible facilities return pre-2025 annual and inspection links, sampled PDFs open, and the original no-report case returns an empty page; sample history reaches 2014, not a complete archive audit |
-| New default dated dataset | Not started | Fresh acquisition and required location enrichment for included cohorts, measured map membership/counts, retained history and current restrictions |
+| New default dated dataset | Local assembly in progress | Fresh acquisition and required location enrichment for included cohorts, measured map membership/counts, retained history and current restrictions |
 | Final cutover | Not started | Maintainer frontend/data acceptance; verified monitoring, recovery and contribution operations; domain/canonical/redirect checks and rollback |
 
 Country implementation and UI features may run in independent lanes. Do not
@@ -97,9 +97,17 @@ mismatch, stale private enrichment states and German display-cache disagreement
 were repaired. Source business labels are retained for the release bridge.
 The older German private candidate cache is still unnamed; its retained handoff
 contains the business labels. The measured row-free release input inventory is
-retained at `D:/UntilEveryCage-Operations/release-preparation/country-coverage-20261027/candidate-inventory-nz-geocoded.json`
-(digest `f6c27e7eb116238c5e498dc7ef7629e7eb5ca77e894ea64cc0f4fc0f1871698e`).
+retained at `D:/UntilEveryCage-Operations/release-preparation/country-coverage-20261027/candidate-inventory-uk-geocoded.json`
+(digest `39849bc852183d668ad2367ef49b54018193a0520f0ddb8e1e81f8b1098f1504`).
 It is preparation evidence, not a frozen or promoted release.
+
+Country-release assembly is in progress on an isolated copy of the current
+release. UK enrichment queried 714 addresses and retained 32 audited matches;
+682 unmatched attempts remain available for later work. The secondary account
+has 701 requests left. The seven source cohorts passed read-only handoff and
+taxonomy checks. Their input selection and retained raw
+artifact hashes are frozen locally; public dataset membership is unchanged.
+The copy retains the current 60,263 connections, 1,024 report references and V0.
 
 ## Roadmap
 

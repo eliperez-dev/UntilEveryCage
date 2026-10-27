@@ -146,9 +146,11 @@ def restore_package(target_url: str, package: Path, apply_grants: bool) -> dict[
     payload_files = manifest.get("payload_files")
     if not isinstance(payload_files, list): raise ValueError("package payload inventory is missing")
     schema_derivative = manifest.get("serving_schema_derivative")
-    if not isinstance(schema_derivative, dict) or not isinstance(schema_derivative.get("artifacts_sha256"), dict):
+    if (not isinstance(schema_derivative, dict)
+            or not isinstance(schema_derivative.get("artifacts_sha256"), dict)
+            or not isinstance(schema_derivative.get("post_data_omissions"), list)):
         raise ValueError("package schema derivative inventory is missing")
-    expected = package_manifest(release_ids=manifest["release_ids"], migration_inventory_sha256=manifest["migration_inventory_sha256"], table_counts=manifest.get("table_counts"), specs=specs, payload_files=payload_files, schema_artifacts=schema_derivative["artifacts_sha256"])
+    expected = package_manifest(release_ids=manifest["release_ids"], migration_inventory_sha256=manifest["migration_inventory_sha256"], table_counts=manifest.get("table_counts"), specs=specs, payload_files=payload_files, schema_artifacts=schema_derivative["artifacts_sha256"], schema_omissions=schema_derivative["post_data_omissions"])
     if manifest.get("package_sha256") != expected["package_sha256"]: raise ValueError("package manifest digest is invalid")
     for item in payload_files:
         if not isinstance(item, dict) or not isinstance(item.get("name"), str) or "/" in item["name"] or "\\" in item["name"]:

@@ -47,6 +47,22 @@
   },
   "profiles": [
     {
+      "profile_id": "locationiq-gb-fsa-approved-establishments",
+      "provider_id": "locationiq",
+      "source_id": "fsa_approved_establishments",
+      "country_code": "GB",
+      "status": "enabled-private-only",
+      "source_scope": "Accepted FSA business addresses with an explicit source town, postcode and numbered street; withheld addresses excluded; no unverified source X/Y used"
+    },
+    {
+      "profile_id": "locationiq-gb-fss-approved-establishments",
+      "provider_id": "locationiq",
+      "source_id": "fss_approved_establishments",
+      "country_code": "GB",
+      "status": "enabled-private-only",
+      "source_scope": "Accepted FSS business addresses only when a source explicitly supplies locality, postcode and numbered street; no locality inferred from authority or address position"
+    },
+    {
       "profile_id": "geoapify-gb-fsa-approved-establishments",
       "source_id": "fsa_approved_establishments",
       "country_code": "GB",

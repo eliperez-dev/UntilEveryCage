@@ -17,10 +17,11 @@ import re
 import sys
 import uuid
 from collections import defaultdict
+from contextlib import ExitStack
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlsplit
 
 import psycopg
 from psycopg.types.json import Jsonb
@@ -46,6 +47,28 @@ PUBLIC_PROJECTION_RELATIONS = (
     "uec.map_facilities_public_discovery_read_model",
     "uec.graph_public_relationships",
     "uec.graph_public_claims",
+)
+RELEASE_BASELINE_ID = "release-2026-10-18"
+RELEASE_BASELINE_MANIFEST_SHA256 = "f06aa554f2b49aa8e4a285df948b8baa47952f60bfb344251109b9788cc2a661"
+RELEASE_BASELINE_PUBLIC_ROWS = 69220
+RELEASE_REPLACEMENT_SOURCES = frozenset({
+    "de.locations", "es.locations", "fr.georisques.icpe.animal", "mx.locations",
+    "nz.locations", "fsa_approved_establishments", "fss_approved_establishments",
+})
+RETAINED_RELEASE_IDS = (
+    "v0-candidate-2026-10-10-fsis-au-repair",
+    "v0-candidate-2026-10-10-fsis-au-repair-r2",
+    "v0-candidate-2026-10-10-fsis-au-repair-r3",
+    "v0-candidate-2026-10-10-fsis-au-repair-r4",
+    "v0-candidate-2026-10-10-fsis-au-repair-r5",
+)
+RETAINED_MANIFEST_SHA256 = {"v0-candidate-2026-10-10-fsis-au-repair-r2":
+    "b47b411a27542da4a538a2773dd383b0a1003ed188b7e8304f0898c39c592926"}
+GRAPH_IMMUTABLE_RELATIONS = (
+    "uec.graph_public_projection_builds", "uec.graph_public_projection_endpoints",
+    "uec.graph_public_projection_edges", "uec.graph_public_projection_edge_supports",
+    "uec.graph_public_projection_anchors", "uec.graph_public_projection_evidence_refs",
+    "uec.graph_public_projection_org_labels", "uec.graph_projection_generation",
 )
 _HASH = re.compile(r"^[0-9a-f]{64}$")
 _SAFE_RELEASE_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{2,95}$")
@@ -127,6 +150,34 @@ def _digest(path: Path) -> tuple[str, int]:
     return hasher.hexdigest(), size
 
 
+def _retained_source_artifact_digest(source: str, path: Path) -> tuple[str, int]:
+    """Digest retained source bytes, including France's verified page-set contract."""
+    path = Path(path)
+    if path.is_symlink():
+        raise BridgeError("retained_artifact_locator_invalid")
+    if path.is_dir():
+        if source != "fr.georisques.icpe.animal":
+            raise BridgeError("retained_artifact_locator_invalid")
+        try:
+            page_files = sorted(path.glob("page-*.json"))
+            snapshot_manifest = path.parent / "snapshot-manifest.json"
+            if (not page_files or any(child.is_symlink() for child in path.iterdir())
+                    or snapshot_manifest.is_symlink() or not snapshot_manifest.is_file()
+                    or [item.name for item in page_files] !=
+                    [f"page-{index:05d}.json" for index in range(1, len(page_files) + 1)]):
+                raise BridgeError("retained_artifact_locator_invalid")
+            from pipeline.sources.france.georisques_icpe.adapter import GeorisquesIcpeAnimalAdapter
+            result = GeorisquesIcpeAnimalAdapter().parse_pages(path)
+        except BridgeError:
+            raise
+        except Exception:
+            raise BridgeError("retained_artifact_verification_failed") from None
+        return str(result["sha256"]), int(result["byte_size"])
+    if not path.is_file():
+        raise BridgeError("retained_artifact_locator_invalid")
+    return _digest(path)
+
+
 def _read_json(path: Path) -> dict[str, Any]:
     if path.is_symlink() or not path.is_file():
         raise BridgeError("handoff_file_unavailable")
@@ -182,6 +233,25 @@ def _utc(value: Any, field: str) -> datetime:
     if result.utcoffset() is None:
         raise BridgeError(f"{field}_invalid")
     return result.astimezone(timezone.utc)
+
+
+def _validate_preview_timeline(handoff_value: Any, manifest_value: Any, run_value: Any,
+                               inventory_source: dict[str, Any], entry: dict[str, Any]) -> tuple[datetime, datetime]:
+    snapshot = inventory_source.get("snapshot", {})
+    latest = _utc(snapshot.get("retrieved_at"), "latest_retrieved_at")
+    first = _utc(snapshot.get("first_manifest_retrieved_at") or snapshot.get("retrieved_at"),
+                 "first_manifest_retrieved_at")
+    handoff = _utc(handoff_value, "handoff_retrieved_at")
+    manifest = _utc(manifest_value, "first_manifest_retrieved_at")
+    run = _utc(run_value, "latest_retrieved_at")
+    now = datetime.now(timezone.utc)
+    if (handoff not in (first, latest) or manifest != first or run != latest
+            or first > latest or latest > now or manifest > run or handoff > now):
+        raise BridgeError("preview_run_retrieval_timeline_mismatch")
+    if (entry.get("latest_retrieved_at") is not None
+            and _utc(entry["latest_retrieved_at"], "latest_retrieved_at") != latest):
+        raise BridgeError("freeze_latest_acquisition_time_mismatch")
+    return handoff, run
 
 
 def _source_paths(entry: dict[str, Any]) -> tuple[Path, Path, Path, Path]:
@@ -261,6 +331,10 @@ def load_freeze(path: Path, inventory_path: Path) -> tuple[dict[str, Any], dict[
         for field in ("accepted_count", "quarantined_count", "imported_observation_count", "facility_count"):
             if item.get(field) != expected.get("counts", {}).get(field):
                 raise BridgeError("freeze_source_count_mismatch")
+        if (item.get("latest_retrieved_at") is not None
+                and _utc(item["latest_retrieved_at"], "latest_retrieved_at").isoformat()
+                != _utc(snapshot.get("retrieved_at"), "latest_retrieved_at").isoformat()):
+            raise BridgeError("freeze_latest_acquisition_time_mismatch")
         if item.get("source_bytes_state") not in {"retained", "not_retained"}:
             raise BridgeError("freeze_artifact_retention_state_invalid")
         if item.get("source_bytes_state") == "retained":
@@ -269,7 +343,7 @@ def load_freeze(path: Path, inventory_path: Path) -> tuple[dict[str, Any], dict[
                 raise BridgeError("retained_artifact_locator_missing")
             if Path(locator).is_symlink():
                 raise BridgeError("retained_artifact_locator_invalid")
-            digest, size = _digest(Path(locator))
+            digest, size = _retained_source_artifact_digest(item["source_id"], Path(locator))
             if digest != item.get("source_artifact_sha256") or item.get("source_artifact_byte_size") != size:
                 raise BridgeError("retained_artifact_verification_failed")
         elif item.get("source_artifact_path") is not None or item.get("source_artifact_byte_size") is not None:
@@ -318,7 +392,13 @@ def verify_handoff(entry: dict[str, Any], inventory_source: dict[str, Any]) -> d
             or manifest_count != inventory_source["counts"]["imported_observation_count"]
             or not source_url):
         raise BridgeError("handoff_manifest_inventory_mismatch")
-    if (_utc(retrieved.isoformat(), "retrieved_at").isoformat() != _utc(expected["retrieved_at"], "retrieved_at").isoformat()
+    handoff_time = _utc(retrieved.isoformat(), "retrieved_at")
+    first_manifest_time = _utc(
+        expected.get("first_manifest_retrieved_at") or expected["retrieved_at"], "first_manifest_retrieved_at")
+    latest_acquisition_time = _utc(expected["retrieved_at"], "latest_retrieved_at")
+    if (handoff_time not in (first_manifest_time, latest_acquisition_time)
+            or first_manifest_time > latest_acquisition_time
+            or latest_acquisition_time > datetime.now(timezone.utc)
             or code != inventory_source["snapshot"].get("handoff_code_version")
             or config != inventory_source["snapshot"].get("handoff_config_version")):
         raise BridgeError("handoff_version_or_retrieval_mismatch")
@@ -415,6 +495,8 @@ def verify_handoff(entry: dict[str, Any], inventory_source: dict[str, Any]) -> d
         "graph_manifest_sha256": graph_manifest_hash,
         "source_url": source_url,
         "source_host": urlsplit(source_url).hostname,
+        "handoff_retrieved_at": handoff_time.isoformat(),
+        "latest_verified_acquisition_at": _utc(expected["retrieved_at"], "retrieved_at").isoformat(),
         "normalized_sha256": normalized_hash,
         "normalized_byte_size": normalized_bytes,
         "graph_records_sha256": graph_hash,
@@ -489,11 +571,14 @@ def _deduplicate_exact_assignment_rows(rows: list[dict[str, Any]]) -> list[dict[
     return unique
 
 
-def _verify_preview_source(connection: Any, source: str, entry: dict[str, Any], handoff: dict[str, Any]) -> dict[str, Any]:
+def _verify_preview_source(connection: Any, source: str, entry: dict[str, Any], handoff: dict[str, Any],
+                          inventory_source: dict[str, Any] | None = None) -> dict[str, Any]:
     snapshot = entry["snapshot_sha256"]
     run = connection.execute("""SELECT source_artifact_sha256, normalized_sha256, source_url, retrieved_at,
-            accepted_count, quarantined_count, imported_observation_count, facility_count, public_rows
-        FROM real_preview.source_preview_runs WHERE source_id=%s AND snapshot_sha256=%s""",
+            accepted_count, quarantined_count, imported_observation_count, facility_count, public_rows,
+            adapter_version, schema_version
+        FROM real_preview.source_preview_runs WHERE source_id=%s AND snapshot_sha256=%s
+        ORDER BY created_at DESC,run_id DESC LIMIT 1""",
         (source, snapshot)).fetchone()
     manifest = connection.execute("""SELECT source_artifact_sha256, normalized_sha256, normalized_rows,
             source_url, retrieved_at, code_version, config_version
@@ -517,7 +602,25 @@ def _verify_preview_source(connection: Any, source: str, entry: dict[str, Any], 
             or int(run[7]) != len(handoff["representatives"])
             or int(run[8]) != 0):
         raise BridgeError("preview_snapshot_provenance_mismatch")
-    if str(run[2]) != str(manifest[3]) or run[3] != manifest[4]:
+    if str(run[2]) != str(manifest[3]):
+        raise BridgeError("preview_run_manifest_mismatch")
+    if str(run[9]) != str(manifest[5]) or str(run[10]) != str(manifest[6]):
+        raise BridgeError("preview_run_manifest_version_mismatch")
+    run_retrieved_at = _utc(
+        run[3].isoformat() if hasattr(run[3], "isoformat") else str(run[3]), "latest_retrieved_at")
+    manifest_retrieved_at = _utc(
+        manifest[4].isoformat() if hasattr(manifest[4], "isoformat") else str(manifest[4]),
+        "first_manifest_retrieved_at")
+    handoff_retrieved_at = _utc(
+        handoff["manifest"].get("retrieved_at_utc") or handoff["manifest"].get("retrieved_at"),
+        "handoff_retrieved_at")
+    if inventory_source is not None:
+        handoff_retrieved_at, run_retrieved_at = _validate_preview_timeline(
+            handoff["manifest"].get("retrieved_at_utc") or handoff["manifest"].get("retrieved_at"),
+            manifest[4].isoformat() if hasattr(manifest[4], "isoformat") else str(manifest[4]),
+            run[3].isoformat() if hasattr(run[3], "isoformat") else str(run[3]),
+            inventory_source, entry)
+    elif manifest_retrieved_at != handoff_retrieved_at or manifest_retrieved_at != run_retrieved_at:
         raise BridgeError("preview_run_manifest_mismatch")
     obs_rows = connection.execute("""SELECT preview_id::text,source_identifier,location_class,country_code,city,postal_code,
             latitude,longitude,coordinate_precision,source_observed_at,facility_candidate
@@ -636,7 +739,9 @@ def _verify_preview_source(connection: Any, source: str, entry: dict[str, Any], 
             "preview_ids": preview_id_by_identifier,
             "candidates": by_group, "representatives": rep_by_id,
             "taxonomy": taxonomy_by_identifier,
-            "display_evidence_revision": display_evidence_revision}
+            "display_evidence_revision": display_evidence_revision,
+            "source_handoff_retrieved_at": handoff_retrieved_at.isoformat(),
+            "latest_verified_acquisition_at": run_retrieved_at.isoformat()}
 
 
 def _uuid(namespace: str, *parts: str) -> str:
@@ -832,24 +937,25 @@ def _baseline_contract() -> dict[str, Any]:
 
 
 def _digest_query(connection: Any, query: str, params: tuple[Any, ...] = ()) -> str:
-    """Hash a bounded ordered projection without printing retained rows."""
+    """Hash ordered JSONB rows on the server, transferring only row digests."""
     digest = hashlib.sha256()
     with connection.cursor() as cursor:
-        cursor.execute(query, params)
+        cursor.execute("SELECT encode(digest(row_payload::text,'sha256'),'hex') FROM ("
+                       + query + ") AS baseline_rows(row_payload)", params)
         for row in cursor:
-            digest.update(json.dumps(row[0], ensure_ascii=False, sort_keys=True,
-                                     separators=(",", ":"), default=str).encode("utf-8"))
+            digest.update(row[0].encode("ascii"))
             digest.update(b"\n")
     return digest.hexdigest()
 
 
-def _baseline_snapshot(connection: Any, contract: dict[str, Any]) -> dict[str, Any]:
-    """Verify and fingerprint exactly the promoted V0 state allowed beside a candidate."""
+def _baseline_snapshot(connection: Any, contract: dict[str, Any], *, expected_status: str = "promoted",
+                       include_shared: bool = True, include_facts: bool = True) -> dict[str, Any]:
+    """Verify and fingerprint the exact approved V0 state allowed beside a candidate."""
     release_id = contract["release_id"]
     expected = contract["expected"]
     release = connection.execute("SELECT status,profile,test_only FROM uec.releases WHERE release_id=%s", (release_id,)).fetchone()
     manifest = connection.execute("SELECT manifest_sha256 FROM uec.release_manifests WHERE release_id=%s", (release_id,)).fetchone()
-    if release != ("promoted", PROFILE, False) or manifest != (contract["manifest_sha256"],):
+    if release != (expected_status, PROFILE, False) or manifest != (contract["manifest_sha256"],):
         raise BridgeError("approved_v0_baseline_identity_mismatch")
     members, visible = connection.execute("SELECT count(*),count(*) FILTER (WHERE default_visible) FROM uec.release_members WHERE release_id=%s", (release_id,)).fetchone()
     named = connection.execute("SELECT count(*) FROM uec.release_members member JOIN uec.facilities facility USING(facility_id) WHERE member.release_id=%s AND member.default_visible AND NULLIF(BTRIM(facility.canonical_name),'') IS NOT NULL", (release_id,)).fetchone()[0]
@@ -859,19 +965,200 @@ def _baseline_snapshot(connection: Any, contract: dict[str, Any]) -> dict[str, A
         "release": _digest_query(connection, "SELECT to_jsonb(release) FROM uec.releases release WHERE release_id=%s ORDER BY release_id", (release_id,)),
         "manifest": _digest_query(connection, "SELECT to_jsonb(manifest) FROM uec.release_manifests manifest WHERE release_id=%s ORDER BY release_id", (release_id,)),
         "members": _digest_query(connection, "SELECT to_jsonb(member) FROM uec.release_members member WHERE release_id=%s ORDER BY facility_id,observation_id", (release_id,)),
-        "facilities": _digest_query(connection, "SELECT to_jsonb(facility) FROM uec.facilities facility JOIN uec.release_members member USING(facility_id) WHERE member.release_id=%s ORDER BY facility.facility_id", (release_id,)),
-        "observations": _digest_query(connection, "SELECT to_jsonb(observation) FROM uec.observations observation JOIN uec.release_members member ON member.observation_id=observation.observation_id WHERE member.release_id=%s ORDER BY observation.observation_id", (release_id,)),
-        "source_records": _digest_query(connection, "SELECT to_jsonb(record) FROM uec.source_records record JOIN uec.observations observation USING(source_record_id) JOIN uec.release_members member ON member.observation_id=observation.observation_id WHERE member.release_id=%s ORDER BY record.source_record_id", (release_id,)),
-        "restrictions": _digest_query(connection, "SELECT to_jsonb(event) FROM uec.record_access_events event ORDER BY event.access_event_id"),
     }
+    if include_facts:
+        snapshot.update({
+            "facilities": _digest_query(connection, "SELECT to_jsonb(facility) FROM uec.facilities facility JOIN uec.release_members member USING(facility_id) WHERE member.release_id=%s ORDER BY facility.facility_id", (release_id,)),
+            "observations": _digest_query(connection, "SELECT to_jsonb(observation) FROM uec.observations observation JOIN uec.release_members member ON member.observation_id=observation.observation_id WHERE member.release_id=%s ORDER BY observation.observation_id", (release_id,)),
+            "source_records": _digest_query(connection, "SELECT to_jsonb(record) FROM uec.source_records record JOIN uec.observations observation USING(source_record_id) JOIN uec.release_members member ON member.observation_id=observation.observation_id WHERE member.release_id=%s ORDER BY record.source_record_id", (release_id,)),
+        })
+    if include_shared:
+        snapshot["restrictions"] = _digest_query(
+            connection, "SELECT to_jsonb(event) FROM uec.record_access_events event ORDER BY event.access_event_id")
     # Public relations may legitimately contain the V0 projection.  Their exact
     # row hashes must remain unchanged while candidate-only rows are appended.
     public = {}
+    if include_shared:
+        for relation in PUBLIC_PROJECTION_RELATIONS:
+            if connection.execute("SELECT to_regclass(%s)", (relation,)).fetchone()[0] is not None:
+                public[relation] = _digest_query(connection, f"SELECT to_jsonb(value) FROM {relation} value ORDER BY to_jsonb(value)::text")
+        snapshot["public"] = public
+    return snapshot
+
+
+def _release_baseline_snapshot(connection: Any, release_id: str, manifest_sha256: str) -> dict[str, Any]:
+    """Verify/fingerprint the Oct 18 public release facts and public aggregates."""
+    if (release_id != RELEASE_BASELINE_ID
+            or manifest_sha256 != RELEASE_BASELINE_MANIFEST_SHA256):
+        raise BridgeError("release_baseline_contract_invalid")
+    release = connection.execute(
+        "SELECT status,profile,test_only FROM uec.releases WHERE release_id=%s", (release_id,)
+    ).fetchone()
+    manifest = connection.execute(
+        "SELECT manifest_sha256 FROM uec.release_manifests WHERE release_id=%s", (release_id,)
+    ).fetchone()
+    if release != ("promoted", PROFILE, False) or manifest != (manifest_sha256,):
+        raise BridgeError("release_baseline_identity_mismatch")
+    members, visible = connection.execute(
+        "SELECT count(*),count(*) FILTER (WHERE default_visible) FROM uec.release_members WHERE release_id=%s",
+        (release_id,),
+    ).fetchone()
+    named = connection.execute(
+        "SELECT count(*) FROM uec.release_members member JOIN uec.facilities facility USING(facility_id) "
+        "WHERE member.release_id=%s AND member.default_visible AND NULLIF(BTRIM(facility.canonical_name),'') IS NOT NULL",
+        (release_id,),
+    ).fetchone()[0]
+    if int(members) != RELEASE_BASELINE_PUBLIC_ROWS or int(visible) != RELEASE_BASELINE_PUBLIC_ROWS or int(named) <= 0:
+        raise BridgeError("release_baseline_public_aggregate_mismatch")
+    return _release_facts_snapshot(connection, release_id, {
+        "members": int(members), "visible": int(visible), "named": int(named),
+    }, include_facts=False)
+
+
+def _release_facts_snapshot(connection: Any, release_id: str,
+                             aggregates: dict[str, int] | None = None,
+                             *, include_facts: bool = True) -> dict[str, Any]:
+    """Fingerprint one release's immutable normalized facts, without shared tables."""
+    snapshot = {
+        "aggregates": aggregates or {},
+        "release": _digest_query(connection, "SELECT to_jsonb(value) FROM uec.releases value WHERE release_id=%s", (release_id,)),
+        "manifest": _digest_query(connection, "SELECT to_jsonb(value) FROM uec.release_manifests value WHERE release_id=%s", (release_id,)),
+        "members": _digest_query(connection, "SELECT to_jsonb(value) FROM uec.release_members value WHERE release_id=%s ORDER BY facility_id,observation_id", (release_id,)),
+    }
+    if include_facts:
+        snapshot.update({
+            "facilities": _digest_query(connection, "SELECT to_jsonb(value) FROM uec.facilities value JOIN uec.release_members member USING(facility_id) WHERE member.release_id=%s ORDER BY value.facility_id", (release_id,)),
+            "observations": _digest_query(connection, "SELECT to_jsonb(value) FROM uec.observations value JOIN uec.release_members member ON member.observation_id=value.observation_id WHERE member.release_id=%s ORDER BY value.observation_id", (release_id,)),
+            "source_records": _digest_query(connection, "SELECT to_jsonb(value) FROM uec.source_records value JOIN uec.observations observation USING(source_record_id) JOIN uec.release_members member ON member.observation_id=observation.observation_id WHERE member.release_id=%s ORDER BY value.source_record_id", (release_id,)),
+        })
+    return snapshot
+
+
+def _shared_fact_queries(release_ids: tuple[str, ...]) -> dict[str, tuple[str, tuple[list[str], ...]]]:
+    ids = list(release_ids)
+    return {
+        "facilities": ("SELECT to_jsonb(value) FROM uec.facilities value WHERE EXISTS "
+                       "(SELECT 1 FROM uec.release_members member WHERE member.facility_id=value.facility_id "
+                       "AND member.release_id=ANY(%s)) ORDER BY value.facility_id", (ids,)),
+        "observations": ("SELECT to_jsonb(value) FROM uec.observations value WHERE EXISTS "
+                         "(SELECT 1 FROM uec.release_members member WHERE member.observation_id=value.observation_id "
+                         "AND member.release_id=ANY(%s)) ORDER BY value.observation_id", (ids,)),
+        "source_records": ("SELECT to_jsonb(value) FROM uec.source_records value WHERE EXISTS "
+                           "(SELECT 1 FROM uec.observations observation JOIN uec.release_members member "
+                           "ON member.observation_id=observation.observation_id "
+                           "WHERE observation.source_record_id=value.source_record_id "
+                           "AND member.release_id=ANY(%s)) ORDER BY value.source_record_id", (ids,)),
+    }
+
+
+def _shared_baseline_snapshot(connection: Any, release_ids: tuple[str, ...]) -> dict[str, Any]:
+    """Hash shared restrictions/public/graph state once per before/after phase."""
+    active_build = connection.execute(
+        "SELECT count(*) FROM uec.graph_public_projection_builds "
+        "WHERE release_id=%s AND active AND status='completed'", (RELEASE_BASELINE_ID,)
+    ).fetchone()[0]
+    if int(active_build) != 1:
+        raise BridgeError("release_baseline_graph_build_mismatch")
+    graph_edges = int(connection.execute(
+        "SELECT count(*) FROM uec.graph_public_projection_edges edge "
+        "JOIN uec.graph_public_projection_builds build USING(projection_id,release_id) "
+        "WHERE build.release_id=%s AND build.active AND build.status='completed'", (RELEASE_BASELINE_ID,)
+    ).fetchone()[0])
+    evidence_references = int(connection.execute(
+        "SELECT count(*) FROM uec.graph_public_projection_evidence_refs reference "
+        "JOIN uec.graph_public_projection_builds build USING(projection_id) "
+        "WHERE build.release_id=%s AND build.active AND build.status='completed'", (RELEASE_BASELINE_ID,)
+    ).fetchone()[0])
+    if graph_edges != 60263 or evidence_references != 1024:
+        raise BridgeError("release_baseline_graph_aggregate_mismatch")
+    result: dict[str, Any] = {
+        "aggregates": {"graph_edges": graph_edges, "graph_evidence_references": evidence_references},
+        "restrictions": _digest_query(connection, "SELECT to_jsonb(value) FROM uec.record_access_events value ORDER BY access_event_id"),
+        "public": {}, "graph": {}, "facts": {},
+    }
+    for name, (query, params) in _shared_fact_queries(release_ids).items():
+        result["facts"][name] = _digest_query(connection, query, params)
     for relation in PUBLIC_PROJECTION_RELATIONS:
         if connection.execute("SELECT to_regclass(%s)", (relation,)).fetchone()[0] is not None:
-            public[relation] = _digest_query(connection, f"SELECT to_jsonb(value) FROM {relation} value ORDER BY to_jsonb(value)::text")
-    snapshot["public"] = public
-    return snapshot
+            result["public"][relation] = _digest_query(
+                connection, f"SELECT to_jsonb(value) FROM {relation} value ORDER BY to_jsonb(value)::text"
+            )
+    for relation in GRAPH_IMMUTABLE_RELATIONS:
+        if connection.execute("SELECT to_regclass(%s)", (relation,)).fetchone()[0] is not None:
+            result["graph"][relation] = _digest_query(
+                connection, f"SELECT to_jsonb(value) FROM {relation} value ORDER BY to_jsonb(value)::text"
+            )
+    return result
+
+
+def _retained_release_snapshots(connection: Any, release_ids: tuple[str, ...]) -> dict[str, dict[str, Any]]:
+    if len(set(release_ids)) != len(release_ids) or RELEASE_BASELINE_ID in release_ids:
+        raise BridgeError("retained_release_inventory_invalid")
+    snapshots: dict[str, dict[str, Any]] = {}
+    for release_id in sorted(release_ids):
+        row = connection.execute(
+            "SELECT status,profile,test_only FROM uec.releases WHERE release_id=%s", (release_id,)
+        ).fetchone()
+        if row != ("candidate", PROFILE, False):
+            raise BridgeError("retained_release_missing")
+        manifest = connection.execute(
+            "SELECT manifest_sha256 FROM uec.release_manifests WHERE release_id=%s", (release_id,)
+        ).fetchone()
+        expected_manifest = RETAINED_MANIFEST_SHA256.get(release_id)
+        if (expected_manifest is None and manifest is not None) or (
+                expected_manifest is not None and manifest != (expected_manifest,)):
+            raise BridgeError("retained_release_manifest_mismatch")
+        snapshots[release_id] = _release_facts_snapshot(connection, release_id, include_facts=False)
+    return snapshots
+
+
+def _release_append_scope_is_valid(connection: Any, baseline_ids: tuple[str, ...], retained_ids: tuple[str, ...],
+                                   candidate_release_id: str) -> None:
+    allowed_ids = {*baseline_ids, *retained_ids, candidate_release_id}
+    releases = connection.execute("SELECT release_id FROM uec.releases ORDER BY release_id").fetchall()
+    if {str(row[0]) for row in releases} - allowed_ids:
+        raise BridgeError("candidate_append_has_unexpected_release")
+    manifests = connection.execute("SELECT release_id FROM uec.release_manifests ORDER BY release_id").fetchall()
+    manifest_ids = {str(row[0]) for row in manifests}
+    if not set(baseline_ids).issubset(manifest_ids) or manifest_ids - (set(baseline_ids) | set(retained_ids)):
+        raise BridgeError("candidate_append_manifest_scope_mismatch")
+
+
+def _validate_preview_source_database_url(database_url: str) -> None:
+    parsed = urlsplit(database_url)
+    query_options = {key.lower() for key, _ in parse_qsl(parsed.query, keep_blank_values=True)}
+    if (parsed.scheme not in {"postgres", "postgresql"}
+            or parsed.hostname not in {"127.0.0.1", "localhost", "::1"}
+            or parsed.path.strip("/") != "uec_launch_sources_test_20261025"
+            or query_options.intersection({"host", "hostaddr", "service", "servicefile"})):
+        raise BridgeError("preview_source_database_not_allowlisted")
+
+
+def _inheritance_parent_id(append_to_release_baseline: bool, baseline_release_id: str,
+                           parent_candidate_release_id: str | None) -> str | None:
+    if parent_candidate_release_id is not None:
+        return parent_candidate_release_id
+    return baseline_release_id if append_to_release_baseline else None
+
+
+def _reconcile_release_source_cohort(connection: Any, candidate_release_id: str,
+                                     parent_release_id: str,
+                                     replacement_sources: tuple[str, ...]) -> list[str]:
+    expected_inherited = {str(row[0]) for row in connection.execute("""SELECT DISTINCT record.source_id
+        FROM uec.release_members member
+        JOIN uec.observations observation ON observation.observation_id=member.observation_id
+        JOIN uec.source_records record ON record.source_record_id=observation.source_record_id
+        WHERE member.release_id=%s AND NOT (record.source_id = ANY(%s))""",
+        (parent_release_id, list(replacement_sources))).fetchall()}
+    expected = expected_inherited | set(replacement_sources)
+    actual = {str(row[0]) for row in connection.execute("""SELECT DISTINCT record.source_id
+        FROM uec.release_members member
+        JOIN uec.observations observation ON observation.observation_id=member.observation_id
+        JOIN uec.source_records record ON record.source_record_id=observation.source_record_id
+        WHERE member.release_id=%s""", (candidate_release_id,)).fetchall()}
+    if actual != expected:
+        raise BridgeError("candidate_source_cohort_reconciliation_mismatch")
+    return sorted(actual)
 
 
 def _append_scope_is_valid(connection: Any, baseline_release_id: str, candidate_release_id: str) -> None:
@@ -905,12 +1192,24 @@ def _append_scope_is_valid(connection: Any, baseline_release_id: str, candidate_
 
 def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], inventory: dict[str, Any],
             *, candidate_only_ack: bool, append_to_v0_baseline: bool = False,
-            parent_candidate_release_id: str | None = None) -> dict[str, Any]:
+            parent_candidate_release_id: str | None = None,
+            append_to_release_baseline: bool = False,
+            baseline_release_id: str | None = None,
+            baseline_manifest_sha256: str | None = None,
+            retained_release_ids: tuple[str, ...] = (),
+            preview_source_database_url: str | None = None) -> dict[str, Any]:
     parsed_url = urlsplit(database_url)
-    if parsed_url.hostname not in {"127.0.0.1", "localhost", "::1"}:
+    routing = {key.lower() for key, _ in parse_qsl(parsed_url.query, keep_blank_values=True)}
+    if (parsed_url.scheme not in {"postgres", "postgresql"}
+            or parsed_url.hostname not in {"127.0.0.1", "localhost", "::1"}
+            or routing.intersection({"host", "hostaddr", "service", "servicefile"})):
         raise BridgeError("database_must_be_loopback")
     if not candidate_only_ack:
         raise BridgeError("explicit_candidate_only_ack_required")
+    if append_to_v0_baseline and append_to_release_baseline:
+        raise BridgeError("baseline_modes_are_mutually_exclusive")
+    append_mode = append_to_v0_baseline or append_to_release_baseline
+    additional_baseline_ids: tuple[str, ...] = ()
     if append_to_v0_baseline:
         if expected_database not in {"uec_v0_api_repair", "uec_launch_sources_test_20261025"}:
             raise BridgeError("append_candidate_database_not_allowlisted")
@@ -921,11 +1220,37 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
             successor = re.fullmatch(r"(.+)-r([2-9][0-9]*)", freeze["release_id"])
             if (successor is None or parent_candidate_release_id != f"{successor.group(1)}-r{int(successor.group(2)) - 1}"):
                 raise BridgeError("parent_candidate_must_be_immediate_same_family_predecessor")
+    elif append_to_release_baseline:
+        if expected_database != "uec_country_release_test_20261027":
+            raise BridgeError("append_candidate_database_not_allowlisted")
+        baseline_contract = _baseline_contract()
+        if (baseline_release_id != RELEASE_BASELINE_ID
+                or baseline_manifest_sha256 != RELEASE_BASELINE_MANIFEST_SHA256):
+            raise BridgeError("release_baseline_contract_invalid")
+        if tuple(sorted(retained_release_ids)) != tuple(sorted(RETAINED_RELEASE_IDS)):
+            raise BridgeError("retained_release_inventory_invalid")
+        if preview_source_database_url is None:
+            raise BridgeError("preview_source_database_url_required")
+        _validate_preview_source_database_url(preview_source_database_url)
+        if freeze["release_id"] in {baseline_contract["release_id"], baseline_release_id, *retained_release_ids}:
+            raise BridgeError("append_candidate_release_id_must_be_distinct")
+        additional_baseline_ids = (baseline_release_id, *retained_release_ids)
+        if parent_candidate_release_id is not None:
+            if parent_candidate_release_id != baseline_release_id:
+                successor = re.fullmatch(r"(.+)-r([2-9][0-9]*)", freeze["release_id"])
+                if (successor is None or parent_candidate_release_id != f"{successor.group(1)}-r{int(successor.group(2)) - 1}"):
+                    raise BridgeError("parent_candidate_must_be_immediate_same_family_predecessor")
+    elif preview_source_database_url is not None:
+        raise BridgeError("preview_source_database_requires_release_baseline_mode")
     elif not re.fullmatch(r"uec_v0_review(?:_[a-z0-9]+)?", expected_database):
         raise BridgeError("expected_database_name_must_be_isolated_v0_review")
     if parsed_url.path.lstrip("/") != expected_database:
         raise BridgeError("database_name_does_not_match_expected")
     entries = {item["source_id"]: item for item in freeze["selected_sources"]}
+    if append_to_release_baseline and set(entries) != RELEASE_REPLACEMENT_SOURCES:
+        raise BridgeError("release_baseline_requires_seven_non_us_replacement_sources")
+    inheritance_parent_release_id = _inheritance_parent_id(
+        append_to_release_baseline, baseline_release_id or "", parent_candidate_release_id)
     inventory_sources = {item["source_id"]: item for item in inventory["source_scope"]["sources"]}
     handoffs = {source: verify_handoff(entry, inventory_sources[source]) for source, entry in entries.items()}
     freeze_hash = hashlib.sha256((json.dumps(freeze, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n").encode()).hexdigest()
@@ -948,7 +1273,9 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                    "graph_records_sha256": handoffs[source]["graph_records_sha256"],
                    "graph_handoff_state": handoffs[source]["graph_handoff_state"],
                    "terms_review_sha256": handoffs[source]["terms_review_sha256"],
-                   "retrieved_at": handoffs[source]["manifest"].get("retrieved_at_utc"),
+                   "retrieved_at": handoffs[source].get("handoff_retrieved_at"),
+                   "source_handoff_retrieved_at": handoffs[source].get("handoff_retrieved_at"),
+                   "latest_verified_acquisition_at": handoffs[source].get("latest_verified_acquisition_at"),
                    "handoff_code_version": handoffs[source]["manifest"].get("code_version"),
                    "handoff_config_version": handoffs[source]["manifest"].get("config_version"),
                    "source_observations": len(handoffs[source]["rows"]),
@@ -959,7 +1286,7 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                "graph_readiness": "not_imported",
                "source_observation_count": sum(len(item["rows"]) for item in handoffs.values()),
                "facility_candidate_count": sum(len(item["representatives"]) for item in handoffs.values()),
-               "parent_candidate_release_id": parent_candidate_release_id}
+               "parent_candidate_release_id": inheritance_parent_release_id}
     counts = {"sources": len(entries), "source_observations": 0, "facility_candidates": 0,
               "source_coordinates": 0, "provider_derived_coordinates": 0, "coarse_references": 0,
               "unmapped": 0, "release_members": 0}
@@ -967,7 +1294,28 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
         # This transaction grows substantially as the selected cohort is inserted.
         # Disable psycopg's automatic prepared-statement promotion so plans are
         # not fixed against the initially empty isolated candidate database.
-        with psycopg.connect(database_url, prepare_threshold=None) as connection, connection.transaction():
+        with ExitStack() as stack:
+            preview_connection = None
+            if append_to_release_baseline:
+                preview_connection = stack.enter_context(
+                    psycopg.connect(preview_source_database_url, prepare_threshold=None))
+                stack.enter_context(preview_connection.transaction())
+                preview_connection.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+                source_database = preview_connection.execute("SELECT current_database()").fetchone()[0]
+                if source_database != "uec_launch_sources_test_20261025":
+                    raise BridgeError("preview_source_database_mismatch")
+                from pipeline.scripts import release_baseline
+                try:
+                    contract = release_baseline.load_contract(ROOT / "pipeline/contracts/development-baseline.json")
+                    baseline_report = release_baseline.verify_connection(preview_connection, contract)
+                except Exception:
+                    raise BridgeError("preview_source_baseline_verification_failed") from None
+                if (baseline_report.get("status") != "verified"
+                        or baseline_report.get("release_id") != "v0-candidate-2026-10-04-r3"
+                        or baseline_report.get("manifest_sha256") != baseline_contract["manifest_sha256"]):
+                    raise BridgeError("preview_source_baseline_verification_failed")
+            connection = stack.enter_context(psycopg.connect(database_url, prepare_threshold=None))
+            stack.enter_context(connection.transaction())
             connection.execute("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
             connection.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", ("v0-candidate-bridge:" + freeze["release_id"],))
             db_name = connection.execute("SELECT current_database()").fetchone()[0]
@@ -975,31 +1323,52 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                 raise BridgeError("connected_database_mismatch")
             connection.execute("SELECT retention_status FROM uec.raw_artifacts LIMIT 0")
             public_projection_before = _public_projection_count(connection)
-            baseline_before = _baseline_snapshot(connection, baseline_contract) if append_to_v0_baseline else None
-            if (not append_to_v0_baseline and (public_projection_before != 0
+            baseline_before = None
+            if append_mode:
+                baseline_before = {"v0": _baseline_snapshot(
+                    connection, baseline_contract,
+                    expected_status="validated" if append_to_release_baseline else "promoted",
+                    include_shared=not append_to_release_baseline,
+                    include_facts=not append_to_release_baseline)}
+                if append_to_release_baseline:
+                    shared_release_ids = tuple(sorted((baseline_contract["release_id"], baseline_release_id,
+                                                       *retained_release_ids)))
+                    baseline_before["shared"] = _shared_baseline_snapshot(connection, shared_release_ids)
+                    baseline_before["release"] = _release_baseline_snapshot(
+                        connection, baseline_release_id, baseline_manifest_sha256)
+                    baseline_before["retained"] = _retained_release_snapshots(connection, retained_release_ids)
+            if (not append_mode and (public_projection_before != 0
                     or connection.execute("SELECT count(*) FROM uec.releases WHERE status IN ('validated','promoted')").fetchone()[0] != 0
                     or connection.execute("SELECT count(*) FROM uec.release_manifests").fetchone()[0] != 0)):
                 raise BridgeError("candidate_database_has_public_release_state")
             if append_to_v0_baseline:
                 _append_scope_is_valid(connection, baseline_contract["release_id"], freeze["release_id"])
+            elif append_to_release_baseline:
+                _release_append_scope_is_valid(
+                    connection, (baseline_contract["release_id"], baseline_release_id),
+                    retained_release_ids, freeze["release_id"])
             inherited_members = 0
-            if parent_candidate_release_id is not None:
+            if inheritance_parent_release_id is not None:
                 parent = connection.execute("SELECT status,profile,test_only,summary FROM uec.releases WHERE release_id=%s",
-                                            (parent_candidate_release_id,)).fetchone()
-                if (parent is None or parent[0] != "candidate" or parent[1] != PROFILE or parent[2] is not False
-                        or not isinstance(parent[3], dict) or parent[3].get("candidate_only") is not True):
-                    raise BridgeError("parent_candidate_identity_mismatch")
-                if connection.execute("SELECT count(*) FROM uec.release_manifests WHERE release_id=%s",
-                                      (parent_candidate_release_id,)).fetchone()[0] != 0:
-                    raise BridgeError("parent_candidate_manifest_exists")
+                                            (inheritance_parent_release_id,)).fetchone()
+                if append_to_release_baseline and inheritance_parent_release_id == baseline_release_id:
+                    if parent is None or parent[:3] != ("promoted", PROFILE, False):
+                        raise BridgeError("parent_candidate_identity_mismatch")
+                else:
+                    if (parent is None or parent[0] != "candidate" or parent[1] != PROFILE or parent[2] is not False
+                            or not isinstance(parent[3], dict) or parent[3].get("candidate_only") is not True):
+                        raise BridgeError("parent_candidate_identity_mismatch")
+                    if connection.execute("SELECT count(*) FROM uec.release_manifests WHERE release_id=%s",
+                                          (inheritance_parent_release_id,)).fetchone()[0] != 0:
+                        raise BridgeError("parent_candidate_manifest_exists")
             # The exact freeze key is immutable: same key is a safe no-op; a
             # reused release ID with a different selection stops before writes.
             existing = _release_existing(connection, freeze["release_id"], freeze_hash)
             if not existing:
-                if (not append_to_v0_baseline
+                if (not append_mode
                         and connection.execute("SELECT count(*) FROM uec.release_members").fetchone()[0] != 0):
                     raise BridgeError("candidate_database_membership_not_empty")
-                if (not append_to_v0_baseline
+                if (not append_mode
                         and connection.execute("SELECT count(*) FROM uec.releases").fetchone()[0] != 0):
                     raise BridgeError("candidate_database_releases_not_empty")
             # Validate every frozen source while the transaction is still
@@ -1009,7 +1378,9 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
             for source, entry in entries.items():
                 print(json.dumps({"phase": "preview_validation", "source_id": source}, sort_keys=True), file=sys.stderr)
                 try:
-                    preview_checks[source] = _verify_preview_source(connection, source, entry, handoffs[source])
+                    preview_checks[source] = _verify_preview_source(
+                        preview_connection or connection, source, entry, handoffs[source],
+                        inventory_sources[source])
                 except BridgeError as error:
                     # Source IDs and stable guard codes are safe operational
                     # diagnostics; do not surface row data or SQL payloads.
@@ -1090,10 +1461,10 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                         raise BridgeError("canonical_facility_source_identity_conflict")
                     rep_row = handoff["representatives"][group][1]
                     display_name = _facility_display_name(source, rep_row.get("normalized"), rep_row.get("source_values"))
-                    if (not append_to_v0_baseline and existing_facility and existing_facility[1]
+                    if (not append_mode and existing_facility and existing_facility[1]
                             and display_name and existing_facility[1] != display_name):
                         raise BridgeError("canonical_facility_name_conflict")
-                    facility_conflict = "DO NOTHING" if append_to_v0_baseline else (
+                    facility_conflict = "DO NOTHING" if append_mode else (
                         "DO UPDATE SET canonical_name=COALESCE(NULLIF(BTRIM(uec.facilities.canonical_name),''),EXCLUDED.canonical_name)"
                     )
                     connection.execute(f"""INSERT INTO uec.facilities(facility_id,canonical_name,country_code,city,postal_code)
@@ -1246,7 +1617,7 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                     counts["release_members"] += 1
                 print(json.dumps({"phase": "source_write_verified", "source_id": source,
                                   "observation_count": len(handoff["rows"])}, sort_keys=True), file=sys.stderr)
-            if parent_candidate_release_id is not None:
+            if inheritance_parent_release_id is not None:
                 inherited_members = connection.execute("""INSERT INTO uec.release_members
                     (release_id,facility_id,observation_id,default_visible)
                     SELECT %s,parent.facility_id,parent.observation_id,false
@@ -1255,13 +1626,13 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                       JOIN uec.source_records record ON record.source_record_id=observation.source_record_id
                      WHERE parent.release_id=%s AND NOT (record.source_id = ANY(%s))
                     ON CONFLICT (release_id,facility_id) DO NOTHING
-                    RETURNING facility_id""", (freeze["release_id"], parent_candidate_release_id, sorted(entries))).fetchall()
+                    RETURNING facility_id""", (freeze["release_id"], inheritance_parent_release_id, sorted(entries))).fetchall()
                 expected_inherited = connection.execute("""SELECT count(*)
                       FROM uec.release_members parent
                       JOIN uec.observations observation ON observation.observation_id=parent.observation_id
                       JOIN uec.source_records record ON record.source_record_id=observation.source_record_id
                      WHERE parent.release_id=%s AND NOT (record.source_id = ANY(%s))""",
-                    (parent_candidate_release_id, sorted(entries))).fetchone()[0]
+                    (inheritance_parent_release_id, sorted(entries))).fetchone()[0]
                 inherited_members = int(expected_inherited)
                 preserved = connection.execute("""SELECT count(*)
                       FROM uec.release_members parent
@@ -1270,7 +1641,7 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                       JOIN uec.release_members successor ON successor.release_id=%s AND successor.facility_id=parent.facility_id
                      WHERE parent.release_id=%s AND NOT (record.source_id = ANY(%s))
                        AND successor.observation_id=parent.observation_id AND successor.default_visible=false""",
-                    (freeze["release_id"], parent_candidate_release_id, sorted(entries))).fetchone()[0]
+                    (freeze["release_id"], inheritance_parent_release_id, sorted(entries))).fetchone()[0]
                 stale_selected = connection.execute("""SELECT count(*) FROM uec.release_members member
                       JOIN uec.observations observation ON observation.observation_id=member.observation_id
                       JOIN uec.source_records record ON record.source_record_id=observation.source_record_id
@@ -1281,7 +1652,7 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                     raise BridgeError("parent_candidate_copy_integrity_mismatch")
                 summary["inherited_member_count"] = inherited_members
                 connection.execute("UPDATE uec.releases SET summary=summary || %s::jsonb WHERE release_id=%s",
-                                   (Jsonb({"parent_candidate_release_id": parent_candidate_release_id,
+                                   (Jsonb({"parent_candidate_release_id": inheritance_parent_release_id,
                                            "inherited_member_count": inherited_members}), freeze["release_id"]))
             counts["facility_candidates"] = counts["release_members"]
             counts["facility_candidates"] += inherited_members
@@ -1292,10 +1663,19 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                 (freeze["release_id"],)).fetchone()
             if int(actual_members) != counts["facility_candidates"] or int(visible_members) != 0:
                 raise BridgeError("release_membership_count_or_visibility_mismatch")
-            if (not append_to_v0_baseline and connection.execute("SELECT count(*) FROM uec.release_members WHERE release_id<>%s",
+            if append_to_release_baseline:
+                actual_sources = _reconcile_release_source_cohort(
+                    connection, freeze["release_id"], inheritance_parent_release_id,
+                    tuple(sorted(entries)))
+                summary["replacement_sources"] = sorted(entries)
+                summary["selected_sources"] = actual_sources
+                connection.execute("UPDATE uec.releases SET summary=summary || %s::jsonb WHERE release_id=%s",
+                                   (Jsonb({"selected_sources": actual_sources,
+                                           "replacement_sources": sorted(entries)}), freeze["release_id"]))
+            if (not append_mode and connection.execute("SELECT count(*) FROM uec.release_members WHERE release_id<>%s",
                                   (freeze["release_id"],)).fetchone()[0] != 0):
                 raise BridgeError("candidate_database_has_unrelated_release_members")
-            if not append_to_v0_baseline and _public_projection_count(connection) != 0:
+            if not append_mode and _public_projection_count(connection) != 0:
                 raise BridgeError("public_projection_state_changed")
             release_state = connection.execute("SELECT status,profile,test_only FROM uec.releases WHERE release_id=%s",
                                                (freeze["release_id"],)).fetchone()
@@ -1306,8 +1686,21 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                 raise BridgeError("candidate_release_manifest_exists")
             if append_to_v0_baseline:
                 _append_scope_is_valid(connection, baseline_contract["release_id"], freeze["release_id"])
-                if _baseline_snapshot(connection, baseline_contract) != baseline_before:
+                if _baseline_snapshot(connection, baseline_contract) != baseline_before["v0"]:
                     raise BridgeError("approved_v0_baseline_changed")
+            elif append_to_release_baseline:
+                _release_append_scope_is_valid(
+                    connection, (baseline_contract["release_id"], baseline_release_id),
+                    retained_release_ids, freeze["release_id"])
+                baseline_after = {
+                    "v0": _baseline_snapshot(connection, baseline_contract, expected_status="validated",
+                                              include_shared=False, include_facts=False),
+                    "shared": _shared_baseline_snapshot(connection, shared_release_ids),
+                    "release": _release_baseline_snapshot(connection, baseline_release_id, baseline_manifest_sha256),
+                    "retained": _retained_release_snapshots(connection, retained_release_ids),
+                }
+                if baseline_after != baseline_before:
+                    raise BridgeError("approved_release_baseline_changed")
     except psycopg.Error as error:
         # Database diagnostics may contain private URLs or server details.
         failure = BridgeError("candidate_bridge_database_operation_failed")
@@ -1462,6 +1855,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--candidate-only-ack", action="store_true")
     parser.add_argument("--append-to-v0-baseline", action="store_true",
                         help="append a non-visible candidate beside the exact approved local V0 clone")
+    parser.add_argument("--append-to-release-baseline", action="store_true",
+                        help="append beside the verified Oct 18/V0 baseline and explicit retained history")
+    parser.add_argument("--baseline-release-id", help="exact current public release ID")
+    parser.add_argument("--baseline-manifest-sha256", help="exact current public release manifest digest")
+    parser.add_argument("--retained-release-id", action="append", default=[],
+                        help="exact release to preserve (repeat for each retained historical release)")
+    parser.add_argument("--preview-source-database-url-env", default="UEC_PREVIEW_SOURCE_DATABASE_URL",
+                        help="environment variable containing the loopback country-preview database URL")
     parser.add_argument("--candidate-release-id",
                         help="required with --append-to-v0-baseline; distinct local candidate identity")
     parser.add_argument("--parent-candidate-release-id",
@@ -1471,6 +1872,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if not args.database_url:
         parser.error("--database-url or UEC_DATABASE_URL is required")
+    if args.append_to_v0_baseline and args.append_to_release_baseline:
+        parser.error("baseline append modes are mutually exclusive")
     if args.apply_names and not args.repair_names:
         parser.error("--apply-names requires --repair-names")
     if args.append_to_v0_baseline and args.repair_names:
@@ -1479,17 +1882,33 @@ def main(argv: list[str] | None = None) -> int:
                                        or not _SAFE_RELEASE_ID.fullmatch(args.candidate_release_id)
                                        or not args.candidate_release_id.startswith("v0-candidate-")):
         parser.error("--append-to-v0-baseline requires a v0-candidate-* --candidate-release-id")
-    if not args.append_to_v0_baseline and args.candidate_release_id:
+    if not args.append_to_v0_baseline and not args.append_to_release_baseline and args.candidate_release_id:
         parser.error("--candidate-release-id requires --append-to-v0-baseline")
-    if args.parent_candidate_release_id and not args.append_to_v0_baseline:
-        parser.error("--parent-candidate-release-id requires --append-to-v0-baseline")
+    if args.append_to_release_baseline:
+        if args.repair_names:
+            parser.error("--append-to-release-baseline cannot be combined with --repair-names")
+        if args.baseline_release_id != RELEASE_BASELINE_ID or args.baseline_manifest_sha256 != RELEASE_BASELINE_MANIFEST_SHA256:
+            parser.error("--append-to-release-baseline requires the exact public baseline identity")
+        if tuple(sorted(args.retained_release_id)) != tuple(sorted(RETAINED_RELEASE_IDS)):
+            parser.error("--append-to-release-baseline requires the exact retained release inventory")
+        if not re.fullmatch(r"[A-Z_][A-Z0-9_]{0,63}", args.preview_source_database_url_env):
+            parser.error("--preview-source-database-url-env must be an environment variable name")
+        if (not isinstance(args.candidate_release_id, str) or not _SAFE_RELEASE_ID.fullmatch(args.candidate_release_id)
+                or args.candidate_release_id.startswith("v0-candidate-")
+                or args.candidate_release_id in {RELEASE_BASELINE_ID, *RETAINED_RELEASE_IDS}):
+            parser.error("--append-to-release-baseline requires a distinct non-V0 --candidate-release-id")
+    elif (args.baseline_release_id or args.baseline_manifest_sha256 or args.retained_release_id
+          or args.preview_source_database_url_env != "UEC_PREVIEW_SOURCE_DATABASE_URL"):
+        parser.error("release baseline arguments require --append-to-release-baseline")
+    if args.parent_candidate_release_id and not (args.append_to_v0_baseline or args.append_to_release_baseline):
+        parser.error("--parent-candidate-release-id requires an append baseline mode")
     try:
         freeze, inventory = load_freeze(args.freeze, args.inventory)
         if args.repair_names:
             report = repair_candidate_names(args.database_url, args.expected_database, freeze, inventory,
                                             apply=args.apply_names)
         else:
-            if args.append_to_v0_baseline:
+            if args.append_to_v0_baseline or args.append_to_release_baseline:
                 # The freeze is immutable historical evidence.  Only the
                 # in-memory candidate identity changes for the new local
                 # correction release, and its hash is stored in that release.
@@ -1497,7 +1916,13 @@ def main(argv: list[str] | None = None) -> int:
             report = bridge(args.database_url, args.expected_database, freeze, inventory,
                             candidate_only_ack=args.candidate_only_ack,
                             append_to_v0_baseline=args.append_to_v0_baseline,
-                            parent_candidate_release_id=args.parent_candidate_release_id)
+                            parent_candidate_release_id=args.parent_candidate_release_id,
+                            append_to_release_baseline=args.append_to_release_baseline,
+                            baseline_release_id=args.baseline_release_id,
+                            baseline_manifest_sha256=args.baseline_manifest_sha256,
+                            retained_release_ids=tuple(args.retained_release_id),
+                            preview_source_database_url=(os.environ.get(args.preview_source_database_url_env)
+                                if args.append_to_release_baseline else None))
     except (BridgeError, OSError, ValueError) as error:
         reason = str(error) if isinstance(error, BridgeError) and re.fullmatch(r"[a-z0-9_.:-]{1,160}", str(error)) else "candidate_bridge_validation_failed"
         print(json.dumps({"status": "blocked", "reason": reason}, sort_keys=True))

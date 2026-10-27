@@ -5,6 +5,21 @@ from __future__ import annotations
 from pipeline.common.release_cohort_review import APPROVED_GEOMETRY_MEMBERS_CTE
 
 
+# LocationIQ component matching has no numeric probability. Preserve its
+# independently audited address-match evidence rather than inventing a score.
+PROVIDER_CONFIDENCE_SQL = """(
+    CASE WHEN lower(coalesce(evidence #>> '{display_location,provider}',''))<>'locationiq'
+              AND evidence #>> '{display_location,confidence}' ~ '^[0-9]+([.][0-9]+)?$'
+         THEN (evidence #>> '{display_location,confidence}')::numeric BETWEEN 0 AND 1
+         ELSE false END
+    OR (lower(evidence #>> '{display_location,provider}')='locationiq'
+        AND evidence #>> '{display_location,method}'='locationiq_forward'
+        AND evidence #>> '{display_location,precision}'='provider_address_point_high_confidence'
+        AND evidence #>> '{display_location,coordinate_review_status}'='automated_high_confidence_private_display'
+        AND evidence #> '{display_location,confidence}'='null'::jsonb)
+)"""
+
+
 # The query returns one row per release member, including unmapped members.
 # The first bind parameter is always release_id (used by the cohort CTE).
 # Only allowlisted method/provenance metadata is projected; source queries,
@@ -84,9 +99,7 @@ GEOMETRY_MEMBERS_CTE = APPROVED_GEOMETRY_MEMBERS_CTE + """
                   AND NULLIF(btrim(evidence #>> '{display_location,method}'),'') IS NOT NULL
                   AND NULLIF(btrim(evidence #>> '{display_location,precision}'),'') IS NOT NULL
                   AND NULLIF(btrim(evidence #>> '{display_location,evidence_id}'),'') IS NOT NULL
-                  AND CASE WHEN evidence #>> '{display_location,confidence}' ~ '^[0-9]+([.][0-9]+)?$'
-                           THEN (evidence #>> '{display_location,confidence}')::numeric BETWEEN 0 AND 1
-                           ELSE false END))
+                  AND """ + PROVIDER_CONFIDENCE_SQL + """))
              AND coordinate IS NOT NULL
              AND coordinate_review_status IS DISTINCT FROM 'country-coordinate-mismatch'
              AND (ST_X(coordinate::geometry)<>0 OR ST_Y(coordinate::geometry)<>0)

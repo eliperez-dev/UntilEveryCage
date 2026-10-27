@@ -160,8 +160,27 @@ class ReleaseServingPackageTests(unittest.TestCase):
         self.assertEqual(manifest["package_sha256"], serving.canonical_sha256({key: value for key, value in manifest.items() if key != "package_sha256"}))
         self.assertIn("redacted", manifest["redaction_notice"])
         self.assertEqual(manifest["serving_schema_derivative"]["artifacts_sha256"]["pre_data"], "b" * 64)
-        self.assertEqual(len(manifest["serving_schema_derivative"]["post_data_omissions"]), 2)
+        self.assertEqual(manifest["serving_schema_derivative"]["post_data_omissions"],
+                         list(serving.SERVING_SCHEMA_OMISSIONS))
         self.assertNotIn("password", str(manifest).casefold())
+
+    def test_only_legacy_two_or_current_five_private_callbacks_may_be_omitted(self):
+        common = {"release_ids": ["v0-public"], "migration_inventory_sha256": "a" * 64}
+        for omissions in (serving.LEGACY_SERVING_SCHEMA_OMISSIONS,
+                          serving.SERVING_SCHEMA_OMISSIONS):
+            with self.subTest(count=len(omissions)):
+                manifest = serving.package_manifest(**common, schema_omissions=list(omissions))
+                reconstructed = serving.package_manifest(
+                    **common,
+                    schema_omissions=manifest["serving_schema_derivative"]["post_data_omissions"],
+                )
+                self.assertEqual(manifest["package_sha256"], reconstructed["package_sha256"])
+        with self.assertRaisesRegex(ValueError, "schema omissions"):
+            serving.package_manifest(
+                **common,
+                schema_omissions=[*serving.SERVING_SCHEMA_OMISSIONS,
+                                  "TRIGGER uec.public_discovery_read_model_rows.public_eligibility_gate: reviewed"],
+            )
 
     def test_restore_target_must_be_empty_except_zero_generation_singletons(self):
         path = Path(__file__).parents[1] / "scripts" / "maintenance" / "prepare-release-serving-package.py"

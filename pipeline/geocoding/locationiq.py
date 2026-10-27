@@ -99,6 +99,66 @@ class LocationIqAdapter:
             return None
         return road, number, locality, postcode
 
+    @staticmethod
+    def _parse_gb_query(query: str):
+        """Parse canonical source-address query: house road, locality, postcode, UK."""
+        parts = [part.strip() for part in query.split(",")]
+        if (len(parts) != 4 or any(not part for part in parts)
+                or parts[3].casefold() != "united kingdom"):
+            return None
+        match = re.fullmatch(r"(\d+[A-Za-z]?(?:[-/]\d+[A-Za-z]?)?)\s+(.+)", parts[0])
+        postcode = re.sub(r"\s+", "", parts[2]).upper()
+        if (not match or not re.fullmatch(r"(?:GIR0AA|[A-Z]{1,2}\d[A-Z\d]?\d[A-Z]{2})", postcode)
+                or len(parts[1]) > 200):
+            return None
+        return match.group(2), match.group(1), parts[1], postcode
+
+    @classmethod
+    def canonical_uk_query(cls, address_lines, locality: str, postcode: str) -> str | None:
+        """Make a name-free UK query only from an unambiguous numbered road line.
+
+        Other address-line text is intentionally omitted from provider queries.
+        """
+        if not isinstance(address_lines, (list, tuple)) or not address_lines:
+            return None
+        if not isinstance(locality, str) or not locality.strip() or len(locality.strip()) > 200:
+            return None
+        if not isinstance(postcode, str):
+            return None
+        canonical_postcode = re.sub(r"\s+", "", postcode).upper()
+        if not re.fullmatch(r"(?:GIR0AA|[A-Z]{1,2}\d[A-Z\d]?\d[A-Z]{2})", canonical_postcode):
+            return None
+        suffix = (r"(?:street|st|road|rd|avenue|ave|lane|ln|drive|dr|way|close|crescent|cres|"
+                  r"court|ct|terrace|ter|place|pl|square|sq|gardens?|grove|green|hill|row|walk|mews|"
+                  r"wharf|parade|high street|high road)")
+        road_atom = r"[\w'’.\-]+"
+        road_pattern = rf"{road_atom}(?:\s+{road_atom})*\s+{suffix}"
+        house = r"\d+[A-Za-z]?(?:[-/]\d+[A-Za-z]?)?"
+        found: set[tuple[str, str]] = set()
+        for line in address_lines:
+            if not isinstance(line, str):
+                continue
+            # Consider only comma-delimited subfields. Never copy nonmatching
+            # fragments (which may contain establishment or contact names).
+            for part in line.split(","):
+                candidate = " ".join(part.split())
+                match = re.fullmatch(rf"({house})\s+({road_pattern})", candidate, re.IGNORECASE)
+                if not match:
+                    match = re.fullmatch(rf"({road_pattern})\s+({house})", candidate, re.IGNORECASE)
+                    if match:
+                        road, number = match.group(1), match.group(2)
+                    else:
+                        continue
+                else:
+                    number, road = match.group(1), match.group(2)
+                found.add((" ".join(road.split()), number))
+        if len(found) != 1:
+            return None
+        road, number = next(iter(found))
+        # Canonical number-first order is part of the migration/replay contract.
+        query = f"{number} {road}, {' '.join(locality.split())}, {canonical_postcode[:-3]} {canonical_postcode[-3:]}, United Kingdom"
+        return query if cls._parse_gb_query(query) is not None else None
+
     @classmethod
     def _street_matches(cls, source: str, road: str, number: str) -> bool:
         source_n = cls._normalize(source)
@@ -144,11 +204,13 @@ class LocationIqAdapter:
         if len(query) > 1000:
             return self._outcome("review_required", "invalid_source_address", {"error": "invalid_source_address"})
         is_nz = self.country_code == "nz"
-        parsed = self._parse_nz_query(query) if is_nz else self._parse_query(query)
+        is_gb = self.country_code == "gb"
+        parsed = (self._parse_gb_query(query) if is_gb else
+                  self._parse_nz_query(query) if is_nz else self._parse_query(query))
         if parsed is None:
             return self._outcome("review_required", "invalid_source_address", {"error": "invalid_source_address"})
-        request_country = "nz" if is_nz else "de"
-        language = "en" if is_nz else "de"
+        request_country = "nz" if is_nz else "gb" if is_gb else "de"
+        language = "en" if (is_nz or is_gb) else "de"
         params = urllib.parse.urlencode({
             "key": self.api_key, "q": query, "format": "json", "countrycodes": request_country,
             "addressdetails": 1, "normalizeaddress": 1, "normalizecity": 1,
@@ -183,6 +245,8 @@ class LocationIqAdapter:
             return self._outcome("unresolved", "no_results", {"results": []})
 
         if is_nz:
+            source_street, source_number, locality, postcode = parsed
+        elif is_gb:
             source_street, source_number, locality, postcode = parsed
         else:
             source_street, postcode, locality, state = parsed
@@ -230,6 +294,23 @@ class LocationIqAdapter:
                         and locality_match
                         and (postcode is None or str(address.get("postcode", "")).strip() == postcode)):
                     viable.append((len(candidates) - 1, coords, safe))
+            elif is_gb:
+                in_gb_bounds = -8.7 <= coords[1] <= 2.1 and 49.8 <= coords[0] <= 60.9
+                nz_house_place = (safe.get("class") == "place" and result_type == "house"
+                                  and address_type in {"", "house", "building"})
+                result_is_address = result_is_address or nz_house_place
+                locality_values = [address.get(key) for key in ("city", "town", "municipality", "village")]
+                locality_match = any(isinstance(value, str)
+                                     and self._normalize(value) == self._normalize(locality)
+                                     for value in locality_values)
+                candidate_postcode = re.sub(r"\s+", "", str(address.get("postcode", ""))).upper()
+                if (str(address.get("country_code", "")).lower() == "gb" and in_gb_bounds
+                        and result_is_address and isinstance(road, str)
+                        and isinstance(number, (str, int))
+                        and self._normalize(road) == self._normalize(source_street)
+                        and self._normalize(str(number)) == self._normalize(source_number)
+                        and locality_match and candidate_postcode == postcode):
+                    viable.append((len(candidates) - 1, coords, safe))
             else:
                 if (str(address.get("country_code", "")).lower() != "de"
                         or not (5 <= coords[1] <= 16 and 47 <= coords[0] <= 56)):
@@ -247,7 +328,7 @@ class LocationIqAdapter:
                     viable.append((len(candidates) - 1, coords, safe))
 
         envelope = {"results": candidates}
-        if len(viable) != 1 or not (self.private_source_profile and self.country_code in {"de", "nz"}):
+        if len(viable) != 1 or not (self.private_source_profile and self.country_code in {"de", "nz", "gb"}):
             reason = "ambiguous_multiple_viable_results" if len(viable) > 1 else "address_components_match_required"
             return self._outcome("review_required", reason, envelope)
         index, (lat, lon), candidate = viable[0]

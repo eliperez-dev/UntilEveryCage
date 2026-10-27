@@ -16,7 +16,7 @@ import os
 import re
 import sys
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlsplit
 
 ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
@@ -139,8 +139,12 @@ def _validate_database_url(database_url: str, expected_database: str) -> None:
     parsed = urlsplit(database_url)
     if parsed.scheme not in {"postgres", "postgresql"} or parsed.hostname not in {"127.0.0.1", "localhost", "::1"}:
         raise CohortReviewError("database must be a loopback PostgreSQL URL")
-    if not re.fullmatch(r"uec_v0_review(?:_[a-z0-9]+)?", expected_database):
-        raise CohortReviewError("expected database must be an isolated uec_v0_review database")
+    routing = {key.lower() for key, _ in parse_qsl(parsed.query, keep_blank_values=True)}
+    if routing.intersection({"host", "hostaddr", "service", "servicefile"}):
+        raise CohortReviewError("database URL must not override the loopback target")
+    if (not re.fullmatch(r"uec_v0_review(?:_[a-z0-9]+)?", expected_database)
+            and expected_database != "uec_country_release_test_20261027"):
+        raise CohortReviewError("expected database must be an allowlisted isolated review database")
     if parsed.path.lstrip("/") != expected_database:
         raise CohortReviewError("database URL does not match expected database")
 

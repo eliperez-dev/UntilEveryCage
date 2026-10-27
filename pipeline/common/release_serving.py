@@ -122,9 +122,14 @@ def export_specs() -> tuple[ExportSpec, ...]:
 
 
 FORBIDDEN_DATA_RELATIONS = ("uec.acquisition_runs", "uec.acquisition_run_artifacts", "uec.geocode_results", "uec.geocode_jobs", "uec.geocode_job_events", "uec.graph_evidence_events", "uec.graph_evidence_links", "uec.graph_source_name_assertions", "uec.graph_connection_edges", "uec.graph_record_release_bindings", "uec.source_entity_identifiers", "uec.graph_ingest_runs", "uec.graph_ingest_items", "uec.graph_edge_materialization_runs", "uec.claim_support")
-SERVING_SCHEMA_OMISSIONS = (
+LEGACY_SERVING_SCHEMA_OMISSIONS = (
     "TRIGGER uec.geocode_results.aaa_aphis_mailing_locality_geoapify_display: private acquisition preview callback",
     "TRIGGER uec.geocode_results.geocode_results_geoapify_preview_display: private geocoder preview callback",
+)
+SERVING_SCHEMA_OMISSIONS = LEGACY_SERVING_SCHEMA_OMISSIONS + (
+    "TRIGGER uec.geocode_results.geocode_results_locationiq_private_display: private DE acquisition preview callback (migration 098)",
+    "TRIGGER uec.geocode_results.geocode_results_new_zealand_locationiq_private_display: private NZ acquisition preview callback (migration 102)",
+    "TRIGGER uec.geocode_results.geocode_results_uk_locationiq_private_display: private UK acquisition preview callback (migration 104)",
 )
 # Handler-facing relations only.  The support tables in the export are read by
 # security-definer views, never directly by the network role.
@@ -144,7 +149,7 @@ API_RELATIONS = (
 )
 
 
-def package_manifest(*, release_ids: list[str], migration_inventory_sha256: str, table_counts: dict[str, int] | None = None, specs: tuple[ExportSpec, ...] | None = None, payload_files: list[dict[str, Any]] | None = None, schema_artifacts: dict[str, str] | None = None) -> dict[str, Any]:
+def package_manifest(*, release_ids: list[str], migration_inventory_sha256: str, table_counts: dict[str, int] | None = None, specs: tuple[ExportSpec, ...] | None = None, payload_files: list[dict[str, Any]] | None = None, schema_artifacts: dict[str, str] | None = None, schema_omissions: list[str] | tuple[str, ...] | None = None) -> dict[str, Any]:
     if not release_ids or len(release_ids) != len(set(release_ids)):
         raise ValueError("release IDs must be a non-empty unique set")
     if len(migration_inventory_sha256) != 64 or any(c not in "0123456789abcdef" for c in migration_inventory_sha256):
@@ -153,7 +158,15 @@ def package_manifest(*, release_ids: list[str], migration_inventory_sha256: str,
     schema_artifacts = dict(sorted((schema_artifacts or {}).items()))
     if any(len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest) for digest in schema_artifacts.values()):
         raise ValueError("schema artifact digest must be lowercase sha256")
-    value = {"schema_version": "uec-serving-package-v8", "package_state": "selected_public_serving_derivative", "release_ids": sorted(release_ids), "migration_inventory_sha256": migration_inventory_sha256, "data_relation_allowlist": [{"relation": s.relation, "columns": list(s.columns)} for s in specs], "data_relation_exclusions": list(FORBIDDEN_DATA_RELATIONS), "redaction_notice": "Source/artifact/observation stand-ins retain only join and provenance metadata and are explicitly marked redacted; raw source, acquisition, geocoder, private graph edges and evidence payloads are absent. The graph is a selected-release normalized opaque-endpoint projection with canonical support references held outside the API grant; APHIS references use a separately scoped metadata-only clearance and never include report contents or native identifiers.", "table_counts": dict(sorted((table_counts or {}).items())), "payload_files": sorted(payload_files or [], key=lambda item: item["name"]), "serving_schema_derivative": {"artifacts_sha256": schema_artifacts, "post_data_omissions": list(SERVING_SCHEMA_OMISSIONS)}}
+    if schema_omissions is None:
+        omissions = SERVING_SCHEMA_OMISSIONS
+    elif isinstance(schema_omissions, (list, tuple)):
+        omissions = tuple(schema_omissions)
+    else:
+        raise ValueError("serving schema omissions are unsupported")
+    if omissions not in (LEGACY_SERVING_SCHEMA_OMISSIONS, SERVING_SCHEMA_OMISSIONS):
+        raise ValueError("serving schema omissions are unsupported")
+    value = {"schema_version": "uec-serving-package-v8", "package_state": "selected_public_serving_derivative", "release_ids": sorted(release_ids), "migration_inventory_sha256": migration_inventory_sha256, "data_relation_allowlist": [{"relation": s.relation, "columns": list(s.columns)} for s in specs], "data_relation_exclusions": list(FORBIDDEN_DATA_RELATIONS), "redaction_notice": "Source/artifact/observation stand-ins retain only join and provenance metadata and are explicitly marked redacted; raw source, acquisition, geocoder, private graph edges and evidence payloads are absent. The graph is a selected-release normalized opaque-endpoint projection with canonical support references held outside the API grant; APHIS references use a separately scoped metadata-only clearance and never include report contents or native identifiers.", "table_counts": dict(sorted((table_counts or {}).items())), "payload_files": sorted(payload_files or [], key=lambda item: item["name"]), "serving_schema_derivative": {"artifacts_sha256": schema_artifacts, "post_data_omissions": list(omissions)}}
     value["package_sha256"] = canonical_sha256(value)
     return value
 

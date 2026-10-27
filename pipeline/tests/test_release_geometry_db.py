@@ -13,7 +13,7 @@ from pathlib import Path
 import psycopg
 from psycopg.types.json import Jsonb
 
-from pipeline.common.release_geometry import geometry_rows_sql, RELEASE_GATE_METRICS_SQL
+from pipeline.common.release_geometry import geometry_rows_sql, RELEASE_GATE_METRICS_SQL, PROVIDER_CONFIDENCE_SQL
 
 
 ROOT = Path(__file__).parents[1].parent
@@ -46,6 +46,29 @@ class PublicGeometryPostgresTests(unittest.TestCase):
         parsed = urlsplit(cls.url)
         if parsed.hostname not in {"127.0.0.1", "localhost", "::1"} or parsed.path.lstrip("/") != OWNED_DATABASE:
             raise unittest.SkipTest("geometry proof requires its exact loopback disposable database")
+
+    def test_locationiq_components_do_not_require_a_fabricated_probability(self):
+        matched = {"provider": "locationiq", "method": "locationiq_forward",
+                   "precision": "provider_address_point_high_confidence",
+                   "coordinate_review_status": "automated_high_confidence_private_display",
+                   "confidence": None}
+        cases = [(matched, True), ({**matched, "confidence": 0.96}, False),
+                 ({**matched, "provider": "unknown"}, False),
+                 ({**matched, "method": "locality_lookup"}, False),
+                 ({**matched, "precision": "city"}, False),
+                 ({**matched, "coordinate_review_status": "pending"}, False),
+                 ({key: value for key, value in matched.items() if key != "confidence"}, False),
+                 ({"provider": "Geoapify", "confidence": 0.96}, True),
+                 ({"provider": "Geoapify", "confidence": None}, False)]
+        with psycopg.connect(self.url) as connection:
+            connection.execute("SET TRANSACTION READ ONLY")
+            for index, (metadata, expected) in enumerate(cases):
+                with self.subTest(case=index):
+                    actual = connection.execute(
+                        "SELECT COALESCE(" + PROVIDER_CONFIDENCE_SQL + ",false) FROM (SELECT %s::jsonb AS evidence) input",
+                        (Jsonb({"display_location": metadata}),),
+                    ).fetchone()[0]
+                    self.assertEqual(actual, expected)
 
     def _candidate(self, connection):
         suffix = uuid.uuid4().hex
