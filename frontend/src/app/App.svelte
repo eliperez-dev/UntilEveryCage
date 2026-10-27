@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { createNavigationCommitGuard } from './navigationCommit';
   import { canonicalRouteHref, mapHrefFromHash, parseRoute, safeMapHref, type RouteState } from './routeState';
   import LandingPage from './LandingPage.svelte';
   import AboutPage from './AboutPage.svelte';
@@ -31,6 +32,7 @@
 
   let route = $state<RouteState>(parseRoute(window.location.hash, false, SECURE_INBOX_LOCAL));
   let routeGeneration = 0;
+  let navigationCommit: ReturnType<typeof createNavigationCommitGuard> | undefined;
   let loading = $state(true);
   let loadError = $state('');
   let returnMapHref = $derived.by(() => {
@@ -66,7 +68,12 @@
           .catch(() => { if (generation === routeGeneration) loadError = 'The encrypted review page could not be opened.'; });
       }
       if (route.kind === 'map' && !DesignLab) {
-        void import('../design-lab/DesignLab.svelte').then(module => { if (generation === routeGeneration) DesignLab = module.default; }).catch(() => { if (generation === routeGeneration) loadError = 'The public map could not be opened.'; });
+        void import('../design-lab/DesignLab.svelte').then(module => {
+          if (generation !== routeGeneration) return;
+          navigationCommit?.commit(() => {
+            if (generation === routeGeneration && window.location.hash.split('?')[0] === '#/map') DesignLab = module.default;
+          });
+        }).catch(() => { if (generation === routeGeneration) loadError = 'The public map could not be opened.'; });
       }
       if ((route.kind === 'api' || route.kind === 'downloads') && !ApiPage) {
         apiModule ??= import('./ApiPage.svelte');
@@ -106,13 +113,14 @@
   };
 
   onMount(() => {
+    navigationCommit = createNavigationCommitGuard(window);
     if (import.meta.env.DEV) {
       import('./DatabaseResearch.svelte').then(module => DatabaseResearch = module.default);
       import('./RecordPage.svelte').then(module => RecordPage = module.default);
     }
     syncRoute();
     window.addEventListener('hashchange', syncRoute);
-    return () => window.removeEventListener('hashchange', syncRoute);
+    return () => { navigationCommit?.dispose(); window.removeEventListener('hashchange', syncRoute); };
   });
 </script>
 

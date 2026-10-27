@@ -104,6 +104,8 @@ test('the shell keeps map camera and style context through About and browser his
 
 test('About and FAQ pages keep legacy routes without obsolete source/method content', async ({ page }) => {
   await page.goto('./#/database');
+  await expect.poll(() => routePath(page).pathname).toBe('/map');
+  await expect(page.getByRole('button', { name: 'Search map', exact: true })).toBeVisible();
   const aboutLink = page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'About', exact: true });
   await aboutLink.click();
   await expect.poll(() => routePath(page).pathname).toBe('/about');
@@ -123,6 +125,35 @@ test('About and FAQ pages keep legacy routes without obsolete source/method cont
   await page.goto('./#/methodology');
   await expect(page.getByRole('heading', { level: 2, name: 'How the data reaches the map' })).toBeVisible();
   await page.goBack();
+});
+
+test('a cold header link remains usable when the map module finishes during its pointer press', async ({ page }) => {
+  let releaseImport!: () => void;
+  const gate = new Promise<void>(resolve => { releaseImport = resolve; });
+  await page.route(url => url.pathname.endsWith('/src/design-lab/DesignLab.svelte') && !url.searchParams.has('svelte'), async route => {
+    const response = await route.fetch();
+    const body = await response.text();
+    await gate;
+    await route.fulfill({ response, body: `${body}\n;window.__syntheticWorkspaceEvaluated = true;` });
+  });
+  try {
+    await page.goto('./#/database', { waitUntil: 'domcontentloaded' });
+    await expect.poll(() => routePath(page).pathname).toBe('/map');
+    const about = page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'About', exact: true });
+    await expect(about).toBeVisible();
+    const anchor = await about.elementHandle();
+    const box = (await about.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    releaseImport();
+    await page.waitForFunction(() => (window as any).__syntheticWorkspaceEvaluated === true);
+    // Import completion must not replace the anchor between press and release.
+    expect(await anchor!.evaluate(node => node.isConnected)).toBe(true);
+    await page.mouse.up();
+    await expect.poll(() => routePath(page).pathname).toBe('/about');
+    await expect(page.getByRole('heading', { level: 1, name: 'About Until Every Cage is Empty' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Search map', exact: true })).toHaveCount(0);
+  } finally { releaseImport(); await page.mouse.up().catch(() => {}); }
 });
 
 test('the Contribute hub, bug report, and About pages share the primary navigation', async ({ page }) => {
