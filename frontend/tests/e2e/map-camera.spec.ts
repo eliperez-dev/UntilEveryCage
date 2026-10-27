@@ -888,8 +888,12 @@ test('cold shared 3D URLs restore terrain after a style reload and browser Back'
   await expect(page.getByRole('heading', { name: 'About Until Every Cage is Empty', exact: true }).first()).toBeVisible();
   await page.goBack();
   await expect(page).toHaveURL(/pitch=45.*bearing=18/);
-  await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getTerrain()), { timeout: 15_000 }).toMatchObject({ source: 'mapterhorn-terrain', exaggeration: 1 });
-  await expect.poll(() => page.evaluate(() => Boolean((window as any).__UEC_LOCAL_PREVIEW_MAP__?.getSource('mapterhorn-terrain')))).toBe(true);
+  // Read the restored terrain and its source in the same browser turn. A
+  // separate protocol call can queue behind the first resumed terrain paint.
+  await expect.poll(() => page.evaluate(() => {
+    const instance = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    return { terrain: instance?.getTerrain(), source: Boolean(instance?.getSource('mapterhorn-terrain')) };
+  }), { timeout: 15_000 }).toMatchObject({ terrain: { source: 'mapterhorn-terrain', exaggeration: 1 }, source: true });
   await expect(map).toBeVisible();
 });
 
