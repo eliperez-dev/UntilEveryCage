@@ -131,8 +131,10 @@ class LocationIqAdapterTests(unittest.TestCase):
         self.assertNotIn("test-secret", str(result.response))
 
     def test_missing_key_fails_fast(self):
-        with self.assertRaisesRegex(ValueError, "LOCATIONIQ_API_KEY"):
-            LocationIqAdapter(api_key="", opener=lambda *_a, **_k: None)
+        from unittest.mock import patch
+        with patch.dict("os.environ", {"LOCATIONIQ_API_KEY": ""}):
+            with self.assertRaisesRegex(ValueError, "LOCATIONIQ_API_KEY"):
+                LocationIqAdapter(api_key="", opener=lambda *_a, **_k: None)
         with self.assertRaisesRegex(ValueError, "country_code"):
             LocationIqAdapter(api_key="ok", country_code="DE")
 

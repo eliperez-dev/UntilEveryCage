@@ -65,6 +65,13 @@ def status(database_url: str, provider: str | None = None) -> dict:
             parameters,
         ).fetchone()[0]
 
+        account_usage = database.execute(
+            f"""SELECT budget.budget_date,budget.provider_id,budget.account_id,
+                       budget.reserved_requests,budget.daily_limit
+                FROM uec.geocode_account_budgets budget {budget_filter}
+                ORDER BY 1 DESC,2,3""", parameters,
+        ).fetchall()
+
     daily_rate = completed / 7
     return {
         "schema_version": "geocode-operator-status-v1",
@@ -83,6 +90,11 @@ def status(database_url: str, provider: str | None = None) -> dict:
             for day, provider_id, count in daily_usage
         ],
         "usage_basis": "committed request reservations; offline evaluations do not consume requests",
+        "account_usage": [
+            {"day":str(day),"provider":provider_id,"account":account,
+             "count":count,"limit":limit,"remaining":max(0,limit-count)}
+            for day,provider_id,account,count,limit in account_usage
+        ],
         "retry_state": "retryable failures are included in state counts; details are intentionally omitted",
         "pending": pending,
         "completed_last_7_days": completed,

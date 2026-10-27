@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 from pipeline.geocoding.private_profiles import profile_by_id
 from pipeline.geocoding.locationiq import LocationIqAdapter
+from pipeline.geocoding.accounts import account_for_provider
 
 PROFILE = "locationiq-de-bltu"
 DATABASE = "uec_launch_sources_test_20261025"
@@ -116,28 +117,104 @@ def activate(database_url: str, *, limit: int = 24, cohort: str = "all",
                 "invalid_query_formats_skipped":rejected_queries,"provider_calls":0}, tuple(job_ids)
 
 
+def requeue_unmatched(database_url: str, *, limit: int, provider_account: str):
+    """Explicit, once-per-account/day retry of retained unsuccessful German jobs."""
+    if not 1 <= limit <= 5000:
+        raise ValueError("retry batch must contain 1 to 5000 records")
+    account = account_for_provider("locationiq", provider_account)
+    with psycopg.connect(database_url) as connection, connection.transaction():
+        if connection.execute("SELECT current_database()").fetchone()[0] != DATABASE:
+            raise ValueError("database_identity_invalid")
+        rows = connection.execute("""
+            SELECT job.job_id, current.event_type, current.attempt_number
+            FROM uec.geocode_jobs job
+            JOIN LATERAL (
+                SELECT event_type,attempt_number FROM uec.geocode_job_events
+                WHERE job_id=job.job_id ORDER BY occurred_at DESC,event_id DESC LIMIT 1
+            ) current ON true
+            WHERE job.provider_id='locationiq'
+              AND current.event_type IN ('failed','unresolved','review_required')
+              AND current.attempt_number=2
+              AND EXISTS (
+                  SELECT 1 FROM real_preview.geocode_targets target
+                  JOIN real_preview.candidates candidate USING(candidate_id)
+                  WHERE target.job_id=job.job_id AND target.source_id='de.locations'
+                    AND candidate.source_id='de.locations' AND candidate.country_code='DE'
+                    AND target.snapshot_sha256=candidate.snapshot_sha256
+                    AND candidate.snapshot_sha256=(SELECT snapshot_sha256
+                        FROM real_preview.source_preview_runs WHERE source_id='de.locations'
+                        ORDER BY created_at DESC,run_id DESC LIMIT 1)
+                    AND candidate.default_map_scope
+                    AND candidate.display_latitude IS NULL AND candidate.display_longitude IS NULL
+                    AND candidate.location_class <> 'numeric_source_coordinate'
+                    AND NOT EXISTS (SELECT 1 FROM real_preview.enrichment_state_events restricted
+                        WHERE restricted.candidate_id=candidate.candidate_id AND restricted.state_code='restricted'))
+              AND EXISTS (SELECT 1 FROM uec.geocode_job_events queued
+                  WHERE queued.job_id=job.job_id AND queued.event_type='queued'
+                    AND queued.details->>'profile_id'='locationiq-de-bltu')
+              AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted restricted
+                  WHERE restricted.source_record_id=job.source_record_id)
+              AND NOT EXISTS (SELECT 1 FROM uec.geocode_results accepted
+                  WHERE accepted.source_record_id=job.source_record_id AND accepted.status='accepted')
+              AND NOT EXISTS (SELECT 1 FROM uec.geocode_request_reservations request
+                  JOIN uec.geocode_request_account_attributions attribution USING(reservation_id)
+                  WHERE request.job_id=job.job_id AND attribution.account_id=%s
+                    AND attribution.budget_date=(now() AT TIME ZONE 'UTC')::date)
+            ORDER BY CASE current.event_type WHEN 'failed' THEN 0 WHEN 'unresolved' THEN 1 ELSE 2 END,
+                job.created_at,job.job_id LIMIT %s FOR UPDATE OF job SKIP LOCKED
+        """, (account,limit)).fetchall()
+        jobs=[]
+        for job,state,attempt in rows:
+            # Re-read under the job lock: a concurrent worker may have finished
+            # between the selection snapshot and acquiring this lock.
+            current=connection.execute("""SELECT event_type,attempt_number
+                FROM uec.geocode_job_events WHERE job_id=%s
+                ORDER BY occurred_at DESC,event_id DESC LIMIT 1""",(job,)).fetchone()
+            if current != (state,attempt):
+                continue
+            connection.execute("""INSERT INTO uec.geocode_job_events
+                (job_id,event_type,attempt_number,retryable,details)
+                VALUES(%s,'queued',%s,false,%s::jsonb)""",(job,attempt,json.dumps({
+                    "processing_mode":"private_locationiq_source_profile","profile_id":PROFILE,
+                    "recovery_reason":"operator_authorized_unmatched_retry",
+                    "provider_account":account})))
+            jobs.append(job)
+        return {"provider":"locationiq","cohort":"unmatched-retry","jobs_staged":len(jobs),
+                "provider_calls":0},tuple(jobs)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--limit", type=int, default=24)
     parser.add_argument("--cohort", choices=COHORTS, default="all")
     parser.add_argument("--run-worker", action="store_true")
+    parser.add_argument("--retry-unmatched", action="store_true",
+                        help="Explicitly retry prior unsuccessful matches, once per account and UTC day")
+    parser.add_argument("--provider-account", choices=("primary","secondary"), default="primary")
     parser.add_argument("--allow-parallel-primary", action="store_true",
                         help="Explicit operator opt-in; partition address batches between providers before running workers")
     args = parser.parse_args()
     database_url = os.environ.get("UEC_DATABASE_URL")
-    if not database_url or not os.environ.get("LOCATIONIQ_API_KEY", "").strip():
+    key_env = "LOCATIONIQ_SECONDARY_API_KEY" if args.provider_account == "secondary" else "LOCATIONIQ_API_KEY"
+    if not database_url or not os.environ.get(key_env, "").strip():
         print(json.dumps({"status":"blocked","reason":"database_or_locationiq_key_missing"}))
         return 2
     try:
-        summary, jobs = activate(database_url, limit=args.limit, cohort=args.cohort,
-                                 allow_parallel_primary=args.allow_parallel_primary)
+        if args.retry_unmatched:
+            summary, jobs = requeue_unmatched(database_url,limit=args.limit,
+                                              provider_account=args.provider_account)
+        else:
+            summary, jobs = activate(database_url, limit=args.limit, cohort=args.cohort,
+                                     allow_parallel_primary=args.allow_parallel_primary)
         print(json.dumps(summary), flush=True)
         if args.run_worker and jobs:
             spec = importlib.util.spec_from_file_location("locationiq_worker", Path(__file__).with_name("geocode-worker.py"))
             worker = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(worker)
             processed = worker.run(database_url,"locationiq",len(jobs),0,1,daily_budget=5000,
-                                   max_attempts=2,provider_interval=1.05,private_source_profile_id=PROFILE,job_ids=jobs)
+                                   max_attempts=3 if args.retry_unmatched else 2,
+                                   provider_interval=1.05,private_source_profile_id=PROFILE,job_ids=jobs,
+                                   provider_account=args.provider_account)
             print(json.dumps({"provider":"locationiq","status":"complete","processed":processed}))
         return 0
     except Exception as error:

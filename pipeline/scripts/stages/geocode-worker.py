@@ -21,6 +21,7 @@ sys.path.insert(0, str(ROOT))
 from pipeline.geocoding.registry import get_adapter
 from pipeline.geocoding.base import GeocodeOutcome
 from pipeline.geocoding.private_profiles import profile_by_id
+from pipeline.geocoding.accounts import account_for_provider
 
 AU_NPI_AUTH_REQUEUE_REASON = "operator_authorized_geoapify_key_recovery"
 
@@ -213,6 +214,7 @@ def _reserve_request(
     daily_budget: int,
     provider_interval: float,
     au_npi_pilot: bool = False,
+    provider_account: str | None = None,
 ):
     """Commit one shared provider/day reservation before outbound work.
 
@@ -221,6 +223,11 @@ def _reserve_request(
     happen in that case.
     """
     with connection.transaction():
+        if provider_id == "locationiq":
+            return connection.execute("""SELECT reservation_id,reason
+                FROM uec.reserve_geocode_account_request(%s,%s,%s,%s,%s,%s,%s)""",
+                (provider_id,account_for_provider(provider_id,provider_account),job_id,
+                 attempt,retry_number,daily_budget,provider_interval)).fetchone()
         today = connection.execute("SELECT (now() AT TIME ZONE 'UTC')::date").fetchone()[0]
         connection.execute("""
             INSERT INTO uec.geocode_provider_budgets
@@ -390,7 +397,9 @@ def run(
     au_npi_auth_recovery: bool = False,
     private_source_profile_id: str | None = None,
     job_ids: tuple[uuid.UUID, ...] | None = None,
+    provider_account: str | None = None,
 ) -> int:
+    selected_account = account_for_provider(provider_id,provider_account)
     if daily_budget < 1 or max_attempts < 1 or lease_timeout < 1 or retries < 1 or provider_interval < 0:
         raise ValueError("budgets, attempts, lease timeout, retries, and provider interval must be valid")
     if au_npi_pilot and provider_id != "geoapify":
@@ -417,8 +426,9 @@ def run(
         or max_attempts != (2 if au_npi_auth_recovery else 1)
     ):
         raise ValueError("AU NPI pilot is bounded to 24 jobs per invocation, one shared request per second, and one attempt per job except explicit auth recovery")
+    adapter_options = {"provider_account": selected_account} if selected_account else {}
     adapter = get_adapter(provider_id, au_npi_pilot=au_npi_pilot,
-                          private_source_profile_id=private_source_profile_id)
+                          private_source_profile_id=private_source_profile_id, **adapter_options)
     worker_id = worker_id or f"geocoder-{uuid.uuid4().hex[:12]}"
     processed = 0
     # Every state transition below has an explicit transaction block.  Keep
@@ -453,6 +463,7 @@ def run(
                 reservation_id, reservation_reason = _reserve_request(
                     connection, provider_id, job_id, attempt, retry_number,
                     daily_budget, provider_interval, au_npi_pilot,
+                    **({"provider_account": selected_account} if selected_account else {}),
                 )
                 # Contending workers retain their lease and wait for the
                 # shared admission slot.  Rate-slot waiting is neither a
@@ -466,6 +477,7 @@ def run(
                     reservation_id, reservation_reason = _reserve_request(
                         connection, provider_id, job_id, attempt, retry_number,
                         daily_budget, provider_interval, au_npi_pilot,
+                        **({"provider_account": selected_account} if selected_account else {}),
                     )
                 if status == "cancelled_restricted":
                     break
@@ -520,6 +532,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--database-url", default=os.environ.get("UEC_DATABASE_URL", "postgresql://uec:uec-local-development-only@localhost:5433/uec"))
     parser.add_argument("--provider", default="dawa")
+    parser.add_argument("--provider-account", choices=("primary", "secondary"),
+                        help="LocationIQ account alias; chooses its separate quota and private key")
     parser.add_argument("--limit", type=int)
     parser.add_argument("--delay", type=float, default=1.0)
     parser.add_argument("--retries", type=int, default=3)
@@ -541,5 +555,6 @@ if __name__ == "__main__":
         au_npi_auth_recovery=args.au_npi_auth_recovery,
         private_source_profile_id=args.private_source_profile,
         job_ids=tuple(uuid.UUID(value) for value in args.job_id) if args.job_id else None,
+        provider_account=args.provider_account,
     )
     print(f"provider={args.provider} status=complete processed={count}")

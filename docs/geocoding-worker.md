@@ -184,11 +184,11 @@ Use `--cohort unqueried` for addresses with no previous Geoapify result, or
 `--cohort previous-provider-unmapped` to try LocationIQ on addresses Geoapify
 left unmapped. The default `all` prioritizes unqueried addresses. Both selections
 exclude existing LocationIQ targets, accepted map points and restricted records;
-they retain the earlier provider's evidence unchanged. Cohorts share the same
-daily provider ledger, not separate allowances.
+they retain the earlier provider's evidence unchanged. Cohorts share their
+selected account's daily ledger, not separate allowances.
 
 This uses the existing jobs, leases, retries and request ledger, with a separate
-LocationIQ budget of 5,000 requests/day and a shared minimum interval of 1.05
+LocationIQ budget of 5,000 requests/day per configured account and a shared minimum interval of 1.05
 seconds (the free plan also limits usage to 60 requests/minute). Previously
 unqueried addresses take priority over unresolved results from another provider.
 Accepted address points are not overwritten or re-queried by the other provider.
@@ -201,8 +201,24 @@ without first exhausting Geoapify. Stage the LocationIQ cohort before selecting
 the Geoapify cohort, exclude all LocationIQ-targeted candidates from the latter,
 and pass the existing exact `job_ids` allowlists to both workers. This keeps
 address batches disjoint; each provider retains its own daily ledger and rate
-limit. The default remains sequential fallback. Never use a second free account
-to reset or combine one provider's allowance.
+limit. The default remains sequential fallback.
+
+LocationIQ account selection is explicit: `--provider-account primary` uses
+`LOCATIONIQ_API_KEY`; `--provider-account secondary` uses
+`LOCATIONIQ_SECONDARY_API_KEY`. The secondary account never falls back to the
+primary key. Each has its own quota and rate lock. The provider/day ledger is
+their aggregate, not a shared 5,000-request cap. Adding an account requires
+operator authorization and a configured plan limit; it does not reset usage.
+Migration 101 adds account accounting. Existing requests must first be attributed
+with `pipeline.geocoding.accounts.attribute_history`, using verified worker
+identities while workers are stopped. Original reservations remain unchanged.
+`geocode-operator-status.py` reports used and remaining requests per account.
+
+After unqueried addresses and other-provider misses, an operator may explicitly
+stage `--retry-unmatched --provider-account secondary --limit N`. This requeues
+unsuccessful initial LocationIQ attempts without replacing earlier evidence.
+Mapped/accepted records and jobs already requested on that account during the
+current UTC day are excluded. Retries consume the same account allowance.
 
 The adapter and database independently require a single German address match,
 including street/house number, postcode, locality and supplied state. Importance

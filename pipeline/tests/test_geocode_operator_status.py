@@ -15,12 +15,13 @@ class GeocodeOperatorStatusContractTests(unittest.TestCase):
         spec.loader.exec_module(module)
         connection = MagicMock()
         connection.__enter__.return_value = connection
-        cursors = [MagicMock() for _ in range(5)]
+        cursors = [MagicMock() for _ in range(6)]
         cursors[0].fetchall.return_value = [("queued", "locationiq", 12)]
         cursors[1].fetchall.return_value = [("DE", 12)]
         cursors[2].fetchall.return_value = [("2026-10-27", "locationiq", 5000)]
         cursors[3].fetchone.return_value = (12,)
         cursors[4].fetchone.return_value = (100,)
+        cursors[5].fetchall.return_value = [("2026-10-27","locationiq","secondary",367,5000)]
         connection.execute.side_effect = cursors
         with patch.object(module.psycopg, "connect", return_value=connection):
             report = module.status("postgresql://synthetic", "locationiq")
@@ -28,6 +29,7 @@ class GeocodeOperatorStatusContractTests(unittest.TestCase):
                          [{"day": "2026-10-27", "provider": "locationiq", "count": 5000}])
         self.assertIn("geocode_provider_budgets", connection.execute.call_args_list[2].args[0])
         self.assertIn("_uec_parent_geocode_result_id", connection.execute.call_args_list[4].args[0])
+        self.assertEqual(report["account_usage"][0]["remaining"],4633)
         for call in connection.execute.call_args_list:
             self.assertEqual(call.args[1], ("locationiq",))
 

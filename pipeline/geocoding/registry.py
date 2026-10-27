@@ -1,10 +1,12 @@
 from collections.abc import Callable
+import os
 
 from .base import GeocoderAdapter
 from .dawa import DawaAdapter
 from .geoapify import GeoapifyAdapter
 from .locationiq import LocationIqAdapter
 from .private_profiles import profile_by_id
+from .accounts import account_for_provider, LOCATIONIQ_KEY_ENVS
 
 
 ADAPTER_FACTORIES: dict[str, Callable[[], GeocoderAdapter]] = {
@@ -15,7 +17,13 @@ ADAPTER_FACTORIES: dict[str, Callable[[], GeocoderAdapter]] = {
 
 
 def get_adapter(provider_id: str, *, au_npi_pilot: bool = False,
-                private_source_profile_id: str | None = None) -> GeocoderAdapter:
+                private_source_profile_id: str | None = None,
+                provider_account: str | None = None) -> GeocoderAdapter:
+    account = account_for_provider(provider_id, provider_account)
+    if provider_id == "locationiq":
+        key = os.environ.get(LOCATIONIQ_KEY_ENVS[account], "").strip()
+        if not key:
+            raise ValueError("selected LocationIQ account key is not configured")
     try:
         if private_source_profile_id is not None:
             profile = profile_by_id(private_source_profile_id)
@@ -24,7 +32,7 @@ def get_adapter(provider_id: str, *, au_npi_pilot: bool = False,
             if provider_id != profile.get("provider_id", "geoapify"):
                 raise ValueError("private source profile provider does not match")
             if provider_id == "locationiq":
-                return LocationIqAdapter(country_code=profile["country_code"].lower(),
+                return LocationIqAdapter(api_key=key, country_code=profile["country_code"].lower(),
                                          private_source_profile=True)
             return GeoapifyAdapter(country_code=profile["country_code"].lower(),
                                    private_source_profile=True,
@@ -36,6 +44,8 @@ def get_adapter(provider_id: str, *, au_npi_pilot: bool = False,
             if provider_id != "geoapify":
                 raise ValueError("AU NPI pilot requires Geoapify")
             return GeoapifyAdapter(country_code="au", pilot_auto_display=True)
+        if provider_id == "locationiq":
+            return LocationIqAdapter(api_key=key)
         return ADAPTER_FACTORIES[provider_id]()
     except KeyError as error:
         raise ValueError(f"No adapter registered for provider {provider_id}") from error

@@ -140,6 +140,14 @@ ALLOWED_SKIPPED_TESTS.update(
     )
 )
 
+# Account history acceptance requires the assigned real-data copy.
+ALLOWED_SKIPPED_TESTS.update(
+    (f"{prefix}test_geocode_accounts_postgis.GeocodeAccountPostgisTests."
+     "test_account_history_quota_rate_and_duplicate_guards_rollback",
+     "assigned disposable real-data database required")
+    for prefix in ("", "pipeline.tests.")
+)
+
 # These six acceptance cases require the approved disposable V0 copy. Their
 # exact local run is mandatory; public CI contains only synthetic fixtures.
 # Do not add the reason globally: an unrelated/new skip must still fail CI.
