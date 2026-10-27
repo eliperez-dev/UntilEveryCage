@@ -58,7 +58,8 @@ API schemas own supported fields. They are not additional roadmaps.
   to that precision's complete count; truncated, duplicate, invalid or failed
   partitions make this stat unavailable without removing other totals. Never
   count unmapped-only countries or fetch the full map or records for these stats.
-  The map stays lazy until opened. Map search replaces the separate Database page;
+  The map stays lazy until opened. Cold loading preserves header link gestures;
+  late module completion cannot replace a different destination. Map search replaces the separate Database page;
   old public Database links open map results. FAQ content lives within About;
   old FAQ links retain their section and map context. API and downloads remain
   available from Data; map search has no CSV shortcut.
