@@ -1,11 +1,12 @@
 import { expect, test } from '@playwright/test';
 import releaseManifest from '../fixtures/release-map/manifest.json' with { type: 'json' };
 import { labRecords } from '../../src/design-lab/fixtures';
+import { RASTER_READY_TIMEOUT_MS } from '../../src/design-lab/components/terrainReady';
 
 const cameraFixtureId = '223e4567-e89b-42d3-a456-426614174000';
 const cameraFixturePoint: [number, number] = [4.45, 50.95];
-// A style change prepares a candidate, then the base, each with a 10s bound.
-const basemapHandoffTimeout = 22_000;
+// Include both bounded loading stages; software-rendered CI also prepares DEMs.
+const basemapHandoffTimeout = 2 * RASTER_READY_TIMEOUT_MS + 2_000;
 async function installPublicCameraFixture(page: import('@playwright/test').Page) {
   const releaseId = 'synthetic-release-2026-09';
   const requests = { manifests: 0, feeds: 0 };
@@ -397,7 +398,7 @@ test('cluster bodies render on cold and warm public maps through satellite, 3D a
 test('one approximate-pin click draws and dismisses its area while raster tiles remain pending', async ({ page }) => {
   test.setTimeout(45_000);
   await installPublicCameraFixture(page);
-  const tile = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/F2sAAAAASUVORK5CYII=', 'base64');
+  const tile = await mockCameraRaster(page);
   let hold = false, pending = 0, release!: () => void;
   const gate = new Promise<void>(resolve => { release = resolve; });
   await page.route('https://tile.openstreetmap.org/**', async route => {
@@ -427,7 +428,7 @@ test('one approximate-pin click draws and dismisses its area while raster tiles 
 test('delayed high-elevation terrain keeps the selected geographic focus anchored through 3D and 2D', async ({ page }) => {
   test.setTimeout(60_000);
   await installPublicCameraFixture(page);
-  const tile = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/F2sAAAAASUVORK5CYII=', 'base64');
+  const tile = await mockCameraRaster(page);
   await page.route('https://tile.openstreetmap.org/**', route => route.fulfill({ status: 200, contentType: 'image/png', body: tile }));
   const elevationTile = await page.evaluate(() => {
     const canvas = document.createElement('canvas'); canvas.width = canvas.height = 512;
@@ -480,7 +481,7 @@ test('delayed high-elevation terrain keeps the selected geographic focus anchore
 test('returning from About revalidates the release and reuses the live canvas and cluster index', async ({ page }) => {
   test.setTimeout(45_000);
   const requests = await installPublicCameraFixture(page);
-  const tile = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/F2sAAAAASUVORK5CYII=', 'base64');
+  const tile = await mockCameraRaster(page);
   await page.route('https://tile.openstreetmap.org/**', route => route.fulfill({ status: 200, contentType: 'image/png', body: tile }));
   await page.goto('./#/map?release_id=synthetic-release-2026-09&lat=50.95&lon=4.45&z=13&bearing=23');
   await page.getByRole('button', { name: /Search map/ }).click();
@@ -511,9 +512,12 @@ test('returning from About revalidates the release and reuses the live canvas an
 async function installTerrainFixture(page: import('@playwright/test').Page) {
   const tileData = await page.evaluate(() => {
     const canvas = document.createElement('canvas');
-    canvas.width = canvas.height = 512;
+    // A constant elevation field has the same value at every sampling
+    // resolution. Keep this functional fixture small for software renderers;
+    // the elevation/selection journeys retain their full-size DEM fixtures.
+    canvas.width = canvas.height = 64;
     const context = canvas.getContext('2d')!;
-    // Terrarium RGB 128/128/128 represents a flat elevation near zero metres.
+    // Terrarium RGB 128/128/128 represents a constant elevation of 128.5 metres.
     context.fillStyle = 'rgb(128, 128, 128)';
     context.fillRect(0, 0, canvas.width, canvas.height);
     return canvas.toDataURL('image/webp').split(',')[1];
@@ -523,7 +527,7 @@ async function installTerrainFixture(page: import('@playwright/test').Page) {
 }
 
 test('camera tilt, map style, and URL state preserve the map view without compass controls', async ({ page }, testInfo) => {
-  test.setTimeout(60_000);
+  test.setTimeout(180_000);
   const tileData = await page.evaluate(() => {
     const canvas = document.createElement('canvas');
     canvas.width = canvas.height = 256;
@@ -577,7 +581,7 @@ test('camera tilt, map style, and URL state preserve the map view without compas
   await expect(viewToggle).toHaveAttribute('aria-pressed', 'true');
   await expect.poll(() => new URL(page.url()).hash).toContain('pitch=60');
   await expect.poll(() => new URL(page.url()).hash).not.toMatch(/bearing=/);
-  await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getPitch())).toBe(60);
+  await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getPitch()), { timeout: 12_000 }).toBe(60);
   await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getTerrain())).toMatchObject({ source: 'mapterhorn-terrain', exaggeration: 1 });
 
   const mapStyle = controls.getByRole('switch', { name:'Map style: Street', exact:true });
@@ -591,14 +595,20 @@ test('camera tilt, map style, and URL state preserve the map view without compas
   await mapStyle.click();
   const satelliteSwitch = controls.getByRole('switch',{name:'Map style: Satellite',exact:true});
   await expect(satelliteSwitch).toHaveAttribute('aria-checked','true');
-  await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getStyle().sources.base.tiles[0]), { timeout: basemapHandoffTimeout }).toContain('World_Imagery');
+  await expect.poll(() => page.evaluate(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    return map.getStyle().sources.base.tiles[0].includes('World_Imagery') && map.isSourceLoaded('base') && !map.getSource('candidate-base');
+  }), { timeout: basemapHandoffTimeout }).toBe(true);
   await expect.poll(() => page.evaluate(() => {
     const instance = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     return [instance.getPitch(), instance.getBearing(), instance.getZoom(), Boolean(instance.getLayer('clusters'))];
   })).toEqual([60, 0, mapState.zoom, true]);
   await satelliteSwitch.click();
   await expect(mapStyle).toHaveAttribute('aria-checked','false');
-  await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getStyle().sources.base.tiles[0]), { timeout: basemapHandoffTimeout }).toContain('tile.openstreetmap.org');
+  await expect.poll(() => page.evaluate(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    return map.getStyle().sources.base.tiles[0].includes('tile.openstreetmap.org') && map.isSourceLoaded('base') && !map.getSource('candidate-base');
+  }), { timeout: basemapHandoffTimeout }).toBe(true);
 });
 
 test('flat camera URLs stay compact and the camera control remains usable on touch layouts', async ({ page }, testInfo) => {
@@ -716,6 +726,7 @@ test('selecting a map pin gently centres the camera on that record', async ({ pa
 });
 
 test('a shared basemap change during map startup waits for the style', async ({ page }) => {
+  test.setTimeout(120_000);
   await installTerrainFixture(page);
   await page.addInitScript(() => {
     let current: any;
@@ -771,11 +782,11 @@ test('closing details during a pending basemap switch preserves the requested st
 
 for (const dismissal of ['close button', 'Escape key', 'browser Back'] as const) {
   test(`dismissing a selected record with ${dismissal} preserves the selected camera and style`, async ({ page }) => {
-    test.setTimeout(45_000);
+    test.setTimeout(120_000);
     await installTerrainFixture(page);
     await page.goto('./#/map?f1a=field&scenario=dense&lat=38&lon=-96&z=4&pitch=24&bearing=18');
     await page.locator('.map-surface').waitFor({ state: 'visible', timeout: 30_000 });
-    await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getPitch())).toBe(24);
+    await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getPitch()), { timeout: 12_000 }).toBe(24);
     // Model a cold selected URL reached from a prior, wider map view. The real
     // MapLibre layer-click interaction is covered by the built-app acceptance.
     const selectedHash = '#/map?f1a=field&scenario=dense&lat=40.7&lon=-73.9&z=8&pitch=20&bearing=-17&basemap=satellite&selected=dense-exact-0-0';
@@ -785,7 +796,7 @@ for (const dismissal of ['close button', 'Escape key', 'browser Back'] as const)
     await page.waitForFunction(() => {
       const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
       return map.getStyle().sources.base.tiles[0].includes('World_Imagery') && !map.getSource('candidate-base') && map.isSourceLoaded('base');
-    });
+    }, undefined, { timeout: basemapHandoffTimeout });
     await page.evaluate(() => history.replaceState({ ...history.state, uecMapSelection: true }, '', location.href));
     await expect.poll(() => page.evaluate(() => {
       const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
@@ -843,7 +854,7 @@ test('cold shared 3D URLs restore terrain after a style reload and browser Back'
   test.setTimeout(60_000);
   await installTerrainFixture(page);
   await installPublicCameraFixture(page);
-  const tile = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/F2sAAAAASUVORK5CYII=', 'base64');
+  const tile = await mockCameraRaster(page);
   await page.route('https://tile.openstreetmap.org/**', route => route.fulfill({ status: 200, contentType: 'image/png', body: tile }));
   await page.goto('./#/map?release_id=synthetic-release-2026-09&lat=50.95&lon=4.45&z=13&pitch=45&bearing=18');
   const map = page.getByLabel('Map showing records');
@@ -905,6 +916,26 @@ test('flat maps do not request elevation and a DEM failure returns to a flat map
   })).toMatchObject({ pitch: 0, terrain: null, source: undefined });
   expect(demRequests).toBeGreaterThan(0);
 });
+test('failed Satellite tiles immediately retain Street and clear the candidate', async ({ page }) => {
+  await installPublicCameraFixture(page);
+  await page.goto('./#/map?release_id=synthetic-release-2026-09&lat=50.95&lon=4.45&z=13');
+  await page.waitForFunction(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    return map?.getLayer('clusters') && map.isSourceLoaded('base');
+  });
+  await page.route('**/World_Imagery/**', route => route.abort());
+  await page.getByRole('switch', { name:'Map style: Street', exact:true }).click();
+  // An actual source error must reject promptly, rather than consume the
+  // longer preparation budget reserved for valid but queued imagery.
+  await expect(page.getByRole('alert')).toHaveText('Satellite imagery is unavailable. Street remains selected.', { timeout: 5_000 });
+  await expect(page.getByRole('switch', { name:'Map style: Street', exact:true })).toHaveAttribute('aria-checked', 'false');
+  await expect.poll(() => page.evaluate(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    return { street: map.getStyle().sources.base.tiles[0].includes('tile.openstreetmap.org'), candidate: !!map.getSource('candidate-base') };
+  })).toEqual({ street: true, candidate: false });
+  expect(new URL(page.url()).hash).not.toContain('basemap=satellite');
+});
+
 for (const heldStage of ['candidate','base'] as const) test(`rapid style toggles keep the latest Street choice during the ${heldStage} handoff`, async ({ page }) => {
   const requests=await installPublicCameraFixture(page);
   const tile=await mockCameraRaster(page);
@@ -925,6 +956,8 @@ for (const heldStage of ['candidate','base'] as const) test(`rapid style toggles
     await page.getByRole('switch',{name:'Map style: Street',exact:true}).click();
     await expect.poll(()=>imageRequests).toBeGreaterThan(0);
     if(heldStage==='base') await expect.poll(()=>page.evaluate(()=>String((window as any).__UEC_LOCAL_PREVIEW_MAP__?.getStyle().sources.base.tiles[0]))).toContain('World_Imagery');
+    expect(await page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getPaintProperty('candidate-base', 'raster-opacity'))).toBe(heldStage === 'candidate' ? 0 : 1);
+    expect(await page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getLayoutProperty('world-satellite', 'visibility'))).toBe('none');
     await page.getByRole('switch',{name:'Map style: Satellite',exact:true}).click();
     await expect(page.getByRole('switch',{name:'Map style: Street',exact:true})).toBeVisible();
     release();

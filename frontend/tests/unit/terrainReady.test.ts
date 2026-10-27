@@ -1,19 +1,70 @@
 import { describe, expect, it, vi } from 'vitest';
-import { waitForSourceReady, waitForTerrainSource } from '../../src/design-lab/components/terrainReady';
+import { RASTER_READY_TIMEOUT_MS, waitForSourceReady, waitForTerrainSource } from '../../src/design-lab/components/terrainReady';
 
 function sourceMap() {
-  const listeners = new Map<string, Set<(event: { sourceId: string }) => void>>();
+  const listeners = new Map<string, Set<(event: { sourceId: string; sourceDataType?: string }) => void>>();
   const map = {
     ready: false, getSource: () => ({}), isSourceLoaded: () => map.ready,
     on: (type: string, listener: (event: { sourceId: string }) => void) => { const group = listeners.get(type) ?? new Set(); group.add(listener); listeners.set(type, group); },
     off: (type: string, listener: (event: { sourceId: string }) => void) => { listeners.get(type)?.delete(listener); },
-    fire: (type: string, sourceId: string) => { for (const listener of [...listeners.get(type) ?? []]) listener({ sourceId }); },
+    fire: (type: string, sourceId: string, sourceDataType?: string) => { for (const listener of [...listeners.get(type) ?? []]) listener({ sourceId, sourceDataType }); },
     listenerCount: () => [...listeners.values()].reduce((count, group) => count + group.size, 0),
   };
   return map;
 }
 
 describe('terrain readiness before the first tilt', () => {
+  it('does not accept new metadata while the previous raster tiles are still loaded', async () => {
+    const map = sourceMap(), done = vi.fn();
+    const pending = waitForSourceReady(map, 'base', new AbortController().signal).then(done);
+    map.ready = true; map.fire('sourcedata', 'base', 'metadata');
+    map.fire('render', ''); map.fire('idle', '');
+    await Promise.resolve(); expect(done).not.toHaveBeenCalled();
+    map.ready = false; map.fire('sourcedata', 'base', 'content');
+    await Promise.resolve(); expect(done).not.toHaveBeenCalled();
+    map.ready = true; map.fire('sourcedata', 'base', 'content');
+    await pending; expect(done).toHaveBeenCalledWith(true); expect(map.listenerCount()).toBe(0);
+  });
+  it('requires fresh metadata and content after setTiles, including initial and frame readiness checks', async () => {
+    const map = sourceMap(), done = vi.fn(); map.ready = true;
+    const pending = waitForSourceReady(map, 'base', new AbortController().signal, RASTER_READY_TIMEOUT_MS, { requireFreshContent: true }).then(done);
+    map.fire('render', ''); map.fire('idle', ''); map.fire('sourcedata', 'base', 'content');
+    await Promise.resolve(); expect(done).not.toHaveBeenCalled();
+    map.fire('sourcedata', 'base', 'metadata'); map.fire('render', ''); map.fire('idle', '');
+    await Promise.resolve(); expect(done).not.toHaveBeenCalled();
+    map.ready = false; map.fire('sourcedata', 'base', 'content'); map.fire('render', '');
+    await Promise.resolve(); expect(done).not.toHaveBeenCalled();
+    map.ready = true; map.fire('render', '');
+    await pending; expect(done).toHaveBeenCalledWith(true); expect(map.listenerCount()).toBe(0);
+    // Unchanged healthy sources still return immediately without listeners.
+    await expect(waitForSourceReady(map, 'base', new AbortController().signal)).resolves.toBe(true);
+    expect(map.listenerCount()).toBe(0);
+  });
+  it('allows raster preparation beyond the DEM bound without extending terrain startup', async () => {
+    vi.useFakeTimers();
+    try {
+      const map = sourceMap(), done = vi.fn();
+      const raster = waitForSourceReady(map, 'candidate-base', new AbortController().signal, RASTER_READY_TIMEOUT_MS).then(done);
+      const terrain = waitForTerrainSource(map, 'dem', new AbortController().signal);
+      await vi.advanceTimersByTimeAsync(10_000);
+      await expect(terrain).resolves.toBe(false); expect(done).not.toHaveBeenCalled();
+      map.ready = true; map.fire('sourcedata', 'candidate-base');
+      await raster; expect(done).toHaveBeenCalledWith(true); expect(map.listenerCount()).toBe(0);
+    } finally { vi.useRealTimers(); }
+  });
+  it('keeps the longer raster wait bounded and cancellable', async () => {
+    vi.useFakeTimers();
+    try {
+      const map = sourceMap(), controller = new AbortController();
+      const cancelled = waitForSourceReady(map, 'candidate-base', controller.signal, RASTER_READY_TIMEOUT_MS);
+      controller.abort(); await expect(cancelled).resolves.toBe(false); expect(map.listenerCount()).toBe(0);
+      const failed = waitForSourceReady(map, 'candidate-base', new AbortController().signal, RASTER_READY_TIMEOUT_MS);
+      map.fire('error', 'candidate-base'); await expect(failed).resolves.toBe(false); expect(map.listenerCount()).toBe(0);
+      const stalled = waitForSourceReady(map, 'candidate-base', new AbortController().signal, RASTER_READY_TIMEOUT_MS);
+      await vi.advanceTimersByTimeAsync(RASTER_READY_TIMEOUT_MS);
+      await expect(stalled).resolves.toBe(false); expect(map.listenerCount()).toBe(0);
+    } finally { vi.useRealTimers(); }
+  });
   it('shares the same readiness lifecycle with raster candidate and base sources', async () => {
     expect(waitForTerrainSource).toBe(waitForSourceReady);
     const map = sourceMap(), pending = waitForSourceReady(map, 'base-candidate', new AbortController().signal);

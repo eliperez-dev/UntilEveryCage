@@ -8,7 +8,7 @@
   import { BASE_RASTER_FADE_MS } from '../../map/baseMapStyle';
   import { applyWorldBaselineBasemap, applyWorldBaselineOpacity, getWorldBaselineSettings, updateWorldBaselineSettings, resetWorldBaselineSettings, getWorldBaselineDiagnostics, subscribeWorldBaselineDiagnostics, warmWorldBaseline, cancelWorldBaselineWarmup, clearWorldBaselineCache } from '../../map/worldBaseline';
   import { syncSelectionOverlayWhenReady } from './selectionOverlay';
-  import { waitForSourceReady, waitForTerrainSource } from './terrainReady';
+  import { RASTER_READY_TIMEOUT_MS, waitForSourceReady, waitForTerrainSource } from './terrainReady';
   import { settleTerrainSelection, useCameraZoomLod, type CameraLodSource } from './selectionCamera';
   /**
    * MapSurface is the composition boundary:
@@ -527,6 +527,7 @@
     return basemap === "satellite" ? "Satellite" : basemap === "muted" ? "Muted Street" : "Street";
   }
   function applyBaseAppearance(instance: MapLibreMap, basemap: Basemap): void {
+    applyWorldBaselineBasemap(instance, basemap);
     const paint = baseRasterPaint(basemap);
     for (const property of ["raster-saturation", "raster-contrast", "raster-brightness-min", "raster-brightness-max"] as const)
       instance.setPaintProperty("base", property, paint[property]);
@@ -534,7 +535,7 @@
   }
   /** A source can report loaded after an error, so tile failures reject the handoff. */
   async function waitForRaster(instance: MapLibreMap, sourceId: string, signal?: AbortSignal): Promise<void> {
-    const ready = await waitForSourceReady(instance, sourceId, signal ?? new AbortController().signal);
+    const ready = await waitForSourceReady(instance, sourceId, signal ?? new AbortController().signal, RASTER_READY_TIMEOUT_MS, { requireFreshContent: sourceId === 'base' });
     if (!ready) throw new Error("Basemap tiles unavailable");
   }
   async function applyBasemapTiles(basemap: Basemap) {
@@ -567,13 +568,17 @@
       });
       useCameraZoomLod(instance.getSource("candidate-base") as CameraLodSource);
       instance.addLayer(
-        { id: "candidate-base", type: "raster", source: "candidate-base", paint: { 'raster-fade-duration': 0 } },
+        { id: "candidate-base", type: "raster", source: "candidate-base", paint: {
+          'raster-fade-duration': 0, 'raster-opacity': 0,
+          'raster-opacity-transition': { duration: 0, delay: 0 },
+        } },
         "transport",
       );
       await waitForRaster(instance, "candidate-base", controller.signal);
       if (request !== basemapRequest || map !== instance) return;
       if (mapState.basemap !== basemap) controller.abort();
       controller.signal.throwIfAborted();
+      instance.setPaintProperty("candidate-base", "raster-opacity", 1);
       const base = instance.getSource("base") as any;
       if (typeof base?.setTiles !== "function") throw new Error("Basemap source cannot switch");
       base.setTiles(rasterTiles(basemap));
@@ -1867,7 +1872,7 @@
       updateMapTileMemoryCache(instance, cacheTuning.ramTiles);
       if (instance.getLayer('base')) instance.setPaintProperty('base', 'raster-fade-duration', cacheTuning.tileFadeMs);
       if (instance.getLayer('world-land')) instance.setPaintProperty('world-land', 'fill-opacity', cacheTuning.baselineOpacity);
-      applyWorldBaselineBasemap(instance, mapState.basemap);
+      applyWorldBaselineBasemap(instance, appliedBasemap ?? mapState.basemap);
       applyWorldBaselineOpacity(instance, cacheTuning.baselineOpacity);
       nativeStyleGeneration++;
       // These local sprites belong to the style, independently of whether
@@ -2096,7 +2101,6 @@
   });
   $effect(() => {
     const basemap = mapState.basemap;
-    if (active && nativeStyleReady && map) applyWorldBaselineBasemap(map, basemap);
     if (active && nativeStyleReady && map) {
       if (basemapSwitching && pendingBasemap !== basemap) basemapAbort?.abort();
       else if (!basemapSwitching && appliedBasemap !== basemap) void applyBasemapTiles(basemap);

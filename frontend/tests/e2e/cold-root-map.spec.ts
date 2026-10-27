@@ -19,7 +19,9 @@ function testManifest() {
 }
 
 test('cold landing entry and warmed reload keep map controls and exact/approximate points interactive', async ({ page, browserName }) => {
-  test.setTimeout(60_000);
+  // This covers cold start, reload, selection, nearby search and both imagery
+  // handoffs in one real-renderer journey, including software-rendered Linux.
+  test.setTimeout(180_000);
   test.skip(browserName !== 'chromium', 'The cache-backed map lifecycle regression runs in Chromium.');
   await page.setViewportSize({ width: 1280, height: 900 });
 

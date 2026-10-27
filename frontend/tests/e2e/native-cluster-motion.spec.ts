@@ -12,7 +12,11 @@ async function fixture(page: Page, focusedCount?: number) {
       : i < focusedCount ? [4.87 + i % 32 * .004, 51.13 + Math.floor(i / 32) * .004] : [100 + i % 80 * .012, 30 + Math.floor(i / 80) * .012] },
     properties: { facility_id: `123e4567-e89b-42d3-a456-${i.toString(16).padStart(12, '0')}`, source_id: 'fixture.source', category_key: 'slaughter', category_keys: ['slaughter'], precision: 'source_reported', weight: 1 },
   }));
-  const tile = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/F2sAAAAASUVORK5CYII=', 'base64');
+  const tile = Buffer.from(await page.evaluate(() => {
+    const canvas = document.createElement('canvas'); canvas.width = canvas.height = 256;
+    const context = canvas.getContext('2d')!; context.fillStyle = '#eff1ef'; context.fillRect(0, 0, 256, 256);
+    return canvas.toDataURL('image/png').split(',')[1]!;
+  }), 'base64');
   await page.route('https://tile.openstreetmap.org/**', route => route.fulfill({ contentType: 'image/png', body: tile }));
   await page.route('https://server.arcgisonline.com/**', route => route.fulfill({ contentType: 'image/png', body: tile }));
   await page.route(url => url.pathname === '/api/v2/releases/manifest', route => { requests.manifests++; return route.fulfill({ json: releaseManifest }); });
@@ -350,13 +354,15 @@ test('one continuous zoom holds native marks then moves children once from their
 });
 
 test('animation on and off keep the same 3D camera path and mobile wheel zoom remains monotonic', async ({ page }, testInfo) => {
-  test.setTimeout(60_000);
+  // Two terrain camera paths and a separate real-wheel gesture journey are
+  // intentionally checked together, including on software-rendered Linux.
+  test.setTimeout(180_000);
   await page.setViewportSize({ width: 390, height: 844 });
   await fixture(page);
   await monitorMotion(page);
   const elevation = Buffer.from(await page.evaluate(() => {
-    const canvas = document.createElement('canvas'); canvas.width = canvas.height = 512;
-    const context = canvas.getContext('2d')!; context.fillStyle = 'rgb(128,0,0)'; context.fillRect(0, 0, 512, 512);
+    const canvas = document.createElement('canvas'); canvas.width = canvas.height = 64;
+    const context = canvas.getContext('2d')!; context.fillStyle = 'rgb(128,0,0)'; context.fillRect(0, 0, 64, 64);
     return canvas.toDataURL('image/png').split(',')[1]!;
   }), 'base64');
   await page.route('https://tiles.mapterhorn.com/**', route => route.fulfill({ contentType: 'image/png', body: elevation }));
@@ -430,7 +436,8 @@ test('animation on and off keep the same 3D camera path and mobile wheel zoom re
   }
   await page.waitForFunction(previous => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getZoom() > previous, burstStartZoom);
   await page.waitForFunction(() => !(window as any).__UEC_LOCAL_PREVIEW_MAP__.isMoving() && !document.querySelector('.native-cluster-motion')?.hasAttribute('data-phase'));
-  // If necessary, use bounded extra real inputs to observe an actual split.
+  // Cross the next hierarchy gradually. Large fallback deltas can skip a
+  // parent/child generation before the software renderer places its symbols.
   for (let step = 6; step < 24; step++) {
     if (await page.evaluate(() => (window as any).__motionFrames.some((frame: any) => frame.direction === 'split'))) break;
     expect(await page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getZoom()), `No split after the native expansion zoom ${expansionZoom}`).toBeLessThan(expansionZoom + 1);
