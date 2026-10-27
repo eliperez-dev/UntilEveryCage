@@ -49,12 +49,14 @@ The encrypted inbox remains development-only; production activation and email
 are not part of that deployment. Dataset membership and database controls are unchanged.
 The source inventory owns graph package/runtime details and source-specific evidence.
 
-The completed frontend delivery through `eb505d4d` is merged with the
-country-release backend checkpoint. This includes the reviewed mobile workspace,
-additional languages, map tools and area search, plus the source-readiness race
-fix and updated browser checks. The previous CI run failed frontend checks;
-the corrected integration is being checked again. Render rollout is pending.
-This integration has not changed the hosted dataset or serving database.
+The reviewed frontend delivery is merged with the country-release backend
+checkpoint. It includes the mobile workspace, additional languages, map tools,
+area search, raster handoff and cold-navigation fixes. Required CI has six
+passing jobs but still fails two 3D browser checks; rollout remains pending
+while their trace-backed test corrections are verified. Exact revisions,
+results and deployment state are retained in ignored
+`data/staging/app-review-20261027/acceptance.json`. The currently hosted dataset
+and serving database are unchanged.
 
 ## Launch gates
 
