@@ -196,6 +196,58 @@ class CandidateBridgeTests(unittest.TestCase):
                 Connection(), ("v0-candidate-2026-10-04-r3", "release-2026-10-18"), (),
                 "launch-country-candidate-2026-10-27")
 
+    def test_target_identity_preflight_is_read_only_and_catches_source_artifact_and_facility_conflicts(self):
+        source = "fr.synthetic"
+        group = "group-1"
+        facility_id = bridge._uuid("facility", source, group)
+        entry = {"source_artifact_sha256": "a" * 64, "source_bytes_state": "not_retained",
+                 "source_artifact_path": None, "source_artifact_byte_size": None}
+        parsed = (None, None, "FR")
+        entries = {source: entry}
+        handoffs = {source: {"rows": [(parsed, {})], "representatives": {group: object()}}}
+
+        class Connection:
+            def __init__(self, *, sources=(), artifacts=(), facilities=()):
+                self.sources, self.artifacts, self.facilities = sources, artifacts, facilities
+                self.queries = []
+
+            def execute(self, query, params):
+                self.queries.append((query, params))
+                if "FROM uec.sources" in query:
+                    rows = self.sources
+                elif "FROM uec.raw_artifacts" in query:
+                    rows = self.artifacts
+                elif "FROM uec.facilities" in query:
+                    rows = self.facilities
+                else:
+                    raise AssertionError(query)
+                return type("Result", (), {"fetchall": lambda _self: rows})()
+
+        clean = Connection(facilities=[(facility_id, "FR", "Synthetic", [source])])
+        checks = bridge._preflight_target_identity(clean, entries, handoffs)
+        self.assertEqual(checks[source][group], (("FR", "Synthetic"), [(source,)]))
+        self.assertTrue(all(query.lstrip().startswith("SELECT") for query, _ in clean.queries))
+        self.assertIn("facility.facility_id=ANY(%s::uuid[])", clean.queries[-1][0])
+        self.assertIn("array_agg(DISTINCT source_record.source_id)", clean.queries[-1][0])
+
+        with self.assertRaisesRegex(bridge.BridgeError, "existing_source_identity_conflict"):
+            bridge._preflight_target_identity(Connection(sources=[(source, "UN")]), entries, handoffs)
+        with self.assertRaisesRegex(bridge.BridgeError, "existing_artifact_provenance_conflict"):
+            bridge._preflight_target_identity(
+                Connection(artifacts=[("a" * 64, None, None, "deleted")]), entries, handoffs)
+        with self.assertRaisesRegex(bridge.BridgeError, "canonical_facility_identity_conflict"):
+            bridge._preflight_target_identity(
+                Connection(facilities=[(facility_id, "UN", "Synthetic", [source])]), entries, handoffs)
+        with self.assertRaisesRegex(bridge.BridgeError, "canonical_facility_source_identity_conflict"):
+            bridge._preflight_target_identity(
+                Connection(facilities=[(facility_id, "FR", "Synthetic", ["other.source"])]), entries, handoffs)
+
+        script = SCRIPT.read_text(encoding="utf-8")
+        call = script.index("_preflight_target_identity(connection, entries, handoffs)")
+        self.assertLess(call, script.index("baseline_before = None", call))
+        self.assertLess(call, script.index('INSERT INTO uec.releases', call))
+        self.assertLess(call, script.index('INSERT INTO uec.source_records', call))
+
     def test_retained_release_inventory_and_manifest_are_fixed(self):
         self.assertEqual(len(bridge.RETAINED_RELEASE_IDS), 5)
         self.assertEqual(set(bridge.RETAINED_MANIFEST_SHA256), {bridge.RETAINED_RELEASE_IDS[1]})
@@ -485,14 +537,18 @@ class CandidateBridgeTests(unittest.TestCase):
             "manifest_sha256": "e" * 64, "graph_manifest_sha256": "f" * 64,
             "graph_records_sha256": "1" * 64, "graph_handoff_state": "private_candidates_verified",
             "terms_review_sha256": "2" * 64,
-            "rows": [], "representatives": {}} for source in sources}
+            "rows": [((None, None, "DK" if source == "dk.smiley" else "NL"), {})],
+            "representatives": {}} for source in sources}
 
         class Result:
-            def __init__(self, row):
-                self.row = row
+            def __init__(self, row=None, rows=()):
+                self.row, self.rows = row, rows
 
             def fetchone(self):
                 return self.row
+
+            def fetchall(self):
+                return self.rows
 
         class Connection:
             def __init__(self):
@@ -511,6 +567,8 @@ class CandidateBridgeTests(unittest.TestCase):
                 self.statements.append(sql)
                 if sql == "SELECT current_database()":
                     return Result(("uec_v0_review_preflight",))
+                if "FROM uec.sources" in sql or "FROM uec.raw_artifacts" in sql or "FROM uec.facilities" in sql:
+                    return Result(rows=[])
                 if "to_regclass" in sql:
                     return Result((None,))
                 if sql.startswith("SELECT count(*)"):

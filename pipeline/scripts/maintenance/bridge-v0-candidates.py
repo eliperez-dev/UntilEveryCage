@@ -900,6 +900,74 @@ def _ensure_artifact(connection: Any, entry: dict[str, Any], retrieved: datetime
     return str(row[0])
 
 
+def _preflight_target_identity(connection: Any, entries: dict[str, dict[str, Any]],
+                               handoffs: dict[str, dict[str, Any]]) -> dict[str, dict[str, tuple[Any, list[Any]]]]:
+    """Read-only collision check for all frozen handoffs before baseline hashing or writes."""
+    countries: dict[str, str] = {}
+    for source, handoff in handoffs.items():
+        values = {str(parsed[2]).upper() for parsed, _ in handoff["rows"] if parsed[2]}
+        if len(values) != 1 or len(next(iter(values), "")) != 2:
+            raise BridgeError("source_country_inconsistent")
+        countries[source] = next(iter(values))
+
+    source_rows = connection.execute(
+        "SELECT source_id,country_code FROM uec.sources WHERE source_id=ANY(%s)",
+        (sorted(entries),)).fetchall()
+    for source_id, country_code in source_rows:
+        source = str(source_id)
+        if source not in countries or str(country_code).strip().upper() != countries[source]:
+            raise BridgeError("existing_source_identity_conflict")
+
+    hashes = sorted({str(entry["source_artifact_sha256"]) for entry in entries.values()})
+    artifact_rows = connection.execute(
+        "SELECT sha256,storage_key,byte_size,retention_status FROM uec.raw_artifacts WHERE sha256=ANY(%s)",
+        (hashes,)).fetchall()
+    artifacts = {str(row[0]): (row[1], row[2], row[3]) for row in artifact_rows}
+    for source in entries:
+        entry = entries[source]
+        digest = str(entry["source_artifact_sha256"])
+        current = artifacts.get(digest)
+        if entry["source_bytes_state"] == "retained":
+            byte_size = int(entry["source_artifact_byte_size"])
+            if current is not None and (current[0] is None or current[1] is None
+                                        or int(current[1]) != byte_size or current[2] != "retained"):
+                raise BridgeError("existing_artifact_provenance_conflict")
+            artifacts[digest] = (str(Path(entry["source_artifact_path"]).resolve(strict=True)),
+                                 byte_size, "retained")
+        else:
+            if current is not None and current[2] not in {"retained", "not_retained"}:
+                raise BridgeError("existing_artifact_provenance_conflict")
+            if current is not None and current[2] == "not_retained" and (current[0] is not None or current[1] is not None):
+                raise BridgeError("existing_artifact_provenance_conflict")
+            if current is None:
+                artifacts[digest] = (None, None, "not_retained")
+
+    preflight_facilities: dict[str, dict[str, tuple[Any, list[Any]]]] = {}
+    for source in sorted(handoffs):
+        groups = handoffs[source]["representatives"]
+        facility_ids = {group: _uuid("facility", source, group) for group in groups}
+        preflight_facilities[source] = {}
+        if not facility_ids:
+            continue
+        rows = connection.execute("""SELECT facility.facility_id::text,facility.country_code,facility.canonical_name,
+                array_agg(DISTINCT source_record.source_id) FILTER (WHERE source_record.source_id IS NOT NULL)
+            FROM uec.facilities facility
+            LEFT JOIN uec.facility_source_links link USING(facility_id)
+            LEFT JOIN uec.source_records source_record USING(source_record_id)
+            WHERE facility.facility_id=ANY(%s::uuid[])
+            GROUP BY facility.facility_id,facility.country_code""",
+            (list(facility_ids.values()),)).fetchall()
+        group_by_id = {facility_id: group for group, facility_id in facility_ids.items()}
+        for facility_id, country_code, canonical_name, linked_sources in rows:
+            if str(country_code).strip().upper() != countries[source]:
+                raise BridgeError("canonical_facility_identity_conflict")
+            if any(str(linked_source) != source for linked_source in (linked_sources or [])):
+                raise BridgeError("canonical_facility_source_identity_conflict")
+            preflight_facilities[source][group_by_id[str(facility_id)]] = (
+                (country_code, canonical_name), [(linked_source,) for linked_source in (linked_sources or [])])
+    return preflight_facilities
+
+
 def _release_existing(connection: Any, release_id: str, freeze_hash: str) -> bool:
     row = connection.execute("SELECT status,profile,test_only,ruleset_version,summary FROM uec.releases WHERE release_id=%s",
                              (release_id,)).fetchone()
@@ -1322,6 +1390,7 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
             if db_name != expected_database:
                 raise BridgeError("connected_database_mismatch")
             connection.execute("SELECT retention_status FROM uec.raw_artifacts LIMIT 0")
+            target_facility_checks = _preflight_target_identity(connection, entries, handoffs)
             public_projection_before = _public_projection_count(connection)
             baseline_before = None
             if append_mode:
@@ -1413,7 +1482,7 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                 artifact_id = _ensure_artifact(connection, entry, retrieved)
                 candidate_rows = preview_check["candidates"]
                 projection_revisions: dict[str, str] = {}
-                facility_checks: dict[str, tuple[Any, list[Any]]] = {}
+                facility_checks = target_facility_checks[source]
                 # Source-native group identity remains stable across snapshots;
                 # no name/address-based cross-source matching is attempted.
                 for parsed, raw in handoff["rows"]:
@@ -1435,11 +1504,10 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                                   "source_activity_codes": contract.get("source_activity_codes", []),
                                   "source_activity_labels": contract.get("source_activity_labels", []),
                                   "handoff_normalized_sha256": handoff["normalized_sha256"]}
-                    record_row = connection.execute("""INSERT INTO uec.source_records
+                    connection.execute("""INSERT INTO uec.source_records
                         (source_id,source_record_key,artifact_id,raw_fields,parsed_at)
-                        VALUES (%s,%s,%s,%s,%s) ON CONFLICT (source_id,source_record_key,artifact_id) DO NOTHING
-                        RETURNING source_record_id::text""",
-                        (source, source_record_key, artifact_id, Jsonb(raw_fields), parsed_at)).fetchone()
+                        VALUES (%s,%s,%s,%s,%s) ON CONFLICT (source_id,source_record_key,artifact_id) DO NOTHING""",
+                        (source, source_record_key, artifact_id, Jsonb(raw_fields), parsed_at))
                     stored_record = connection.execute("SELECT source_record_id::text,raw_fields FROM uec.source_records WHERE source_id=%s AND source_record_key=%s AND artifact_id=%s",
                                                        (source, source_record_key, artifact_id)).fetchone()
                     if stored_record is None or stored_record[1] != raw_fields:
@@ -1448,13 +1516,7 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                     facility_id = _uuid("facility", source, group)
                     representative_parsed, _ = handoff["representatives"][group]
                     country = str(representative_parsed[2] or country).upper()
-                    if group not in facility_checks:
-                        existing = connection.execute("SELECT country_code,canonical_name FROM uec.facilities WHERE facility_id=%s", (facility_id,)).fetchone()
-                        links = connection.execute("""SELECT DISTINCT source_record.source_id
-                            FROM uec.facility_source_links link JOIN uec.source_records source_record USING (source_record_id)
-                            WHERE link.facility_id=%s""", (facility_id,)).fetchall()
-                        facility_checks[group] = (existing, links)
-                    existing_facility, linked_sources = facility_checks[group]
+                    existing_facility, linked_sources = facility_checks.get(group, (None, []))
                     if existing_facility and str(existing_facility[0]).strip().upper() != country:
                         raise BridgeError("canonical_facility_identity_conflict")
                     if any(row[0] != source for row in linked_sources):
@@ -1554,13 +1616,13 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                     if latitude is not None:
                         observation_params += _point_sql_parameters(latitude, longitude)
                     observation_params += (coord_method, coord_precision, observed_at)
-                    observation_row = connection.execute(f"""INSERT INTO uec.observations
+                    connection.execute(f"""INSERT INTO uec.observations
                         (facility_id,source_record_id,observed_at,observation,classification,ruleset_id,rule_id,
                          classification_category,classification_review_status,default_visible,optional_filter,
                          coordinate,coordinate_method,coordinate_precision,coordinate_review_status,first_observed_at)
                         VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'review_required',false,%s,{coord_geom},%s,%s,'review_required',%s)
-                        ON CONFLICT (facility_id,source_record_id,observed_at) DO NOTHING RETURNING observation_id::text""",
-                        observation_params).fetchone()
+                        ON CONFLICT (facility_id,source_record_id,observed_at) DO NOTHING""",
+                        observation_params)
                     stored_observation = connection.execute("""SELECT observation_id::text,observation,classification,
                             classification_category,classification_review_status,default_visible,optional_filter,
                             coordinate_method,coordinate_precision,coordinate_review_status,
