@@ -97,8 +97,13 @@ jobs:
         run: chown "$(id -u):$(id -g)" /github/home
       # Finish independent browser groups even if one fails, so one run gives
       # the full diagnosis. Every failure still fails this required job.
-      - run: npx playwright test tests/e2e/shell-routes.spec.ts tests/e2e/local-safety.spec.ts tests/e2e/private-preview.spec.ts tests/e2e/cold-root-map.spec.ts tests/e2e/map-unavailable.spec.ts --project=chromium --project=firefox --project=webkit --workers=2 --output=test-results/entry
+      - run: npx playwright test tests/e2e/shell-routes.spec.ts tests/e2e/local-safety.spec.ts tests/e2e/private-preview.spec.ts tests/e2e/map-unavailable.spec.ts --project=chromium --project=firefox --project=webkit --workers=2 --output=test-results/entry
         if: ${{ !cancelled() && steps.public-build.outcome == 'success' }}
+      # This GPU-heavy journey runs only in Chromium and must not contend with
+      # other software-rendered maps on the same CI runner.
+      - name: Cold map lifecycle regression (synthetic projection)
+        if: ${{ !cancelled() && steps.public-build.outcome == 'success' }}
+        run: npx playwright test tests/e2e/cold-root-map.spec.ts --project=chromium --workers=1 --output=test-results/cold-entry
       - name: Facility detail browser regressions (synthetic projections)
         if: ${{ !cancelled() && steps.public-build.outcome == 'success' }}
         run: npx playwright test tests/e2e/facility-detail-presentation.spec.ts --project=chromium --workers=1 --output=test-results/facility
