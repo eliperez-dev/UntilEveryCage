@@ -168,6 +168,24 @@ ALLOWED_SKIPPED_TESTS.update(
 )
 
 
+# These checks require the retained launch-country V0 copy and local API;
+# public CI has neither real country rows nor provider responses.
+ALLOWED_SKIPPED_TESTS.update(
+    (f"{prefix}test_new_zealand_locationiq_contract.NewZealandLocationIqSqlFunctionTests.{method}",
+     "explicit opt-in on the assigned disposable NZ SQL-test database required")
+    for prefix in ("", "pipeline.tests.")
+    for method in (
+        "test_sql_function_positive_optional_postcode_and_exact_address_town",
+        "test_sql_function_rejects_mismatched_components_and_off_bounds",
+    )
+)
+ALLOWED_SKIPPED_TESTS.update(
+    (f"setUpClass ({prefix}e2e.test_launch_country_sources.LaunchCountrySources)",
+     "requires the opt-in local country API and V0 database")
+    for prefix in ("", "pipeline.tests.")
+)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--start-directory", default="pipeline/tests")
@@ -180,6 +198,9 @@ def main():
     else:
         suite = unittest.defaultTestLoader.discover(args.start_directory)
     result = unittest.TextTestRunner(verbosity=2).run(suite)
+    # Expose failing test IDs in CI annotations, never tracebacks or row data.
+    for test, _traceback in result.failures + result.errors:
+        print(f"::error title=pipeline test failure::{test.id()}", file=sys.stderr)
     unexpected = [
         (test.id(), reason)
         for test, reason in result.skipped
@@ -187,6 +208,7 @@ def main():
     ]
     if unexpected:
         for test_id, reason in unexpected:
+            print(f"::error title=unexpected pipeline test skip::{test_id}", file=sys.stderr)
             print(f"unexpected skipped test: {test_id}: {reason}", file=sys.stderr)
         return 2
     return 0 if result.wasSuccessful() else 1

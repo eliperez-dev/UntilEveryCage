@@ -56,6 +56,43 @@ class ActivateNzLocationIqPreviewTests(unittest.TestCase):
             with self.subTest(snapshot=snapshot, key=key), self.assertRaises(ValueError):
                 activation._projection_source_record_key(snapshot, key)
 
+    def test_retained_response_recheck_is_offline_and_preserves_parent_lineage(self):
+        raw_candidates = [{
+            "place_id": 123, "lat": "-41.2865", "lon": "174.7762",
+            "class": "place", "type": "house", "addresstype": "house",
+            "address": {"house_number": "12", "road": "Example Street",
+                        "city": "Wellington", "postcode": "6011", "country_code": "nz"},
+        }]
+        query = "12 Example Street, Wellington, New Zealand"
+        outcome = activation._replay_retained_response(query, {"results": raw_candidates})
+        self.assertEqual(outcome.status, "accepted")
+        self.assertEqual(outcome.match_method, "locationiq_forward")
+        result_id, response = activation._retained_recheck_identity("parent-1", outcome)
+        self.assertEqual(result_id, activation.uuid.uuid5(
+            activation.uuid.NAMESPACE_URL, "urn:uec:nz-address-node-v1:parent-1"))
+        self.assertEqual(response["parent_geocode_result_id"], "parent-1")
+        self.assertEqual(response["recheck_ruleset"], "nz-address-node-v1")
+        self.assertTrue(response["offline_recheck"])
+
+    def test_retained_recheck_sql_is_current_gated_and_idempotent(self):
+        sql = activation._RETAINED_RECHECK_SQL
+        self.assertIn("ORDER BY source_id,created_at DESC,run_id DESC", sql)
+        self.assertIn("result.status='review_required'", sql)
+        self.assertIn("queued.details->>'profile_id'='locationiq-nz-mpi-rmp'", sql)
+        self.assertIn("location_evidence->'location_count'='1'::jsonb", sql)
+        self.assertIn("FROM uec.public_access_restricted", sql)
+        self.assertIn("derived.response->>'recheck_ruleset'=%s", sql)
+        self.assertIn("FOR UPDATE OF candidate SKIP LOCKED", sql)
+
+    def test_retained_recheck_preserves_attempt_and_time_in_insert_contract(self):
+        script = SCRIPT.read_text(encoding="utf-8")
+        # Parent attempt and query time flow directly into append-only child evidence.
+        self.assertIn("ON CONFLICT(geocode_result_id) DO NOTHING RETURNING", script)
+        self.assertIn("outcome.status, attempt,", script)
+        self.assertIn("json.dumps(response, ensure_ascii=False), queried_at", script)
+        self.assertIn("VALUES(%s,'accepted',%s,false,%s::jsonb,now())", script)
+        self.assertIn("(job_id, attempt, json.dumps({\"offline_recheck\": True,", script)
+
     def test_source_linkage_uses_verified_artifact_and_projection_identity(self):
         class FakeConnection:
             def __init__(self):

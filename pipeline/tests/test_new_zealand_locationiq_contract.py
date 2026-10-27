@@ -120,6 +120,10 @@ class NewZealandLocationIqSqlFunctionTests(unittest.TestCase):
         suburb_result = {**result, "address": {**result["address"], "city": "Wellington Region",
                                                 "suburb": "Wellington"}}
         self.assertTrue(self.matches(suburb_result))
+        address_node = {**result, "class": "place", "type": "house"}
+        self.assertTrue(self.matches(address_node))
+        self.assertFalse(self.matches({**address_node, "type": "houses"}))
+        self.assertFalse(self.matches({**address_node, "type": "city"}))
 
     def test_sql_function_rejects_mismatched_components_and_off_bounds(self):
         base = {"lat": "-41.2865", "lon": "174.7762", "class": "building",

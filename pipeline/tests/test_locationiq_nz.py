@@ -89,6 +89,30 @@ class LocationIqNewZealandTests(unittest.TestCase):
                 self.assertIsNone(outcome.latitude)
                 self.assertIsNone(outcome.longitude)
 
+    def test_accepts_nominatim_place_house_address_node_only_for_nz(self):
+        for addresstype in (None, "house", "building"):
+            address_node = result(**{"class": "place", "type": "house"})
+            if addresstype is None:
+                address_node.pop("addresstype")
+            else:
+                address_node["addresstype"] = addresstype
+            adapter, _ = self.make([address_node])
+            outcome = adapter.geocode("12 Sample Road, Newmarket, New Zealand")
+            with self.subTest(addresstype=addresstype):
+                self.assertEqual(outcome.status, "accepted")
+                self.assertEqual(outcome.precision, "locationiq_address_point")
+
+    def test_rejects_place_city_and_interpolated_houses(self):
+        for candidate in (
+            result(**{"class": "place", "type": "city", "addresstype": "city"}),
+            result(**{"class": "place", "type": "houses", "addresstype": "houses"}),
+        ):
+            with self.subTest(class_type=(candidate["class"], candidate["type"])):
+                adapter, _ = self.make([candidate])
+                outcome = adapter.geocode("12 Sample Road, Newmarket, New Zealand")
+                self.assertEqual(outcome.status, "review_required")
+                self.assertIsNone(outcome.latitude)
+
     def test_requires_physical_address_and_town_and_rejects_ambiguous_matches(self):
         for query in ("Sample Road, Newmarket, New Zealand",
                       "12 Sample Road, New Zealand",

@@ -11,6 +11,7 @@ from pathlib import Path
 import re
 import sys
 from typing import Any
+import uuid
 
 import psycopg
 
@@ -28,6 +29,7 @@ SOURCE_URL = ("https://mpi.my.site.com/publicregister/s/RiskMeasureSearch"
 SOURCE_NAME = "New Zealand Ministry for Primary Industries — Risk Management Programme Register"
 _POSTCODE = re.compile(r"^[0-9]{4}$")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
+NZ_RECHECK_RULESET = "nz-address-node-v1"
 
 
 def _as_utc(value: Any) -> datetime | None:
@@ -153,6 +155,143 @@ def _query_from_location(location: Any) -> str | None:
     if LocationIqAdapter._parse_nz_query(query) is None:
         return None
     return query
+
+
+def _replay_retained_response(query: str, retained_response: Any):
+    """Re-evaluate saved provider candidates without a key or network access."""
+    if not isinstance(retained_response, dict) or not isinstance(retained_response.get("results"), list):
+        raise ValueError("retained_provider_response_invalid")
+
+    class MemoryResponse:
+        def __init__(self, payload: bytes):
+            self.payload = payload
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self, _limit=-1):
+            return self.payload
+
+    payload = json.dumps(retained_response["results"], ensure_ascii=False).encode("utf-8")
+    adapter = LocationIqAdapter(api_key="placeholder-offline-recheck",
+                                opener=lambda *_args, **_kwargs: MemoryResponse(payload),
+                                country_code="nz", private_source_profile=True)
+    return adapter.geocode(query)
+
+
+def _retained_recheck_identity(parent_id: Any, outcome: Any) -> tuple[uuid.UUID, dict[str, Any]]:
+    result_id = uuid.uuid5(uuid.NAMESPACE_URL, f"urn:uec:nz-address-node-v1:{parent_id}")
+    response = {**outcome.response, "parent_geocode_result_id": str(parent_id),
+                "recheck_ruleset": NZ_RECHECK_RULESET, "offline_recheck": True}
+    return result_id, response
+
+
+_RETAINED_RECHECK_SQL = """
+WITH latest AS (
+    SELECT DISTINCT ON (source_id) source_id,snapshot_sha256
+      FROM real_preview.source_preview_runs
+     WHERE source_id='nz.locations'
+     ORDER BY source_id,created_at DESC,run_id DESC
+), eligible AS (
+    SELECT target.job_id,target.candidate_id,target.snapshot_sha256,target.source_id,
+           target.source_record_key,job.source_record_id,job.query,result.geocode_result_id,
+           result.response,result.attempt_number,result.queried_at,
+           location.location_evidence
+      FROM real_preview.geocode_targets target
+      JOIN latest USING (source_id,snapshot_sha256)
+      JOIN uec.geocode_jobs job ON job.job_id=target.job_id AND job.provider_id='locationiq'
+      JOIN LATERAL (
+          SELECT result.* FROM uec.geocode_results result
+           WHERE result.source_record_id=job.source_record_id
+             AND result.provider_id='locationiq' AND result.query=job.query
+           ORDER BY result.queried_at DESC,result.geocode_result_id DESC LIMIT 1
+      ) result ON result.status='review_required'
+      JOIN real_preview.candidate_private_location_evidence location
+        ON location.candidate_id=target.candidate_id
+       AND location.snapshot_sha256=target.snapshot_sha256
+       AND location.source_id=target.source_id
+      JOIN real_preview.candidates candidate
+        ON candidate.candidate_id=target.candidate_id
+       AND candidate.snapshot_sha256=target.snapshot_sha256
+       AND candidate.source_id=target.source_id
+      JOIN LATERAL (
+          SELECT event.details FROM uec.geocode_job_events event
+           WHERE event.job_id=job.job_id AND event.event_type='queued'
+           ORDER BY event.occurred_at DESC,event.event_id DESC LIMIT 1
+      ) queued ON queued.details->>'profile_id'='locationiq-nz-mpi-rmp'
+     WHERE target.source_id='nz.locations' AND target.snapshot_sha256=(SELECT snapshot_sha256 FROM latest)
+       AND candidate.country_code='NZ' AND candidate.latitude IS NULL AND candidate.longitude IS NULL
+       AND candidate.display_latitude IS NULL AND candidate.display_longitude IS NULL
+       AND location.location_evidence->>'country_code'='NZ'
+       AND location.location_evidence->'location_count'='1'::jsonb
+       AND BTRIM(COALESCE(location.location_evidence->>'number_of_locations',''))='1'
+       AND NULLIF(BTRIM(location.location_evidence->>'address'),'') IS NOT NULL
+       AND NULLIF(BTRIM(location.location_evidence->>'city'),'') IS NOT NULL
+       AND COALESCE(location.location_evidence->'coordinates','null'::jsonb)='null'::jsonb
+       AND NOT (location.location_evidence ? 'latitude')
+       AND NOT (location.location_evidence ? 'longitude')
+       AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted restricted
+                        WHERE restricted.source_record_id=job.source_record_id)
+       AND NOT EXISTS (SELECT 1 FROM real_preview.enrichment_state_events state
+                        WHERE state.candidate_id=target.candidate_id AND state.state_code='restricted')
+       AND NOT EXISTS (SELECT 1 FROM uec.geocode_results derived
+                        WHERE derived.source_record_id=job.source_record_id
+                          AND derived.response->>'recheck_ruleset'=%s)
+     ORDER BY candidate.candidate_id
+     LIMIT %s
+     FOR UPDATE OF candidate SKIP LOCKED
+)
+SELECT * FROM eligible
+"""
+
+
+def recheck_retained(database_url: str, *, limit: int = 24):
+    if not 1 <= limit <= 5000:
+        raise ValueError("NZ retained recheck batch must contain 1 to 5000 records")
+    profile = profile_by_id(PROFILE_ID)
+    if (profile is None or profile.get("provider_id") != "locationiq"
+            or profile.get("source_id") != SOURCE_ID or profile.get("country_code") != "NZ"):
+        raise ValueError("NZ LocationIQ profile is not enabled")
+    with psycopg.connect(database_url) as connection, connection.transaction():
+        if connection.execute("SELECT current_database()").fetchone()[0] != DATABASE:
+            raise ValueError("database_identity_invalid")
+        rows = connection.execute(_RETAINED_RECHECK_SQL, (NZ_RECHECK_RULESET, limit)).fetchall()
+        created = 0
+        for row in rows:
+            (job_id, candidate_id, snapshot, source_id, source_key, source_record_id,
+             query, parent_id, retained_response, attempt, queried_at, location) = row
+            if source_id != SOURCE_ID or _query_from_location(location) != query:
+                continue
+            outcome = _replay_retained_response(query, retained_response)
+            if outcome.status != "accepted":
+                continue
+            result_id, response = _retained_recheck_identity(parent_id, outcome)
+            inserted = connection.execute("""INSERT INTO uec.geocode_results
+                (geocode_result_id,source_record_id,provider_id,query,provider_address_id,result,
+                 precision,match_method,status,attempt_number,retryable,response,queried_at)
+                VALUES(%s,%s,'locationiq',%s,%s,
+                    CASE WHEN %s::double precision IS NULL OR %s::double precision IS NULL THEN NULL
+                         ELSE ST_SetSRID(ST_MakePoint(%s::double precision,%s::double precision),4326)::geography END,
+                    %s,%s,%s,%s,%s,%s::jsonb,%s)
+                ON CONFLICT(geocode_result_id) DO NOTHING RETURNING geocode_result_id""",
+                (result_id, source_record_id, query, outcome.provider_address_id,
+                 outcome.longitude, outcome.latitude, outcome.longitude, outcome.latitude,
+                 outcome.precision, outcome.match_method, outcome.status, attempt,
+                 outcome.retryable, json.dumps(response, ensure_ascii=False), queried_at)).fetchone()
+            if inserted is None:
+                continue
+            connection.execute("""INSERT INTO uec.geocode_job_events
+                (job_id,event_type,attempt_number,retryable,details,occurred_at)
+                VALUES(%s,'accepted',%s,false,%s::jsonb,now())""",
+                (job_id, attempt, json.dumps({"offline_recheck": True,
+                    "parent_geocode_result_id": str(parent_id), "derived_geocode_result_id": str(result_id),
+                    "recheck_ruleset": NZ_RECHECK_RULESET})))
+            created += 1
+        return {"source": SOURCE_ID, "recheck_ruleset": NZ_RECHECK_RULESET,
+                "results_derived": created, "provider_calls": 0}, ()
 
 
 _LATEST_RUN_SQL = """
@@ -332,10 +471,14 @@ def activate(database_url: str, *, limit: int = 100):
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--database-url", default=os.environ.get("UEC_DATABASE_URL"))
-    parser.add_argument("--limit", type=int, default=100)
+    parser.add_argument("--limit", type=int, default=24)
+    parser.add_argument("--recheck-retained", action="store_true",
+                        help="offline recheck of retained NZ LocationIQ responses; makes no provider calls")
     parser.add_argument("--run-worker", action="store_true")
     parser.add_argument("--provider-account", choices=("primary", "secondary"), default="primary")
     args = parser.parse_args()
+    if args.recheck_retained and args.run_worker:
+        parser.error("--recheck-retained cannot be combined with --run-worker")
     key_env = "LOCATIONIQ_SECONDARY_API_KEY" if args.provider_account == "secondary" else "LOCATIONIQ_API_KEY"
     if not args.database_url:
         print(json.dumps({"status": "blocked", "reason": "database_url_missing"}))
@@ -344,6 +487,10 @@ def main() -> int:
         print(json.dumps({"status": "blocked", "reason": "locationiq_key_missing"}))
         return 2
     try:
+        if args.recheck_retained:
+            summary, jobs = recheck_retained(args.database_url, limit=args.limit)
+            print(json.dumps(summary), flush=True)
+            return 0
         summary, jobs = activate(args.database_url, limit=args.limit)
         print(json.dumps(summary), flush=True)
         if args.run_worker and jobs:

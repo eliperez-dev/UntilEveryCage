@@ -210,6 +210,13 @@ class LocationIqAdapter:
                                  and safe.get("class") not in {"highway", "boundary", "place", "landuse"}
                                  and result_type not in {"road", "city", "town", "village", "municipality", "postcode"})
             if is_nz:
+                # LocationIQ/Nominatim returns address-node results as
+                # class=place,type=house with house-like/absent addresstype.
+                # Keep this NZ-only exception; interpolated `houses` and
+                # place/city results remain non-address candidates.
+                nz_house_place = (safe.get("class") == "place" and result_type == "house"
+                                  and address_type in {"", "house", "building"})
+                result_is_address = result_is_address or nz_house_place
                 locality_values = [address.get(key) for key in ("city", "town", "municipality", "village", "suburb")]
                 locality_match = any(isinstance(value, str)
                                      and self._normalize(value) == self._normalize(locality)
