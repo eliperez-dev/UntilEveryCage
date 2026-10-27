@@ -45,7 +45,11 @@ _DE = {code: (rule["leaf_activity"], rule["primary_key"])
 
 
 def _crosswalk_version(source_id: str) -> str:
-    return "de-bltu-source-crosswalk-v1" if source_id == "de.locations" else CROSSWALK_VERSION
+    return {
+        "de.locations": "de-bltu-source-crosswalk-v1",
+        "mx.locations": "mx-denue-source-crosswalk-v1",
+        "nz.locations": "nz-mpi-rmp-source-crosswalk-v1",
+    }.get(source_id, CROSSWALK_VERSION)
 _LEAF_TO_PRIMARY = {
     "slaughter": "slaughter", "meat_processing": "processing_and_preparation",
     "fish_processing": "processing_and_preparation", "dairy_processing": "processing_and_preparation",
@@ -53,6 +57,7 @@ _LEAF_TO_PRIMARY = {
     "processing": "processing_and_preparation", "animal_keeping": "animal_keeping_and_production",
     "animal_production": "animal_keeping_and_production", "research": "research_and_animal_use",
     "animal_by_products": "other_regulated_premises", "logistics_and_storage": "other_regulated_premises",
+    "butcher_retail": "other_regulated_premises",
     "export": "other_regulated_premises", "general_food_business": "other_regulated_premises",
     **_DK_LEAF_PRIMARY,
 }
@@ -168,6 +173,89 @@ def _decision(source: str, normalized: dict[str, Any], original: dict[str, Any])
         if matched_naics or matched_sics:
             assignments.append({"leaf_activity": "animal_production",
                                 "primary": "animal_keeping_and_production", "method": "direct"})
+    elif source == "mx.locations":
+        # DENUE's native SCIAN class is the direct classification basis.
+        # Names and free text never create an activity assignment.
+        code = normalized.get("activity_class_id")
+        code_reference = "normalized.activity_class_id"
+        if code is None:
+            code = source_values.get("CLASE_ACTIVIDAD_ID")
+            code_reference = "source_values.CLASE_ACTIVIDAD_ID"
+        mx_rules = {
+            "311611": ("slaughter", "slaughter"),
+            "311612": ("processing", "processing_and_preparation"),
+            "311613": ("processing", "processing_and_preparation"),
+            "311614": ("processing", "processing_and_preparation"),
+        }
+        matched_codes = _values({"activity_class_id": code}, ("activity_class_id",))
+        unknown_codes = []
+        for value in sorted(set(matched_codes)):
+            rule = mx_rules.get(value)
+            if rule:
+                assignments.append({"leaf_activity": rule[0], "primary": rule[1], "method": "direct",
+                                    "source_code_reference": code_reference, "source_code": value})
+            else:
+                unknown_codes.append(value)
+        if matched_codes:
+            return assignments, ("partial" if assignments and unknown_codes else "mapped" if assignments else "unmapped")
+    elif source == "nz.locations":
+        # MPI labels classify only activities explicitly stated by the export.
+        # RMPs can cover multiple locations and are not one-to-one facilities.
+        import re
+        nz_fields = (
+            ("normalized.programme_type", normalized.get("programme_type") or source_values.get("Programme Type")),
+            ("normalized.primary_activity", normalized.get("primary_activity") or source_values.get("Primary")),
+            ("normalized.secondary_activity", normalized.get("secondary_activity") or source_values.get("Secondary Process")),
+            ("normalized.product_material", normalized.get("product_material") or source_values.get("Product/Material")),
+        )
+        nz_rules = (
+            (re.compile(r"\b(?:micro\s*)?abattoirs?\b|\bslaughter(?:ing|houses?)?\b", re.I),
+             "slaughter", "slaughter"),
+            (re.compile(r"\bchicken\s+producers?\b|\bfarm\s+dair(?:y|ies)\b|\begg\s+production\b", re.I),
+             "animal_production", "animal_keeping_and_production"),
+            (re.compile(r"(?=.*\b(?:bee|honey|meat|dairy|fish|seafood)\b)(?=.*\bprocessing\b)", re.I),
+             "processing", "processing_and_preparation"),
+            (re.compile(r"\b(?:storage|stores?|transport|transportation)\b", re.I),
+             "logistics_and_storage", "other_regulated_premises"),
+            (re.compile(r"\bdual\s+operator\s+butchers?\b", re.I),
+             "butcher_retail", "other_regulated_premises"),
+        )
+        evidence: dict[tuple[str, str, str], list[tuple[str, str]]] = {}
+        material_pattern = re.compile(r"\b(?:bee|honey|meat|dairy|fish|seafood)\b", re.I)
+        processing_word = re.compile(r"\bprocessing\b", re.I)
+        material_evidence: list[tuple[str, str]] = []
+        process_evidence: list[tuple[str, str]] = []
+        for field, raw_value in nz_fields:
+            values = raw_value if isinstance(raw_value, (list, tuple, set)) else [raw_value]
+            for raw in values:
+                value = str(raw).strip() if raw is not None else ""
+                if not value:
+                    continue
+                if material_pattern.search(value):
+                    material_evidence.append((field, value))
+                if processing_word.search(value):
+                    process_evidence.append((field, value))
+                for pattern, leaf, primary in nz_rules:
+                    if pattern.search(value):
+                        key = (leaf, primary, "derived")
+                        pair = (field, value)
+                        evidence.setdefault(key, [])
+                        if pair not in evidence[key]:
+                            evidence[key].append(pair)
+        if material_evidence and process_evidence:
+            key = ("processing", "processing_and_preparation", "derived")
+            evidence.setdefault(key, [])
+            for pair in material_evidence + process_evidence:
+                if pair not in evidence[key]:
+                    evidence[key].append(pair)
+        for (leaf, primary, method), matches in sorted(evidence.items()):
+            assignments.append({
+                "leaf_activity": leaf, "primary": primary, "method": method,
+                "source_label_reference": "; ".join(field for field, _ in matches),
+                "source_label": "; ".join(value for _, value in matches),
+            })
+        has_labels = any(str(value or "").strip() for _, value in nz_fields)
+        return assignments, ("mapped" if assignments else "unmapped" if has_labels else "unclassified")
     elif source == "be.locations":
         # Adapter output is produced only after the reviewed PAP signature
         # matched the exact place/activity/product tuple in the pinned codebook.
@@ -425,7 +513,7 @@ def project_observation(record: dict[str, Any]) -> dict[str, Any]:
         "taxonomy_assignments": enriched,
         "taxonomy_primaries": primaries,
         "taxonomy_mapping_method": next(iter(methods)) if len(methods) == 1 else (
-            "direct" if source in {"dk.smiley", "be.locations", "de.locations", "us.fsis", "us.epa.echo-animal-production", "fr.georisques.icpe.animal"} or source.startswith(("it.", "es.")) else
+            "direct" if source in {"dk.smiley", "be.locations", "de.locations", "us.fsis", "us.epa.echo-animal-production", "fr.georisques.icpe.animal", "mx.locations"} or source.startswith(("it.", "es.")) else
             "candidate" if source.startswith("au.") else "derived"),
         "taxonomy_mapping_status": status,
         "taxonomy_display_category": display,
@@ -466,6 +554,20 @@ def crosswalk_document(source_id: str) -> dict[str, Any]:
                   "leaf_key": "animal_production", "primary_key": "animal_keeping_and_production", "mapping_method": "direct"},
                  {"source_field": "industry_classification_basis.sic_codes", "source_code_set": "EPA selected livestock/poultry SIC codes",
                   "leaf_key": "animal_production", "primary_key": "animal_keeping_and_production", "mapping_method": "direct"}]
+    elif source_id == "mx.locations":
+        rules = [
+            {"source_field": "normalized.activity_class_id", "source_code": "311611", "leaf_key": "slaughter", "primary_key": "slaughter", "mapping_method": "direct"},
+            *[{"source_field": "normalized.activity_class_id", "source_code": code, "leaf_key": "processing", "primary_key": "processing_and_preparation", "mapping_method": "direct"}
+              for code in ("311612", "311613", "311614")],
+        ]
+    elif source_id == "nz.locations":
+        rules = [
+            {"source_field": "Programme Type / Primary / Secondary Process / Product/Material", "source_label": "whole-word micro abattoir or slaughter", "leaf_key": "slaughter", "primary_key": "slaughter", "mapping_method": "derived"},
+            {"source_field": "Programme Type / Primary / Secondary Process / Product/Material", "source_label": "whole-word chicken producers, farm dairies, or egg production", "leaf_key": "animal_production", "primary_key": "animal_keeping_and_production", "mapping_method": "derived"},
+            {"source_field": "Product/Material / Programme Type plus Primary / Secondary Process", "source_label": "whole-word bee, honey, meat, dairy, fish, or seafood material and whole-word processing", "leaf_key": "processing", "primary_key": "processing_and_preparation", "mapping_method": "derived"},
+            {"source_field": "Programme Type / Primary / Secondary Process / Product/Material", "source_label": "whole-word storage, store, or transport", "leaf_key": "logistics_and_storage", "primary_key": "other_regulated_premises", "mapping_method": "derived"},
+            {"source_field": "Programme Type / Primary / Secondary Process / Product/Material", "source_label": "whole-word dual operator butcher", "leaf_key": "butcher_retail", "primary_key": "other_regulated_premises", "mapping_method": "derived"},
+        ]
     elif source_id == "fr.georisques.icpe.animal":
         rules = [
             *[{"source_code": code, "leaf_key": "animal_keeping", "primary_key": "animal_keeping_and_production", "mapping_method": "direct"}

@@ -55,8 +55,8 @@ def _database_url(value: str | None) -> str:
     parsed = urlsplit(value)
     if parsed.hostname not in {"127.0.0.1", "localhost", "::1"}:
         raise ValueError("database must be loopback PostgreSQL")
-    if parsed.path.lstrip("/") != "uec_v0_api_repair":
-        raise ValueError("prospective measurement only accepts the retained development database")
+    if parsed.path.lstrip("/") not in {"uec_v0_api_repair", "uec_launch_sources_test_20261025"}:
+        raise ValueError("prospective measurement database is not allowlisted")
     return value
 
 

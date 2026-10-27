@@ -74,6 +74,16 @@ _NORMALIZED_KEYS = {
     "native_code", "native_label", "sector", "sector_code",
     "private_geocode_scope", "private_geocode_scope_policy_id", "source_address_eligible",
     "source_address_restricted", "evidence_summary", "city",
+    "clee", "activity_class_id", "activity_name", "activity_size_stratum",
+    "source_start_date", "source_administrative_location",
+    "mpi_risk_measure_id", "source_entity_type", "business_identifier",
+    "business_identifier_type", "risk_measure_type", "programme_type",
+    "product_material", "primary_activity", "secondary_activity", "intended_use",
+    "market", "is_suspended", "effective_date", "expiry_date", "suspension_type",
+    "suspension_start_date", "suspension_end_date", "suspended_operations",
+    "verification_agency", "location_role", "operator_local_authority",
+    "location_local_authority", "location_count", "location_count_state",
+    "dairy_ulis", "fishing_vessel_name",
 }
 _PRIVATE_LOCATION_KEYS = {"address", "address_lines", "city", "postal_code", "region", "country_code",
                           "coordinates", "municipality_code", "comarca_code", "department_number", "region_code"}
@@ -98,6 +108,8 @@ _FACILITY_NAME_FIELDS = {
     "de.locations": ("name", "trading_name"),
     "es.locations": ("name",),
     "fr.georisques.icpe.animal": ("trading_name", "name"),
+    "mx.locations": ("name",),
+    "nz.locations": ("trading_name", "name"),
 }
 
 
@@ -269,7 +281,17 @@ def verify_handoff(entry: dict[str, Any], inventory_source: dict[str, Any]) -> d
     source = str(entry["source_id"])
     manifest_path, normalized_path, graph_manifest_path, graph_records_path = _source_paths(entry)
     manifest = _read_json(manifest_path)
-    graph_manifest = _read_json(graph_manifest_path)
+    nz_graph_not_applicable = source == "nz.locations"
+    if nz_graph_not_applicable:
+        if (graph_manifest_path.exists() or graph_manifest_path.is_symlink()
+                or graph_records_path.exists() or graph_records_path.is_symlink()):
+            raise BridgeError("nz_graph_artifacts_not_applicable")
+        graph_manifest = None
+    else:
+        if (graph_manifest_path.is_symlink() or not graph_manifest_path.is_file()
+                or graph_records_path.is_symlink() or not graph_records_path.is_file()):
+            raise BridgeError("handoff_file_unavailable")
+        graph_manifest = _read_json(graph_manifest_path)
     if (manifest.get("source_id") != source
             or manifest.get("contract_version") != "candidate-handoff-v1"
             or manifest.get("publication_state") != "private-candidate"
@@ -278,13 +300,14 @@ def verify_handoff(entry: dict[str, Any], inventory_source: dict[str, Any]) -> d
             or manifest.get("privacy_gate") != "pending"
             or manifest.get("coordinate_gate") != "review_required"):
         raise BridgeError("handoff_policy_state_invalid")
-    if (graph_manifest.get("schema_version") != "private-graph-candidate-set-v1"
-            or graph_manifest.get("review_state") != "review_required"
-            or graph_manifest.get("privacy_status") != "pending"
-            or graph_manifest.get("publication_status") != "not_eligible"
-            or graph_manifest.get("storage_state") != "private"
-            or graph_manifest.get("auto_merge") is not False):
-        raise BridgeError("graph_handoff_policy_state_invalid")
+    if not nz_graph_not_applicable:
+        if (graph_manifest.get("schema_version") != "private-graph-candidate-set-v1"
+                or graph_manifest.get("review_state") != "review_required"
+                or graph_manifest.get("privacy_status") != "pending"
+                or graph_manifest.get("publication_status") != "not_eligible"
+                or graph_manifest.get("storage_state") != "private"
+                or graph_manifest.get("auto_merge") is not False):
+            raise BridgeError("graph_handoff_policy_state_invalid")
     expected = inventory_source["snapshot"]
     try:
         source_hash, manifest_normalized, manifest_count, source_url, retrieved, code, config = IMPORTER.manifest_provenance(manifest)
@@ -304,16 +327,50 @@ def verify_handoff(entry: dict[str, Any], inventory_source: dict[str, Any]) -> d
     normalized_hash, normalized_bytes = _digest(normalized_path)
     if normalized_hash != expected["normalized_sha256"]:
         raise BridgeError("normalized_handoff_hash_mismatch")
-    graph_hash, _ = _digest(graph_records_path)
-    if graph_hash != graph_manifest.get("records_sha256"):
-        raise BridgeError("graph_handoff_hash_mismatch")
+    graph_hash = None
+    graph_manifest_hash = None
+    if not nz_graph_not_applicable:
+        graph_hash, _ = _digest(graph_records_path)
+        if graph_hash != graph_manifest.get("records_sha256"):
+            raise BridgeError("graph_handoff_hash_mismatch")
     manifest_hash, _ = _digest(manifest_path)
-    graph_manifest_hash, _ = _digest(graph_manifest_path)
+    if not nz_graph_not_applicable:
+        graph_manifest_hash, _ = _digest(graph_manifest_path)
     rows = _read_jsonl(normalized_path)
     if len(rows) != inventory_source["counts"]["imported_observation_count"]:
         raise BridgeError("normalized_handoff_count_mismatch")
-    if graph_manifest.get("candidate_rows") != len(rows):
+    if not nz_graph_not_applicable and graph_manifest.get("candidate_rows") != len(rows):
         raise BridgeError("graph_handoff_count_mismatch")
+    if nz_graph_not_applicable:
+        if len(rows) > 100_000:
+            raise BridgeError("nz_programme_handoff_count_out_of_bounds")
+        identifiers = set()
+        for row in rows:
+            normalized = row.get("normalized") if isinstance(row, dict) else None
+            source_row_id = row.get("source_row_id") if isinstance(row, dict) else None
+            record_key = row.get("source_record_key") if isinstance(row, dict) else None
+            source_row = row.get("source_row") if isinstance(row, dict) else None
+            if (row.get("source_id") != source or not isinstance(source_row_id, (str, int))
+                    or not str(source_row_id).strip() or not isinstance(record_key, (str, int))
+                    or not str(record_key).strip() or type(source_row) is not int or source_row < 1):
+                raise BridgeError("nz_programme_identity_missing")
+            mpi_id = normalized.get("mpi_risk_measure_id") if isinstance(normalized, dict) else None
+            if (not isinstance(mpi_id, (str, int)) or not str(mpi_id).strip()
+                    or normalized.get("establishment_id") != mpi_id
+                    or str(record_key) not in {str(mpi_id), str(source_row_id)}):
+                raise BridgeError("nz_programme_identity_missing")
+            identity = (str(source_row_id), str(record_key), source_row)
+            if identity in identifiers:
+                raise BridgeError("nz_programme_identity_duplicate")
+            identifiers.add(identity)
+            if (not isinstance(normalized, dict)
+                    or normalized.get("source_entity_type") != "registered-risk-management-programme"
+                    or normalized.get("coordinates") is not None
+                    or normalized.get("facility_identity_state") !=
+                    "programme-record; location cardinality is source-reported and may be multiple"
+                    or normalized.get("location_role") !=
+                    "RMP-associated physical address; not verified as a unique operating facility"):
+                raise BridgeError("nz_programme_identity_scope_invalid")
     policy_path = ROOT / "pipeline" / "preview-enabled-sources.json"
     policy = json.loads(policy_path.read_text(encoding="utf-8")).get("sources", {}).get(source)
     if not isinstance(policy, dict) or policy.get("enabled") is not True:
@@ -329,16 +386,17 @@ def verify_handoff(entry: dict[str, Any], inventory_source: dict[str, Any]) -> d
         value = IMPORTER.parse_row(source, row)
         grouped[str(value[IMPORTER.SOURCE_GROUP_KEY_INDEX])].append((value, row))
         parsed.append((value, row))
-    graph_rows = _read_jsonl(graph_records_path)
-    graph_keys = []
-    for row in rows:
-        graph_key = row.get("source_record_key", row.get("source_row_id"))
-        source_row = row.get("source_row")
-        graph_keys.append((source, str(graph_key), source_row))
-    actual_graph_keys = [(str(row.get("source_id")), str(row.get("source_record_key")), row.get("source_row"))
-                         for row in graph_rows]
-    if sorted(graph_keys, key=str) != sorted(actual_graph_keys, key=str):
-        raise BridgeError("graph_handoff_identifier_set_mismatch")
+    if not nz_graph_not_applicable:
+        graph_rows = _read_jsonl(graph_records_path)
+        graph_keys = []
+        for row in rows:
+            graph_key = row.get("source_record_key", row.get("source_row_id"))
+            source_row = row.get("source_row")
+            graph_keys.append((source, str(graph_key), source_row))
+        actual_graph_keys = [(str(row.get("source_id")), str(row.get("source_record_key")), row.get("source_row"))
+                             for row in graph_rows]
+        if sorted(graph_keys, key=str) != sorted(actual_graph_keys, key=str):
+            raise BridgeError("graph_handoff_identifier_set_mismatch")
     representatives = {}
     for group, members in grouped.items():
         representatives[group] = min(members, key=lambda pair: (
@@ -360,6 +418,7 @@ def verify_handoff(entry: dict[str, Any], inventory_source: dict[str, Any]) -> d
         "normalized_sha256": normalized_hash,
         "normalized_byte_size": normalized_bytes,
         "graph_records_sha256": graph_hash,
+        "graph_handoff_state": "not_applicable_programme_not_unique_site" if nz_graph_not_applicable else "private_candidates_verified",
         "terms_review_sha256": terms_digest,
         "rows": parsed,
         "groups": grouped,
@@ -853,8 +912,8 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
     if not candidate_only_ack:
         raise BridgeError("explicit_candidate_only_ack_required")
     if append_to_v0_baseline:
-        if expected_database != "uec_v0_api_repair":
-            raise BridgeError("append_candidate_database_must_be_api_repair")
+        if expected_database not in {"uec_v0_api_repair", "uec_launch_sources_test_20261025"}:
+            raise BridgeError("append_candidate_database_not_allowlisted")
         baseline_contract = _baseline_contract()
         if freeze["release_id"] == baseline_contract["release_id"]:
             raise BridgeError("append_candidate_release_id_must_be_distinct")
@@ -887,6 +946,7 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                    "handoff_manifest_sha256": handoffs[source]["manifest_sha256"],
                    "graph_manifest_sha256": handoffs[source]["graph_manifest_sha256"],
                    "graph_records_sha256": handoffs[source]["graph_records_sha256"],
+                   "graph_handoff_state": handoffs[source]["graph_handoff_state"],
                    "terms_review_sha256": handoffs[source]["terms_review_sha256"],
                    "retrieved_at": handoffs[source]["manifest"].get("retrieved_at_utc"),
                    "handoff_code_version": handoffs[source]["manifest"].get("code_version"),
@@ -1088,6 +1148,7 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                         "handoff_manifest_sha256": handoff["manifest_sha256"],
                         "graph_manifest_sha256": handoff["graph_manifest_sha256"],
                         "graph_records_sha256": handoff["graph_records_sha256"],
+                        "graph_handoff_state": handoff["graph_handoff_state"],
                         "location_class": parsed[1], "source_location": {
                             "latitude": parsed[5], "longitude": parsed[6], "precision": parsed[7],
                             "coordinate_method": parsed[19], "coordinate_provider": parsed[20],

@@ -385,6 +385,68 @@ def _safe_source_flags(details: Any) -> dict[str, Any]:
     return dict(sorted(flags.items()))
 
 
+def _aware_utc(value: Any) -> datetime | None:
+    if isinstance(value, datetime):
+        parsed = value
+    elif isinstance(value, str):
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    else:
+        return None
+    if parsed.utcoffset() is None:
+        return None
+    return parsed.astimezone(timezone.utc)
+
+
+def _source_artifact_sidecar_matches(details: dict[str, Any], source_hash: str,
+                                     retrieved_at: datetime) -> bool:
+    if "source_artifacts" not in details or details.get("source_artifacts") is None:
+        return True
+    artifacts = details.get("source_artifacts")
+    if not isinstance(artifacts, dict):
+        return False
+    candidates = [artifacts, *(value for value in artifacts.values() if isinstance(value, dict))]
+    matching = [item for item in candidates if any(
+        item.get(key) == source_hash
+        for key in ("sha256", "source_artifact_sha256", "artifact_sha256")
+    )]
+    if not matching:
+        return False
+    for item in matching:
+        acquired_at = _aware_utc(item.get("retrieved_at_utc", item.get("retrieved_at")))
+        if acquired_at is None or acquired_at != retrieved_at:
+            return False
+        if acquired_at > datetime.now(timezone.utc):
+            return False
+    return True
+
+
+def _retrieved_at_consistent_with_capture(*, manifest_retrieved_at: Any, run_retrieved_at: Any,
+                                          manifest_present: bool, reconciliation: dict[str, bool],
+                                          details: dict[str, Any], source_hash: str) -> bool:
+    if not manifest_present:
+        return False
+    first_capture = _aware_utc(manifest_retrieved_at)
+    captured_at = _aware_utc(run_retrieved_at)
+    now = datetime.now(timezone.utc)
+    if (first_capture is None or captured_at is None or first_capture > captured_at
+            or first_capture > now or captured_at > now):
+        return False
+    if not all(value for key, value in reconciliation.items()
+               if key != "retrieved_at_consistent_with_capture"):
+        return False
+    if not _source_artifact_sidecar_matches(details, source_hash, captured_at):
+        return False
+    if first_capture == captured_at:
+        return True
+    flags = _safe_source_flags(details)
+    return (flags.get("fresh_live_run") is True
+            and flags.get("processing_mode") == "live_acquisition"
+            and flags.get("acquisition_classification") == "live")
+
+
 def _safe_exclusion_details(details: Any) -> dict[str, Any]:
     details = details if isinstance(details, dict) else {}
     source = details.get("source_specific_counts")
@@ -457,7 +519,9 @@ def _source_report(row: dict[str, Any], *, taxonomy: list[dict[str, Any]], cross
         "normalized_hash_matches_run": False,
         "normalized_rows_match_imported_observation_count": False,
         "source_host_matches_run": False,
-        "retrieved_at_matches_run": False,
+        "adapter_version_matches_run": False,
+        "schema_version_matches_run": False,
+        "retrieved_at_consistent_with_capture": False,
     }
     if manifest_present:
         manifest_reconciliation.update({
@@ -465,8 +529,14 @@ def _source_report(row: dict[str, Any], *, taxonomy: list[dict[str, Any]], cross
             "normalized_hash_matches_run": _safe_hash(row["manifest_normalized_sha256"], "manifest_normalized_sha256") == normalized_hash,
             "normalized_rows_match_imported_observation_count": _safe_count(row["manifest_normalized_rows"], "manifest_normalized_rows") == counts["imported_observation_count"],
             "source_host_matches_run": _safe_source_url(row["manifest_source_url"]) == host,
-            "retrieved_at_matches_run": row["manifest_retrieved_at"] == row["retrieved_at"],
+            "adapter_version_matches_run": row["manifest_code_version"] == row["adapter_version"],
+            "schema_version_matches_run": row["manifest_config_version"] == row["schema_version"],
         })
+    manifest_reconciliation["retrieved_at_consistent_with_capture"] = _retrieved_at_consistent_with_capture(
+        manifest_retrieved_at=row["manifest_retrieved_at"], run_retrieved_at=row["retrieved_at"],
+        manifest_present=manifest_present, reconciliation=manifest_reconciliation,
+        details=details, source_hash=source_hash,
+    )
     physical_checks = {
         "observations_match_import_counter": counts["physical_observation_count"] == counts["imported_observation_count"],
         "candidate_groups_match_facility_counter": counts["physical_candidate_count"] == counts["facility_count"],
@@ -487,6 +557,9 @@ def _source_report(row: dict[str, Any], *, taxonomy: list[dict[str, Any]], cross
             "normalized_sha256": normalized_hash,
             "source_host": host,
             "retrieved_at": row["retrieved_at"].isoformat() if hasattr(row["retrieved_at"], "isoformat") else str(row["retrieved_at"]),
+            "first_manifest_retrieved_at": (row["manifest_retrieved_at"].isoformat()
+                                             if hasattr(row["manifest_retrieved_at"], "isoformat")
+                                             else str(row["manifest_retrieved_at"]) if row["manifest_retrieved_at"] is not None else None),
             "adapter_version": _safe_dimension(row["adapter_version"], "adapter_version"),
             "schema_version": _safe_dimension(row["schema_version"], "schema_version"),
             "handoff_code_version": _safe_dimension(row["manifest_code_version"], "handoff_code_version") if manifest_present else None,

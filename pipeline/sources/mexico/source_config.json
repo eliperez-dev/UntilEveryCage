@@ -1,0 +1,11 @@
+{
+  "source_id": "mx.locations",
+  "source_url": "https://www.inegi.org.mx/app/api/denue/v1/consulta/",
+  "documentation_url": "https://www.inegi.org.mx/servicios/api-denue/",
+  "adapter_version": "mx-denue-v1",
+  "schema_version": "denue-api-v1",
+  "config_version": "scian-2023-311611-311614-v1",
+  "coverage": "Mexico DENUE establishments returned for SCIAN 2023 classes 311611–311614; bounded state-by-state query scope",
+  "terms_status": "INEGI free-use attribution required; privacy and release review pending",
+  "geocoding": "disabled"
+}

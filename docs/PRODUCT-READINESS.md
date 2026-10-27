@@ -59,8 +59,8 @@ All items below remain required before replacing the original website.
 | Persistent cluster index | Implemented; local current-release and V0 browser checks passed, with final CI/hosted state in the integration receipt | Reload reuses the built index, with release/profile/manifest/restriction invalidation; cached point bytes alone do not qualify |
 | Languages | Generated Spanish facility labels and activities repaired; hosted verification belongs to the current acceptance receipt | Preserve source names, original classifications and attribution. Remaining German, French, Italian, Dutch and Danish use the same system; routes, filters and selection survive switching. Secondary API/community text is not fully translated |
 | Light/dark interface and map controls | FAQ, zoom-9 default and Tools relocation deployed. Public approximate-pin centering fix shipped after four focused cases, green CI and a real hosted pin check | Preserve readable English/Spanish copy, theme behavior and Tools controls. Exact and approximate pins must select and center with Search map collapsed or expanded |
-| France, broader Spain, Germany, Mexico | France shared live refresh and map membership verified; national AESAN municipality enrichment now verified across its full eligible cohort; Germany address staging and a larger finite geocoding batch verified; Mexico acquisition blocked | Use the exact counts, precision, rights and remaining jobs in the source inventory to prepare the new dated dataset. These private cohorts have not changed public dataset membership |
-| United Kingdom and New Zealand | Required launch-dataset targets added by the maintainer; fresh end-to-end and final-release verification pending | UK source cohorts and a permitted New Zealand source pass fresh acquisition, normalization, import, location enrichment and actual map/API checks, then appear in the final dated launch dataset. Existing UK released rows or legacy V1 New Zealand data alone do not satisfy this gate; report jurisdiction and source coverage explicitly |
+| France, broader Spain, Germany, Mexico | France and Spain private map checks passed; Germany first-pass geocoding retained; Mexico national capture and private database/API checks passed | Use the source inventory to prepare the new dated dataset. These private cohorts have not changed public dataset membership |
+| United Kingdom and New Zealand | UK FSA/FSS fresh capture, import and private API checks passed. NZ supplied MPI export import/API checks passed; authorized address geocoding in progress | Include the verified cohorts in the final dated dataset. NZ export automation remains unverified; programme rows are not a premises census. Report jurisdiction and mapped coverage explicitly |
 | APHIS history | Reliability and on-demand historical recovery implemented | Six real endpoint cases passed locally: two eligible facilities return pre-2025 annual and inspection links, sampled PDFs open, and the original no-report case returns an empty page; sample history reaches 2014, not a complete archive audit |
 | New default dated dataset | Not started | Fresh acquisition and required location enrichment for included cohorts, measured map membership/counts, retained history and current restrictions |
 | Final cutover | Not started | Maintainer frontend/data acceptance; verified monitoring, recovery and contribution operations; domain/canonical/redirect checks and rollback |
@@ -83,8 +83,12 @@ those points remain approximate. Germany validates address, postcode and localit
 context before displaying provider points. Its usable unqueried address cohort
 has completed a first pass; unmatched attempts remain recorded in the existing queue for a later
 release. Complete geocoding is not a launch requirement. The BLtU reuse licence is identified in the official federal catalogue,
-with attribution evidence retained. Mexico's attachment/token route remains
-blocked. The source inventory owns measured counts and unresolved cases.
+with attribution evidence retained. Mexico now has a scoped national DENUE
+capture with 5,377 source-coordinate records. New Zealand's supplied MPI export
+has passed private staging, but supplies programme records rather than a
+one-row-per-premises census and contains no coordinates. Both passed local
+database/API acceptance; NZ enrichment and release integration remain. The source inventory owns
+measured counts and unresolved cases.
 
 The backend-only country sprint preserves the frontend branch and public API
 contracts. A fresh Spain refresh, importer replay, enrichment replay and exact
@@ -93,8 +97,8 @@ mismatch, stale private enrichment states and German display-cache disagreement
 were repaired. Source business labels are retained for the release bridge.
 The older German private candidate cache is still unnamed; its retained handoff
 contains the business labels. The measured row-free release input inventory is
-retained at `D:/UntilEveryCage-Operations/release-preparation/country-coverage-20261025/candidate-inventory.json`
-(digest `888f7005ce63a1a29c7edfd22639dfe689602a8c6ee326f37e896a2baceb1d6f`).
+retained at `D:/UntilEveryCage-Operations/release-preparation/country-coverage-20261027/candidate-inventory-reconciled.json`
+(digest `5fb6490761cda12335c02677f04dec52841a76ad8caa00fc511acc4eb1cb9626`).
 It is preparation evidence, not a frozen or promoted release.
 
 ## Roadmap
@@ -113,7 +117,7 @@ It is preparation evidence, not a frozen or promoted release.
    existing shared runner and separate enrichment jobs. Complete Spain address
    matching and scale its verified municipality enrichment. Carry Germany's
    completed first pass into release preparation without repeating unchanged
-   matches; unfinished geocoding is deferred. Continue Mexico acquisition. UK and New Zealand
+   matches; unfinished geocoding is deferred. Mexico capture is complete. UK and New Zealand
    must also pass fresh end-to-end source/map checks and be included in the final
    launch dataset. Extend languages through the same system.
 4. Build the new dated launch dataset; preserve current and historical releases.

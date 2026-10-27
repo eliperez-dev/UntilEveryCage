@@ -1,0 +1,13 @@
+{
+  "source_id": "nz.locations",
+  "decision": "approved",
+  "private_preview_only": true,
+  "scope": "Private processing of the maintainer-supplied current official MPI RMP CSV export",
+  "reviewed_at_utc": "2026-10-27T00:00:00Z",
+  "terms_url": "https://www.mpi.govt.nz/about-this-site/mpi-copyright",
+  "licence": "CC BY 4.0 for MPI Crown material, excluding third-party material",
+  "attribution": "Source: Ministry for Primary Industries, Risk Management Programme register; export received 2026-10-26",
+  "conditions": ["Preserve source fields and programme identifiers", "Retain reported location cardinality", "Do not invent coordinates or individual premises"],
+  "publication": "Not authorized by this processing record; confirm the applicable register reuse terms in the release workflow",
+  "source_access": "Maintainer downloaded from the public register through its normal Download results control"
+}

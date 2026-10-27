@@ -1104,6 +1104,27 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
                 # provenance lookup; the source-preview ledger still keeps
                 # its independently generated local preview run ID.
                 run_id = runner_run_id
+            if source_id in {"fsa_approved_establishments", "fss_approved_establishments"}:
+                # The UK adapters bind acquisition metadata to the runner's
+                # canonical plan ID, not this wrapper's preview UUID. Resolve
+                # and validate that sidecar before import so the importer reads
+                # the exact acquisition that produced this source handoff.
+                uk_acquisition_path = (output_root / runner_run_id / "sources" / source_id
+                                        / "acquisition" / source_id / runner_run_id
+                                        / "acquisition-metadata.json")
+                if not uk_acquisition_path.is_file() or uk_acquisition_path.is_symlink():
+                    write_job("failed", "lifecycle", "uk_acquisition_provenance_missing")
+                    raise PreviewError("UK source acquisition provenance is unavailable")
+                try:
+                    uk_acquisition = json.loads(uk_acquisition_path.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    uk_acquisition = {}
+                if (not isinstance(uk_acquisition, dict)
+                        or uk_acquisition.get("source_id") != source_id
+                        or uk_acquisition.get("run_id") != runner_run_id):
+                    write_job("failed", "lifecycle", "uk_acquisition_provenance_mismatch")
+                    raise PreviewError("UK source acquisition identity does not match the shared runner run")
+                run_id = runner_run_id
         if source_id == "be.locations":
             results = refresh_result.get("results") if isinstance(refresh_result, dict) else None
             result = next((item for item in results or []
@@ -1221,13 +1242,21 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
     graph_result = (_materialize_private_graph(source_dir / "candidate-handoff")
                     if materialize_private_graph else None)
     map_visible_count, map_readiness = _private_map_readiness(source_id, import_result, geography)
+    baseline_public_state_preserved = import_result.get("baseline_public_state_preserved") is True
+    prior_public_release_count = import_result.get("prior_public_release_count", 0) if baseline_public_state_preserved else 0
+    prior_public_projection_count = import_result.get("prior_public_projection_count", 0) if baseline_public_state_preserved else 0
     ledger = {
         "ledger_version": "source-preview-runtime-v1", "source_id": source_id,
         "run_id": run_id, "status": "imported", "retrieved_at_utc": refresh_result.get("completed_at_utc"),
         "source_run": refresh_result, "preview_import": import_result,
         "coarse_geometry": geography,
         "preview_policy_version": policy.get("contract_version"),
-        "public_rows": import_result.get("public_release_count", 0) + import_result.get("public_projection_count", 0),
+        "public_rows": (0 if baseline_public_state_preserved else
+                        import_result.get("public_release_count", 0) + import_result.get("public_projection_count", 0)),
+        "baseline_public_state_preserved": baseline_public_state_preserved,
+        "prior_public_release_count": prior_public_release_count,
+        "prior_public_projection_count": prior_public_projection_count,
+        "prior_public_rows": prior_public_release_count + prior_public_projection_count,
         "map_visible_count": map_visible_count,
         "map_readiness": map_readiness,
     }

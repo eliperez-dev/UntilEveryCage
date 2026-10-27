@@ -108,6 +108,15 @@ def project_private_location_evidence(record: Mapping[str, Any]) -> dict[str, An
         value = normalized.get(key)
         if _nonempty(value):
             result[key] = value
+    if record.get("source_id") == "nz.locations" and not withheld:
+        # MPI programme rows can cover several sites. Keep native cardinality
+        # beside the physical address so geocoding never treats them as one site.
+        source_values = record.get("source_values")
+        raw_count = source_values.get("Number of Locations") if isinstance(source_values, Mapping) else None
+        if isinstance(raw_count, str):
+            result["number_of_locations"] = raw_count
+        if type(normalized.get("location_count")) is int:
+            result["location_count"] = normalized["location_count"]
     return result
 
 

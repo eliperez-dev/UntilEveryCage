@@ -14,7 +14,7 @@ from datetime import timezone, timedelta
 from pathlib import Path
 from typing import Any
 from datetime import datetime
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
 # Direct script execution puts this file's directory, not the repository root,
 # at sys.path[0]. Keep the importer usable from strict source-runner subprocesses.
@@ -54,8 +54,9 @@ NUMERIC_PRECISIONS = {
     "source-provided", "source-provided-unspecified", "source-precision-unknown",
     "source-reported-unknown", "source-coordinate-crs-unverified",
 }
-SOURCE_LOCATION_SOURCES = {"ca.ontario.meat-plants", "ca.cfia.federal-meat", "fr.georisques.icpe.animal", "es.locations", "de.locations"}
+SOURCE_LOCATION_SOURCES = {"ca.ontario.meat-plants", "ca.cfia.federal-meat", "fr.georisques.icpe.animal", "es.locations", "de.locations", "mx.locations", "nz.locations"}
 SOURCE_GROUP_KEY_INDEX = 23
+LAUNCH_BASELINE_DATABASE = "uec_launch_sources_test_20261025"
 ACTIVITY_DISPLAY_PRECEDENCE = (
     "slaughter", "meat_processing", "poultry_processing", "fish_processing",
     "dairy_processing", "egg_processing", "processing", "cutting",
@@ -225,11 +226,12 @@ def activity_contract(normalized: dict[str, Any], source: str = "", source_value
     """Build the versioned source-linked taxonomy projection for one observation."""
     codes = _normalized_values(normalized, (
         "source_classification_codes", "activity_codes", "source_function_codes",
-        "source_classification_code", "activity_code", "primary_anzsic_class_code"), 120)
+        "source_classification_code", "activity_code", "activity_class_id", "primary_anzsic_class_code"), 120)
     labels = _normalized_values(normalized, (
         "source_classification_labels", "activity_descriptions", "activity_label",
         "activity_description", "source_activity", "source_classification_label",
         "industry_label", "primary_anzsic_class_name", "source_plant_type", "animal_class",
+        "activity_name", "programme_type", "product_material", "primary_activity", "secondary_activity",
         "activities", "processing_activities"), 200)
     # Keep this helper's legacy unit-test and utility contract for callers that
     # have no source identity. Real imports always supply the source ID below.
@@ -355,6 +357,8 @@ def safe_https_url(value: Any) -> str | None:
 
 
 SOURCE_NAMES = {
+    "mx.locations": "INEGI — Directorio Estadístico Nacional de Unidades Económicas (DENUE)",
+    "nz.locations": "New Zealand Ministry for Primary Industries — Risk Management Programme Register",
     "no.fiskeridir.aquaculture": "Norwegian Directorate of Fisheries — Aquaculture Register",
     "gb.scot.marine.aquaculture": "Scottish Government — Finfish and Shellfish Aquaculture Sites",
     "us.epa.echo-animal-production": "US Environmental Protection Agency — ECHO CWA/NPDES Facilities",
@@ -381,6 +385,8 @@ SOURCE_NAMES = {
 }
 
 SOURCE_MEDIA_TYPES = {
+    "mx.locations": "application/json",
+    "nz.locations": "text/csv",
     "no.fiskeridir.aquaculture": "application/geo+json",
     "gb.scot.marine.aquaculture": "application/geo+json",
     "us.epa.echo-animal-production": "application/zip",
@@ -444,6 +450,10 @@ def parse_row(source: str, row: Any) -> tuple[Any, ...]:
     lon_raw = pick(coordinates, "longitude")
     precision_raw = pick(coordinates, "precision") or pick(normalized, "coordinate_precision", "geography_precision")
     precision = precision_raw.strip().lower() if isinstance(precision_raw, str) else None
+    if source == "mx.locations" and precision == "unknown":
+        # The DENUE adapter explicitly labels source precision as unknown;
+        # retain valid native coordinates without upgrading that precision.
+        precision = "source-precision-unknown"
     coordinate_method = safe_preview_text(pick(coordinates, "method") or pick(normalized, "coordinate_method"), 80)
     coordinate_provider = safe_preview_text(pick(coordinates, "provider") or pick(normalized, "coordinate_provider"), 160)
     confidence_band = safe_preview_text(pick(coordinates, "confidence_band") or pick(normalized, "coordinate_confidence_band"), 24)
@@ -521,6 +531,10 @@ def parse_row(source: str, row: Any) -> tuple[Any, ...]:
         # Retain the AESAN business label in the authorized private preview.
         # This does not change its privacy label or permit public publication.
         name = safe_preview_text(pick(normalized, "name"), 200)
+    elif source in {"mx.locations", "nz.locations"}:
+        # Retain source-native names in restricted private cache; this is not
+        # privacy clearance or authority to publish.
+        name = safe_preview_text(pick(normalized, "name", "trading_name"), 200)
     elif source in {"no.fiskeridir.aquaculture", "gb.scot.marine.aquaculture",
                     "us.epa.echo-animal-production", "fr.georisques.icpe.animal"}:
         # Approved source-provided facility/locality labels may appear in the
@@ -628,10 +642,14 @@ def manifest_provenance(manifest: dict[str, Any]) -> tuple[str, str, int, str, d
     config = manifest.get("config_version")
     count = manifest.get("normalized_rows")
     parsed_url = urlsplit(url) if isinstance(url, str) else None
-    allowed_query = (manifest.get("source_id") == "ca.cfia.federal-meat" and parsed_url is not None
-                     and parsed_url.hostname == "active.inspection.gc.ca"
-                     and parsed_url.path == "/scripts/meavia/reglist/download.asp"
-                     and parsed_url.query == "lang=e")
+    allowed_query = ((manifest.get("source_id") == "ca.cfia.federal-meat" and parsed_url is not None
+                      and parsed_url.hostname == "active.inspection.gc.ca"
+                      and parsed_url.path == "/scripts/meavia/reglist/download.asp"
+                      and parsed_url.query == "lang=e")
+                     or (manifest.get("source_id") == "nz.locations" and parsed_url is not None
+                         and parsed_url.hostname == "mpi.my.site.com"
+                         and parsed_url.path == "/publicregister/s/RiskMeasureSearch"
+                         and parsed_url.query == "riskMeasureType=Risk%20Management%20Programme"))
     if (not isinstance(source_hash, str) or len(source_hash) != 64 or not isinstance(normalized_hash, str)
         or len(normalized_hash) != 64 or not parsed_url or parsed_url.scheme not in {"http", "https"}
         or not parsed_url.hostname or parsed_url.username or parsed_url.password or (parsed_url.query and not allowed_query) or parsed_url.fragment
@@ -715,6 +733,94 @@ def source_public_counts(db: psycopg.Connection, source_id: str) -> tuple[int, i
     return int(release_count), int(projection_count)
 
 
+def source_public_state(db: psycopg.Connection, source_id: str) -> dict[str, Any]:
+    """Hash the selected source's complete public rows without returning them."""
+    digest = hashlib.sha256()
+    counts: dict[str, int] = {}
+    queries = [
+        ("release_members", """SELECT jsonb_build_array(to_jsonb(member),to_jsonb(observation),
+                    to_jsonb(source_record))::text
+            FROM uec.release_members member
+            JOIN uec.observations observation ON observation.observation_id=member.observation_id
+            JOIN uec.source_records source_record ON source_record.source_record_id=observation.source_record_id
+            WHERE source_record.source_id=%s
+            ORDER BY member.release_id,member.observation_id""", (source_id,)),
+    ]
+    for relation, source_column in (
+        ("uec.map_facilities_public_discovery", "provenance_source_id"),
+        ("uec.map_facilities_public_discovery_read_model", "provenance_source_id"),
+        ("uec.graph_public_relationships", "source_id"),
+        ("uec.graph_public_claims", "source_id"),
+    ):
+        if db.execute("SELECT to_regclass(%s)", (relation,)).fetchone()[0] is not None:
+            queries.append((relation, f"SELECT to_jsonb(public_row)::text FROM {relation} public_row "
+                            f"WHERE public_row.{source_column}=%s ORDER BY 1", (source_id,)))
+
+    for relation, query, params in queries:
+        relation_bytes = relation.encode("utf-8")
+        digest.update(len(relation_bytes).to_bytes(4, "big"))
+        digest.update(relation_bytes)
+        count = 0
+        cursor = db.execute(query, params)
+        while True:
+            batch = cursor.fetchmany(256)
+            if not batch:
+                break
+            for row in batch:
+                value = row[0].encode("utf-8")
+                digest.update(len(value).to_bytes(8, "big"))
+                digest.update(value)
+                count += 1
+        counts[relation] = count
+    return {"counts": counts, "sha256": digest.hexdigest()}
+
+
+def _prepare_launch_baseline_state(db: psycopg.Connection, database_url: str,
+                                   source_id: str) -> dict[str, Any] | None:
+    """Verify the assigned V0 copy before import when the selected source is public."""
+    parsed = urlsplit(database_url)
+    options = {key.lower() for key in parse_qs(parsed.query, keep_blank_values=True)}
+    database_name = unquote(parsed.path.strip("/"))
+    if database_name != LAUNCH_BASELINE_DATABASE or parsed.hostname not in {"localhost", "127.0.0.1", "::1"}:
+        return None
+    if (parsed.scheme not in {"postgres", "postgresql"}
+            or options.intersection({"host", "hostaddr", "service", "servicefile"})):
+        return None
+
+    db.execute("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
+    identity = db.execute("SELECT current_database()").fetchone()
+    if not identity or identity[0] != LAUNCH_BASELINE_DATABASE:
+        raise ImportFailure("launch_baseline_database_identity_mismatch")
+    release_count, projection_count = source_public_counts(db, source_id)
+    if release_count + projection_count == 0:
+        return None
+
+    try:
+        from pipeline.scripts import release_baseline
+        contract = release_baseline.load_contract(
+            REPOSITORY_ROOT / "pipeline" / "contracts" / "development-baseline.json")
+        release_baseline.verify_connection(db, contract)
+    except Exception:
+        raise ImportFailure("launch_baseline_verification_failed") from None
+
+    state = source_public_state(db, source_id)
+    state_counts = state["counts"]
+    if (state_counts.get("release_members") != release_count
+            or sum(value for key, value in state_counts.items() if key != "release_members") != projection_count):
+        raise ImportFailure("launch_baseline_source_state_unavailable")
+    return state
+
+
+def _assert_launch_baseline_state_unchanged(db: psycopg.Connection, source_id: str,
+                                            before: dict[str, Any]) -> tuple[int, int]:
+    after = source_public_state(db, source_id)
+    if after != before:
+        raise ImportFailure("launch_baseline_source_state_changed")
+    counts = after["counts"]
+    return counts.get("release_members", 0), sum(
+        value for key, value in counts.items() if key != "release_members")
+
+
 def _place_key(value: Any) -> str | None:
     if not isinstance(value, str) or not value.strip():
         return None
@@ -773,8 +879,9 @@ def validate_preview_fields(path: Path, allowed_fields: set[str]) -> None:
             raise ImportFailure("preview_field_not_allowed")
         location = normalized.get("private_location_evidence", {})
         if (not isinstance(location, dict)
-                or set(location) - {"address", "address_lines", "city", "postal_code", "region", "province", "country_code", "coordinates",
-                                    "municipality_code", "comarca_code", "department_number", "region_code"}):
+                or set(location) - {"address", "address_lines", "city", "postal_code", "region", "province", "country_code", "coordinates", "source_administrative_location",
+                                    "municipality_code", "comarca_code", "department_number", "region_code"}
+                   - ({"number_of_locations", "location_count"} if row.get("source_id") == "nz.locations" else set())):
             raise ImportFailure("private_location_evidence_invalid")
         coordinates = location.get("coordinates")
         if coordinates is not None and (not isinstance(coordinates, dict)
@@ -1459,6 +1566,12 @@ def source_processing_provenance(source_id: str, runtime_manifest: dict[str, Any
     if france_local_replay_evidence is not None:
         return {"fresh_live_run": False, "processing_mode": "verified_retained_local_artifact_replay",
                 "acquisition_classification": "assisted", "replay_of": france_local_replay_evidence}
+    if source_id in {"mx.locations", "nz.locations"} and isinstance(acquisition_evidence, dict):
+        if source_id == "mx.locations":
+            return {"fresh_live_run": False, "processing_mode": "verified_preserved_live_capture_processing",
+                    "acquisition_classification": "live", "replay_of": acquisition_evidence}
+        return {"fresh_live_run": False, "processing_mode": "assisted_local_artifact_processing",
+                "acquisition_classification": "assisted", "replay_of": acquisition_evidence}
     if runtime_manifest.get("processing_mode") == "verified_replay_of_retained_live_acquisition":
         retrieved_text = retrieved_at.isoformat().replace("+00:00", "Z")
         if (source_id != "dk.smiley" or not isinstance(acquisition_evidence, dict)
@@ -1477,6 +1590,64 @@ def source_processing_provenance(source_id: str, runtime_manifest: dict[str, Any
                               "retrieved_at_utc": retrieved_text}}
     return {"fresh_live_run": True, "processing_mode": "live_acquisition",
             "acquisition_classification": "live", "replay_of": None}
+
+
+def validate_country_capture_binding(source_id: str, manifest: dict[str, Any],
+                                     runtime_manifest: dict[str, Any], source_result: dict[str, Any],
+                                     summary: dict[str, Any], policy: dict[str, Any],
+                                     source_hash: str, retrieved_at: datetime,
+                                     code_version: str, config_version: str) -> dict[str, Any]:
+    """Bind MX/NZ retained processing to the runner artifact and exact handoff."""
+    operational = source_result.get("operational")
+    artifact = operational.get("artifact") if isinstance(operational, dict) else None
+    captured_at = summary.get("retrieved_at_utc")
+    expected_url = policy.get("source_url")
+    if source_id == "mx.locations":
+        expected_url = "https://www.inegi.org.mx/app/api/denue/v1/consulta/"
+    elif source_id == "nz.locations":
+        expected_url = ("https://mpi.my.site.com/publicregister/s/RiskMeasureSearch"
+                        "?riskMeasureType=Risk%20Management%20Programme")
+    if (source_result.get("mode") != "local-artifact"
+            or manifest.get("source_id") != source_id
+            or code_version != policy.get("adapter_version")
+            or config_version != policy.get("schema_version")
+            or source_id not in runtime_manifest.get("selected_sources", [])
+            or runtime_manifest.get("exit_status") != "ok"
+            or source_result.get("acquisition_classification") != "assisted"
+            or runtime_manifest.get("mode") != "local-artifact"
+            or not isinstance(artifact, dict) or artifact.get("available") is not True
+            or artifact.get("sha256") != source_hash
+            or artifact.get("byte_size") != manifest.get("byte_size")
+            or operational.get("adapter_version") != code_version
+            or manifest.get("source_url") != expected_url
+            or policy.get("source_url") != expected_url
+            or summary.get("source_url", summary.get("source_canonical_url")) != expected_url
+            or summary.get("source_id", source_id) != source_id
+            or summary.get("retrieved_at_utc") != manifest.get("retrieved_at_utc")):
+        raise ImportFailure("country_capture_provenance_mismatch")
+    if source_id == "mx.locations":
+        if (summary.get("source_artifact_sha256") != source_hash
+                or summary.get("source_artifact_byte_size") != manifest.get("byte_size")
+                or not isinstance(summary.get("preflight_rows"), int)
+                or summary.get("preflight_rows") != summary.get("input_rows")
+                or not isinstance(summary.get("request_count"), int)
+                or summary.get("request_count") < 1):
+            raise ImportFailure("country_capture_provenance_mismatch")
+    elif source_id == "nz.locations":
+        if (summary.get("candidate_handoff") is not True
+                or summary.get("candidate_observation_rows") != manifest.get("normalized_rows")):
+            raise ImportFailure("country_capture_provenance_mismatch")
+    if (not isinstance(captured_at, str) or captured_at != manifest.get("retrieved_at_utc")
+            or operational.get("acquisition_timestamp_utc") != captured_at
+            or retrieved_at.utcoffset() is None
+            or retrieved_at > datetime.now(timezone.utc) + timedelta(minutes=5)
+            or datetime.now(timezone.utc) - retrieved_at > timedelta(days=int(policy["freshness_max_days"]))):
+        raise ImportFailure("country_capture_timestamp_invalid")
+    return {"source_id": source_id, "source_url": expected_url,
+            "source_artifact_sha256": source_hash, "source_artifact_byte_size": manifest["byte_size"],
+            "retrieved_at_utc": captured_at, "adapter_version": code_version,
+            "schema_version": config_version, "runner_run_id": runtime_manifest.get("run_id"),
+            "source_processing_mode": "local-artifact"}
 
 
 def prepare_retained_replay_correction(source_id: str, original_run_id: str,
@@ -1628,7 +1799,9 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
             raise ImportFailure("preview_policy_blocked")
         terms_path = Path(__file__).parents[3] / str(policy.get("terms_review", ""))
         terms = json_object(terms_path)
-        if terms.get("decision") != "approved":
+        if (terms.get("decision") != "approved"
+                or (source_id in {"mx.locations", "nz.locations"}
+                    and terms.get("private_preview_only") is not True)):
             raise ImportFailure("preview_terms_blocked")
         selected_manifest = manifest_path or (root / "candidate-handoff" / "manifest.json")
         if not selected_manifest.is_file() or selected_manifest.is_symlink():
@@ -1666,6 +1839,12 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
             and runtime_manifest.get("mode") == "local-artifact"
             and source_result.get("acquisition_classification") == "assisted"
         )
+        country_local_artifact = (
+            source_id in {"mx.locations", "nz.locations"}
+            and runtime_manifest.get("mode") == "local-artifact"
+            and source_result.get("mode") == "local-artifact"
+            and source_result.get("acquisition_classification") == "assisted"
+        )
         france_local_replay_evidence = None
         if france_local_replay:
             france_local_replay_evidence = validate_france_local_artifact_replay(
@@ -1673,7 +1852,7 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
         if archived_replay:
             if source_id not in ARCHIVED_REPLAY_SOURCES:
                 raise ImportFailure("archived_replay_source_not_supported")
-        elif not france_local_replay and source_result.get("acquisition_classification") != "live":
+        elif not france_local_replay and not country_local_artifact and source_result.get("acquisition_classification") != "live":
             raise ImportFailure("runtime_source_run_not_live")
         if run_manifest_path.parent.name != runtime_manifest.get("run_id"):
             raise ImportFailure("runtime_handoff_run_mismatch")
@@ -1690,6 +1869,10 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
             archived_replay_evidence = validate_archived_replay(
                 runtime_manifest, source_result, source_id, source_hash, retrieved_at,
                 acquisition_evidence, expected_artifact)
+        elif country_local_artifact:
+            acquisition_evidence = validate_country_capture_binding(
+                source_id, manifest, runtime_manifest, source_result, source_summary, policy,
+                source_hash, retrieved_at, code_version, config_version)
         if source_id == "es.locations":
             acquisition_path = root / "acquisition" / source_id / run_id / "acquisition-metadata.json"
             expected_artifact = acquisition_path.parent / "rgseaa.xlsx"
@@ -2135,6 +2318,10 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
     rejected_zero_by_source: dict[str, int] = {}
     group_keys_by_source: dict[str, set[str]] = {}
     with psycopg.connect(database_url) as db, db.transaction():
+        launch_baseline_source_state = (
+            _prepare_launch_baseline_state(db, database_url, source_id)
+            if source_id is not None else None
+        )
         total_expected = sum(value for value in expected.values() if isinstance(value, int))
         import_insert = db.execute("INSERT INTO real_preview.imports(snapshot_sha256,observation_count) VALUES (%s,%s) ON CONFLICT DO NOTHING", (snapshot, total_expected))
         idempotent_replay = import_insert.rowcount == 0
@@ -2188,9 +2375,13 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
             union_candidates = candidates
             union_numeric = numeric
             union_coarse = coarse
-            public_release_count, public_projection_count = source_public_counts(db, source_id)
-            if public_release_count + public_projection_count:
-                raise ImportFailure("public_rows_present")
+            if launch_baseline_source_state is not None:
+                public_release_count, public_projection_count = _assert_launch_baseline_state_unchanged(
+                    db, source_id, launch_baseline_source_state)
+            else:
+                public_release_count, public_projection_count = source_public_counts(db, source_id)
+                if public_release_count + public_projection_count:
+                    raise ImportFailure("public_rows_present")
             source_hash, normalized_hash, row_count, source_url, retrieved, adapter_version, schema_version = manifest_provenance(manifests[source_id][1])
             input_count = source_summary.get("input_rows", 0)
             accepted_count = source_summary.get("valid_source_activity_rows", row_count)
@@ -2259,6 +2450,9 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
                     "unmapped_facility_count": unplaceable_rows,
                     "mapped_non_candidate_observation_count": mapped_non_candidates,
                     "public_release_count": public_release_count, "public_projection_count": public_projection_count,
+                    "baseline_public_state_preserved": launch_baseline_source_state is not None,
+                    "prior_public_release_count": (public_release_count if launch_baseline_source_state is not None else 0),
+                    "prior_public_projection_count": (public_projection_count if launch_baseline_source_state is not None else 0),
                     "map_visible_count": map_visible_count, "api_listable_count": candidates,
                     "idempotent_replay": idempotent_replay, "idempotent": True,
                     "normalized_sha256": manifests[source_id][1].get("normalized_sha256")}

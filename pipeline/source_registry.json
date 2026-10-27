@@ -199,15 +199,15 @@
     },
     {
       "source_id": "mx.locations",
-      "jurisdiction_scope": "Mexico; mixed official-register and INEGI-derived legacy coverage",
+      "jurisdiction_scope": "Mexico; INEGI DENUE establishments in SCIAN classes 311611–311614",
       "legacy_paths": ["static_data/mx/locations.csv", "Old CSVs/mexico"],
-      "url": "unknown",
-      "access_method": "download/API or assisted export",
-      "cadence": "unknown",
-      "attribution_licensing_notes": "unknown; separate official source terms from INEGI-derived research artifacts before reuse",
-      "adapter_status": "not_started",
-      "expected_artifact_schema": "CSV/official export; legacy material includes location rows and separate aquaculture processing artifacts",
-      "blockers": ["Split official source identities from derived DENUE/aquaculture work and establish source-level provenance."]
+      "url": "https://www.inegi.org.mx/servicios/api-denue/",
+      "access_method": "Token-authenticated official API; bounded state and SCIAN-class queries with count reconciliation",
+      "cadence": "DENUE edition updates; retrieval date retained",
+      "attribution_licensing_notes": "INEGI free-use terms permit copying, adaptation and redistribution with INEGI/DENUE attribution, retained metadata and identified transformations; https://www.inegi.org.mx/inegi/terminos.html",
+      "adapter_status": "implemented_partial",
+      "expected_artifact_schema": "DENUE Id and CLEE, native SCIAN activity, business names, address, geographic identifiers and source coordinates; token-free private acquisition envelope",
+      "blockers": ["Release membership and serving-package validation are separate from source acquisition. DENUE entries do not imply SENASICA TIF certification."]
     },
     {
       "source_id": "nz.locations",
@@ -216,10 +216,10 @@
       "url": "https://mpi.my.site.com/publicregister/s/RiskMeasureSearch?riskMeasureType=Risk%20Management%20Programme",
       "access_method": "browser-assisted public-register export or download",
       "cadence": "unknown",
-      "attribution_licensing_notes": "Legacy notes identify MPI; verify current terms, attribution, and whether the register endpoint is stable.",
-      "adapter_status": "not_started",
-      "expected_artifact_schema": "Public-register export; identifier, address, processes, species, and expiry fields are described by legacy processing code",
-      "blockers": ["Confirm current register coverage, export format, access limits, and publication semantics."]
+      "attribution_licensing_notes": "MPI Crown material is offered under CC BY 4.0 with MPI attribution; third-party exclusions apply. Preserve register provenance and distinguish programme/operator addresses from individual premises.",
+      "adapter_status": "implemented_partial",
+      "expected_artifact_schema": "27-column MPI RMP CSV: native programme ID, operator/trading names, NZBN, address, locality, number of locations, activities, products, status, dates, dairy ULIs and vessel name",
+      "blockers": ["Dated release integration and future automated export remain pending. Programme rows can cover multiple locations; no source coordinates are supplied."]
     },
     {
       "source_id": "uk.locations",

@@ -1,4 +1,4 @@
-"""LocationIQ adapter for the German private address matching pilot."""
+"""LocationIQ adapter for narrowly scoped private address matching."""
 
 import json
 import os
@@ -69,6 +69,37 @@ class LocationIqAdapter:
         return None
 
     @classmethod
+    def _parse_nz_query(cls, query: str):
+        """Parse a street+number, locality, optional postcode, New Zealand query."""
+        parts = [part.strip() for part in query.split(",") if part.strip()]
+        if len(parts) not in (3, 4) or parts[-1].casefold() != "new zealand":
+            return None
+        street = parts[0]
+        number_match = re.fullmatch(r"(\d+[a-zA-Z]?)\s+(.+)", street)
+        if number_match:
+            number, road = number_match.group(1), number_match.group(2).strip()
+        else:
+            number_match = re.fullmatch(r"(.+?)\s+(\d+[a-zA-Z]?)", street)
+            if not number_match:
+                return None
+            road, number = number_match.group(1).strip(), number_match.group(2)
+        if not road or not number:
+            return None
+
+        context = " ".join(parts[1:-1])
+        postcode_matches = list(re.finditer(r"(?<!\d)(\d{4})(?!\d)", context))
+        if len(postcode_matches) > 1:
+            return None
+        postcode = postcode_matches[0].group(1) if postcode_matches else None
+        if postcode_matches:
+            context = (context[:postcode_matches[0].start()] + " "
+                       + context[postcode_matches[0].end():])
+        locality = " ".join(context.split()).strip(" ,")
+        if not locality:
+            return None
+        return road, number, locality, postcode
+
+    @classmethod
     def _street_matches(cls, source: str, road: str, number: str) -> bool:
         source_n = cls._normalize(source)
         road_n = cls._normalize(road)
@@ -90,7 +121,7 @@ class LocationIqAdapter:
                 safe[key] = value
             elif key not in {"place_id", "lat", "lon"} and isinstance(value, str):
                 safe[key] = value[:300]
-        address_keys = {"house_number", "road", "postcode", "city", "town", "municipality", "village", "state", "state_code", "country_code"}
+        address_keys = {"house_number", "road", "postcode", "city", "town", "municipality", "village", "suburb", "state", "state_code", "country_code"}
         address = {key: (item["address"][key][:300] if isinstance(item["address"][key], str) else item["address"][key])
                    for key in address_keys if isinstance(item["address"].get(key), (str, int))
                    and not isinstance(item["address"].get(key), bool)}
@@ -112,16 +143,19 @@ class LocationIqAdapter:
             return self._outcome("unresolved", "empty_query", {"error": "empty_query"})
         if len(query) > 1000:
             return self._outcome("review_required", "invalid_source_address", {"error": "invalid_source_address"})
-        parsed = self._parse_query(query)
+        is_nz = self.country_code == "nz"
+        parsed = self._parse_nz_query(query) if is_nz else self._parse_query(query)
         if parsed is None:
             return self._outcome("review_required", "invalid_source_address", {"error": "invalid_source_address"})
+        request_country = "nz" if is_nz else "de"
+        language = "en" if is_nz else "de"
         params = urllib.parse.urlencode({
-            "key": self.api_key, "q": query, "format": "json", "countrycodes": "de",
+            "key": self.api_key, "q": query, "format": "json", "countrycodes": request_country,
             "addressdetails": 1, "normalizeaddress": 1, "normalizecity": 1,
             "statecode": 1, "limit": 2,
         })
         request = urllib.request.Request(self.endpoint + "?" + params,
-                                         headers={"User-Agent": "UntilEveryCage/2 geocoding-worker", "Accept-Language": "de"})
+                                         headers={"User-Agent": "UntilEveryCage/2 geocoding-worker", "Accept-Language": language})
         try:
             if self.opener is urllib.request.urlopen:
                 opener = urllib.request.build_opener(self._NoRedirect())
@@ -148,7 +182,10 @@ class LocationIqAdapter:
         if not payload:
             return self._outcome("unresolved", "no_results", {"results": []})
 
-        source_street, postcode, locality, state = parsed
+        if is_nz:
+            source_street, source_number, locality, postcode = parsed
+        else:
+            source_street, postcode, locality, state = parsed
         candidates, viable = [], []
         for item in payload[:2]:
             projected = self._candidate(item)
@@ -166,29 +203,44 @@ class LocationIqAdapter:
             if coords is None:
                 continue
             address = safe["address"]
-            if (str(address.get("country_code", "")).lower() != "de"
-                    or not (5 <= coords[1] <= 16 and 47 <= coords[0] <= 56)):
-                continue
             road, number = address.get("road"), address.get("house_number")
-            pc = address.get("postcode")
-            place_locality = next((address.get(key) for key in ("city", "town", "municipality", "village") if address.get(key)), "")
-            place_states = [value for value in (address.get("state_code"), address.get("state"))
-                            if isinstance(value, str) and value.strip()]
             address_type = str(safe.get("addresstype", "")).casefold()
             result_type = str(safe.get("type", "")).casefold()
-            if (address_type not in {"road", "city", "town", "village", "municipality", "postcode"}
-                    and safe.get("class") not in {"highway", "boundary", "place", "landuse"}
-                    and result_type not in {"road", "city", "town", "village", "municipality", "postcode"}
-                    and isinstance(road, str) and isinstance(number, (str, int))
-                    and self._street_matches(source_street, road, str(number))
-                    and str(pc) == postcode and self._normalize(str(place_locality)) == self._normalize(locality)
-                    and (not state or (place_states and all(
-                        GeoapifyAdapter._germany_state_code(value) == GeoapifyAdapter._germany_state_code(state)
-                        for value in place_states)))):
-                viable.append((len(candidates) - 1, coords, safe))
+            result_is_address = (address_type not in {"road", "city", "town", "village", "municipality", "postcode"}
+                                 and safe.get("class") not in {"highway", "boundary", "place", "landuse"}
+                                 and result_type not in {"road", "city", "town", "village", "municipality", "postcode"})
+            if is_nz:
+                locality_values = [address.get(key) for key in ("city", "town", "municipality", "village", "suburb")]
+                locality_match = any(isinstance(value, str)
+                                     and self._normalize(value) == self._normalize(locality)
+                                     for value in locality_values)
+                in_nz_bounds = 166 <= coords[1] <= 179.9 and -47.5 <= coords[0] <= -34.0
+                if (str(address.get("country_code", "")).lower() == "nz" and in_nz_bounds
+                        and result_is_address and isinstance(road, str)
+                        and isinstance(number, (str, int))
+                        and self._normalize(source_street) == self._normalize(road)
+                        and self._normalize(str(number)) == self._normalize(source_number)
+                        and locality_match
+                        and (postcode is None or str(address.get("postcode", "")).strip() == postcode)):
+                    viable.append((len(candidates) - 1, coords, safe))
+            else:
+                if (str(address.get("country_code", "")).lower() != "de"
+                        or not (5 <= coords[1] <= 16 and 47 <= coords[0] <= 56)):
+                    continue
+                pc = address.get("postcode")
+                place_locality = next((address.get(key) for key in ("city", "town", "municipality", "village") if address.get(key)), "")
+                place_states = [value for value in (address.get("state_code"), address.get("state"))
+                                if isinstance(value, str) and value.strip()]
+                if (result_is_address and isinstance(road, str) and isinstance(number, (str, int))
+                        and self._street_matches(source_street, road, str(number))
+                        and str(pc) == postcode and self._normalize(str(place_locality)) == self._normalize(locality)
+                        and (not state or (place_states and all(
+                            GeoapifyAdapter._germany_state_code(value) == GeoapifyAdapter._germany_state_code(state)
+                            for value in place_states)))):
+                    viable.append((len(candidates) - 1, coords, safe))
 
         envelope = {"results": candidates}
-        if len(viable) != 1 or not (self.private_source_profile and self.country_code == "de"):
+        if len(viable) != 1 or not (self.private_source_profile and self.country_code in {"de", "nz"}):
             reason = "ambiguous_multiple_viable_results" if len(viable) > 1 else "address_components_match_required"
             return self._outcome("review_required", reason, envelope)
         index, (lat, lon), candidate = viable[0]

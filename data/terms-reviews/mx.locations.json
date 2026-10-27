@@ -1,0 +1,12 @@
+{
+  "source_id": "mx.locations",
+  "decision": "approved",
+  "private_preview_only": true,
+  "scope": "Maintainer-authorized private acquisition and integration of INEGI DENUE SCIAN 311611-311614 business-site records",
+  "reviewed_at_utc": "2026-10-27T00:00:00Z",
+  "terms_url": "https://www.inegi.org.mx/inegi/terminos.html",
+  "licence": "INEGI Terms of Free Use",
+  "attribution": "Source: INEGI, DENUE. Include retrieval date and identify project transformations.",
+  "conditions": ["Retain source metadata", "Do not imply INEGI endorsement", "Keep API credentials out of artifacts and diagnostics"],
+  "publication": "Separate dated release workflow; this record does not publish data"
+}

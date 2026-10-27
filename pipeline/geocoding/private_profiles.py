@@ -10,6 +10,7 @@ PROFILE_PATH = Path(__file__).with_name("private-source-profiles.json")
 ENABLED = "enabled-private-only"
 SPAIN_ADDRESS_PROFILE_ID = "geoapify-es-aesan-rgseaa"
 SPAIN_MUNICIPALITY_PROFILE_ID = "geoapify-es-aesan-verified-municipality"
+NEW_ZEALAND_LOCATIONIQ_PROFILE_ID = "locationiq-nz-mpi-rmp"
 
 
 def profiles() -> list[dict[str, Any]]:
@@ -32,11 +33,12 @@ def profiles() -> list[dict[str, Any]]:
         provider = row.get("provider_id", "geoapify")
         if provider not in {"geoapify", "locationiq"}:
             raise ValueError("private geocoding provider is not enabled")
-        if provider == "locationiq" and (
-                profile_id != "locationiq-de-bltu" or source_id != "de.locations"
-                or row.get("country_code") != "DE"):
+        if provider == "locationiq" and (profile_id, source_id, row.get("country_code")) not in {
+                ("locationiq-de-bltu", "de.locations", "DE"),
+                (NEW_ZEALAND_LOCATIONIQ_PROFILE_ID, "nz.locations", "NZ"),
+        }:
             raise ValueError("LocationIQ private profile identity is invalid")
-        if row.get("country_code") not in {"GB", "DK", "NL", "US", "ES", "DE"}:
+        if row.get("country_code") not in {"GB", "DK", "NL", "US", "ES", "DE", "NZ"}:
             raise ValueError("private Geoapify profile country is not enabled")
         if row.get("status") != ENABLED:
             raise ValueError("private Geoapify profile status is invalid")

@@ -1,0 +1,11 @@
+{
+  "source_id": "nz.locations",
+  "source_url": "https://mpi.my.site.com/publicregister/s/RiskMeasureSearch?riskMeasureType=Risk%20Management%20Programme",
+  "adapter_version": "nz-mpi-rmp-csv-v3",
+  "schema_version": "nz-mpi-rmp-extract-2026-10-v1",
+  "config_version": "nz-mpi-rmp-config-v1",
+  "coverage": "MPI public Risk Management Programme export; source observations may represent multiple locations and do not establish a complete premises census",
+  "terms_url": "https://www.mpi.govt.nz/about-this-site/mpi-copyright",
+  "licence": "CC BY 4.0 for MPI Crown material; third-party exclusions apply",
+  "geocoding": "disabled"
+}

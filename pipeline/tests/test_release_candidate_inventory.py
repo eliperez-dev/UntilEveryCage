@@ -109,8 +109,8 @@ class ReleaseCandidateInventoryTests(unittest.TestCase):
             "manifest_normalized_rows": 2,
             "manifest_source_url": "https://example.gov/data.csv?other-query-is-not-copied",
             "manifest_retrieved_at": datetime(2026, 10, 4, tzinfo=timezone.utc),
-            "manifest_code_version": "code-v1",
-            "manifest_config_version": "config-v1",
+            "manifest_code_version": "adapter-v1",
+            "manifest_config_version": "schema-v1",
             "idempotent_replay": False,
             "runtime_details": {
                 "fresh_live_run": False,
@@ -136,7 +136,9 @@ class ReleaseCandidateInventoryTests(unittest.TestCase):
         )
         self.assertEqual(report["snapshot"]["source_host"], "example.gov")
         self.assertTrue(report["snapshot"]["manifest_reconciliation"]["raw_hash_matches_run"])
-        self.assertEqual(report["snapshot"]["handoff_code_version"], "code-v1")
+        self.assertTrue(report["snapshot"]["manifest_reconciliation"]["retrieved_at_consistent_with_capture"])
+        self.assertEqual(report["snapshot"]["first_manifest_retrieved_at"], "2026-10-04T00:00:00+00:00")
+        self.assertEqual(report["snapshot"]["handoff_code_version"], "adapter-v1")
         self.assertEqual(report["snapshot"]["processing_flags"], {"fresh_live_run": False, "processing_mode": "archived_replay"})
         self.assertEqual(report["exclusions"]["quarantine_reason_counts"], {"invalid_date": 1})
         self.assertEqual(report["exclusions"]["source_specific_aggregate_flags"], {
@@ -148,6 +150,69 @@ class ReleaseCandidateInventoryTests(unittest.TestCase):
         self.assertNotIn("private facility", encoded)
         self.assertNotIn("secret", encoded)
         self.assertNotIn("source facility name", encoded)
+
+    def test_later_same_artifact_capture_requires_verified_live_acquisition_evidence(self):
+        first = datetime(2026, 10, 4, tzinfo=timezone.utc)
+        captured = datetime(2026, 10, 5, tzinfo=timezone.utc)
+        checks = {
+            "present": True,
+            "raw_hash_matches_run": True,
+            "normalized_hash_matches_run": True,
+            "normalized_rows_match_imported_observation_count": True,
+            "source_host_matches_run": True,
+            "adapter_version_matches_run": True,
+            "schema_version_matches_run": True,
+            "retrieved_at_consistent_with_capture": False,
+        }
+        details = {"fresh_live_run": True, "processing_mode": "live_acquisition",
+                   "acquisition_classification": "live",
+                   "source_artifacts": {"sha256": "b" * 64,
+                                         "retrieved_at_utc": "2026-10-05T00:00:00Z"}}
+        self.assertTrue(inventory._retrieved_at_consistent_with_capture(
+            manifest_retrieved_at=first, run_retrieved_at=captured, manifest_present=True,
+            reconciliation=checks, details=details, source_hash="b" * 64))
+
+        for bad_checks, bad_details, bad_first, bad_capture in (
+            (checks, {**details, "fresh_live_run": False}, first, captured),
+            ({**checks, "raw_hash_matches_run": False}, details, first, captured),
+            ({**checks, "normalized_hash_matches_run": False}, details, first, captured),
+            ({**checks, "normalized_rows_match_imported_observation_count": False}, details, first, captured),
+            ({**checks, "source_host_matches_run": False}, details, first, captured),
+            ({**checks, "adapter_version_matches_run": False}, details, first, captured),
+            ({**checks, "schema_version_matches_run": False}, details, first, captured),
+            (checks, {**details, "source_artifacts": {"sha256": "c" * 64,
+                                                         "retrieved_at_utc": "2026-10-05T00:00:00Z"}}, first, captured),
+            (checks, details, captured, first),
+            (checks, details, first, datetime(2099, 1, 1, tzinfo=timezone.utc)),
+        ):
+            with self.subTest(checks=bad_checks, details=bad_details, first=bad_first, captured=bad_capture):
+                self.assertFalse(inventory._retrieved_at_consistent_with_capture(
+                    manifest_retrieved_at=bad_first, run_retrieved_at=bad_capture,
+                    manifest_present=True, reconciliation=bad_checks, details=bad_details,
+                    source_hash="b" * 64))
+
+    def test_later_capture_rejects_unexplained_or_timezone_naive_times(self):
+        first = datetime(2026, 10, 4, tzinfo=timezone.utc)
+        captured = datetime(2026, 10, 5, tzinfo=timezone.utc)
+        checks = {"present": True, "raw_hash_matches_run": True,
+                  "normalized_hash_matches_run": True,
+                  "normalized_rows_match_imported_observation_count": True,
+                  "source_host_matches_run": True, "adapter_version_matches_run": True,
+                  "schema_version_matches_run": True,
+                  "retrieved_at_consistent_with_capture": False}
+        for details, first_time, run_time in (
+            ({}, first, captured),
+            ({"fresh_live_run": True, "processing_mode": "archived_replay",
+              "acquisition_classification": "live"}, first, captured),
+            ({"fresh_live_run": True, "processing_mode": "live_acquisition",
+              "acquisition_classification": "live"},
+             "2026-10-04T00:00:00", "2026-10-05T00:00:00Z"),
+        ):
+            with self.subTest(details=details, first=first_time, run=run_time):
+                self.assertFalse(inventory._retrieved_at_consistent_with_capture(
+                    manifest_retrieved_at=first_time, run_retrieved_at=run_time,
+                    manifest_present=True, reconciliation=checks, details=details,
+                    source_hash="b" * 64))
 
     def test_invalid_hash_or_non_public_provenance_url_fails_closed(self):
         for digest in ("", "z" * 64):

@@ -17,7 +17,7 @@ AUTHORITY_BY_NATION=CONFIG["authority_by_nation"]
 # Generic facility-building names such as "house", "home", and "lodge" are
 # common in legitimate establishment addresses. Keep only terms that are
 # stronger indicators of a residential, private, or intermediary address.
-MONTHLY_REQUIRED=frozenset({"AppNo","TradingName","Country","CompetentAuthority","X","Y","AddressWithheld","All_Activities"})
+MONTHLY_REQUIRED=frozenset(CONFIG["monthly_required_columns"])
 MONTHLY_COUNTRIES=frozenset({"England","Wales"})
 
 # The monthly FSA feed contains animal-product activities outside the short
@@ -105,7 +105,12 @@ def _coords(row):
 def _monthly_record(row,line):
     withheld=(_clean(row.get("AddressWithheld")) or "").lower()=="yes";x=y=None;status="withheld" if withheld else "unavailable"
     if not withheld:x,y,status=_coords(row)
-    acts=tuple(x for x in (_clean(row.get("All_Activities")),_clean(row.get("Part_A__All_sections_")),_clean(row.get("Part B All sections "))) if x)
+    acts=tuple(x for x in (
+        _clean(row.get("All_Activities")),
+        _clean(row.get("Part_A__All_sections_")),
+        _clean(row.get("Part_B__All_sections_")),
+        _clean(row.get("Part B All sections ")),
+    ) if x)
     privacy_gate="restricted-withheld-address" if withheld else "privacy-review-required"
     coordinate_gate="restricted-withheld-address" if withheld else "privacy-review-required"
     ident=_clean(row.get("AppNo"));nation=_clean(row.get("Country"))
@@ -163,8 +168,9 @@ class FsaApprovedEstablishmentsAdapter:
             if not ident:reasons.append("missing_establishment_id")
             if (country,ident) in duplicates:reasons.append("duplicate_id_within_nation")
             if country not in MONTHLY_COUNTRIES:reasons.append("unknown_nation")
-            if not any(_clean(v.get(k)) for k in ("All_Activities","Part_A__All_sections_","Part B All sections ")):reasons.append("missing_activity")
-            elif not _monthly_activity_categories(_split(_clean(v.get("All_Activities")) or _clean(v.get("Part_A__All_sections_")) or _clean(v.get("Part B All sections ")))):reasons.append("no_relevant_activity")
+            activity_values=tuple(_clean(v.get(k)) for k in ("All_Activities","Part_A__All_sections_","Part_B__All_sections_","Part B All sections ") if _clean(v.get(k)))
+            if not activity_values:reasons.append("missing_activity")
+            elif not _monthly_activity_categories(_split(activity_values[0])) and not _monthly_activity_categories(activity_values):reasons.append("no_relevant_activity")
             if _clean(v.get("Remarks")):reasons.append("remarks_present")
             withheld=(_clean(v.get("AddressWithheld")) or "").lower()=="yes"
             if not withheld and address_privacy_risk(*(v.get(k) for k in ("Address1","Address2","Address3","Town","Postcode"))):reasons.append("address_privacy_risk")

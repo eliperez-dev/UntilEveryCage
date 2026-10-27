@@ -1,8 +1,15 @@
 from __future__ import annotations
 
 import unittest
+import importlib.util
+from pathlib import Path
 
 from pipeline.common import prospective_release as proposal
+
+PREPARE_SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "maintenance" / "prepare-prospective-release-snapshot.py"
+PREPARE_SPEC = importlib.util.spec_from_file_location("prepare_prospective_release_snapshot", PREPARE_SCRIPT)
+prepare = importlib.util.module_from_spec(PREPARE_SPEC)
+PREPARE_SPEC.loader.exec_module(prepare)
 
 
 class _Result:
@@ -24,6 +31,19 @@ class _Connection:
 
 
 class ProspectiveReleaseTests(unittest.TestCase):
+    def test_database_url_allows_only_existing_and_assigned_launch_loopback_copies(self):
+        self.assertEqual(prepare._database_url("postgresql://127.0.0.1/uec_v0_api_repair"),
+                         "postgresql://127.0.0.1/uec_v0_api_repair")
+        self.assertEqual(prepare._database_url("postgresql://localhost/uec_launch_sources_test_20261025"),
+                         "postgresql://localhost/uec_launch_sources_test_20261025")
+        for value in ("postgresql://db.example/uec_launch_sources_test_20261025",
+                      "postgresql://127.0.0.1/uec_v0_review_r3",
+                      "postgresql://127.0.0.1/other"):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                prepare._database_url(value)
+        with self.assertRaisesRegex(ValueError, "frozen baseline must be"):
+            prepare._frozen_database_url("postgresql://127.0.0.1/uec_launch_sources_test_20261025")
+
     def test_measure_is_row_free_and_binds_policy_and_stable_exclusions(self):
         result = proposal.measure(_Connection(), "d" * 64, "v0-candidate-test", ["a"], "b" * 64, ["approved.source"])
         self.assertEqual(result["publication_state"], "private_prospective_not_authorized")

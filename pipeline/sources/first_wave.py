@@ -666,6 +666,22 @@ def register_first_wave(catalog: Any) -> None:
         adapter_path="pipeline/sources/scotland_aquaculture/refresh.py", country_code="gb",
         source_kind="facility_master", operational_classification="live", live_callable=True,
     ))
+    from .mexico.refresh import DenueRefreshAdapter
+    catalog.register(DenueRefreshAdapter(), AdapterCapabilities(
+        source_id="mx.locations", adapter_version="mx-denue-v1",
+        schema_version="denue-api-v1", acquisition="bounded_private_fetch",
+        geocoding="disabled", publication="human_gate_required",
+        adapter_path="pipeline/sources/mexico/refresh.py", country_code="mx",
+        source_kind="facility_master", operational_classification="live", live_callable=True,
+    ))
+    from .new_zealand.refresh import NewZealandRmpRefreshAdapter
+    catalog.register(NewZealandRmpRefreshAdapter(), AdapterCapabilities(
+        source_id="nz.locations", adapter_version="nz-mpi-rmp-csv-v3",
+        schema_version="nz-mpi-rmp-extract-2026-10-v1", acquisition="assisted_only",
+        geocoding="disabled", publication="human_gate_required",
+        adapter_path="pipeline/sources/new_zealand/refresh.py", country_code="nz",
+        source_kind="facility_master", operational_classification="assisted", live_callable=False,
+    ))
     from pipeline.sources.us.epa_echo.refresh import EpaEchoAnimalRefreshAdapter
     catalog.register(EpaEchoAnimalRefreshAdapter(), AdapterCapabilities(
         source_id="us.epa.echo-animal-production", adapter_version="us-epa-echo-animal-adapter-v1",

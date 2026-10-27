@@ -4,7 +4,7 @@ import json
 import unittest
 from pathlib import Path
 
-from .adapter import FsaApprovedEstablishmentsAdapter, FsaContractError
+from .adapter import CONFIG, MONTHLY_REQUIRED, FsaApprovedEstablishmentsAdapter, FsaContractError
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -36,6 +36,18 @@ class FsaAdapterTests(unittest.TestCase):
     def test_schema_drift_fails_closed(self):
         with self.assertRaises(FsaContractError):
             self.adapter.parse_file(FIXTURES / "schema_drift.csv")
+
+    def test_live_monthly_profile_is_declared_separately_from_synthetic_compatibility_schema(self):
+        self.assertEqual(
+            CONFIG["source_url"],
+            "https://fsaopendata.blob.core.windows.net/opendatacatalog/Approved-Establishments-01-10-2026.csv",
+        )
+        self.assertEqual(
+            MONTHLY_REQUIRED,
+            frozenset({"AppNo", "TradingName", "Country", "CompetentAuthority", "X", "Y", "AddressWithheld", "All_Activities"}),
+        )
+        self.assertEqual(CONFIG["required_columns"][0], "establishment_id")
+        self.assertEqual(CONFIG["monthly_baseline_rows"], 5342)
 
     def test_manifest_rerun_is_deterministic_and_release_is_absent(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -105,6 +117,17 @@ class FsaAdapterTests(unittest.TestCase):
             {item["record"]["normalized"]["establishment_id"]: item["reasons"] for item in result.quarantined},
             {"A-4": ("no_relevant_activity",), "A-5": ("no_relevant_activity",)},
         )
+
+    def test_current_monthly_part_b_all_sections_header_is_read_as_source_activity(self):
+        monthly = (
+            "AppNo,TradingName,Country,CompetentAuthority,X,Y,AddressWithheld,All_Activities,Part_B__All_sections_,Address1,Town,Postcode\n"
+            "A-1,Sprout plant,England,Food Standards Agency,,,,,Producing plant (Sprouts),Farm Road,London,SW1\n"
+        )
+        result = self.adapter.parse_bytes(monthly.encode("cp1252"))
+        self.assertEqual(len(result.quarantined), 1)
+        record = result.quarantined[0]["record"]
+        self.assertEqual(record["normalized"]["activities"], ("Producing plant (Sprouts)",))
+        self.assertEqual(result.quarantined[0]["reasons"], ("no_relevant_activity",))
 
     def test_monthly_explicit_private_address_indicator_remains_quarantined(self):
         monthly = "AppNo,TradingName,Country,CompetentAuthority,X,Y,AddressWithheld,All_Activities,Address1,Town,Postcode\nA-1,Private Foods,England,Food Standards Agency,-0.12,51.50,No,CP,Flat 2,London,SW1\n"

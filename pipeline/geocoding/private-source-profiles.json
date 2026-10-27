@@ -107,6 +107,14 @@
       "source_scope": "Current unmapped BLtU business addresses only; retain original evidence and existing accepted points; explicit operator-selected fallback"
     },
     {
+      "profile_id": "locationiq-nz-mpi-rmp",
+      "provider_id": "locationiq",
+      "source_id": "nz.locations",
+      "country_code": "NZ",
+      "status": "enabled-private-only",
+      "source_scope": "MPI RMP physical-address evidence only when retained native cardinality is exactly one; exact road, house, town and independently supplied postcode must match; main-island bounds; private enrichment only"
+    },
+    {
       "profile_id": "geoapify-de-bltu",
       "source_id": "de.locations",
       "country_code": "DE",

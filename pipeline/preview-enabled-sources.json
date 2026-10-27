@@ -127,6 +127,36 @@
       "adapter_version": "fsa-uk-v2-3",
       "schema_version": "fsa-uk-approved-v1"
     },
+    "mx.locations": {
+      "enabled": true,
+      "runtime_classification": "production-e2e",
+      "public_release": false,
+      "source_url": "https://www.inegi.org.mx/app/api/denue/v1/consulta/",
+      "runner": "pipeline.refresh_private:mx.locations",
+      "terms_review": "data/terms-reviews/mx.locations.json",
+      "terms_decision": "approved",
+      "freshness_max_days": 60,
+      "expected_artifacts": ["denue-api.json"],
+      "allowed_preview_fields": ["establishment_id", "clee", "name", "operator_name", "country_code", "source_administrative_location", "facility_address", "address_state", "activity_class_id", "activity_name", "source_activity_categories", "activity_categories", "classification_state", "activity_size_stratum", "source_start_date", "coordinates", "coordinate_state", "coordinate_provider", "coordinate_precision", "privacy_gate", "coordinate_gate", "publication_gate"],
+      "display_policy": {"kind": "source_numeric_coordinate", "precision": "source-precision-unknown", "disclosure": "INEGI DENUE source-provided coordinates are preserved without transformation; names and addresses remain private pending privacy and precision review. This is a business-directory subset, not a certification registry or complete facility census. Private preview only; no public release."},
+      "adapter_version": "mx-denue-v1",
+      "schema_version": "denue-api-v1"
+    },
+    "nz.locations": {
+      "enabled": true,
+      "runtime_classification": "production-e2e",
+      "public_release": false,
+      "source_url": "https://mpi.my.site.com/publicregister/s/RiskMeasureSearch?riskMeasureType=Risk%20Management%20Programme",
+      "runner": "pipeline.refresh_private:nz.locations",
+      "terms_review": "data/terms-reviews/nz.locations.json",
+      "terms_decision": "approved",
+      "freshness_max_days": 60,
+      "expected_artifacts": ["source.csv"],
+      "allowed_preview_fields": ["establishment_id", "mpi_risk_measure_id", "source_entity_type", "facility_identity_state", "name", "trading_name", "business_identifier", "business_identifier_type", "country_code", "nation", "risk_measure_type", "programme_type", "product_material", "primary_activity", "secondary_activity", "intended_use", "market", "status", "status_state", "is_suspended", "effective_date", "expiry_date", "suspension_type", "suspension_start_date", "suspension_end_date", "suspended_operations", "verification_agency", "address", "address_state", "location_role", "municipality", "operator_local_authority", "location_local_authority", "location_count", "location_count_state", "dairy_ulis", "fishing_vessel_name", "activity_scope_state", "classification_state", "coordinates", "coordinate_state", "coordinate_provenance_state", "privacy_gate", "rights_gate", "coordinate_gate", "publication_gate"],
+      "display_policy": {"kind": "unmapped_source_records_only", "precision": "no-coordinate-disclosure", "disclosure": "MPI RMP observations may represent multiple locations and are not unique facility identities; source names, addresses, programme and cardinality fields remain private pending review. This assisted processing of an operator-preserved export is not a fresh automated acquisition. Private preview only; no public release."},
+      "adapter_version": "nz-mpi-rmp-csv-v3",
+      "schema_version": "nz-mpi-rmp-extract-2026-10-v1"
+    },
     "fss_approved_establishments": {
       "enabled": true,
       "runtime_classification": "production-e2e",

@@ -73,6 +73,18 @@ retained under ignored `target/real-preview/runs/refresh-fb93336e0b57aa27/`.
 The disposable DB/API certificate and same-DB idempotent replay passed with
 zero public rows. This verifies private processing only.
 
+## Current official endpoint and header check — 2026-10-26
+
+The National Data Library now links the 1 October 2026 edition at
+`https://fsaopendata.blob.core.windows.net/opendatacatalog/Approved-Establishments-01-10-2026.csv`.
+A bounded HTTP HEAD returned 200, `text/csv`, 1,773,564 bytes, and
+`Last-Modified: 1 October 2026 11:07:44 GMT`. A 65,536-byte HTTP range returned
+206 (`bytes 0-65535/1773564`) and confirmed the 71-column header profile. Its
+header fingerprint is recorded in `config.json`; required monthly columns are
+declared separately from `required_columns`, which remains the compatibility
+schema for the synthetic adapter contract. This check did not acquire or retain
+the full CSV, establish October row counts, or rerun adapter/import processing.
+
 The taxonomy projection preserves source activity labels/codes and treats all
 FSA mappings as derived. Of 4,291 candidate projections, 3,204 are partial and
 1,087 unmapped; none is classified as direct, unclassified, conflicting, or
@@ -83,9 +95,8 @@ remain suppressed, and the map-visible count is 0 (delta 0 from baseline).
 The row-free counts and hashes are in the [BE/UK sprint ledger](../../../../data/manifests/source-evidence-be-uk-20261001.json).
 
 Scotland is a distinct source, `fss_approved_establishments`, not part of this
-FSA feed. The current FSS registration has no approved terms-review record and
-is not enabled for private preview acquisition; do not fetch it until those
-gates and its current official artifact/schema are confirmed.
+FSA feed. It has its own enabled private refresh path and source-specific terms
+record. Current readiness and counts are in `docs/source-status.json`.
 
 The shared strict private-preview route was verified on 2026-09-27 with two
 live refreshes into a unique disposable database. The final source snapshot was

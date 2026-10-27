@@ -68,6 +68,24 @@ class CandidateBridgeTests(unittest.TestCase):
         self.assertEqual(revision_a, bridge._candidate_display_evidence_revision(candidate_a))
         self.assertNotEqual(revision_a, bridge._candidate_display_evidence_revision(candidate_b))
 
+    def test_launch_country_bridge_preserves_names_and_native_record_facts(self):
+        mexico = bridge._safe_normalized({
+            "name": "Synthetic Meat Plant", "clee": "synthetic-clee",
+            "activity_class_id": "311611", "activity_name": "Synthetic slaughter",
+        }, "mx.locations")
+        self.assertEqual(mexico["facility_display_name"], "Synthetic Meat Plant")
+        self.assertEqual(mexico["clee"], "synthetic-clee")
+        self.assertEqual(mexico["activity_class_id"], "311611")
+        new_zealand = bridge._safe_normalized({
+            "name": "Synthetic Business", "trading_name": "Synthetic Dairy",
+            "mpi_risk_measure_id": "synthetic-programme", "location_count": 3,
+            "primary_activity": "Milk collection", "expiry_date": "2027-01-01",
+        }, "nz.locations")
+        self.assertEqual(new_zealand["facility_display_name"], "Synthetic Dairy")
+        self.assertEqual(new_zealand["location_count"], 3)
+        self.assertEqual(new_zealand["mpi_risk_measure_id"], "synthetic-programme")
+        self.assertEqual(new_zealand["primary_activity"], "Milk collection")
+
     def test_append_candidate_keeps_shared_facility_name_and_uses_safe_status_label(self):
         source = SCRIPT.read_text(encoding="utf-8")
         self.assertIn('facility_conflict = "DO NOTHING" if append_to_v0_baseline', source)
@@ -253,7 +271,8 @@ class CandidateBridgeTests(unittest.TestCase):
         handoffs = {source: {"source_url": "https://example.test/source", "source_host": "example.test",
             "manifest_path": Path("manifest.json"), "manifest": {}, "normalized_sha256": "d" * 64,
             "manifest_sha256": "e" * 64, "graph_manifest_sha256": "f" * 64,
-            "graph_records_sha256": "1" * 64, "terms_review_sha256": "2" * 64,
+            "graph_records_sha256": "1" * 64, "graph_handoff_state": "private_candidates_verified",
+            "terms_review_sha256": "2" * 64,
             "rows": [], "representatives": {}} for source in sources}
 
         class Result:
@@ -352,6 +371,84 @@ class CandidateBridgeTests(unittest.TestCase):
             with self.assertRaisesRegex(bridge.BridgeError, "graph_handoff_identifier_set_mismatch"):
                 bridge.verify_handoff(entry, source_report)
 
+    def test_non_nz_sources_still_require_graph_handoff(self):
+        with tempfile.TemporaryDirectory(dir=bridge.ROOT) as temporary:
+            manifest_path, _, manifest, policy = self._handoff(Path(temporary))
+            inventory, source_report, _ = self._inventory(manifest, policy)
+            (manifest_path.parent / "graph-candidates" / "records.jsonl").unlink()
+            entry = {"source_id": "dk.smiley", "snapshot_sha256": "c" * 64,
+                     "source_artifact_sha256": manifest["checksum_sha256"],
+                     "normalized_sha256": manifest["normalized_sha256"],
+                     "handoff_manifest_path": str(manifest_path)}
+            with self.assertRaisesRegex(bridge.BridgeError, "handoff_file_unavailable"):
+                bridge.verify_handoff(entry, source_report)
+
+    def test_nz_programme_handoff_is_graphless_but_rejects_identity_and_site_claims(self):
+        with tempfile.TemporaryDirectory(dir=bridge.ROOT) as temporary:
+            folder = Path(temporary) / "nz.locations"
+            (folder / "normalized").mkdir(parents=True)
+            policy = json.loads((bridge.ROOT / "pipeline" / "preview-enabled-sources.json").read_text(
+                encoding="utf-8"))["sources"]["nz.locations"]
+            source_url = "https://mpi.my.site.com/publicregister/s/RiskMeasureSearch?riskMeasureType=Risk%20Management%20Programme"
+            row = {"source_id": "nz.locations", "source_row": 11, "source_row_id": "rmp-11",
+                   "source_record_key": "MPI-11", "source_values": {}, "normalized": {
+                       "establishment_id": "MPI-11", "mpi_risk_measure_id": "MPI-11",
+                       "source_entity_type": "registered-risk-management-programme",
+                       "facility_identity_state": "programme-record; location cardinality is source-reported and may be multiple",
+                       "location_role": "RMP-associated physical address; not verified as a unique operating facility",
+                       "coordinates": None, "country_code": "NZ", "address": "Private example address",
+                       "name": "Private example business", "privacy_gate": "pending-review",
+                       "rights_gate": "review_required", "publication_gate": "blocked"}}
+
+            def write_fixture(value):
+                normalized_path = folder / "normalized" / "records.jsonl"
+                raw = _canonical(value)
+                normalized_path.write_bytes(raw)
+                manifest = {"source_id": "nz.locations", "contract_version": "candidate-handoff-v1",
+                    "publication_state": "private-candidate", "release_state": "not-created",
+                    "review_state": "review_required", "privacy_gate": "pending",
+                    "coordinate_gate": "review_required",
+                    "checksum_sha256": "a" * 64, "normalized_sha256": hashlib.sha256(raw).hexdigest(),
+                    "normalized_rows": 1, "source_url": source_url,
+                    "retrieved_at_utc": "2026-10-04T00:00:00Z",
+                    "code_version": policy["adapter_version"], "config_version": policy["schema_version"]}
+                manifest_path = folder / "manifest.json"
+                manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+                source_report = {"source_id": "nz.locations", "snapshot": {
+                    "source_artifact_sha256": "a" * 64, "normalized_sha256": manifest["normalized_sha256"],
+                    "source_host": "mpi.my.site.com", "retrieved_at": manifest["retrieved_at_utc"],
+                    "handoff_code_version": manifest["code_version"],
+                    "handoff_config_version": manifest["config_version"]},
+                    "counts": {"imported_observation_count": 1}}
+                entry = {"source_id": "nz.locations", "handoff_manifest_path": str(manifest_path)}
+                return entry, source_report
+
+            entry, source_report = write_fixture(row)
+            parsed = [None] * 24
+            parsed[1] = "unmapped_private_observation"
+            parsed[23] = "MPI-11"
+            with patch.object(bridge.IMPORTER, "parse_row", return_value=tuple(parsed)):
+                verified = bridge.verify_handoff(entry, source_report)
+            self.assertEqual(verified["graph_handoff_state"], "not_applicable_programme_not_unique_site")
+            self.assertIsNone(verified["graph_manifest_sha256"])
+            self.assertIsNone(verified["graph_records_sha256"])
+            self.assertEqual(set(verified["representatives"]), {"MPI-11"})
+
+            for change, error in (
+                ({"normalized": {**row["normalized"], "coordinates": {"latitude": -41.2, "longitude": 174.7}}},
+                 "nz_programme_identity_scope_invalid"),
+                ({"normalized": {**row["normalized"], "source_entity_type": "facility"}},
+                 "nz_programme_identity_scope_invalid"),
+                ({"source_row_id": None}, "nz_programme_identity_missing"),
+                ({"source_record_key": None}, "nz_programme_identity_missing"),
+            ):
+                with self.subTest(error=error, change=change):
+                    invalid = dict(row)
+                    invalid.update(change)
+                    entry, source_report = write_fixture(invalid)
+                    with self.assertRaisesRegex(bridge.BridgeError, error):
+                        bridge.verify_handoff(entry, source_report)
+
     def test_freeze_hash_only_artifact_requires_null_locator_and_size(self):
         with tempfile.TemporaryDirectory(dir=bridge.ROOT) as temporary:
             root = Path(temporary)
@@ -394,6 +491,23 @@ class CandidateBridgeTests(unittest.TestCase):
         with self.assertRaisesRegex(bridge.BridgeError, "expected_database_name_must_be_isolated_v0_review"):
             bridge.bridge("postgresql://user:secret@127.0.0.1/uec", "uec",
                           freeze, {}, candidate_only_ack=True)
+        with self.assertRaisesRegex(bridge.BridgeError, "append_candidate_database_not_allowlisted"):
+            bridge.bridge("postgresql://127.0.0.1/uec_v0_review", "uec_v0_review", freeze, {},
+                          candidate_only_ack=True, append_to_v0_baseline=True)
+
+    def test_launch_database_is_explicitly_allowed_for_baseline_preserving_append(self):
+        class ConnectReached(Exception):
+            pass
+
+        freeze = {"release_id": "v0-candidate-2026-10-26-r4", "selected_sources": [],
+                  "excluded_sources": [], "inventory_sha256": "a" * 64}
+        inventory = {"source_scope": {"sources": []}}
+        with patch.object(bridge, "_baseline_contract", return_value={"release_id": "v0-candidate-base-r3"}), \
+                patch.object(bridge.psycopg, "connect", side_effect=ConnectReached):
+            with self.assertRaises(ConnectReached):
+                bridge.bridge("postgresql://127.0.0.1/uec_launch_sources_test_20261025",
+                              "uec_launch_sources_test_20261025", freeze, inventory,
+                              candidate_only_ack=True, append_to_v0_baseline=True)
 
     def test_public_projection_guard_excludes_candidate_release_membership(self):
         class _Result:

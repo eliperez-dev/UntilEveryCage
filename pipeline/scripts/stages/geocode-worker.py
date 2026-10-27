@@ -413,9 +413,9 @@ def run(
         if profile is None or profile.get("provider_id", "geoapify") != provider_id:
             raise ValueError("enabled private source profile for this provider required")
     if provider_id == "locationiq" and (
-            private_source_profile_id != "locationiq-de-bltu" or limit is None
+            private_source_profile_id not in {"locationiq-de-bltu", "locationiq-nz-mpi-rmp"} or limit is None
             or limit > 5000 or daily_budget > 5000 or provider_interval < 1.05):
-        raise ValueError("LocationIQ requires its DE profile, a finite limit and free-plan rate/quota bounds")
+        raise ValueError("LocationIQ requires an allowlisted country profile, a finite limit and free-plan rate/quota bounds")
     if job_ids is not None:
         if not job_ids or len(set(job_ids)) != len(job_ids) or any(not isinstance(value, uuid.UUID) for value in job_ids):
             raise ValueError("job_ids must be a non-empty sequence of unique UUIDs")
