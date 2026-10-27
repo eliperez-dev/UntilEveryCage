@@ -28,6 +28,8 @@ class GeocodeOperatorStatusContractTests(unittest.TestCase):
         self.assertEqual(report["daily_usage"],
                          [{"day": "2026-10-27", "provider": "locationiq", "count": 5000}])
         self.assertIn("geocode_provider_budgets", connection.execute.call_args_list[2].args[0])
+        self.assertIn("uec.sources AS source",connection.execute.call_args_list[1].args[0])
+        self.assertNotIn("record.country_code",connection.execute.call_args_list[1].args[0])
         self.assertIn("_uec_parent_geocode_result_id", connection.execute.call_args_list[4].args[0])
         self.assertEqual(report["account_usage"][0]["remaining"],4633)
         for call in connection.execute.call_args_list:

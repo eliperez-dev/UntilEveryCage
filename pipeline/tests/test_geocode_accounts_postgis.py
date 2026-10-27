@@ -16,27 +16,20 @@ from pipeline.scripts.release_baseline import load_contract,verify_connection
 ROOT=Path(__file__).resolve().parents[2]
 MIGRATION=ROOT/"pipeline/migrations/101_geocode_account_budgets.sql"
 DATABASE="uec_launch_sources_test_20261025"
-SPEC=importlib.util.spec_from_file_location("account_activation_real",ROOT/"pipeline/scripts/stages/activate-locationiq-preview.py")
-ACTIVATION=importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(ACTIVATION)
+STATUS_SPEC=importlib.util.spec_from_file_location("account_status_real",ROOT/"pipeline/scripts/diagnostics/geocode-operator-status.py")
+STATUS=importlib.util.module_from_spec(STATUS_SPEC)
+STATUS_SPEC.loader.exec_module(STATUS)
 
 
-def check_unmatched_retry(connection):
-    """Exercise retained real jobs inside the caller's rollback transaction."""
+def check_operator_status(connection):
+    """Exercise aggregate reporting against the real schema."""
     class BorrowedConnection:
         def __enter__(self): return connection
         def __exit__(self,*_): return False
-    with patch.object(ACTIVATION.psycopg,"connect",return_value=BorrowedConnection()):
-        report,jobs=ACTIVATION.requeue_unmatched("borrowed",limit=2,provider_account="secondary")
-        if report["provider_calls"] != 0 or report["jobs_staged"] != len(jobs):
-            raise AssertionError("retry staging accounting mismatch")
-        for job in jobs:
-            current=connection.execute("""SELECT event_type,attempt_number,
-                details->>'recovery_reason' FROM uec.geocode_job_events WHERE job_id=%s
-                ORDER BY occurred_at DESC,event_id DESC LIMIT 1""",(job,)).fetchone()
-            if current != ("queued",2,"operator_authorized_unmatched_retry"):
-                raise AssertionError("retry did not retain attempt history")
-    return len(jobs)
+    with patch.object(STATUS.psycopg,"connect",return_value=BorrowedConnection()):
+        report=STATUS.status("borrowed","locationiq")
+        if not report["account_usage"] or not report["countries"]:
+            raise AssertionError("real-data account status is incomplete")
 
 
 @unittest.skipUnless(urlsplit(os.environ.get("UEC_DATABASE_URL","")).path.strip("/")==DATABASE,
@@ -91,7 +84,7 @@ class GeocodeAccountPostgisTests(unittest.TestCase):
                 self.assertIsNotNone(first[0])
                 self.assertEqual(c.execute("SELECT * FROM uec.reserve_geocode_account_request(%s,'rate',%s,2,1,2,60)",
                                            (provider,jobs[2])).fetchone(),(None,"rate_limited"))
-                self.assertGreater(check_unmatched_retry(c),0)
+                check_operator_status(c)
                 self.assertEqual(verify_connection(c,load_contract(
                     ROOT/"pipeline/contracts/development-baseline.json"))["status"],"verified")
 

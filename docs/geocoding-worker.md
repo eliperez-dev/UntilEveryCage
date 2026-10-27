@@ -214,11 +214,9 @@ with `pipeline.geocoding.accounts.attribute_history`, using verified worker
 identities while workers are stopped. Original reservations remain unchanged.
 `geocode-operator-status.py` reports used and remaining requests per account.
 
-After unqueried addresses and other-provider misses, an operator may explicitly
-stage `--retry-unmatched --provider-account secondary --limit N`. This requeues
-unsuccessful initial LocationIQ attempts without replacing earlier evidence.
-Mapped/accepted records and jobs already requested on that account during the
-current UTC day are excluded. Retries consume the same account allowance.
+Existing jobs, append-only events and results retain the provider, query,
+attempts, dates and outcomes for later retries. No separate deferral mechanism
+is required. Do not repeat unchanged review results merely to spend an allowance.
 
 The adapter and database independently require a single German address match,
 including street/house number, postcode, locality and supplied state. Importance

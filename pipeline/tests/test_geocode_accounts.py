@@ -12,9 +12,6 @@ ROOT = Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location("account_worker", ROOT / "pipeline/scripts/stages/geocode-worker.py")
 WORKER = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(WORKER)
-ACTIVATION_SPEC = importlib.util.spec_from_file_location("account_activation", ROOT / "pipeline/scripts/stages/activate-locationiq-preview.py")
-ACTIVATION = importlib.util.module_from_spec(ACTIVATION_SPEC)
-ACTIVATION_SPEC.loader.exec_module(ACTIVATION)
 
 
 class GeocodeAccountTests(unittest.TestCase):
@@ -55,25 +52,6 @@ class GeocodeAccountTests(unittest.TestCase):
                 attribute_history(connection,budget_date="2026-10-27",secondary_workers=workers)
         connection.execute.assert_not_called()
 
-    def test_retry_keeps_attempt_history_and_skips_stale_claims(self):
-        connection=MagicMock()
-        connection.__enter__.return_value=connection
-        job,stale=uuid.uuid4(),uuid.uuid4()
-        cursors=[MagicMock() for _ in range(5)]
-        cursors[0].fetchone.return_value=(ACTIVATION.DATABASE,)
-        cursors[1].fetchall.return_value=[(job,"review_required",2),(stale,"failed",2)]
-        cursors[2].fetchone.return_value=("review_required",2)
-        cursors[4].fetchone.return_value=("started",3)
-        connection.execute.side_effect=cursors
-        with patch.object(ACTIVATION.psycopg,"connect",return_value=connection):
-            report,jobs=ACTIVATION.requeue_unmatched("synthetic",limit=2,provider_account="secondary")
-        self.assertEqual(jobs,(job,))
-        self.assertEqual(report["provider_calls"],0)
-        selection,parameters=connection.execute.call_args_list[1].args
-        self.assertEqual(parameters,("secondary",2))
-        self.assertIn("geocode_request_account_attributions",selection)
-        self.assertIn("accepted.status='accepted'",selection)
-        self.assertEqual(connection.execute.call_args_list[3].args[1][:2],(job,2))
 
 
 if __name__ == "__main__": unittest.main()

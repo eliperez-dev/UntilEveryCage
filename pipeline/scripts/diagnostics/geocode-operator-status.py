@@ -27,9 +27,10 @@ def status(database_url: str, provider: str | None = None) -> dict:
         ).fetchall()
         countries = database.execute(
             f"""
-            SELECT record.country_code, count(*)
+            SELECT source.country_code, count(*)
             FROM uec.geocode_job_current AS current
             JOIN uec.source_records AS record USING (source_record_id)
+            JOIN uec.sources AS source ON source.source_id=record.source_id
             {job_filter}
             GROUP BY 1
             ORDER BY 1

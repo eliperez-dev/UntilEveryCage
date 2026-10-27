@@ -544,7 +544,7 @@
       "metadata": "verified",
       "acquisition": "verified",
       "runtime_health": "unknown",
-      "runtime_health_scope": "The retained BLtU capture and private import remain the source baseline. Local enrichment completed on 2026-10-27 UTC with both provider budgets respected; latest_private_enrichment owns current map and queue counts. No recurring monitor or new public release is claimed.",
+      "runtime_health_scope": "The retained BLtU capture and private import remain the source baseline. The usable unqueried address cohort completed a first pass; existing job events and results retain unfinished attempts for a later release. latest_private_enrichment owns current map, request and queue counts. No recurring monitor or new public release is claimed.",
       "publication_eligibility": "blocked",
       "private_e2e_status": "live_capture_shared_import_and_exact_api_map_membership_verified_enrichment_partial",
       "map_readiness": "bounded_private_address_enrichment_verified_remaining_addresses_pending",
@@ -574,8 +574,8 @@
         "taxonomy_crosswalk_version": "de-bltu-source-crosswalk-v1",
         "taxonomy_assignment_sets": 15755,
         "source_addresses_retained_privately": true,
-        "private_map_visible_candidates": 5698,
-        "unmapped_candidates": 10057,
+        "private_map_visible_candidates": 6432,
+        "unmapped_candidates": 9323,
         "retained_business_street_addresses": 15731,
         "local_address_queue_entries": 15731,
         "records_without_business_street_address": 24,
@@ -696,34 +696,45 @@
         ]
       },
       "latest_private_enrichment": {
-        "checked_at_utc": "2026-10-27T03:24:00Z",
-        "status": "parallel_provider_batch_completed_verified_local_only",
+        "checked_at_utc": "2026-10-27T05:12:15Z",
+        "status": "first_pass_complete_unmatched_deferred_local_only",
         "private_database": "uec_launch_sources_test_20261025",
         "source_qualified_candidates": 15755,
-        "mapped_candidates": 5698,
-        "unmapped_candidates": 10057,
-        "mapped_candidates_before_batch": 2809,
-        "new_mapped_candidates": 2889,
-        "never_queried_candidates": 1219,
+        "mapped_candidates": 6432,
+        "unmapped_candidates": 9323,
+        "mapped_candidates_before_batch": 5698,
+        "new_mapped_candidates": 734,
+        "never_queried_candidates": 35,
         "provider_budget_date_utc": "2026-10-27",
         "provider_request_reservations": {
           "geoapify": {"reserved_requests": 3000, "daily_limit": 3000},
-          "locationiq": {"reserved_requests": 5000, "daily_limit": 5000}
+          "locationiq": {"reserved_requests": 8099, "daily_limit": 10000}
         },
+        "account_request_reservations": {
+          "primary": {"reserved_requests": 4633, "daily_limit": 5000, "remaining": 367},
+          "secondary": {"reserved_requests": 3466, "daily_limit": 5000, "remaining": 1534}
+        },
+        "provider_outcomes_scope": "All direct provider results for the UTC day, including the earlier batch; new_mapped_candidates describes only this latest batch and its saved-response pass.",
         "provider_outcomes": {
           "geoapify": {"accepted": 1336, "review_required": 1664, "audited_map_points_added": 1329, "accepted_without_context_audit": 7},
-          "locationiq": {"accepted": 1301, "review_required": 3667, "unresolved": 32, "audited_map_points_added": 1301}
+          "locationiq": {"accepted": 1922, "review_required": 6106, "unresolved": 71, "audited_map_points_added": 1922}
         },
-        "secondary_locationiq_key": {"requests": 367, "accepted": 102, "review_required": 262, "unresolved": 3, "additional_daily_allowance": 0, "scope": "Both keys shared the existing 5,000-request provider ceiling and rate limiter; no second free allowance was combined or reset."},
-        "request_accounting": "Committed shared reservations, not result-row counts; saved-response evaluations consume no credits. Dashboard balances were not independently refreshed.",
-        "selection": "LocationIQ targets are staged first, prioritizing unqueried addresses then previous-provider misses. Geoapify excludes all LocationIQ-targeted candidates. Bounded helper workers share the same job leases, rate limiter and daily ledger.",
+        "secondary_locationiq_key": {"requests": 3466, "requests_before_batch": 367, "additional_requests_this_batch": 3099, "accepted": 723, "review_required": 2701, "unresolved": 42, "daily_limit": 5000, "remaining": 1534, "scope": "Explicit secondary account with its own key, quota and rate lock. Primary usage was unchanged; remaining credits were preserved after the maintainer stopped repeat lookups."},
+        "request_accounting": "Committed per-account reservations with a provider/day aggregate, not result-row counts. Migration 101 attributes earlier requests without rewriting them. Account ledgers reconcile exactly; saved-response evaluations consume no credits. Dashboard balances were not independently refreshed.",
+        "selection": "Completed 1,184 usable unqueried addresses, then 1,636 previous-provider misses. A further 279 same-provider retries added no accepted matches and were stopped. Future work should not repeat unchanged review results merely to spend an allowance.",
+        "batch_cohorts": {
+          "unqueried": {"requests": 1184, "accepted": 351, "review_required": 825, "unresolved": 8},
+          "previous_provider_misses": {"requests": 1636, "accepted": 270, "review_required": 1337, "unresolved": 29},
+          "same_provider_retries_stopped": {"requests": 279, "accepted": 0, "review_required": 277, "unresolved": 2}
+        },
+        "future_retry_tracking": "Existing geocode_jobs, geocode_job_events and geocode_results retain providers, queries, attempts, dates and outcomes. A later release can select unsuccessful records again; no new deferral mechanism or blocking flags are used. No geocoding workers remain running.",
         "retained_response_reconciliation": {
           "ruleset": "german-street-spelling-v1",
           "method": "locationiq_retained_street_v1",
           "initial_pass_examined": 4455,
           "latest_pass_examined": 5000,
-          "latest_pass_new_points": 100,
-          "accepted_points": 259,
+          "latest_pass_new_points": 113,
+          "accepted_points": 372,
           "idempotent_replay_new_points": 0,
           "database_rejected": 0,
           "provider_calls": 0,
@@ -733,9 +744,11 @@
         },
         "new_public_rows": 0,
         "baseline_unchanged": true,
-        "current_enrichment_states": {"resolved": 5698, "conflict": 8766, "queued": 1193, "unresolved": 72, "retryable": 2, "coarse_eligible": 24},
+        "current_enrichment_states": {"resolved": 6432, "conflict": 9179, "queued": 11, "unresolved": 109, "coarse_eligible": 24},
         "active_jobs_after_batch": 0,
         "duplicate_requested_jobs_today": 0,
+        "duplicate_attempt_reservations": 0,
+        "account_ledger_mismatches": 0,
         "display_cache_and_audited_view_parity_failures": 0,
         "derived_parent_lineage_mismatches": 0,
         "scope": "Completed local enrichment and SQL audit; the frozen V0 baseline and current public releases are unchanged. Earlier API membership figures remain historical. Original provider responses and native source fields are retained."
@@ -761,9 +774,12 @@
         "pipeline/scripts/diagnostics/audit-germany-retained-geocodes.py",
         "pipeline/geocoding/germany_retained_reconciliation.py",
         "pipeline/migrations/100_germany_retained_geocode_reconciliation.sql",
-        "pipeline/tests/test_germany_retained_reconciliation_postgis.py"
+        "pipeline/tests/test_germany_retained_reconciliation_postgis.py",
+        "pipeline/migrations/101_geocode_account_budgets.sql",
+        "pipeline/geocoding/accounts.py",
+        "pipeline/tests/test_geocode_accounts_postgis.py"
       ],
-      "next_action": "Prepare the 15,755-record cohort with 5,698 address points and 10,057 unmapped records for the next dated release, retaining native names, activities, source dates and LocationIQ attribution. Both 2026-10-27 UTC provider budgets are used; retain 1,193 queued jobs and two retryable jobs for a later allowance without resetting history. Investigate seven accepted Geoapify responses lacking context audits from retained evidence. Assess official Destatis municipality references as a separate approximate fallback, with unique municipality/state matching and explicit provenance; no such fallback is implemented or counted here."
+      "next_action": "Prepare the 15,755-record cohort with 6,432 address points and 9,323 unmapped records for the next dated release, retaining native names, activities, source dates and LocationIQ attribution. The maintainer has ended this geocoding pass to prioritize major backend/data features; unsuccessful attempts remain in the existing job/result history for a later retry run. Preserve the remaining 1,534 secondary-account requests. Seven accepted Geoapify responses without context audits remain unmapped; they do not require another broad correction sprint. Additional captures, municipality fallbacks and matching improvements belong to later data work, not perfection of this release."
     },
     {"source_id":"ca.ontario.meat-plants","metadata":"verified","acquisition":"verified","runtime_health":"not_run","publication_eligibility":"blocked","e2e_verified":true,"last_verified_run":{"verified_at_utc":"2026-10-02T01:55:47.890787Z","parsed":460,"accepted_private_candidates":460,"quarantined":0,"mapped":0,"unmapped":460,"numeric_coordinates_persisted":0,"taxonomy_assignment_sets":460,"taxonomy_assignment_rows":1021,"public_rows":0,"idempotent_replay":true},"preview_eligible":true,"included_in_active_preview_database":true,"evidence":["data/manifests/ontario-private-e2e-20261002.json","pipeline/preview-enabled-sources.json","scripts/real_preview.py","scripts/certify_real_preview.py","docs/countries/canada/meat-plants-pipeline.md","pipeline/sources/canada/adapter.py","pipeline/sources/canada/acquire.py","pipeline/sources/canada/refresh.py","pipeline/source_registry.json"],"next_action":"One-time strict private E2E passed and exact certified run imported to the retained private preview (460 current-source candidates); list/search/detail pass, but all remain unmapped because source coordinates/address remain withheld pending privacy/location review. Zero map pins/public rows. Ontario only; freshness/completeness are not guaranteed. Do not publish without separate review/approval."},
     {"source_id":"ca.cfia.federal-meat","metadata":"verified","acquisition":"verified","runtime_health":"unknown","publication_eligibility":"blocked","e2e_verified":true,"last_verified_run":{"verified_at_utc":"2026-10-01T03:54:16Z","parsed":874,"accepted_private_candidates":858,"quarantined":16,"mapped":0,"unmapped":858},"preview_eligible":true,"included_in_active_preview_database":false,"evidence":["docs/country-recon-ca.md","docs/countries/canada/meat-plants-pipeline.md","pipeline/sources/canada/adapter.py","pipeline/sources/canada/acquire.py","pipeline/sources/canada/refresh.py","pipeline/sources/canada/geocode_queue.py","pipeline/sources/canada/fixtures/cfia.csv","pipeline/preview-enabled-sources.json","scripts/real_preview.py","scripts/certify_real_preview.py","pipeline/common/review_packet.py","pipeline/source_registry.json"],"next_action":"Latest strict private-preview E2E verified 2026-10-01T03:54:16Z: 874 parsed, 858 accepted private candidates, 16 quarantined, 0 mapped and 858 unmapped. Configured for private preview but not present in the active preview DB; the one-time isolated E2E used a disposable DB. A temporary restricted geocode queue was removed and no external request was made. Effective date/Last-Modified is absent; completeness, privacy clearance, recurring health, and publication remain unresolved."},

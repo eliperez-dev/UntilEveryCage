@@ -80,8 +80,9 @@ counts in [the source inventory](source-status.json), not copied sprint totals.
 France transforms source-declared coordinate systems. National Spain separately
 joins AESAN registration/province evidence to official IGN municipality points;
 those points remain approximate. Germany validates address, postcode and locality
-context before displaying provider points; most staged addresses still await
-geocoding. The BLtU reuse licence is identified in the official federal catalogue,
+context before displaying provider points. Its usable unqueried address cohort
+has completed a first pass; unmatched attempts remain recorded in the existing queue for a later
+release. Complete geocoding is not a launch requirement. The BLtU reuse licence is identified in the official federal catalogue,
 with attribution evidence retained. Mexico's attachment/token route remains
 blocked. The source inventory owns measured counts and unresolved cases.
 
@@ -110,8 +111,9 @@ It is preparation evidence, not a frozen or promoted release.
    integration suites after each small edit.
 3. Deliver missing country coverage through source-specific lanes using the
    existing shared runner and separate enrichment jobs. Complete Spain address
-   matching and scale its verified municipality enrichment; finish Germany enrichment
-   and Mexico acquisition. UK and New Zealand
+   matching and scale its verified municipality enrichment. Carry Germany's
+   completed first pass into release preparation without repeating unchanged
+   matches; unfinished geocoding is deferred. Continue Mexico acquisition. UK and New Zealand
    must also pass fresh end-to-end source/map checks and be included in the final
    launch dataset. Extend languages through the same system.
 4. Build the new dated launch dataset; preserve current and historical releases.
