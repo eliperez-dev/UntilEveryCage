@@ -51,12 +51,13 @@ The source inventory owns graph package/runtime details and source-specific evid
 
 The reviewed frontend delivery is merged with the country-release backend
 checkpoint. It includes the mobile workspace, additional languages, map tools,
-area search, raster handoff and cold-navigation fixes. Required CI has six
-passing jobs but still fails two 3D browser checks; rollout remains pending
-while their trace-backed test corrections are verified. Exact revisions,
-results and deployment state are retained in ignored
-`data/staging/app-review-20261027/acceptance.json`. The currently hosted dataset
-and serving database are unchanged.
+area search, raster handoff and cold-navigation fixes. Application revision
+`b43c96ec` passed all seven jobs in required CI run `40585848047` and is live on
+Render as deployment `dep-dbgho5bl550s738e4beg`. Bounded hosted checks passed
+for current and historical manifests, lists, maps, facility detail, exact and
+inferred connections, and contribution capabilities. The hosted dataset and
+serving database are unchanged. Exact revisions, results and hosted UI review
+are retained in ignored `data/staging/app-review-20261027/acceptance.json`.
 
 ## Launch gates
 
