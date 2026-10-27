@@ -81,6 +81,7 @@
     onclose,
     oncategoryfilter,
     onsourcefilter,
+    onshowmap,
   }: {
     record: LabRecord | RecordDetailRecord;
     presentation?: 'rail' | 'page';
@@ -90,6 +91,7 @@
     onclose?: () => void;
     oncategoryfilter?: ((key: string) => void) | undefined;
     onsourcefilter?: ((sourceId: string) => void) | undefined;
+    onshowmap?: (() => void) | undefined;
   } = $props();
   let copyFeedback = $state<'copied' | 'failed' | ''>('');
   let copyResetTimer: ReturnType<typeof setTimeout> | undefined;
@@ -196,6 +198,10 @@
       'retrieved_at' in record ? record.retrieved_at : null,
     ),
   );
+  function shortDate(raw: string): string {
+    const date = new Date(raw);
+    return Number.isNaN(date.getTime()) ? raw : new Intl.DateTimeFormat($language, { day:'numeric', month:'short', year:'numeric', timeZone:'UTC' }).format(date);
+  }
   const observed = $derived(
     value(
       'observedAt' in record ? record.observedAt : null,
@@ -347,6 +353,7 @@
     <div class="record-category"><CategoryBadge record={classificationRecord} onfilter={oncategoryfilter} /></div>
     <ClassificationSummary record={classificationRecord} />
   </section>
+  {#if presentation === 'rail' && (sourceName || observed || retrieved)}<p class="compact-source">{#if sourceName}<span>{sourceName}</span>{/if}{#if observed || retrieved}<span>{sourceName ? ' · ' : ''}{tr(observed ? 'Observed' : 'Retrieved', $language)} <time datetime={observed ?? retrieved ?? undefined} title={observed ?? retrieved ?? undefined}>{shortDate(observed ?? retrieved ?? '')}</time></span>{/if}</p>{/if}
   {#if presentation === 'page' && import.meta.env.VITE_COMMUNITY_PILOT === 'true' && id}
     <p class="contribution-actions">{#each [['evidence','Add evidence'],['correction','Suggest a correction'],['privacy-removal','Privacy or removal']] as [type, label]}<a class="evidence-link" href={`#/contribute/${type}?target=${encodeURIComponent(id)}&map=${encodeURIComponent('#/map?f1a=field')}`}>{tr(label ?? '', $language)}</a>{/each}</p>
   {/if}
@@ -367,13 +374,14 @@
       {#if coordinateConfidence !== null || record.coordinateConfidenceBand}<div><dt>{tr('Geocoding confidence', $language)}</dt><dd>{#if coordinateConfidence !== null}{coordinateConfidence} ({tr('provider score', $language)}){/if}{#if record.coordinateConfidenceBand}{coordinateConfidence !== null ? ' · ' : ''}{displayGeneratedValue(record.coordinateConfidenceBand)}{/if}</dd></div>{/if}
       {#if defaultMapScope === false}<div><dt>{tr('Map scope', $language)}</dt><dd>{tr('Outside the default map', $language)}{#if mapScopeReason} · {displayGeneratedValue(mapScopeReason)}{/if}</dd></div>{/if}
     </dl>
+    {#if presentation === 'rail' && hasCoordinates && onshowmap}<button class="show-on-map" type="button" onclick={onshowmap}>{tr('Show on map', $language)} <span aria-hidden="true">↗</span></button>{/if}
   </section>
 
   {#if presentation === 'page' && hasCoordinates}<LocationPreview latitude={record.latitude!} longitude={record.longitude!} precision={precision} category={taxonomy?.primaryCategories[0] ?? activity ?? 'unclassified'} />{/if}
 
   {#if sourceFacts}
-    <section aria-labelledby="source-facts-heading">
-      <h2 id="source-facts-heading">{tr('Source facts', $language)}</h2>
+    <svelte:element this={presentation === 'rail' ? 'details' : 'section'} class="source-facts-section" aria-labelledby="source-facts-heading">
+      {#if presentation === 'rail'}<summary id="source-facts-heading">{tr('Source facts', $language)}</summary>{:else}<h2 id="source-facts-heading">{tr('Source facts', $language)}</h2>{/if}
       <dl>
         {#if speciesSlaughtered}<div><dt>{tr('Species slaughtered', $language)}</dt><dd>{speciesSlaughtered}</dd></div>{/if}
         {#if slaughterRangeText}<div><dt>{tr('Estimated animals slaughtered (last 360 days)', $language)}</dt><dd>{slaughterRangeText}</dd></div>{/if}
@@ -386,15 +394,18 @@
         {#if sourceFacts.aphisAnnualReports?.length}{#each sourceFacts.aphisAnnualReports as report (report.fiscalYear)}<div><dt>{tr('FY ', $language)}{report.fiscalYear} {tr('reported animals', $language)}</dt><dd><ul>{#each report.speciesCounts as species (species.species)}<li>{sourceFactLabel(species.species)}: {annualSpeciesCount(species.count)}</li>{/each}</ul>{#if safeHttps(report.sourceUrl)}<a href={safeHttps(report.sourceUrl) ?? ''} target="_blank" rel="noopener noreferrer">{tr('Source report', $language)}</a>{/if}</dd></div>{/each}{/if}
         {#if sourceFacts.aphisDatedInspections?.length}{#each sourceFacts.aphisDatedInspections as inspection (inspection.inspectionDate)}<div><dt>{tr('APHIS inspection', $language)}</dt><dd>{inspection.inspectionDate}{#if safeHttps(inspection.sourceUrl)} <a href={safeHttps(inspection.sourceUrl) ?? ''} target="_blank" rel="noopener noreferrer">{tr('Source record', $language)}</a>{/if}</dd></div>{/each}{/if}
       </dl>
-    </section>
+    </svelte:element>
   {/if}
 
   {#if publicRelease && publicReleaseId && id}
+    <svelte:element this={presentation === 'rail' ? 'details' : 'div'} class="connections-disclosure">
+    {#if presentation === 'rail'}<summary>{tr('Connections', $language)}</summary>{/if}
     <RecordConnections facilityId={id} releaseId={publicReleaseId} sourceId={sourceId ?? undefined} sourceFacts={sourceFacts} rail={presentation === 'rail'} />
+    </svelte:element>
   {/if}
 
-  <section aria-labelledby="evidence-heading">
-      <h2 id="evidence-heading">{tr('Source and review', $language)}</h2>
+  <svelte:element this={presentation === 'rail' ? 'details' : 'section'} class="evidence-section" aria-labelledby="evidence-heading">
+      {#if presentation === 'rail'}<summary id="evidence-heading">{tr('Source and review', $language)}</summary>{:else}<h2 id="evidence-heading">{tr('Source and review', $language)}</h2>{/if}
     <dl>
       {#if sourceName}<div><dt>{tr('Source', $language)}</dt><dd>{#if onsourcefilter && sourceId}<button class="filter-fact" type="button" onclick={() => onsourcefilter?.(sourceId)}>{sourceName}</button>{#if sourceUrl} <a class="source-reference" href={sourceUrl} target="_blank" rel="noopener noreferrer" aria-label={`${sourceName} (${tr('opens in a new tab', $language)})`}>↗</a>{/if}{:else if sourceUrl}<a href={sourceUrl} target="_blank" rel="noopener noreferrer">{sourceName}<span class="sr-only"> ({tr('opens in a new tab', $language)})</span></a>{:else}{sourceName}{/if}</dd></div>
       {:else if sourceId}<div><dt>{tr('Source ID', $language)}</dt><dd>{sourceId}</dd></div>{/if}
@@ -405,7 +416,7 @@
       {#if publicationStatus}<div><dt>{tr('Publication', $language)}</dt><dd>{displayGeneratedValue(publicationStatus)}</dd></div>{/if}
     </dl>
     {#if evidence}<p class="evidence">{evidence}</p>{/if}
-  </section>
+  </svelte:element>
 
   <footer>
     {#if presentation !== 'page'}<span class="record-id">Record ID · {id || 'Unavailable'}</span>{/if}
@@ -413,6 +424,11 @@
 </article>
 
 <style>
+  .compact-source { color:var(--ui-muted,var(--muted));font-size:.75rem;line-height:1.5;margin:.5rem 0 1rem;overflow-wrap:anywhere; }
+  .detail:not(.page) .show-on-map { display:inline-flex;align-items:center;gap:.75rem;min-height:44px;margin:.45rem 0 0;padding:0;border:0;background:transparent;color:var(--ink);font:inherit;text-decoration:underline;text-underline-offset:.25rem; }
+  .detail:not(.page) details.source-facts-section,.detail:not(.page) details.evidence-section,.detail:not(.page) details.connections-disclosure { border-top:1px solid var(--line);margin-top:1rem; }
+  .detail:not(.page) details > summary { min-height:48px;padding:.75rem 0;cursor:pointer;font-size:.8125rem; }
+  .detail:not(.page) .connections-disclosure :global(.connections > h2) { display:none; }
   .contribution-actions{display:flex;flex-wrap:wrap;gap:.5rem 1rem}
   .detail {
     --ink: #f1efe8;

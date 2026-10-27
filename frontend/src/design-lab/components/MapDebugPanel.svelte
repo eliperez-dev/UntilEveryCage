@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { language, tr } from '../../app/language';
   import type { CacheTuning, DebugMetric, LayoutTuning, WorldCacheTuning } from './mapDebug';
   let { session, renderer, errors = [], clusterMode, clusterRadius, clusterMaxZoom, clusterDuration, clusterMotionDuration, clusterMotionLimit, rebuildDelay,
@@ -26,6 +27,13 @@
     onclearworld(): void;
   } = $props();
   let copyStatus = $state('');
+  let mobileLayout = $state(false);
+  onMount(() => {
+    const media = matchMedia('(max-width:40rem)');
+    const update = () => { mobileLayout = media.matches; };
+    update(); media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  });
   async function copy() {
     try { await navigator.clipboard.writeText(JSON.stringify(snapshot, null, 2)); copyStatus = tr('Copied', $language); }
     catch { copyStatus = tr('Copy failed', $language); }
@@ -100,7 +108,10 @@
     <label for="cluster-rebuild-debounce">Slider rebuild delay<output>{rebuildDelay} ms</output></label><input id="cluster-rebuild-debounce" type="range" min="0" max="500" step="25" value={rebuildDelay} oninput={e => oninteraction('debounce', Number(e.currentTarget.value))} /></fieldset>
   </details>
   <details open><summary>{tr('Layout & density', $language)}</summary><fieldset><legend class="sr-only">{tr('Layout & density', $language)}</legend>
-    <label for="debug-panel-width">{tr('Panel width', $language)}<output>{Math.round(layout.panelWidthPercent)}%</output></label><input id="debug-panel-width" type="range" min="25" max="55" step="1" value={layout.panelWidthPercent} oninput={e => onlayout({...layout, panelWidthPercent: Number(e.currentTarget.value)})} />
+    {#if mobileLayout}
+    <label for="debug-sheet-height">{tr('Mobile sheet height', $language)}<output>{layout.mobileSheetPercent ?? 48}%</output></label><input id="debug-sheet-height" type="range" min="35" max="65" step="1" value={layout.mobileSheetPercent ?? 48} oninput={e => onlayout({...layout, mobileSheetPercent: Number(e.currentTarget.value)})} />
+    <label for="debug-sheet-expanded">{tr('Expanded sheet height', $language)}<output>{layout.mobileExpandedPercent ?? 90}%</output></label><input id="debug-sheet-expanded" type="range" min="75" max="95" step="1" value={layout.mobileExpandedPercent ?? 90} oninput={e => onlayout({...layout, mobileExpandedPercent: Number(e.currentTarget.value)})} />
+    {:else}<label for="debug-panel-width">{tr('Panel width', $language)}<output>{Math.round(layout.panelWidthPercent)}%</output></label><input id="debug-panel-width" type="range" min="25" max="55" step="1" value={layout.panelWidthPercent} oninput={e => onlayout({...layout, panelWidthPercent: Number(e.currentTarget.value)})} />{/if}
     <label for="debug-row-padding">{tr('Result spacing', $language)}<output>{layout.rowPadding} px</output></label><input id="debug-row-padding" type="range" min="10" max="22" step="1" value={layout.rowPadding} oninput={e => onlayout({...layout, rowPadding: Number(e.currentTarget.value)})} />
     <label for="debug-type-scale">{tr('Text size', $language)}<output>{Math.round(layout.typeScale * 100)}%</output></label><input id="debug-type-scale" type="range" min="0.9" max="1.15" step="0.05" value={layout.typeScale} oninput={e => onlayout({...layout, typeScale: Number(e.currentTarget.value)})} />
   </fieldset></details>

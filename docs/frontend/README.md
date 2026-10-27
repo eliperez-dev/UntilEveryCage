@@ -54,7 +54,7 @@ API schemas own supported fields. They are not additional roadmaps.
 - Keep Search map on the map. Street/Satellite and 2D/3D remain in header Tools.
   A compact map navigation toolbar groups compass/reset north, zoom, Your
   location and Search this area, with expandable pan/rotate controls.
-  The collapsed Search map control sits flush against the map's top-left,
+  On desktop, the collapsed Search map control sits flush against the map's top-left,
   directly below the shared header.
   Preserve the compact controls, theme styles and 44px touch targets.
 - Resize applicable panels by dragging edges, not plus/minus width buttons.
@@ -64,7 +64,18 @@ API schemas own supported fields. They are not additional roadmaps.
   the map occupies the remaining two-thirds and really resizes, retaining the current
   camera rather than recentering an existing selection. Search, filters, results and facility detail share that workspace.
   Back to results restores the list and its scroll position. Mobile uses a
-  bottom search sheet and fullscreen detail. Below Search, keep Filters with its
+  bottom search sheet with collapsed, middle and expanded positions. The
+  collapsed sheet is only a 56px Search map pull handle plus the safe area;
+  tapping, keyboard steps or dragging that handle opens it. Normal result
+  scrolling never drags the sheet. The map resizes into the remaining space
+  without recreating its renderer. The middle and expanded height settings
+  are bounded, temporary controls under Layout & density in the debug menu.
+  Mobile detail fills the workspace and replaces all search, filters, totals
+  and download chrome, including while loading or reporting a detail error.
+  Back restores the previous sheet position and list context. Show on map
+  collapses the sheet while retaining the selection; View facility details
+  returns to that record. Unmapped records have no Show on map action.
+  Below Search, keep Filters with its
   sliders icon and the result count on one compact row. Keep detail dense and
   readable, with a prominent outlined `Open facility page` action directly
   below the facility name.
@@ -155,6 +166,8 @@ API schemas own supported fields. They are not additional roadmaps.
   satellite zoom 15; approximate street zoom 9. Do not fetch the global point
   projection for these previews or invent an address from a locality.
 - Show the category pin and short text label in search rows and expanded detail.
+  Search rows also show a concise activity summary when the shared deterministic
+  classification presenter has enough source information; omit empty summaries.
   Summarize classification with deterministic wording from existing source
   fields and affirmative activities, using the same presenter on the panel
   and full record. Preserve exact source classification and all supporting

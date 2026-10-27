@@ -88,6 +88,7 @@ test('map detail shows one category and each activity, preserves facts, and open
   await expect(panel.getByText('Source-provided coordinates', { exact: true })).toBeVisible();
   await expect(panel.getByText('55.123457, 10.123457', { exact: true })).toBeVisible();
   await expect(panel.getByText('Location method', { exact: true })).toHaveCount(0);
+  await panel.locator('.source-facts-section > summary').click();
   await expect(panel.getByText('Synthetic former name', { exact: true })).toBeVisible();
   await expect(panel.getByText('SYNTHETIC-1', { exact: true })).toBeVisible();
   await expect(panel.getByText('10,000 to less than 100,000 pounds/month', { exact: true })).toBeVisible();
@@ -196,7 +197,7 @@ test('city-level geocoding keeps its approximation and actual provider score in 
   await expect(full.getByRole('heading', { name: 'Location', exact: true })).toHaveCount(1);
 });
 
-test('mobile workspace fills the viewport with search, a scrollable dossier, and keyboard dismissal', async ({ page }) => {
+test('mobile detail replaces search below the shared header with a scrollable dossier and keyboard dismissal', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await mockPublicRecord(page);
   const open = async () => {
@@ -209,15 +210,22 @@ test('mobile workspace fills the viewport with search, a scrollable dossier, and
   const close = panel.getByRole('button', { name: 'Close record detail' });
   for (const [width, height] of [[375, 812], [375, 667], [320, 667]]) {
     await page.setViewportSize({ width: width!, height: height! });
-    await expect(workspace).toHaveCSS('position', 'fixed');
-    expect(await workspace.boundingBox()).toEqual({ x: 0, y: 0, width, height });
+    await expect(workspace).toHaveCSS('position', 'absolute');
+    const workspaceBox = (await workspace.boundingBox())!;
+    const headerBox = (await page.locator('.field-view > .masthead').boundingBox())!;
+    expect(workspaceBox.x).toBe(0);
+    expect(workspaceBox.width).toBe(width);
+    expect(workspaceBox.y).toBeCloseTo(headerBox.y + headerBox.height, 0);
+    expect(workspaceBox.y + workspaceBox.height).toBeCloseTo(height!, 0);
     const search = workspace.locator('#field-search');
-    await expect(search).toBeInViewport();
-    const searchBox = (await search.boundingBox())!;
+    await expect(search).toBeHidden();
+    await expect(workspace.locator('.search-tools')).toBeHidden();
+    await expect(workspace.locator('.csv-download')).toBeHidden();
+    await expect(workspace.locator('.result-status')).toBeHidden();
     const box = (await panel.boundingBox())!;
     expect(box.x).toBe(0);
     expect(box.width).toBe(width);
-    expect(box.y).toBeGreaterThanOrEqual(searchBox.y + searchBox.height);
+    expect(box.y).toBeCloseTo(workspaceBox.y, 0);
     expect(box.height).toBeGreaterThan(200);
     expect(box.y + box.height).toBeCloseTo(height!, 0);
     expect(await workspace.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);

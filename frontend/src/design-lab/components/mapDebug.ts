@@ -1,4 +1,4 @@
-export type LayoutTuning = Readonly<{ panelWidthPercent: number; rowPadding: number; typeScale: number }>;
+export type LayoutTuning = Readonly<{ panelWidthPercent: number; rowPadding: number; typeScale: number; mobileSheetPercent?: number; mobileExpandedPercent?: number }>;
 export type CacheTuning = Readonly<{
   indexEnabled: boolean;
   indexMaxMiB: number;
