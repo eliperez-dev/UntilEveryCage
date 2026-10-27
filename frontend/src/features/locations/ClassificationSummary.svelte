@@ -1,23 +1,24 @@
 <script lang="ts">
   import { language, tr } from '../../app/language';
   import { classificationSummary, type ClassificationRecord } from './classificationSummary';
+  import { classificationExplanation } from './classificationExplanation';
   let { record, presentation = 'all' }: { record: ClassificationRecord; presentation?: 'all' | 'summary' | 'details' } = $props();
   const classification = $derived(classificationSummary(record, label => tr(label, $language)));
+  const explanation = $derived(classificationExplanation(record, label => tr(label, $language), $language));
 </script>
 
 <div class="classification-summary">
   {#if presentation !== 'details'}
-    {#if classification.summary}<p class="summary">{classification.summary}</p>{/if}
-    {#if !classification.summary && !classification.supportingActivities.length && !classification.sourceLabels.length}<p class="summary">{tr('Activity details not provided', $language)}</p>{/if}
-    {#if classification.activities.length && classification.hasAphisClassification}<p class="additional-activities"><span>{tr('Recorded activities', $language)}:</span> {classification.activities.join(', ')}</p>{/if}
+    <p class="summary" data-classification-explanation>{explanation.text}</p>
   {/if}
-  {#if presentation !== 'summary' && (classification.supportingActivities.length || classification.sourceLabels.length || classification.categories.length > 1)}
+  {#if presentation !== 'summary'}
     <details>
       <summary>{tr('Classification details', $language)}</summary>
       <dl>
         {#if classification.categories.length > 1}<div><dt>{tr('Categories', $language)}</dt><dd>{classification.categories.join(', ')}</dd></div>{/if}
         {#if classification.supportingActivities.length}<div><dt>{tr('Activity classification', $language)}</dt><dd>{classification.supportingActivities.join(', ')}</dd></div>{/if}
         {#if classification.sourceLabels.length}<div><dt>{tr('Source classification', $language)}</dt><dd>{classification.sourceLabels.join(' · ')}</dd></div>{/if}
+        <div><dt>{tr('Category definitions', $language)}</dt><dd class="references">{#each explanation.references as reference}<a href={reference.href} target={reference.href.startsWith('https:') ? '_blank' : undefined} rel={reference.href.startsWith('https:') ? 'noopener noreferrer' : undefined}>{tr(reference.label, $language)}</a>{/each}</dd></div>
       </dl>
     </details>
   {/if}
@@ -25,7 +26,9 @@
 
 <style>
   .classification-summary { font: inherit; color: inherit; }
-  .summary, .additional-activities { margin: .3rem 0 .5rem; line-height: 1.55; overflow-wrap: anywhere; }
+  .summary { margin: .3rem 0 .5rem; line-height: 1.55; overflow-wrap: anywhere; }
+  .references { display:flex;flex-direction:column;align-items:flex-start; }
+  .references a { display:inline-flex;align-items:center;min-height:2.75rem;text-underline-offset:3px; }
   details { margin-top: .2rem; }
   summary { display: list-item; width: fit-content; min-height: 2.75rem; padding: .65rem 0; cursor: pointer; font-size: .75rem; }
   summary:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }

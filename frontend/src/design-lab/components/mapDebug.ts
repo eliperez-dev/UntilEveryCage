@@ -49,13 +49,14 @@ export type DiagnosticInput = Readonly<{
   width: number; height: number; canvasWidth: number; canvasHeight: number;
   zoom: number; bearing: number; pitch: number;
   clusterMode: 'auto' | 'on' | 'off'; clusterRadius: number; clusterMaxZoom: number;
-  clusterMotionDuration?: number; clusterMotionLimit?: number;
+  clusterMotionDuration?: number; clusterMotionLimit?: number; clusterMotionIdleDelay?: number;
   pinScale: number; layout: LayoutTuning;
   cache?: CacheTuning;
   worldCache?: WorldCacheTuning;
   worldCacheMetrics?: Readonly<{ status: string; bytes: number; hits: number; requests: number; readyChunks: number; totalChunks: number }>;
   cacheMetrics?: Readonly<{ indexState: string | null; builds: number; restores: number; indexReason?: string | null; indexStoredBytes?: number | null;
-    tileEntries: number; tileBytes: number; tileHits: number; tileMisses: number; tileEvictions: number; httpDelegations: number }>;
+    tileEntries: number; tileBytes: number; tileHits: number; tileMisses: number; tileEvictions: number; httpDelegations: number;
+    streetHits?: number; streetMisses?: number; streetDelegations?: number; satelliteHits?: number; satelliteMisses?: number; satelliteDelegations?: number }>;
 }>;
 
 const finite = (value: number | null) => value !== null && Number.isFinite(value) ? value : null;
@@ -79,7 +80,7 @@ export function safeDiagnosticSnapshot(input: DiagnosticInput) {
     projection: { requests: finite(input.feedRequests), decodedBytes: finite(input.decodedBytes), cacheEntries: finite(input.cacheEntries), indexUpdates: finite(input.indexUpdates ?? null) },
     timingMs: { feed: finite(input.feedMs), index: finite(input.indexMs), rebuild: finite(input.rebuildMs), cameraMoveend: finite(input.cameraMoveendMs), cameraIdle: finite(input.cameraIdleMs) },
     viewport: { width: finite(input.width), height: finite(input.height), canvasWidth: finite(input.canvasWidth), canvasHeight: finite(input.canvasHeight), zoom: finite(input.zoom), bearing: finite(input.bearing), pitch: finite(input.pitch) },
-    tuning: { clusterMode: ['auto','on','off'].includes(input.clusterMode) ? input.clusterMode : null, clusterRadius: finite(input.clusterRadius), clusterMaxZoom: finite(input.clusterMaxZoom), clusterMotionDuration: finite(input.clusterMotionDuration ?? null), clusterMotionLimit: finite(input.clusterMotionLimit ?? null), pinScale: finite(input.pinScale), panelWidthPercent: finite(input.layout.panelWidthPercent), rowPadding: finite(input.layout.rowPadding), typeScale: finite(input.layout.typeScale) },
+    tuning: { clusterMode: ['auto','on','off'].includes(input.clusterMode) ? input.clusterMode : null, clusterRadius: finite(input.clusterRadius), clusterMaxZoom: finite(input.clusterMaxZoom), clusterMotionDuration: finite(input.clusterMotionDuration ?? null), clusterMotionLimit: finite(input.clusterMotionLimit ?? null), clusterMotionIdleDelay: finite(input.clusterMotionIdleDelay ?? null), pinScale: finite(input.pinScale), panelWidthPercent: finite(input.layout.panelWidthPercent), rowPadding: finite(input.layout.rowPadding), typeScale: finite(input.layout.typeScale) },
     cache: {
       indexEnabled: typeof input.cache?.indexEnabled === 'boolean' ? input.cache.indexEnabled : null,
       indexMaxMiB: finite(input.cache?.indexMaxMiB ?? null),
@@ -95,6 +96,8 @@ export function safeDiagnosticSnapshot(input: DiagnosticInput) {
       tileEntries: finite(input.cacheMetrics?.tileEntries ?? null), tileBytes: finite(input.cacheMetrics?.tileBytes ?? null),
       tileHits: finite(input.cacheMetrics?.tileHits ?? null), tileMisses: finite(input.cacheMetrics?.tileMisses ?? null),
       tileEvictions: finite(input.cacheMetrics?.tileEvictions ?? null), httpDelegations: finite(input.cacheMetrics?.httpDelegations ?? null),
+      streetHits: finite(input.cacheMetrics?.streetHits ?? null), streetMisses: finite(input.cacheMetrics?.streetMisses ?? null), streetDelegations: finite(input.cacheMetrics?.streetDelegations ?? null),
+      satelliteHits: finite(input.cacheMetrics?.satelliteHits ?? null), satelliteMisses: finite(input.cacheMetrics?.satelliteMisses ?? null), satelliteDelegations: finite(input.cacheMetrics?.satelliteDelegations ?? null),
     },
     worldCache: {
       enabled: typeof input.worldCache?.enabled === 'boolean' ? input.worldCache.enabled : null,

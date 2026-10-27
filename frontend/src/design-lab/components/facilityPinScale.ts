@@ -9,7 +9,7 @@ export function applyFacilityPinScale(map: {
   for (const [id, base] of [
     ['v1-source-pins', 0.5], ['v1-source-shadows', 1],
     ['approx-reference-pins', 0.5], ['approx-reference-shadows', 1],
-    ['approx-reference-points', 0.5], ['approx-reference-cue', 0.5],
+    ['approx-reference-points', 0.5],
     ['mvt-v1-source-pins', 0.5], ['mvt-v1-source-shadows', 1], ['mvt-reference-center', 0.5],
   ] as const) {
     if (map.getLayer(id)) map.setLayoutProperty(id, 'icon-size', base * scale);

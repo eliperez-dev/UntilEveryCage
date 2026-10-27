@@ -37,7 +37,7 @@
   } from "../contract";
   import { MvtMotionController } from "./mvtMotionController";
   import { JsonClusterMotionController } from "./jsonClusterMotionController";
-  import { NativeClusterMotionController, DEFAULT_CLUSTER_MOTION_MS, DEFAULT_CLUSTER_MOTION_LIMIT } from './nativeClusterMotion';
+  import { NativeClusterMotionController, DEFAULT_CLUSTER_MOTION_MS, DEFAULT_CLUSTER_MOTION_LIMIT, DEFAULT_CLUSTER_IDLE_MS, type ClusterMotionState } from './nativeClusterMotion';
   import {
     addJsonLocationLayers,
     createJsonMapCollection,
@@ -363,6 +363,8 @@
   let clusterZoomDuration = $state(460);
   let clusterMotionDuration = $state(DEFAULT_CLUSTER_MOTION_MS);
   let clusterMotionLimit = $state(DEFAULT_CLUSTER_MOTION_LIMIT);
+  let clusterMotionIdleDelay = $state(DEFAULT_CLUSTER_IDLE_MS);
+  let clusterMotionState = $state<ClusterMotionState>('idle');
   let clusterRebuildDebounce = $state(150);
   let clusterSettingsError = $state("");
   let roundedClusterTilesAvailable = $state(true);
@@ -703,7 +705,7 @@
       map.addImage("reference-marker", clusterImage("#ff695ce6", "#d8473fe6"));
   }
   function scheduleClusterSettings() {
-    nativeMotionController?.cancel();
+    nativeMotionController?.invalidate();
     if (clusterUpdateTimer) clearTimeout(clusterUpdateTimer);
     clusterUpdateTimer = setTimeout(async () => {
       if (usingMvt && map) {
@@ -874,11 +876,14 @@
     { label: 'Decoded projection', value: nativeDecodedBytes === null ? 'Unavailable' : `${(nativeDecodedBytes / 1048576).toFixed(2)} MB` },
     { label: 'Units / approximate references', value: `${nativeUnitCount.toLocaleString()} / ${nativeApproximateCount.toLocaleString()}` },
     { label: 'Index updates', value: String(nativeIndexUpdates) },
+    { label: tr('Cluster animation state', $language), value: clusterMotionState },
     { label: 'Persistent index', value: cacheTuning.indexEnabled ? indexCacheDiagnostic?.state ?? 'Not sampled' : 'Disabled' },
     { label: 'Cache builds / restores', value: `${indexCacheDiagnostic?.builds ?? 0} / ${indexCacheDiagnostic?.restores ?? 0}` },
     { label: tr('Stored index size', $language), value: indexCacheDiagnostic?.storedBytes == null ? 'Not sampled' : `${(indexCacheDiagnostic.storedBytes / 1048576).toFixed(2)} MiB` },
     ...(indexCacheReasonLabel(indexCacheDiagnostic?.reason) ? [{ label: tr('Index cache reason', $language), value: tr(indexCacheReasonLabel(indexCacheDiagnostic?.reason)!, $language) }] : []),
     { label: 'Tile cache hits / misses', value: `${tileCacheDiagnostic.hits} / ${tileCacheDiagnostic.misses}` },
+    { label: tr('Street app hits / misses / browser-managed requests', $language), value: `${tileCacheDiagnostic.streetHits} / ${tileCacheDiagnostic.streetMisses} / ${tileCacheDiagnostic.streetDelegations}` },
+    { label: tr('Satellite app hits / misses / browser-managed requests', $language), value: `${tileCacheDiagnostic.satelliteHits} / ${tileCacheDiagnostic.satelliteMisses} / ${tileCacheDiagnostic.satelliteDelegations}` },
     { label: 'Tile cache entries / size', value: `${tileCacheDiagnostic.entries} / ${(tileCacheDiagnostic.bytes / 1048576).toFixed(2)} MiB` },
     { label: 'Tile cache evictions / HTTP cache', value: `${tileCacheDiagnostic.evictions} / ${tileCacheDiagnostic.policyDelegations}` },
     { label: tr('World baseline', $language), value: worldCacheDiagnostic.status },
@@ -900,20 +905,21 @@
     feedMs: nativeFeedMs, indexMs: nativeIndexMs, rebuildMs: nativeRebuildMs,
     cameraMoveendMs: nativeCameraMoveendMs, cameraIdleMs: nativeCameraIdleMs,
     ...debugDimensions, zoom: mapState.viewport.zoom, bearing: mapState.viewport.bearing ?? 0, pitch: cameraPitch,
-    clusterMode: debugClusterMode, clusterRadius, clusterMaxZoom, clusterMotionDuration, clusterMotionLimit, pinScale, layout: layoutTuning,
+    clusterMode: debugClusterMode, clusterRadius, clusterMaxZoom, clusterMotionDuration, clusterMotionLimit, clusterMotionIdleDelay, pinScale, layout: layoutTuning,
     cache: cacheTuning,
     worldCache: worldTuning, worldCacheMetrics: worldCacheDiagnostic,
     cacheMetrics: { indexState: indexCacheDiagnostic?.state ?? null, builds: indexCacheDiagnostic?.builds ?? 0,
       indexReason: indexCacheDiagnostic?.reason ?? null, indexStoredBytes: indexCacheDiagnostic?.storedBytes ?? null,
       restores: indexCacheDiagnostic?.restores ?? 0, tileEntries: tileCacheDiagnostic.entries, tileBytes: tileCacheDiagnostic.bytes,
       tileHits: tileCacheDiagnostic.hits, tileMisses: tileCacheDiagnostic.misses, tileEvictions: tileCacheDiagnostic.evictions,
-      httpDelegations: tileCacheDiagnostic.policyDelegations },
+      httpDelegations: tileCacheDiagnostic.policyDelegations, streetHits: tileCacheDiagnostic.streetHits, streetMisses: tileCacheDiagnostic.streetMisses, streetDelegations: tileCacheDiagnostic.streetDelegations,
+      satelliteHits: tileCacheDiagnostic.satelliteHits, satelliteMisses: tileCacheDiagnostic.satelliteMisses, satelliteDelegations: tileCacheDiagnostic.satelliteDelegations },
   }));
   function resetTemporarySettings() {
     clusterRadius = DEFAULT_CLUSTER_RADIUS; clusterMaxZoom = DEFAULT_CLUSTER_MAX_ZOOM; clusterEnabledOverride = null;
     referenceRadiusKm = DEFAULT_REFERENCE_RADIUS_KM; referenceOpacity = 0.22; coordinateRadius = 6.5;
     pinScale = DEFAULT_FACILITY_PIN_SCALE; showReferenceLabels = false; useV1Pins = true; clusterZoomDuration = 460; clusterRebuildDebounce = 150;
-    clusterMotionDuration = DEFAULT_CLUSTER_MOTION_MS; clusterMotionLimit = DEFAULT_CLUSTER_MOTION_LIMIT; nativeMotionController?.cancel();
+    clusterMotionDuration = DEFAULT_CLUSTER_MOTION_MS; clusterMotionLimit = DEFAULT_CLUSTER_MOTION_LIMIT; clusterMotionIdleDelay = DEFAULT_CLUSTER_IDLE_MS; nativeMotionController?.cancel();
     onLayoutTuningReset?.(); scheduleClusterSettings(); updateVisualSettings(); void updatePinMode();
   }
   $effect(() => {
@@ -965,7 +971,7 @@
     }
   }
   function restoreNativeProjection(instance: MapLibreMap, data: JsonMapCollection): void {
-    nativeMotionController?.cancel();
+    nativeMotionController?.invalidate();
     // A verified feed can arrive through resume without passing addLayers.
     // Symbols must be registered before their source reaches worker placement.
     loadClusterImages();
@@ -1039,6 +1045,7 @@
     if (appliedNativeClustering === enabled) return;
     const source = instance.getSource('locations') as GeoJSONSource | undefined;
     if (!source) return;
+    nativeMotionController?.invalidate();
     appliedNativeClustering = enabled;
     nativeIndexUpdates++;
     void source.setClusterOptions({ cluster: enabled, clusterRadius, clusterMaxZoom: nativeClusterMaxZoom(clusterMaxZoom) })
@@ -1070,6 +1077,7 @@
     addJsonLocationLayers(map, createJsonMapCollection(mapped, mode));
   }
   async function loadNativeFeed() {
+    nativeMotionController?.invalidate();
     const instance = map;
     if (!instance || !active) return;
     if (mode === "public-release" && !publicReleaseId) return;
@@ -1255,7 +1263,7 @@
     if (!active || !map || !nativeFullCollection || !map.getSource("locations")) return;
     const signature = nativeFilterSignature(sourceId);
     if (appliedNativeFilterSignature === signature && appliedMatchingIds === mapMatchingIds && appliedMatchesStatus === mapMatchesStatus) return;
-    nativeMotionController?.cancel();
+    nativeMotionController?.invalidate();
     nativeIndexStartedAt = performance.now();
     startupStage = "indexing";
     const visible = filteredNativeCollection(nativeFullCollection);
@@ -1286,7 +1294,7 @@
           nativeFullCollection = undefined;
           visibleNativeCollection = undefined;
           appliedNativeSourceId = undefined;
-          if (instance.getSource("locations")) { nativeIndexUpdates++; setRealPreviewMapData(instance, { type: "FeatureCollection", features: [] }); }
+          if (instance.getSource("locations")) { nativeMotionController?.invalidate(); nativeIndexUpdates++; setRealPreviewMapData(instance, { type: "FeatureCollection", features: [] }); }
           syncSelectedApproximateArea(instance);
           onMapFeedMeta?.(null);
           feedStatus = "error";
@@ -1305,6 +1313,7 @@
     return () => {};
   }
   async function clearProjectionCache() {
+    nativeMotionController?.invalidate();
     await clearClusterIndexCache();
     const removed = publicReleaseId ? (await clearPublicMapCache(), 1) : mode === "candidate-preview" ? await clearTestReleaseMapCache() : await clearRealPreviewMapCache();
     feedGeneration++; feedAbort?.abort(); feedAbort = undefined;
@@ -1354,7 +1363,7 @@
     }
     mvtMotionController?.cancel();
     mvtMotionController?.clearLineage();
-    nativeMotionController?.cancel();
+    nativeMotionController?.invalidate();
     // Source/style changes invalidate both cached tile symbols and lineage. Remove
     // the complete projection before adding the selected path back atomically.
     removeLocationLayers(map);
@@ -1496,6 +1505,7 @@
       getMap: () => map, reducedMotion: prefersReducedMotion,
       enabled: () => active && isNativeMap() && !activeFlight && useV1Pins,
       duration: () => clusterMotionDuration, limit: () => clusterMotionLimit,
+      idleDelay: () => clusterMotionIdleDelay, onState: value => { clusterMotionState = value; },
     });
     if (host.parentElement) {
       // Each projection owns exactly one overlay canvas. The fixture fallback
@@ -1686,7 +1696,7 @@
           onselect(id);
         }
       });
-    const handleReferenceClick = (event: any, layer: "aggregate-outer" | "approx-reference-points" | "approx-reference-pins" | "approx-reference-circles" | "approx-reference-cue") => {
+    const handleReferenceClick = (event: any, layer: "aggregate-outer" | "approx-reference-points" | "approx-reference-pins" | "approx-reference-circles") => {
       if (activeFlight) return;
       // The visible point owns center clicks for approximate records; keep
       // the reference circle available for inspecting its selected area.
@@ -1742,12 +1752,11 @@
     if (isNativeMap()) {
       map.on("click", "approx-reference-pins", (event: any) => handleReferenceClick(event, "approx-reference-pins"));
       map.on("click", "approx-reference-circles", (event: any) => handleReferenceClick(event, "approx-reference-circles"));
-      map.on("click", "approx-reference-cue", (event: any) => handleReferenceClick(event, "approx-reference-cue"));
     }
     if (isNativeMap())
       map.on("click", "approx-reference-points", (event: any) => handleReferenceClick(event, "approx-reference-points"));
     for (const layer of isNativeMap()
-      ? ["clusters", "source-coordinate-points", "v1-source-pins", "aggregate-outer", "approx-reference-pins", "approx-reference-circles", "approx-reference-points", "approx-reference-cue"]
+      ? ["clusters", "source-coordinate-points", "v1-source-pins", "aggregate-outer", "approx-reference-pins", "approx-reference-circles", "approx-reference-points"]
       : ["clusters", "exact-pins", "approximate-points", "source-coordinate-points", "aggregate-outer"]) {
       map.on("mouseenter", layer, () => {
         if (map) map.getCanvas().style.cursor = "pointer";
@@ -1942,6 +1951,7 @@
       }
     });
     instance.on("sourcedata", (event: any) => {
+      if (event?.sourceId === 'locations') nativeMotionController?.onSourceReady();
       if (event?.sourceId === TERRAIN_SOURCE_ID) settlePendingSelectionFocus();
       if (isNativeMap() && event?.sourceId === "locations" &&
           nativeIndexStartedAt !== null && instance.isSourceLoaded("locations")) {
@@ -1961,6 +1971,7 @@
           instance.isSourceLoaded("locations")) startupStage = "ready";
     });
     instance.on("idle", () => {
+      void nativeMotionController?.warm();
       settlePendingSelectionFocus();
       if (isNativeMap()) {
         updateVisibleApproximateCount(instance);
@@ -2251,7 +2262,7 @@
     >{#if diagnosticsOpen}<MapDebugPanel
       session={debugSession} renderer={debugRenderer}
       errors={[mapError && 'Map request failed', mapMatchesError && 'Matching pins request failed', basemapError && 'Basemap request failed', terrainError && 'Terrain unavailable', clusterSettingsError, pinModeError, mvtError && 'Tile request failed'].filter(Boolean)}
-      clusterMode={debugClusterMode} {clusterRadius} {clusterMaxZoom} clusterDuration={clusterZoomDuration} {clusterMotionDuration} {clusterMotionLimit} rebuildDelay={clusterRebuildDebounce}
+      clusterMode={debugClusterMode} {clusterRadius} {clusterMaxZoom} clusterDuration={clusterZoomDuration} {clusterMotionDuration} {clusterMotionLimit} {clusterMotionIdleDelay} rebuildDelay={clusterRebuildDebounce}
       {pinScale} usePins={useV1Pins} {coordinateRadius} privateReferences={isRealPreview() && !usingMvt}
       referenceRadius={referenceRadiusKm} {referenceOpacity} referenceLabels={showReferenceLabels}
       layout={layoutTuning} snapshot={diagnosticSnapshot} onclose={() => setDiagnosticsOpen(false)}
@@ -2259,7 +2270,7 @@
       {worldTuning} onworld={updateWorldTuning} onclearworld={clearWorldCache}
       oncluster={(key, value) => { if (key === 'mode') clusterEnabledOverride = value === 'auto' ? null : value === 'on'; else if (key === 'radius') clusterRadius = Number(value); else clusterMaxZoom = Number(value); scheduleClusterSettings(); }}
       onvisual={(key, value) => { if (key === 'pins') { useV1Pins = Boolean(value); void updatePinMode(); } else { if (key === 'pinScale') pinScale = Number(value); else if (key === 'coordinateRadius') coordinateRadius = Number(value); else if (key === 'referenceRadius') referenceRadiusKm = Number(value); else if (key === 'referenceOpacity') referenceOpacity = Number(value); else showReferenceLabels = Boolean(value); updateVisualSettings(); } }}
-      oninteraction={(key, value) => { nativeMotionController?.cancel(); if (key === 'duration') clusterZoomDuration = value; else if (key === 'motionDuration') clusterMotionDuration = value; else if (key === 'motionLimit') clusterMotionLimit = value; else clusterRebuildDebounce = value; }}
+      oninteraction={(key, value) => { nativeMotionController?.cancel(); if (key === 'duration') clusterZoomDuration = value; else if (key === 'motionDuration') clusterMotionDuration = value; else if (key === 'motionLimit') clusterMotionLimit = value; else if (key === 'motionIdleDelay') clusterMotionIdleDelay = value; else clusterRebuildDebounce = value; }}
       onlayout={value => onLayoutTuningChange?.(value)} onreset={resetTemporarySettings} onclearcache={clearProjectionCache}
     />{/if}{/if}{#if false && mode === "real-preview" && !usingMvt && hasMapFeatures}<button
       class="feature-list-toggle"

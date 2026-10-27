@@ -35,6 +35,13 @@ describe('explicit map diagnostic export', () => {
     expect(snapshot.timingMs).toEqual({ feed: 30, index: 50, rebuild: 20, cameraMoveend: 40, cameraIdle: 120 });
     expect(snapshot.tuning.clusterMode).toBe('auto');
   });
+  it('exports camera idle delay and provider counters as finite aggregates only', () => {
+    const snapshot = safeDiagnosticSnapshot({ ...input, clusterMotionIdleDelay: 250,
+      cacheMetrics: { indexState: 'restored', builds: 0, restores: 1, tileEntries: 1, tileBytes: 12, tileHits: 2, tileMisses: 3, tileEvictions: 0, httpDelegations: 4,
+        streetHits: 1, streetMisses: 2, streetDelegations: 3, satelliteHits: 4, satelliteMisses: 5, satelliteDelegations: Infinity } });
+    expect(snapshot.tuning.clusterMotionIdleDelay).toBe(250);
+    expect(snapshot.cache).toMatchObject({ streetHits: 1, streetMisses: 2, streetDelegations: 3, satelliteHits: 4, satelliteMisses: 5, satelliteDelegations: null });
+  });
 
   it('never exports arbitrary state, precise coordinates, identities or private request data', () => {
     const snapshot = safeDiagnosticSnapshot({

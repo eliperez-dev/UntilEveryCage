@@ -83,7 +83,7 @@ test('toolbar nearby search preserves a typed query and radius fit clears the bo
   expect(page.url()).not.toContain(String(center.latitude));
 });
 
-test('Explore full map interrupts a private flight and restores the public camera before releasing persistence', async ({ page }) => {
+test('clearing a nearby area retains the private camera and keeps persistence and shared URLs protected', async ({ page }) => {
   await install(page);
   await page.goto(`./#/map?release_id=${release}&lat=22&lon=11&z=6`);
   await page.getByRole('button', { name: 'Your location', exact: true }).click();
@@ -91,21 +91,16 @@ test('Explore full map interrupts a private flight and restores the public camer
   await expectNearbyScope(page, center);
   await page.evaluate(async point => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
-    const cache = await import('/src/map/tileCache.ts');
     (window as any).__exitObservedUrls = [];
     const replace = history.replaceState.bind(history);
     history.replaceState = (...args) => { (window as any).__exitObservedUrls.push(String(args[2])); return replace(...args); };
-    const jump = map.jumpTo.bind(map);
-    map.jumpTo = (camera: unknown) => { (window as any).__exitPersistenceAtJump = cache.getTileCacheDiagnostics().persistenceAllowed; return jump(camera); };
     map.flyTo({ center: [point.longitude + .4, point.latitude + .4], zoom: 10, duration: 2000 });
   }, center);
-  await page.getByRole('button', { name: 'Explore full map', exact: true }).click();
-  await expect(page.locator('.results')).toBeHidden();
-  await expect.poll(() => page.evaluate(() => {
-    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
-    return [Number(map.getCenter().lat.toFixed(4)), Number(map.getCenter().lng.toFixed(4)), map.getZoom()];
-  })).toEqual([22, 11, 6]);
-  expect(await page.evaluate(() => (window as any).__exitPersistenceAtJump)).toBe(false);
+  await page.getByRole('button', { name: 'Clear map area', exact: true }).click();
+  await expect(page.locator('.results')).toBeVisible();
+  await page.waitForFunction(() => !(window as any).__UEC_LOCAL_PREVIEW_MAP__.isMoving());
+  expect(await page.evaluate(async () => (await import('/src/map/tileCache.ts')).getTileCacheDiagnostics().persistenceAllowed)).toBe(false);
+  expect(await page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getCenter().lat)).not.toBe(22);
   expect(await page.evaluate(() => (window as any).__exitObservedUrls.every((href: string) => {
     const params = new URLSearchParams(href.split('?')[1] ?? '');
     return params.get('lat') === '22' && params.get('lon') === '11';

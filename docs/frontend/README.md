@@ -53,6 +53,11 @@ API schemas own supported fields. They are not additional roadmaps.
   source counts from validated public aggregates, with activity links into map
   results. Distinguish unavailable totals from zero; do not add animal-death or
   other unsupported estimates to this section.
+  Countries mapped is the union of countries in source-reported, approximate and
+  exact precision partitions. Each release/ruleset-bound country facet must sum
+  to that precision's complete count; truncated, duplicate, invalid or failed
+  partitions make this stat unavailable without removing other totals. Never
+  count unmapped-only countries or fetch the full map or records for these stats.
   The map stays lazy until opened. Map search replaces the separate Database page;
   old public Database links open map results. FAQ content lives within About;
   old FAQ links retain their section and map context. API and downloads remain
@@ -130,9 +135,12 @@ API schemas own supported fields. They are not additional roadmaps.
   pins. Do not pulse clusters or rebuild map data to show the hover cue.
 - Search this area captures fixed bounds and draws a native geographic perimeter.
   Panning, rotation and style changes retain those bounds. There is no separate
-  Searching this area indicator. The toolbar action reruns the chosen search and
-  opens results. The compact summary supplies scope context instead of a
-  duplicate area chip.
+  Searching this area indicator. With any box, radius or device-derived scope
+  active, the existing toolbar area action becomes a black X on white, labeled
+  Clear map area. Clearing removes only spatial scope and boundary, preserving
+  query, other filters, selection, workspace position and private-camera marker.
+  A removable This map area chip shares the Filters/count row, and the same
+  checked applied filter appears inside Filters for every spatial mode.
   Radius scopes remain distinct. Queries and spatial scopes are not persisted.
   Scoped results start with `In this area` (or `Near you` for the device radius),
   the complete matching mapped total and explicit radius where applicable.
@@ -140,9 +148,8 @@ API schemas own supported fields. They are not additional roadmaps.
   in an Activity breakdown disclosure, collapsed initially so records are visible.
   Each record counts once by its display category. Clicking a category narrows
   both map and list; clicking the sole selected category again clears it.
-  Explore full map clears scope and selection, collapses the sheet and retains
-  the query and nonspatial filters. A device view restores its prior public
-  camera before its privacy marker is removed. Loading or failed matching
+  The summary has no Explore full map action. Removing the spatial filter does
+  not restore or expose the device camera. Loading or failed matching
   never retains a previous ready summary.
   Your location searches a 50-mile radius by default and opens results after permission.
   It preserves the current query and filters. Device coordinates, radius and
@@ -212,7 +219,7 @@ API schemas own supported fields. They are not additional roadmaps.
   and do not create automatic search history. Filters wrap into multiple
   columns when space allows, with full readable source labels.
   Filters extend to the available viewport bottom and scroll within that space.
-  Search this area, nearby searches, query changes and settings reruns all open
+  Applying Search this area, nearby searches, query changes and settings reruns all open
   results while retaining an expanded mobile sheet. Scope and category changes
   preserve unrelated query and filter dimensions.
 - Browse-record links open the full facility page directly. Do not restore
@@ -258,14 +265,21 @@ API schemas own supported fields. They are not additional roadmaps.
   satellite zoom 15; approximate street zoom 9. Do not fetch the global point
   projection for these previews or invent an address from a locality.
 - Show the category pin and short text label in search rows and expanded detail.
-  Search rows also show a concise activity summary when the shared deterministic
-  classification presenter has enough source information; omit empty summaries.
-  Summarize classification with deterministic wording from existing source
-  fields and affirmative activities, using the same presenter on the panel
-  and full record. Preserve exact source classification and all supporting
+  Keep explanatory prose in facility details rather than repeating it in result cards.
+  The panel and full record share a source-referenced catalogue of 41 concise
+  definitions, including six broad fallbacks and specific activities and APHIS
+  classes. Use one or two sentences, selecting specific definitions only from
+  recognised structured keys, source-native classes or affirmative facts.
+  Category-level process descriptions must not assert a facility's particular
+  slaughter method. Preserve exact source classification and all supporting
   activities in labeled detail. APHIS registration classes take precedence
   over generic fallback taxonomy in summaries; do not turn registration into
-  an assertion about operations at the displayed location. Format underscores and
+  an assertion about operations at the displayed location. Class T describes
+  animal carriers, not laboratory-only transport. Legacy G/V explanations require
+  their full source-native designation. A valid exact-matched research report
+  may add its fiscal year and total across reported species, never a death count.
+  Definitions and source links remain available in collapsed Classification details.
+  Format underscores and
   technical activity labels; retain original values in data. Show all
   affirmative species/activities and supported slaughter/product estimates.
   Use `animals`, not `head`, in presentation.
@@ -539,6 +553,10 @@ and clear/reset its cache. The preview-opacity slider affects all overview layer
 The TTL control can shorten provider freshness, never extend it. Metrics
 distinguish source updates from actual cache builds/restores and report tile
 hits, misses, evictions and HTTP-cache delegation.
+Satellite requests delegated to the browser are not application cache hits.
+When provider freshness headers are hidden by CORS, an application hit count of
+zero can coexist with browser disk-cache reuse. The browser-managed counter
+records delegation, not verified cache hits or transferred bytes.
 
 Facility clusters and basemap raster LOD use camera zoom rather than bearing or
 distance to individual tiles. Rotation at a fixed center and zoom keeps the
@@ -553,9 +571,13 @@ children travel from their parent cluster to their new positions; merges reverse
 that movement. Native marks are masked before hierarchy changes and the overlay
 remains until their replacement paint is ready. Reuse existing pin/cluster
 artwork and read-only native child queries, without bounce or repeated restarts.
-The default is 210 ms and at most 200 animated marks in total. Debug
-controls tune duration from 0–400 ms (0 disables it) and the mark cap from
-50–300. Pan and bearing-only rotation remain native. Reduced motion, dense
-views, child lookups slower than 100 ms, and camera/style/data changes skip or
-cancel the transition immediately. Animation never changes source data or
+The default is 210 ms and at most 1,200 animated marks in total. Debug
+controls tune duration from 0–400 ms (0 disables it), the mark cap from
+50–2,000, and camera idle delay from 0–500 ms (default 0). A bounded in-memory
+lineage cache warms native child queries while idle, retaining at most 512
+cluster entries and 4,096 child nodes. Data, index and style changes invalidate
+it; camera gestures reuse it. Local pin artwork loads in parallel. Pan and
+bearing-only rotation remain native. Reduced motion, views beyond the selected
+mark limit, slow lookups and camera/style/data changes may skip or cancel a
+transition; Debug exposes the current state or skip reason. Animation never changes source data or
 rebuilds the cluster index; native marks retain selection behavior.

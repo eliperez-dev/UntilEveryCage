@@ -52,6 +52,8 @@ test('missing slaughter range never becomes an estimate from processing volume',
 });
 
 async function mockPublicRecord(page: Page, overrides: Record<string, unknown> = {}, options: { failFirstReport?: boolean } = {}) {
+  const detailFields = new Set(['alternate_names','species_slaughtered','processing_activities','source_volume_categories','derived_source_volume_ranges','aphis_annual_reports','aphis_dated_inspections','establishment_id','establishment_number','grant_date','native_activity_code','native_activity_label']);
+  const listOverrides = Object.fromEntries(Object.entries(overrides).filter(([key])=>!detailFields.has(key)));
   await page.route('https://tile.openstreetmap.org/**', route => route.abort());
   await page.route('https://server.arcgisonline.com/**', route => route.abort());
   let reportFailureRemaining = options.failFirstReport ? 1 : 0;
@@ -61,7 +63,7 @@ async function mockPublicRecord(page: Page, overrides: Record<string, unknown> =
     let body: unknown;
     if (path === '/api/v2/releases/manifest') body = { api_version: 'v2', data: { release_id: release, profile: 'official', manifest: {}, manifest_sha256: 'a'.repeat(64), suppression_generation: 1 } };
     else if (path === `/api/v2/locations/${id}`) body = { api_version: 'v2', data: { ...row, ...facts, ...overrides }, meta };
-    else if (path === '/api/v2/locations') body = { api_version: 'v2', data: [{ ...row, ...overrides }], meta: { ...meta, coverage_note: 'Synthetic test coverage.', total_count: 1, next_cursor: null } };
+    else if (path === '/api/v2/locations') body = { api_version: 'v2', data: [{ ...row, ...listOverrides }], meta: { ...meta, coverage_note: 'Synthetic test coverage.', total_count: 1, next_cursor: null } };
     else if (path === `/api/v2/locations/${id}/aphis-report-links`) {
       if (reportFailureRemaining > 0) { reportFailureRemaining -= 1; return route.fulfill({ status: 503, contentType: 'application/json', body: '{}' }); }
       const kind = new URL(route.request().url()).searchParams.get('kind');
@@ -98,10 +100,11 @@ test('map detail shows one category and each activity, preserves facts, and open
   expect(drawerOrder).toBe(true);
   await expect(panel.getByText('Processing and preparation', { exact: true })).toHaveCount(1);
   const overview = panel.locator('.classification-summary .summary');
-  await expect(overview).toContainText('Meat cutting');
-  await expect(overview).toContainText('NRTE chicken processing');
+  await expect(overview).toHaveText('Poultry processing prepares meat from birds for sale or further manufacture.');
   await expect(overview).not.toContainText('Separate activity');
   await panel.locator('.classification-summary summary').click();
+  await expect(panel.locator('.classification-summary details')).toContainText('Meat cutting');
+  await expect(panel.locator('.classification-summary details')).toContainText('NRTE chicken processing');
   await expect(panel).not.toContainText(/synthetic-taxonomy-version|Taxonomy version|Primary categories|Classification provenance|not independently|Source confirmed/);
   await expect(panel.getByText('Source-provided coordinates', { exact: true })).toBeVisible();
   await expect(panel.getByText('55.123457, 10.123457', { exact: true })).toBeVisible();
@@ -171,17 +174,43 @@ test('Spanish processing summary is deduplicated in map detail and the full reco
   const panel = page.locator('.reading-sheet[aria-label="Record evidence"]');
   await expect(panel.getByText('Procesamiento y preparación', { exact: true })).toHaveCount(1);
   const mapActivities = panel.locator('.classification-summary .summary');
-  await expect(mapActivities).toContainText('Procesamiento de pollo (NRTE)');
-  await expect(mapActivities).toContainText('Meat cutting');
+  await expect(mapActivities).toHaveText('El procesamiento de aves prepara su carne para la venta o para su transformación posterior.');
   await expect(mapActivities).not.toHaveText(/(?:^|,\s*)Procesamiento(?:,\s*|$)/);
   await expect(panel.getByRole('link', { name: 'Abrir página de la instalación', exact: true })).toBeVisible();
   await panel.locator(`a[href="#/records/${id}?profile=official&release_id=${release}"]`).click();
   const full = page.locator('.public-record');
   await expect(full.getByText('Procesamiento y preparación', { exact: true })).toHaveCount(1);
   const fullActivities = full.locator('.classification-summary .summary');
-  await expect(fullActivities).toContainText('Procesamiento de pollo (NRTE)');
-  await expect(fullActivities).toContainText('Meat cutting');
+  await expect(fullActivities).toHaveText('El procesamiento de aves prepara su carne para la venta o para su transformación posterior.');
   await expect(fullActivities).not.toHaveText(/(?:^|,\s*)Procesamiento(?:,\s*|$)/);
+});
+
+for (const width of [320,1440]) test(`APHIS carrier explanation is readable at ${width}px and keeps original classification collapsed`,async({page})=>{
+  await page.setViewportSize({width,height:900});
+  await mockPublicRecord(page,{provenance_source_id:'us.aphis',category:'other_regulated_premises',taxonomy_display_category:'other_regulated_premises',taxonomy_primary_categories:['other_regulated_premises'],taxonomy_leaf_activities:[{key:'general_food_business',label:'General food business'}],taxonomy_assignments:[],native_activity_code:'Class T',native_activity_label:'Class T - Carrier',processing_activities:{},species_slaughtered:{},derived_source_volume_ranges:undefined});
+  await page.goto(`./#/map?selected=${id}&release_id=${release}`);
+  const detail=page.locator('.dossier .detail'),explanation=detail.locator('[data-classification-explanation]');
+  await expect(explanation).toHaveText('APHIS Class T carriers transport regulated animals for hire, including by road, air, rail or sea.');
+  await expect(explanation).not.toContainText(/laborator|Recorded activities/);
+  await expect(page.getByText('Local V2 list response was rejected.',{exact:true})).toHaveCount(0);
+  await expect(detail.locator('.classification-disclosure details')).not.toHaveAttribute('open','');
+  if(process.env.UEC_CLASSIFICATION_CAPTURE_DIR) await page.screenshot({path:`${process.env.UEC_CLASSIFICATION_CAPTURE_DIR}/classification-carrier-${width}.png`});
+  await detail.locator('.classification-disclosure summary').click();
+  await expect(detail.locator('.classification-disclosure')).toContainText('Class T - Carrier');
+  await expect(detail.getByRole('link',{name:'APHIS classification guide',exact:true})).toHaveAttribute('href','https://www.aphis.usda.gov/animal_welfare/downloads/graybook.pdf');
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
+});
+
+test('French research narrative labels the exact reported count and year, without a death claim',async({page})=>{
+  await page.setViewportSize({width:390,height:844});
+  await page.addInitScript(()=>localStorage.setItem('uec-language','fr'));
+  await mockPublicRecord(page,{provenance_source_id:'us.aphis',category:'research_and_animal_use',taxonomy_display_category:'research_and_animal_use',taxonomy_primary_categories:['research_and_animal_use'],taxonomy_leaf_activities:[{key:'research',label:'Research'}],taxonomy_assignments:[],native_activity_code:'Class R',processing_activities:{},species_slaughtered:{},derived_source_volume_ranges:undefined,aphis_annual_reports:[{fiscal_year:'2025',species_counts:[{species:'Synthetic species A',count:12},{species:'Synthetic species B',count:3}],source_url:'https://example.test/annual-report',safe_provenance:{source_id:'us.aphis.annual-reports',evidence_type:'annual_reports',match_method:'exact_source_identifier',matched_identifier_types:['certificate_number']}}]});
+  await page.goto(`./#/map?selected=${id}&release_id=${release}`);
+  const explanation=page.locator('.dossier [data-classification-explanation]');
+  await expect(explanation).toContainText('Le rapport de l’exercice 2025 recense 15 animaux parmi les espèces déclarées.');
+  await expect(explanation).not.toContainText(/mort|tués|sacrifi|estimated/);
+  if(process.env.UEC_CLASSIFICATION_CAPTURE_DIR) await page.screenshot({path:`${process.env.UEC_CLASSIFICATION_CAPTURE_DIR}/classification-research-fr-mobile.png`});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
 });
 
 test('city-level geocoding keeps its approximation and actual provider score in one Location section', async ({ page }) => {

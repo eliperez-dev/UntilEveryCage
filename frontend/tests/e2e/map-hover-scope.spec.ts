@@ -106,9 +106,9 @@ test('area search outlines the exact snapshot through pan and basemap changes, o
   await page.getByRole('switch', { name: 'Map style: Street', exact: true }).click();
   await expect.poll(async () => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getPaintProperty('search-area-outline', 'line-opacity'))).toBe(1);
   expect(await readArea()).toEqual(before); expect(state.feeds).toBe(1);
-  await page.getByRole('button', { name: 'Explore full map', exact: true }).click();
+  await page.getByRole('button', { name: 'Clear map area', exact: true }).click();
   await expect.poll(async () => (await readArea())?.features?.length).toBe(0);
-  await expect(handle).toHaveAttribute('data-sheet-state', 'collapsed');
+  await expect(handle).toHaveAttribute('data-sheet-state', 'middle');
 });
 
 test('hover stays readable near map edges and pin-size tuning changes art without changing the source', async ({ page }) => {

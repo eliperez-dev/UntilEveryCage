@@ -76,12 +76,11 @@ test('area overview uses the complete mapped set, category narrows both views, a
   await expect.poll(() => calls.filter(call => call.path === '/api/v2/map/matches').at(-1)?.params.category_keys).toBe('processing_and_preparation');
   await page.locator('#field-search').fill('Synthetic');
   await expect(summary.locator('.area-total strong')).toHaveText('22');
-  await page.getByRole('button',{name:'Search this area',exact:true}).click();
-  await expect(page.locator('#field-search')).toHaveValue('Synthetic');
-  await expect(page.locator('.filter-chips')).toContainText('Processing');
-  await summary.getByRole('button',{name:'Explore full map',exact:true}).click();
-  await expect(page.locator('.results')).toBeHidden(); await expect(page.locator('#field-search')).toHaveValue('Synthetic');
-  await page.locator('#field-search').click(); await expect(summary).toHaveCount(0); await expect(page.locator('.filter-chips')).toContainText('Processing');
+  const clear=page.getByRole('button',{name:'Clear map area',exact:true});await expect(clear).toHaveCSS('background-color','rgb(244, 242, 236)');await expect(clear).toHaveCSS('color','rgb(20, 20, 20)');
+  await expect(page.locator('.scope-chip')).toHaveText('This map area×');await expect(page.getByRole('button',{name:'Explore full map',exact:true})).toHaveCount(0);
+  await clear.click();await expect(page.locator('.results')).toBeVisible();await expect(summary).toHaveCount(0);await expect(page.locator('#field-search')).toHaveValue('Synthetic');await expect(page.locator('.filter-chips')).toContainText('Processing');
+  await page.getByRole('button',{name:'Search this area',exact:true}).click();await expect(summary).toHaveCount(1);await page.locator('.filters > summary').click();await expect(page.locator('.scope-filter').getByRole('checkbox',{name:'This map area',exact:true})).toBeChecked();
+  await page.locator('.scope-filter').getByRole('checkbox',{name:'This map area',exact:true}).focus();await page.keyboard.press('Space');await expect(summary).toHaveCount(0);await expect(page.locator('.scope-filter')).toHaveCount(0);await expect(page.locator('.filter-sheet')).toBeVisible();await expect(page.locator('.filters > summary')).toBeFocused();await page.getByRole('button',{name:'Show results',exact:true}).click();
   expect(await page.locator('.map-stage').boundingBox()).toEqual(canvas);
 });
 
@@ -165,11 +164,11 @@ for(const [width,height] of [[320,568],[390,844],[1280,620]]) test(`scoped searc
   await page.locator('[data-record-id]').last().scrollIntoViewIfNeeded();await expect(page.locator('[data-record-id]').last()).toBeInViewport();
   expect(await page.locator('.list-content').evaluate(node=>node.scrollHeight>node.clientHeight)).toBe(true);
   expect(await page.locator('.record-list').evaluate(node=>getComputedStyle(node).overflow)).toBe('visible');
-  if(width!<641){await handle.focus();await page.keyboard.press('End');await page.locator('#field-search').fill('Synthetic');await page.locator('#field-search').press('Enter');await expect(handle).toHaveAttribute('data-sheet-state','expanded');await handle.focus();await page.keyboard.press('Home');await page.getByRole('button',{name:'Search this area',exact:true}).click();await expect(handle).toHaveAttribute('data-sheet-state','middle');}
+  if(width!<641){await handle.focus();await page.keyboard.press('End');await page.locator('#field-search').fill('Synthetic');await page.locator('#field-search').press('Enter');await expect(handle).toHaveAttribute('data-sheet-state','expanded');await handle.focus();await page.keyboard.press('Home');await page.getByRole('button',{name:'Clear map area',exact:true}).click();await expect(handle).toHaveAttribute('data-sheet-state','collapsed');await page.getByRole('button',{name:'Search this area',exact:true}).click();await expect(handle).toHaveAttribute('data-sheet-state','middle');}
   expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
 });
 
-test('search settings rerun radius at the same private center and full-map exit restores the public camera',async({page})=>{
+test('search settings rerun radius at the same private center and scope-only clear retains the private camera',async({page})=>{
   await page.setViewportSize({width:1440,height:850});await page.addInitScript(()=>Object.defineProperty(navigator,'geolocation',{value:{getCurrentPosition(success:PositionCallback){success({coords:{latitude:39.2777,longitude:-94.4333}}as GeolocationPosition)}}}));
   const calls=await install(page);await open(page);await page.locator('#field-search').fill('Synthetic');
   const settings=page.getByRole('button',{name:'Search settings',exact:true});await settings.click();const initialPanel=page.locator('#map-search-settings');
@@ -183,8 +182,9 @@ test('search settings rerun radius at the same private center and full-map exit 
   await expect(page.locator('.scope-radius')).toHaveText('75 mile radius');await expect.poll(()=>Number(calls.filter(call=>call.path==='/api/v2/locations').at(-1)?.params.radius_km)).toBeCloseTo(120.7008,6);
   const parameters=calls.filter(call=>call.path==='/api/v2/locations').at(-1)!.params;expect(parameters.latitude).toBe('39.2777');expect(parameters.longitude).toBe('-94.4333');expect(parameters.q).toBe('Synthetic');
   await page.keyboard.press('Escape');await expect(settings).toHaveAttribute('aria-expanded','false');await expect(settings).toBeFocused();
-  await page.locator('.area-summary').getByRole('button',{name:'Explore full map',exact:true}).click();await expect(page.locator('.results')).toBeHidden();
-  await expect.poll(()=>new URLSearchParams(page.url().split('?')[1]).get('lat')).toBe('39.25');
-  await expect.poll(()=>page.evaluate(()=>{const c=(window as any).__UEC_LOCAL_PREVIEW_MAP__.getCenter();return [Number(c.lat.toFixed(2)),Number(c.lng.toFixed(2))]})).toEqual([39.25,-94.45]);
-  await page.locator('#field-search').click();await expect(page.locator('#field-search')).toHaveValue('Synthetic');await expect(page.locator('.area-summary')).toHaveCount(0);
+  await expect.poll(()=>page.evaluate(()=>(window as any).__UEC_LOCAL_PREVIEW_MAP__.isMoving())).toBe(false);
+  const camera=()=>page.evaluate(()=>{const m=(window as any).__UEC_LOCAL_PREVIEW_MAP__,c=m.getCenter();return[c.lat,c.lng,m.getZoom()]});const before=await camera();
+  await page.locator('.scope-chip').click();await expect(page.locator('.results')).toBeVisible();await expect(page.locator('.scope-chip')).toHaveCount(0);await expect(page.locator('.area-summary')).toHaveCount(0);expect(await camera()).toEqual(before);
+  await page.evaluate(()=>(window as any).__UEC_LOCAL_PREVIEW_MAP__.panBy([30,0],{duration:0}));await expect.poll(()=>new URLSearchParams(page.url().split('?')[1]).get('lat')).toBe('39.25');expect(page.url()).not.toMatch(/39\.2777|94\.4333/);
+  await expect(page.locator('#field-search')).toHaveValue('Synthetic');
 });

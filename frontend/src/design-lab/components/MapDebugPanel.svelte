@@ -2,19 +2,19 @@
   import { onMount } from 'svelte';
   import { language, tr } from '../../app/language';
   import type { CacheTuning, DebugMetric, LayoutTuning, WorldCacheTuning } from './mapDebug';
-  let { session, renderer, errors = [], clusterMode, clusterRadius, clusterMaxZoom, clusterDuration, clusterMotionDuration, clusterMotionLimit, rebuildDelay,
+  let { session, renderer, errors = [], clusterMode, clusterRadius, clusterMaxZoom, clusterDuration, clusterMotionDuration, clusterMotionLimit, clusterMotionIdleDelay, rebuildDelay,
     pinScale, usePins, coordinateRadius, privateReferences = false, referenceRadius, referenceOpacity, referenceLabels,
     layout, snapshot, onclose, oncluster, onvisual, oninteraction, onlayout, onreset, onclearcache,
     cacheTuning, tileFadeUnavailable = false, oncache, onresetcaches, onclearindex, oncleartiles, worldTuning, onworld, onclearworld
   }: {
     session: readonly DebugMetric[]; renderer: readonly DebugMetric[]; errors?: readonly string[];
-    clusterMode: 'auto' | 'on' | 'off'; clusterRadius: number; clusterMaxZoom: number; clusterDuration: number; clusterMotionDuration: number; clusterMotionLimit: number; rebuildDelay: number;
+    clusterMode: 'auto' | 'on' | 'off'; clusterRadius: number; clusterMaxZoom: number; clusterDuration: number; clusterMotionDuration: number; clusterMotionLimit: number; clusterMotionIdleDelay: number; rebuildDelay: number;
     pinScale: number; usePins: boolean; coordinateRadius: number; privateReferences?: boolean;
     referenceRadius: number; referenceOpacity: number; referenceLabels: boolean;
     layout: LayoutTuning; snapshot: unknown; onclose(): void;
     oncluster(key: 'mode' | 'radius' | 'cutoff', value: string | number): void;
     onvisual(key: 'pinScale' | 'pins' | 'coordinateRadius' | 'referenceRadius' | 'referenceOpacity' | 'referenceLabels', value: number | boolean): void;
-    oninteraction(key: 'duration' | 'debounce' | 'motionDuration' | 'motionLimit', value: number): void;
+    oninteraction(key: 'duration' | 'debounce' | 'motionDuration' | 'motionLimit' | 'motionIdleDelay', value: number): void;
     onlayout(value: LayoutTuning): void; onreset(): void; onclearcache(): void;
     cacheTuning: CacheTuning;
     tileFadeUnavailable?: boolean;
@@ -104,7 +104,8 @@
     </fieldset>
     <fieldset><legend>Interaction</legend><label for="cluster-zoom-duration">Cluster-click zoom<output>{clusterDuration} ms</output></label><input id="cluster-zoom-duration" type="range" min="0" max="700" step="20" value={clusterDuration} oninput={e => oninteraction('duration', Number(e.currentTarget.value))} />
     <label for="cluster-motion-duration">{tr('Cluster animation', $language)}<output>{clusterMotionDuration} ms</output></label><input id="cluster-motion-duration" type="range" min="0" max="400" step="10" value={clusterMotionDuration} oninput={e => oninteraction('motionDuration', Number(e.currentTarget.value))} />
-    <label for="cluster-motion-limit">{tr('Animation mark limit', $language)}<output>{clusterMotionLimit}</output></label><input id="cluster-motion-limit" type="range" min="50" max="300" step="10" value={clusterMotionLimit} oninput={e => oninteraction('motionLimit', Number(e.currentTarget.value))} />
+    <label for="cluster-motion-idle-delay">{tr('Camera idle delay', $language)}<output>{clusterMotionIdleDelay} ms</output></label><input id="cluster-motion-idle-delay" type="range" min="0" max="500" step="25" value={clusterMotionIdleDelay} oninput={e => oninteraction('motionIdleDelay', Number(e.currentTarget.value))} />
+    <label for="cluster-motion-limit">{tr('Animation mark limit', $language)}<output>{clusterMotionLimit}</output></label><input id="cluster-motion-limit" type="range" min="50" max="2000" step="50" value={clusterMotionLimit} oninput={e => oninteraction('motionLimit', Number(e.currentTarget.value))} />
     <label for="cluster-rebuild-debounce">Slider rebuild delay<output>{rebuildDelay} ms</output></label><input id="cluster-rebuild-debounce" type="range" min="0" max="500" step="25" value={rebuildDelay} oninput={e => oninteraction('debounce', Number(e.currentTarget.value))} /></fieldset>
   </details>
   <details open><summary>{tr('Layout & density', $language)}</summary><fieldset><legend class="sr-only">{tr('Layout & density', $language)}</legend>

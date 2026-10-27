@@ -273,13 +273,12 @@ test('cold landing entry and warmed reload keep map controls and exact/approxima
   await page.evaluate((point) => (window as any).__UEC_LOCAL_PREVIEW_MAP__.jumpTo({ center: point, zoom: 16 }), approximatePoint);
   await expect.poll(() => page.evaluate((id) => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
-    return map.queryRenderedFeatures({ layers: ['approx-reference-cue'] }).some((feature: any) => feature.properties?.key === id)
-      && map.getLayoutProperty('approx-reference-cue', 'icon-image') === 'approximation-mark'
-      && map.hasImage('approximation-mark');
+    return map.queryRenderedFeatures({ layers: ['approx-reference-pins'] }).some((feature: any) => feature.properties?.key === id)
+      && !map.getLayer('approx-reference-cue') && !map.hasImage('approximation-mark');
   }, approximateId)).toBe(true);
   await moveAndCheckFeature(approximateId, approximatePoint, 'approx-reference-pins');
   await expect.poll(() => page.evaluate((id) => (window as any).__UEC_LOCAL_PREVIEW_MAP__
-    .queryRenderedFeatures({ layers: ['approx-reference-cue'] })
+    .queryRenderedFeatures({ layers: ['approx-reference-pins'] })
     .some((feature: any) => feature.properties?.key === id), approximateId)).toBe(true);
   await expect.poll(() => new URL(page.url()).hash).toContain(`selected=${approximateId}`);
   await expect.poll(() => page.evaluate((id) => {

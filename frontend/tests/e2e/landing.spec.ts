@@ -3,7 +3,11 @@ import { test, expect, type Page } from '@playwright/test';
 const syntheticRelease = 'synthetic-landing-release';
 async function installLandingSummary(page: Page) {
   await page.route('**/api/v2/releases/manifest?**', route => route.fulfill({ json: { api_version: 'v2', data: { profile: 'official', release_id: new URL(route.request().url()).searchParams.get('release_id') ?? syntheticRelease, manifest: {}, manifest_sha256: 'a'.repeat(64), suppression_generation: 1 } } }));
-  await page.route('**/api/v2/discovery/facets?**', route => route.fulfill({ json: { api_version: 'v2', meta: { profile: 'official', release_id: new URL(route.request().url()).searchParams.get('release_id') ?? syntheticRelease, ruleset_version: 'synthetic-rules', release_created_at: '2026-01-01T00:00:00Z', coverage_scope: 'Synthetic public records', count_semantics: 'Synthetic records', filters: {} }, dimensions: { display_precision: [{ value: 'source_reported', count: 8000 }, { value: 'approximate', count: 2005 }, { value: 'unmapped', count: 2340 }], source_id: [{ value: 'synthetic-a', count: 5000 }, { value: 'synthetic-b', count: 4000 }, { value: 'synthetic-c', count: 3345 }] } } }));
+  await page.route('**/api/v2/discovery/facets?**', route => {
+    const params=new URL(route.request().url()).searchParams,precision=params.get('display_precision');
+    const dimensions=precision ? {display_precision:[{value:precision,count:precision==='source_reported'?8000:2005}],country_code:precision==='source_reported'?[{value:'DK',count:5000},{value:'US',count:3000}]:[{value:'US',count:2000},{value:'DK',count:5}]} : {display_precision:[{value:'source_reported',count:8000},{value:'approximate',count:2005},{value:'unmapped',count:2340}],source_id:[{value:'synthetic-a',count:5000},{value:'synthetic-b',count:4000},{value:'synthetic-c',count:3345}]};
+    return route.fulfill({json:{api_version:'v2',meta:{profile:'official',release_id:params.get('release_id')??syntheticRelease,ruleset_version:'synthetic-rules',release_created_at:'2026-01-01T00:00:00Z',coverage_scope:'Synthetic public records',count_semantics:'Synthetic records',filters:precision?{display_precision:precision}:{}},dimensions}});
+  });
 }
 test.beforeEach(async ({ page }) => installLandingSummary(page));
 const onlySummaryRequests = (requests: readonly string[]) => requests.every(url => ['/api/v2/releases/manifest', '/api/v2/discovery/facets'].includes(new URL(url).pathname));
@@ -98,7 +102,7 @@ test('landing shows release-scoped totals and category shortcuts without loading
   await page.addInitScript(() => { (window as any).__locationRequests = 0; Object.defineProperty(navigator, 'geolocation', { value: { getCurrentPosition() { (window as any).__locationRequests += 1; } }, configurable: true }); });
   const requests: string[] = []; page.on('request', request => { if (new URL(request.url()).pathname.startsWith('/api/')) requests.push(request.url()); });
   await page.goto('./#/?lat=12&lon=3&z=5&release_id=synthetic-selected-release');
-  await expect(page.locator('.release-totals dd')).toHaveText(['12,345', '10,005', '3']);
+  await expect(page.locator('.release-totals dd')).toHaveText(['12,345', '10,005', '3', '2']);
   const links = page.getByRole('navigation', { name: 'Explore by activity' }).getByRole('link');
   await expect(links).toHaveCount(6);
   const href = await links.filter({ hasText: 'Processing' }).getAttribute('href');
@@ -106,6 +110,7 @@ test('landing shows release-scoped totals and category shortcuts without loading
   expect(params.get('release_id')).toBe('synthetic-selected-release'); expect(params.get('category')).toBe('processing_and_preparation'); expect(params.get('list')).toBe('open'); expect(params.get('lat')).toBe('12');
   expect(await page.evaluate(() => (window as any).__locationRequests)).toBe(0);
   expect(onlySummaryRequests(requests)).toBe(true);
+  if(process.env.UEC_AREA_CAPTURE_DIR){await page.locator('.discovery').screenshot({path:`${process.env.UEC_AREA_CAPTURE_DIR}/landing-totals-desktop.png`});await page.setViewportSize({width:320,height:760});await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.locator('.release-totals').screenshot({path:`${process.env.UEC_AREA_CAPTURE_DIR}/landing-totals-mobile.png`});}
 });
 
 test('nearby landing action requests location explicitly, blocks duplicate taps and reports denial', async ({ page }) => {
@@ -136,5 +141,17 @@ test('landing aggregate failure offers retry without removing map entry', async 
   await page.goto('./'); await expect(page.getByText('Release totals are unavailable.', { exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Open the map', exact: true }).first()).toBeVisible();
   failed = false; await page.getByRole('button', { name: 'Try again', exact: true }).click();
-  await expect(page.locator('.release-totals dd')).toHaveText(['12,345', '10,005', '3']);
+  await expect(page.locator('.release-totals dd')).toHaveText(['12,345', '10,005', '3', '2']);
+});
+
+test('capped or unavailable mapped-country facets preserve other totals and never show a false country count',async({page})=>{
+  let fail=true;
+  await page.route('**/api/v2/discovery/facets?**',async route=>{
+    const params=new URL(route.request().url()).searchParams,precision=params.get('display_precision');if(!precision)return route.fallback();
+    if(fail)return route.fulfill({status:503,json:{}});
+    return route.fulfill({json:{api_version:'v2',meta:{profile:'official',release_id:params.get('release_id'),ruleset_version:'synthetic-rules',release_created_at:'2026-01-01T00:00:00Z',coverage_scope:'Synthetic',count_semantics:'Synthetic records',filters:{display_precision:precision}},dimensions:{display_precision:[{value:precision,count:precision==='source_reported'?8000:2005}],country_code:[{value:'DK',count:1}]}}});
+  });
+  await page.goto('./');await expect(page.locator('.release-totals dd')).toHaveText(['12,345','10,005','3','Unavailable']);
+  fail=false;await page.reload();await expect(page.locator('.release-totals dd')).toHaveText(['12,345','10,005','3','Unavailable']);
+  await expect(page.getByRole('link',{name:'Open the map',exact:true}).first()).toBeVisible();
 });

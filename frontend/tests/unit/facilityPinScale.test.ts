@@ -5,9 +5,9 @@ describe('facility pin sizing', () => {
     const changes: unknown[][] = [];
     const map = { getLayer: () => ({}), setLayoutProperty: (...args: unknown[]) => changes.push(args), setData: vi.fn(), setClusterOptions: vi.fn(), setPaintProperty: vi.fn() };
     expect(DEFAULT_FACILITY_PIN_SCALE).toBe(0.8); applyFacilityPinScale(map);
-    for (const layer of ['v1-source-pins', 'approx-reference-pins', 'approx-reference-points', 'approx-reference-cue', 'mvt-v1-source-pins', 'mvt-reference-center']) expect(changes).toContainEqual([layer, 'icon-size', 0.4]);
+    for (const layer of ['v1-source-pins', 'approx-reference-pins', 'approx-reference-points', 'mvt-v1-source-pins', 'mvt-reference-center']) expect(changes).toContainEqual([layer, 'icon-size', 0.4]);
     for (const layer of ['v1-source-shadows', 'approx-reference-shadows', 'mvt-v1-source-shadows']) expect(changes).toContainEqual([layer, 'icon-size', 0.8]);
-    expect(changes).toHaveLength(9);
+    expect(changes).toHaveLength(8);
     expect(map.setData).not.toHaveBeenCalled(); expect(map.setClusterOptions).not.toHaveBeenCalled(); expect(map.setPaintProperty).not.toHaveBeenCalled();
   });
   it('clamps live tuning and rejects non-finite sizing, retaining anchor offsets', () => {

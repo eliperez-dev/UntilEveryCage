@@ -666,8 +666,16 @@
     dispatch({ type: 'close-workspace' });
   }
   function searchArea() {
-    if (state.searchScope?.kind === 'radius' || $searchMode === 'radius') runRadiusSearch();
+    if(state.searchScope) { clearMapArea(); return; }
+    if ($searchMode === 'radius') runRadiusSearch();
     else updateSearchArea();
+  }
+  function clearMapArea() {
+    const focused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const fromFilter = Boolean(focused?.closest('.scope-filter'));
+    const fromChip = Boolean(focused?.closest('.scope-chip'));
+    scopeError.set(''); dispatch({type:'scope',value:null,preserveWorkspace:true});
+    if(fromFilter || fromChip) void tick().then(() => document.querySelector<HTMLElement>(fromFilter ? '.filters > summary' : '.map-navigation .area-button')?.focus({preventScroll:true}));
   }
   function runRadiusSearch() {
     openSearchResults();
@@ -817,12 +825,12 @@
             {#each state.filters.precisions as value}<button type="button" aria-label={`${tr('Remove filter', $language)}: ${tr(value, $language)}`} onclick={() => removeFilter('precisions', value)}>{tr(value, $language)} <span aria-hidden="true">×</span></button>{/each}
             {#each state.filters.activities as value}<button type="button" aria-label={`${tr('Remove filter', $language)}: ${value}`} onclick={() => removeFilter('activities', value)}>{value} <span aria-hidden="true">×</span></button>{/each}
             {#if state.sourceId}<button type="button" aria-label={`${tr('Remove filter', $language)}: ${sourceName(state.sourceId)}`} onclick={() => chooseSource(null)}>{sourceName(state.sourceId)} <span aria-hidden="true">×</span></button>{/if}
-            {#if state.searchScope && mode !== 'public-release'}<button type="button" aria-label={tr('Remove filter', $language)} onclick={() => dispatch({ type: 'scope', value: null })}>{state.searchScope.kind === 'area' ? tr('This map area', $language) : `${state.searchScope.radiusKm} km · ${state.searchScope.label}`} <span aria-hidden="true">×</span></button>{/if}
           </div>
           <div class="search-toolbar">
           <details class="filters" bind:this={$filterDisclosure} ontoggle={filterToggled}>
             <summary><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h7m5 0h4M4 17h3m5 0h8M11 4v6M7 14v6"/></svg>{tr('Filters', $language)} {#if activeFilters}<b>{activeFilters}</b>{/if}</summary>
             <div class="filter-sheet" use:fitFilterViewport><div class="filter-scroll">
+              {#if state.searchScope}<fieldset class="scope-filter"><legend>{tr('Search area', $language)}</legend><label><input type="checkbox" checked onchange={clearMapArea} />{tr('This map area', $language)}</label></fieldset>{/if}
               {#if mode === "candidate-preview" || mode === "public-release"}
                 {#if facetsStatus === "loading"}<small>{tr('Loading filters…', $language)}</small>
                 {:else if facetsStatus === "error" || facetsStatus === "unauthorized"}<small role="alert">{tr('Filters are unavailable. Search remains available.', $language)}</small>
@@ -858,6 +866,7 @@
               </div><footer class="filter-actions"><button type="button" class="clear-filters" onclick={clearSearch}>{tr('Clear filters', $language)}</button><button type="button" class="show-results" onclick={() => { if ($filterDisclosure) $filterDisclosure.open = false; }}>{tr('Show results', $language)}</button></footer>
             </div>
           </details>
+          {#if state.searchScope}<button class="scope-chip" type="button" aria-label={`${tr('Remove filter', $language)}: ${tr('This map area', $language)}`} onclick={clearMapArea}><span>{tr('This map area', $language)}</span><span aria-hidden="true">×</span></button>{/if}
           <div class="result-status"><strong class="sr-only">{tr(aggregateOpen ? 'Members' : 'Facility records', $language)}</strong><span role="status" aria-live="polite">{!aggregateOpen && listRefreshing ? tr(resultCount ? 'Searching · showing previous results' : 'Searching…', $language) : !aggregateOpen && (dataStatus === 'error' || dataStatus === 'unauthorized') && resultCount ? tr('Search unavailable · showing previous results', $language) : !aggregateOpen && (mode === 'candidate-preview' || mode === 'public-release') && candidateTotalCount !== null ? tr('{count} matching · {shown} shown', $language).replace('{count}', new Intl.NumberFormat($language).format(candidateTotalCount)).replace('{shown}', new Intl.NumberFormat($language).format(resultCount)) : tr('{count} loaded', $language).replace('{count}', new Intl.NumberFormat($language).format(resultCount))}</span></div>
           </div>
         </div>
@@ -865,7 +874,7 @@
       {#if mapMatchesStatus === 'error'}<p class="search-error" hidden={Boolean(state.selectedId) || !workspaceOpen} role="alert">{mapMatchesError} {#if onRetryMapMatches}<button type="button" onclick={() => onRetryMapMatches?.()}>{tr('Retry', $language)}</button>{/if}</p>{/if}
       <div class="workspace-body" id="field-detail-content">
         <div class="list-content" hidden={Boolean(state.selectedId) || !workspaceOpen}>
-        {#if mode === 'public-release' && state.searchScope && !aggregateOpen}<AreaSummary summary={$areaSummary} selectedCategories={state.filters.categories} nearby={state.searchScope.kind === 'radius' && Boolean(state.searchScope.deviceDerived)} radiusKm={state.searchScope.kind === 'radius' ? state.searchScope.radiusKm : null} oncategory={summaryCategory} onexplore={() => dispatch({type:'explore-map'})} />{/if}
+        {#if mode === 'public-release' && state.searchScope && !aggregateOpen}<AreaSummary summary={$areaSummary} selectedCategories={state.filters.categories} nearby={state.searchScope.kind === 'radius' && Boolean(state.searchScope.deviceDerived)} radiusKm={state.searchScope.kind === 'radius' ? state.searchScope.radiusKm : null} oncategory={summaryCategory} />{/if}
 {#if aggregateOpen}<details
         class="reading-sheet aggregate-sheet"
         aria-labelledby="aggregate-title"
@@ -1140,6 +1149,9 @@
   .filter-chips button { display: inline-flex; align-items: center; gap: .6rem; max-width: 100%; min-height: 1.9rem; padding: .2rem .5rem; border: 1px solid var(--line); color: var(--ink); background: transparent; font-size: .6875rem; line-height: 1.4; text-align: left; overflow-wrap: anywhere; }
   .filter-chips span { flex: none; color: var(--muted); font-size: 1rem; }
   .search-toolbar { display: flex; align-items: center; gap: .5rem; min-height: 2.75rem; padding-right: .4rem; }
+  .scope-chip { display:inline-flex;align-items:center;gap:.4rem;flex:0 0 auto;min-height:32px;padding:.25rem .4rem;border:1px solid var(--line);color:var(--ink);background:transparent;font:inherit;font-size:.6875rem;cursor:pointer; }
+  .scope-chip > span:first-child { white-space:nowrap; }
+  .scope-chip > span:last-child { color:var(--muted);font-size:1rem; }
   .filters { flex: 0 0 auto; }
   .filters summary { max-width: none; }
   .result-status { position: static; width: auto; min-width: 0; min-height: auto; margin-left: auto; padding: .25rem 0; text-align: right; font-size: .6875rem; }
@@ -1192,6 +1204,7 @@
     .workspace .dossier-header { padding-top: .35rem; }
     .filter-chips button { min-height:2.75rem;font-size:.75rem; }
     .result-status { font-size:.75rem; }
+    .scope-chip { min-height:44px; }
     .search-toolbar { gap:0 .4rem;padding-right:.75rem; }
   }
   @media (pointer: coarse) { .filter-chips button { min-height: 2.75rem; } }

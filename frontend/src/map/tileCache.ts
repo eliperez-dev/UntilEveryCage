@@ -14,6 +14,8 @@ export type TileCacheSettings = { enabled: boolean; maxEntries: number; maxBytes
 export type TileCacheDiagnostics = {
   available: 'unknown' | 'available' | 'unavailable'; entries: number; bytes: number;
   hits: number; misses: number; evictions: number; policyDelegations: number; persistenceAllowed: boolean;
+  streetHits: number; streetMisses: number; streetDelegations: number;
+  satelliteHits: number; satelliteMisses: number; satelliteDelegations: number;
 };
 export const DEFAULT_TILE_CACHE_SETTINGS: Readonly<TileCacheSettings> = Object.freeze({
   enabled: true, maxEntries: TILE_CACHE_MAX_ENTRIES, maxBytes: TILE_CACHE_MAX_BYTES, maxTtlMs: 7 * 86400_000,
@@ -21,7 +23,8 @@ export const DEFAULT_TILE_CACHE_SETTINGS: Readonly<TileCacheSettings> = Object.f
 let settings: TileCacheSettings = { ...DEFAULT_TILE_CACHE_SETTINGS };
 let persistenceAllowed = true;
 let persistenceGeneration = 0;
-let diagnostics: TileCacheDiagnostics = { available: 'unknown', entries: 0, bytes: 0, hits: 0, misses: 0, evictions: 0, policyDelegations: 0, persistenceAllowed };
+const providerCounters = () => ({ streetHits: 0, streetMisses: 0, streetDelegations: 0, satelliteHits: 0, satelliteMisses: 0, satelliteDelegations: 0 });
+let diagnostics: TileCacheDiagnostics = { available: 'unknown', entries: 0, bytes: 0, hits: 0, misses: 0, evictions: 0, policyDelegations: 0, persistenceAllowed, ...providerCounters() };
 const listeners = new Set<(value: TileCacheDiagnostics) => void>();
 function notifyDiagnostics(value = diagnostics) { diagnostics = { ...value }; for (const listener of listeners) listener({ ...diagnostics }); }
 export function getTileCacheSettings(): TileCacheSettings { return { ...settings }; }
@@ -109,7 +112,7 @@ export function createViewedTileCache(environment: CacheEnvironment = {}) {
   let storageReady: Promise<void> | undefined;
   let maintenance = Promise.resolve();
   const entries = new Map<string, Entry>();
-  const metrics: TileCacheDiagnostics = { available: 'unknown', entries: 0, bytes: 0, hits: 0, misses: 0, evictions: 0, policyDelegations: 0, persistenceAllowed };
+  const metrics: TileCacheDiagnostics = { available: 'unknown', entries: 0, bytes: 0, hits: 0, misses: 0, evictions: 0, policyDelegations: 0, persistenceAllowed, ...providerCounters() };
   function publish() {
     metrics.entries = entries.size;
     metrics.bytes = [...entries.values()].reduce((sum, entry) => sum + entry.bytes, 0);
@@ -184,6 +187,8 @@ export function createViewedTileCache(environment: CacheEnvironment = {}) {
     async load(protocolUrl: string, signal: AbortSignal): Promise<TileResult> {
       const url = allowedTileUrl(protocolUrl);
       if (!url) throw new Error('Unsupported map tile URL');
+      const provider = url.startsWith('https://tile.openstreetmap.org/') ? 'street'
+        : url.includes('/services/World_Imagery/MapServer/tile/') ? 'satellite' : null;
       const generation = persistenceGeneration;
       signal.throwIfAborted();
       if (settings.enabled && persistenceAllowed) await initialize();
@@ -201,7 +206,7 @@ export function createViewedTileCache(environment: CacheEnvironment = {}) {
               signal.throwIfAborted();
               const expiry = Math.min(metadata.expiry, metadata.stored + settings.maxTtlMs);
               await serialize(() => save(key!, data, metadata.expiry, hit!.headers, generation, metadata.stored, digest!));
-              metrics.hits++; publish();
+              metrics.hits++; if (provider) metrics[`${provider}Hits`]++; publish();
               return tileResult(data, expiry, hit!.headers, clock());
             }
           }
@@ -210,14 +215,17 @@ export function createViewedTileCache(environment: CacheEnvironment = {}) {
         } catch (error) { if (signal.aborted) throw error; }
       }
       signal.throwIfAborted();
-      metrics.misses++; publish();
+      metrics.misses++; if (provider) metrics[`${provider}Misses`]++; publish();
       const response = await fetcher(url, { signal, mode: 'cors', credentials: 'omit', cache: 'default' });
       if (!response.ok || response.type === 'opaque') throw new Error(`Map tile unavailable (${response.status})`);
       const data = await response.arrayBuffer();
       signal.throwIfAborted();
       const providerExpiry = tileFreshUntil(response.headers, clock());
       const expiry = providerExpiry === null ? null : Math.min(providerExpiry, clock() + settings.maxTtlMs);
-      if (expiry === null) { metrics.policyDelegations++; publish(); }
+      // This counts requests governed by the browser's HTTP policy, not proven
+      // network transfers or HTTP-cache hits. Cross-origin providers may hide
+      // Date/Age/Expires while the browser still reuses their cached response.
+      if (expiry === null) { metrics.policyDelegations++; if (provider) metrics[`${provider}Delegations`]++; publish(); }
       if (settings.enabled && persistenceAllowed && key && expiry !== null && data.byteLength > 0 && data.byteLength <= MAX_TILE_BYTES && /^image\//i.test(response.headers.get('content-type') ?? '')) {
         await serialize(() => save(key!, data, expiry, response.headers, generation));
       }
