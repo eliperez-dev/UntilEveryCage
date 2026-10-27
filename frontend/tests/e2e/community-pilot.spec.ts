@@ -44,7 +44,13 @@ async function mockCommunityApi(page: Page) {
   });
 }
 test.beforeEach(async({page})=>mockCommunityApi(page));
-const task=(page:Page,name:string)=>page.getByRole('navigation',{name:'Contribution tasks'}).getByRole('link',{name,exact:false});
+const task=(page:Page,name:string)=>({click:async()=>{
+  const chooser=page.locator('#contribution-task');
+  if(await chooser.isVisible()){
+    const kind:Record<string,string>={'Add a facility':'facility','Update a record':'correction','Report a problem':'bug','Privacy / removal':'privacy_removal'};
+    await chooser.selectOption(kind[name]!);
+  }else await page.getByRole('navigation',{name:'Contribution tasks'}).getByRole('link',{name,exact:false}).click();
+}});
 const subtype=(page:Page,name:string)=>page.getByRole('navigation',{name:'Type of update'}).getByRole('link',{name,exact:true});
 async function submitAndTrack(page:Page,bug=false){await page.getByRole('button',{name:bug?'Send report':'Send for review',exact:true}).click();await expect(page.getByRole('heading',{name:'Contribution received',exact:true})).toBeVisible();return page.getByRole('link',{name:bug?'Track report':'Track submission',exact:true});}
 

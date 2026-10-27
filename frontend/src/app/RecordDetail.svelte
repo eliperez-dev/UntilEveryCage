@@ -96,6 +96,8 @@
   let copyFeedback = $state<'copied' | 'failed' | ''>('');
   let copyResetTimer: ReturnType<typeof setTimeout> | undefined;
   let copyAttempt = 0;
+  let connectionsState = $state({ count:0, loading:true, error:false });
+  function updateConnectionsState(next: typeof connectionsState) { connectionsState = next; }
   onDestroy(() => { copyAttempt += 1; if (copyResetTimer) clearTimeout(copyResetTimer); });
 
 
@@ -346,12 +348,11 @@
       onclick={onclose}
     >{tr('Close', $language)}</button>
   {/if}
-  <h1 id="record-title">{name}{#if presentation === 'page' || (presentation === 'rail' && publicRelease)} <button class="share" type="button" aria-label={tr('Copy facility link', $language)} title={tr('Copy facility link', $language)} onclick={copyFacilityLink}><svg aria-hidden="true" viewBox="0 0 24 24">{#if copyFeedback === 'copied'}<path d="m5 12 4 4L19 6"/>{:else if copyFeedback === 'failed'}<path d="M6 6l12 12M18 6 6 18"/>{:else}<path d="M10 13a5 5 0 0 0 7.1 0l3-3A5 5 0 0 0 13 2.9l-1.7 1.7m2.7 6.4a5 5 0 0 0-7.1 0l-3 3A5 5 0 0 0 11 21.1l1.7-1.7"/>{/if}</svg></button><span class="sr-only" role="status" aria-live="polite">{copyFeedback === 'copied' ? tr('Link copied', $language) : copyFeedback === 'failed' ? tr('Could not copy facility link', $language) : ''}</span>{/if}</h1>
-  {#if presentation === 'rail' && fullRecordHref}<a class="open-facility" href={fullRecordHref}><span>{tr('Open facility page', $language)}</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg></a>{/if}
+  <h1 id="record-title"><span class="record-name">{name}</span>{#if presentation === 'page' || (presentation === 'rail' && publicRelease)}<button class="share" type="button" aria-label={tr('Copy facility link', $language)} title={tr('Copy facility link', $language)} onclick={copyFacilityLink}><svg aria-hidden="true" viewBox="0 0 24 24">{#if copyFeedback === 'copied'}<path d="m5 12 4 4L19 6"/>{:else if copyFeedback === 'failed'}<path d="M6 6l12 12M18 6 6 18"/>{:else}<path d="M10 13a5 5 0 0 0 7.1 0l3-3A5 5 0 0 0 13 2.9l-1.7 1.7m2.7 6.4a5 5 0 0 0-7.1 0l-3 3A5 5 0 0 0 11 21.1l1.7-1.7"/>{/if}</svg></button><span class="sr-only" role="status" aria-live="polite">{copyFeedback === 'copied' ? tr('Link copied', $language) : copyFeedback === 'failed' ? tr('Could not copy facility link', $language) : ''}</span>{/if}</h1>
   <section class="classification-overview" aria-labelledby="taxonomy-heading">
     <h2 id="taxonomy-heading" class="sr-only">{tr('Activities and classification', $language)}</h2>
     <div class="record-category"><CategoryBadge record={classificationRecord} onfilter={oncategoryfilter} /></div>
-    <ClassificationSummary record={classificationRecord} />
+    <ClassificationSummary record={classificationRecord} presentation={presentation === 'rail' ? 'summary' : 'all'} />
   </section>
   {#if presentation === 'rail' && (sourceName || observed || retrieved)}<p class="compact-source">{#if sourceName}<span>{sourceName}</span>{/if}{#if observed || retrieved}<span>{sourceName ? ' · ' : ''}{tr(observed ? 'Observed' : 'Retrieved', $language)} <time datetime={observed ?? retrieved ?? undefined} title={observed ?? retrieved ?? undefined}>{shortDate(observed ?? retrieved ?? '')}</time></span>{/if}</p>{/if}
   {#if presentation === 'page' && import.meta.env.VITE_COMMUNITY_PILOT === 'true' && id}
@@ -379,6 +380,8 @@
 
   {#if presentation === 'page' && hasCoordinates}<LocationPreview latitude={record.latitude!} longitude={record.longitude!} precision={precision} category={taxonomy?.primaryCategories[0] ?? activity ?? 'unclassified'} />{/if}
 
+  {#if presentation === 'rail'}<div class="classification-disclosure"><ClassificationSummary record={classificationRecord} presentation="details" /></div>{/if}
+
   {#if sourceFacts}
     <svelte:element this={presentation === 'rail' ? 'details' : 'section'} class="source-facts-section" aria-labelledby="source-facts-heading">
       {#if presentation === 'rail'}<summary id="source-facts-heading">{tr('Source facts', $language)}</summary>{:else}<h2 id="source-facts-heading">{tr('Source facts', $language)}</h2>{/if}
@@ -398,9 +401,9 @@
   {/if}
 
   {#if publicRelease && publicReleaseId && id}
-    <svelte:element this={presentation === 'rail' ? 'details' : 'div'} class="connections-disclosure">
-    {#if presentation === 'rail'}<summary>{tr('Connections', $language)}</summary>{/if}
-    <RecordConnections facilityId={id} releaseId={publicReleaseId} sourceId={sourceId ?? undefined} sourceFacts={sourceFacts} rail={presentation === 'rail'} />
+    <svelte:element this={presentation === 'rail' ? 'details' : 'div'} class="connections-disclosure" open={presentation === 'rail' && (connectionsState.count > 0 || connectionsState.error)}>
+    {#if presentation === 'rail'}<summary>{tr('Connections', $language)}{#if connectionsState.loading}<span class="connection-state">{tr('Loading…', $language)}</span>{/if}</summary>{/if}
+    <RecordConnections facilityId={id} releaseId={publicReleaseId} sourceId={sourceId ?? undefined} sourceFacts={sourceFacts} rail={presentation === 'rail'} onstatechange={presentation === 'rail' ? updateConnectionsState : undefined} />
     </svelte:element>
   {/if}
 
@@ -418,12 +421,19 @@
     {#if evidence}<p class="evidence">{evidence}</p>{/if}
   </svelte:element>
 
+  {#if presentation === 'rail' && fullRecordHref}<a class="open-facility" href={fullRecordHref}><span>{tr('Open facility page', $language)}</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg></a>{/if}
+
   <footer>
     {#if presentation !== 'page'}<span class="record-id">Record ID · {id || 'Unavailable'}</span>{/if}
   </footer>
 </article>
 
 <style>
+  #record-title { display:flex;align-items:flex-start;gap:.5rem; }
+  .record-name { flex:1 1 auto;min-width:0;overflow-wrap:anywhere; }
+  #record-title .share { flex:0 0 auto;align-self:flex-start; }
+  .connection-state { margin-left:.6rem;color:var(--muted);font-size:.75rem;font-weight:400; }
+  .classification-disclosure { margin-top:1rem;border-top:1px solid var(--line); }
   .compact-source { color:var(--ui-muted,var(--muted));font-size:.75rem;line-height:1.5;margin:.5rem 0 1rem;overflow-wrap:anywhere; }
   .detail:not(.page) .show-on-map { display:inline-flex;align-items:center;gap:.75rem;min-height:44px;margin:.45rem 0 0;padding:0;border:0;background:transparent;color:var(--ink);font:inherit;text-decoration:underline;text-underline-offset:.25rem; }
   .detail:not(.page) details.source-facts-section,.detail:not(.page) details.evidence-section,.detail:not(.page) details.connections-disclosure { border-top:1px solid var(--line);margin-top:1rem; }
@@ -592,7 +602,7 @@
     overflow-wrap: anywhere;
   }
 
-  .detail:not(.page) .open-facility { display: flex; align-items: center; justify-content: space-between; gap: .75rem; width: 100%; min-height: 2.75rem; margin: 0 0 .95rem; padding: .55rem .8rem; border: 1px solid var(--line); color: var(--ink); background: transparent; font-size: .8125rem; font-weight: 500; text-decoration: none; }
+  .detail:not(.page) .open-facility { display: flex; align-items: center; justify-content: space-between; gap: .75rem; width: 100%; min-height: 2.75rem; margin: 1rem 0 0; padding: .55rem .8rem; border: 1px solid var(--line); color: var(--ink); background: transparent; font-size: .8125rem; font-weight: 500; text-decoration: none; }
   .detail:not(.page) .open-facility:hover { background: var(--ui-hover); }
   .open-facility svg { width: 1rem; height: 1rem; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 

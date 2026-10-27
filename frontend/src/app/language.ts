@@ -17,6 +17,9 @@ if (typeof window !== 'undefined') {
 
 // English is the source language. Missing Spanish entries intentionally fall back to it.
 const es: Record<string, string> = {
+  'View': 'Vista',
+  'Switch to 2D': 'Cambiar a 2D',
+  'Switch to 3D': 'Cambiar a 3D',
   'View facility details': 'Ver detalles del centro',
   'Show on map': 'Mostrar en el mapa',
   'Mobile sheet height': 'Altura del panel móvil',

@@ -430,7 +430,7 @@
     // reset the camera elevation to sea level and change the geographic focus.
     const center = instance.getCenter();
     instance.easeTo({ center: [center.lng, center.lat], zoom: instance.getZoom(), bearing: instance.getBearing(),
-      pitch: enable3d ? 45 : 0, duration: matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 450 });
+      pitch: enable3d ? 60 : 0, duration: matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 450 });
   }
   $effect(() => {
     const request = cameraViewRequest;

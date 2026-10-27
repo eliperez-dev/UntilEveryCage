@@ -22,7 +22,7 @@ test('mobile sheet collapses to a handle, opens by keyboard and snaps during han
   await expect(handle).toHaveAttribute('data-sheet-state', 'middle');
   await expect(page.locator('#field-search')).toBeVisible();
   const middle = await page.locator('.map-stage').boundingBox();
-  expect(middle!.height).toBeLessThan(collapsed!.height);
+  expect(middle).toEqual(collapsed);
   await handle.focus(); await page.keyboard.press('End');
   await expect(handle).toHaveAttribute('data-sheet-state', 'expanded');
   await page.keyboard.press('Home');
@@ -50,6 +50,23 @@ test('mobile selection preserves query and sheet state, and map preview retains 
   await expect(page.locator('.record-list .activity-summary').first()).not.toHaveText('');
   await page.locator('[data-record-id="syn-001"]').click();
   await expect(page.locator('.dossier')).toBeVisible();
+  const view=page.getByRole('navigation',{name:'Map navigation',exact:true}).getByRole('button',{name:'View',exact:true});
+  await expect(view).toBeEnabled();
+  await view.click();
+  await expect(page.locator('#map-navigation-view')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#map-navigation-view')).toHaveCount(0);
+  await expect(page.locator('.dossier')).toBeVisible();
+  expect(new URL(page.url()).hash).toContain('selected=syn-001');
+  const detailHandle = page.getByRole('button', { name:'View facility details', exact:true });
+  await expect(detailHandle).toHaveAttribute('data-sheet-state','middle');
+  await detailHandle.focus(); await page.keyboard.press('End');
+  await expect(detailHandle).toHaveAttribute('data-sheet-state','expanded');
+  await page.keyboard.press('Home');
+  await expect(detailHandle).toHaveAttribute('data-sheet-state','collapsed');
+  expect(new URL(page.url()).hash).toContain('selected=syn-001');
+  await detailHandle.click();
+  await expect(detailHandle).toHaveAttribute('data-sheet-state','middle');
   await expect(page.locator('.search-tools')).toBeHidden();
   await expect(page.locator('.csv-download')).toBeHidden();
   await expect(page.locator('.result-status')).toBeHidden();
@@ -64,6 +81,27 @@ test('mobile selection preserves query and sheet state, and map preview retains 
   await expect(page.locator('#field-search')).toHaveValue('Synthetic');
   await expect(handle).toHaveAttribute('data-sheet-state', 'expanded');
   expect(selectedUrl).toContain('selected=syn-001');
+});
+
+test('selected deep links start at middle and the detail handle drags through all three states without remounting the map', async ({ page }) => {
+  await page.setViewportSize({ width:390,height:844 });
+  await page.goto('./#/map?f1a=field&selected=syn-001&lat=56.1629&lon=10.2039&z=10');
+  const handle=page.getByRole('button',{name:'View facility details',exact:true});
+  await expect(handle).toHaveAttribute('data-sheet-state','middle');
+  await expect(page.locator('.dossier')).toBeVisible();
+  await expect(page.locator('.maplibregl-canvas')).toHaveCount(1);
+  await page.locator('.maplibregl-canvas').evaluate(canvas=>{(window as any).__sheetOriginalCanvas=canvas});
+  let box=(await handle.boundingBox())!;
+  await page.mouse.move(box.x+100,box.y+20);await page.mouse.down();await page.mouse.move(box.x+100,140,{steps:6});await page.mouse.up();
+  await expect(handle).toHaveAttribute('data-sheet-state','expanded');
+  box=(await handle.boundingBox())!;
+  await page.mouse.move(box.x+100,box.y+20);await page.mouse.down();await page.mouse.move(box.x+100,825,{steps:8});await page.mouse.up();
+  await expect(handle).toHaveAttribute('data-sheet-state','collapsed');
+  await expect(page.locator('.dossier')).toBeHidden();
+  expect(new URL(page.url()).hash).toContain('selected=syn-001');
+  await handle.click();
+  await expect(handle).toHaveAttribute('data-sheet-state','middle');
+  expect(await page.locator('.maplibregl-canvas').evaluate(canvas=>canvas===(window as any).__sheetOriginalCanvas)).toBe(true);
 });
 
 test('cancelled mobile handle gestures settle without stranding a drag', async ({ page }) => {
@@ -82,13 +120,13 @@ test('cancelled mobile handle gestures settle without stranding a drag', async (
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
 });
 
-test('desktop retains the one-third rail and mobile handle stays out of keyboard navigation', async ({ page }) => {
+test('desktop overlays a one-third rail on the unchanged map and mobile handle stays out of keyboard navigation', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 960 });
   await openFixture(page, 'open');
   const rail = await page.locator('.results').boundingBox();
   const map = await page.locator('.map-stage').boundingBox();
   expect(rail!.width).toBeCloseTo(480, -1);
-  expect(map!.width).toBeCloseTo(960, -1);
+  expect(map!.width).toBeCloseTo(1440, -1);
   await expect(page.locator('.mobile-sheet-handle')).toBeHidden();
   await page.locator('[data-record-id="syn-001"]').click();
   await expect(page.locator('.search-tools')).toBeHidden();

@@ -15,7 +15,7 @@
   import MapNavigation from "../../components/MapNavigation.svelte";
   import RecordList from "../../components/RecordList.svelte";
   import MobileSearchSheet from "../../components/MobileSearchSheet.svelte";
-  import { filterViewportHeight } from "../../components/mobileSheet";
+  import { filterViewportHeight, type SheetSnap } from "../../components/mobileSheet";
   import type { LayoutTuning } from "../../components/mapDebug";
   import RecordDetail from "../../../app/RecordDetail.svelte";
   import PreviewMasthead from "../../../app/PreviewMasthead.svelte";
@@ -144,9 +144,15 @@
   const sheetHeight = writable(56);
   const workspaceHeight = writable(0);
   const detailMapPreview = writable(false);
-  const showingDetail = $derived(Boolean(state.selectedId) && !$detailMapPreview);
+  const mobileLayout = writable(false);
+  const resultsSheetSnap = writable<SheetSnap>('middle');
+  const detailSheetSnap = writable<SheetSnap>('middle');
+  let previousResultsOpen = true;
+  const detailCollapsed = $derived($detailMapPreview || ($mobileLayout && Boolean(state.selectedId) && $detailSheetSnap === 'collapsed'));
+  const showingDetail = $derived(Boolean(state.selectedId) && !detailCollapsed);
   function measureWorkspace(node: HTMLDivElement) {
     const measure = () => {
+      mobileLayout.set(matchMedia('(max-width:40rem)').matches);
       const viewportBottom = window.visualViewport ? window.visualViewport.offsetTop + window.visualViewport.height : window.innerHeight;
       const available = Math.max(0, viewportBottom - node.getBoundingClientRect().top);
       workspaceHeight.set(available);
@@ -174,8 +180,10 @@
     const workspace = node.closest('.workspace');
     const map = workspace?.querySelector('.map-stage');
     const search = node.closest('.search-tools');
+    const sheet = node.closest('.results');
     if (map) observer.observe(map);
     if (search) observer.observe(search);
+    if (sheet) observer.observe(sheet);
     disclosure?.addEventListener('toggle', schedule);
     window.addEventListener('resize', schedule);
     window.visualViewport?.addEventListener('resize', schedule);
@@ -325,6 +333,7 @@
       hadSelection = true;
       if (activeSelectionId !== state.selectedId) {
         detailMapPreview.set(false);
+        detailSheetSnap.set('middle');
         activeSelectionId = state.selectedId;
         pendingRailFocusId = state.selectedId;
       }
@@ -367,6 +376,8 @@
     }
   });
   function selectRecord(id: string) {
+    if (!state.selectedId) previousResultsOpen = state.listOpen || aggregateOpen;
+    detailSheetSnap.set('middle');
     detailMapPreview.set(false);
     autocompleteOpen.set(false);
     selectionOrigin = document.activeElement instanceof HTMLElement && document.activeElement !== document.body
@@ -406,10 +417,19 @@
   function dismissSelection() {
     detailMapPreview.set(false);
     dispatch({ type: "results" });
+    if (!previousResultsOpen) dispatch({ type: 'list', value:false });
+  }
+  function changeMobileSheet(next: SheetSnap) {
+    if (state.selectedId) {
+      detailMapPreview.set(false);
+      detailSheetSnap.set(next);
+    } else if (next === 'collapsed') collapseMobileSearch();
+    else { resultsSheetSnap.set(next); dispatch({ type:'list', value:true }); }
   }
   function openMobileSearch() {
     if ($detailMapPreview && state.selectedId) {
       detailMapPreview.set(false);
+      detailSheetSnap.set('middle');
       void tick().then(() => document.querySelector<HTMLButtonElement>('.dossier .detail-close')?.focus());
       return;
     }
@@ -424,6 +444,7 @@
     if (!selected || selected.latitude === null || selected.longitude === null) return;
     const record = selected;
     detailMapPreview.set(true);
+    detailSheetSnap.set('collapsed');
     await tick();
     document.querySelector<HTMLButtonElement>(matchMedia('(max-width:40rem)').matches ? '.mobile-sheet-handle' : '.search-toggle')?.focus({ preventScroll: true });
     requestAnimationFrame(() => requestAnimationFrame(() => {
@@ -495,6 +516,7 @@
       void tick().then(() => document.querySelector<HTMLInputElement>("#field-search")?.focus());
       return;
     }
+    if (event.key === 'Escape' && document.querySelector('.map-navigation #map-navigation-view')) return;
     if (event.key === "Escape" && $autocompleteOpen) {
       event.preventDefault(); autocompleteOpen.set(false); return;
     }
@@ -612,7 +634,7 @@
 <svelte:window onkeydown={onKeydown} />
 <section class="field-view">
   {#if active}<PreviewMasthead privateTools={mode === "real-preview" || mode === "candidate-preview"} publicReleaseLabel={mode === "candidate-preview" ? $candidatePreviewLabel : publicReleaseLabel(publicMapMeta?.releaseId, publicMapMeta?.releaseLabel)} releaseDescription={mode === "candidate-preview" && $candidatePreviewLabel ? 'Configured private candidate release.' : null} {releaseOptions} selectedReleaseId={mode === "public-release" ? selectedPublicReleaseId : null} {...(onreleasechange ? { onreleasechange } : {})} current="map" {mapHref} {databaseHref} debugEnabled={$debugEnabled} ondebugchange={(enabled) => { debugEnabled.set(enabled); if (!enabled) debugOpen.set(false); }} mapBasemap={state.basemap} mapCameraPitch={$mapCameraPitch} mapControlsReady={$mapControlsReady} onmapbasemap={(value) => dispatch({ type: "basemap", value })} onmapviewtoggle={toggleMapCameraView} />{/if}
-  <div class="workspace" use:measureWorkspace class:workspace-open={workspaceOpen && !$detailMapPreview} class:detail-active={showingDetail} style:--mobile-sheet-height={`${$sheetHeight}px`} style:--visual-workspace-height={`${$workspaceHeight}px`} style:--workspace-width={$railWidth === null ? `${$layoutTuning.panelWidthPercent}%` : `${$railWidth}px`} style:--result-row-padding={`${$layoutTuning.rowPadding}px`} style:--result-type-scale={$layoutTuning.typeScale}>
+  <div class="workspace" use:measureWorkspace class:workspace-open={workspaceOpen && !detailCollapsed} class:detail-active={showingDetail} class:debug-active={$debugOpen} style:--mobile-sheet-height={`${$sheetHeight}px`} style:--visual-workspace-height={`${$workspaceHeight}px`} style:--workspace-width={$railWidth === null ? `${$layoutTuning.panelWidthPercent}%` : `${$railWidth}px`} style:--result-row-padding={`${$layoutTuning.rowPadding}px`} style:--result-type-scale={$layoutTuning.typeScale}>
     <main class="map-stage" aria-label={tr('Investigative map field', $language)}>
     {#if mode === "synthetic" && state.scenario === "loading"}<div class="status" role="status">
         {tr('Loading records…', $language)}
@@ -683,10 +705,10 @@
       aria-controls="field-record-list"
       onclick={openMobileSearch}
       ><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg><span class="search-toggle-copy"><strong>{tr($detailMapPreview ? 'View facility details' : 'Search map', $language)}</strong><small>{state.query || state.sourceId ? tr('Search or filters active', $language) : tr('Places, facilities, sources', $language)}</small></span></button>{/if}
-      {#if active}<MapNavigation viewport={state.viewport} ready={$mapControlsReady} areaEnabled={Boolean($currentBounds) && mode === 'public-release'} areaActive={state.searchScope?.kind === 'area'} onviewport={(value) => dispatch({ type: 'viewport', value })} onarea={searchArea} onlocate={(value) => dispatch({ type: 'private-camera', value })} />{/if}
+      {#if active}<MapNavigation viewport={state.viewport} ready={$mapControlsReady} basemap={state.basemap} pitch={$mapCameraPitch} compactHidden={$mobileLayout && $workspaceHeight - $sheetHeight < 100} overlayExpanded={state.selectedId ? $detailSheetSnap === 'expanded' && !detailCollapsed : $resultsSheetSnap === 'expanded' && workspaceOpen} onbasemap={(value) => dispatch({type:'basemap',value})} onviewtoggle={toggleMapCameraView} areaEnabled={Boolean($currentBounds) && mode === 'public-release'} areaActive={state.searchScope?.kind === 'area'} onarea={searchArea} onlocate={(value) => dispatch({ type: 'private-camera', value })} />{/if}
     </main>
-    <aside class="results" class:rail-collapsed={!workspaceOpen} class:map-preview={$detailMapPreview} id="field-record-list" aria-label={tr('Search, filters, and results', $language)}>
-      <div class="mobile-sheet-control" hidden={showingDetail}><MobileSearchSheet open={workspaceOpen && !$detailMapPreview} detail={showingDetail} preview={$detailMapPreview} available={$workspaceHeight} middlePercent={$layoutTuning.mobileSheetPercent ?? 48} expandedPercent={$layoutTuning.mobileExpandedPercent ?? 90} onopen={openMobileSearch} oncollapse={collapseMobileSearch} onheight={height => sheetHeight.set(height)} /></div>
+    <aside class="results" inert={$debugOpen && $mobileLayout} aria-hidden={$debugOpen && $mobileLayout ? true : undefined} class:rail-collapsed={!workspaceOpen} class:map-preview={detailCollapsed} id="field-record-list" aria-label={tr('Search, filters, and results', $language)}>
+      <div class="mobile-sheet-control"><MobileSearchSheet open={workspaceOpen && !detailCollapsed} snap={state.selectedId ? $detailSheetSnap : $resultsSheetSnap} detail={Boolean(state.selectedId)} preview={Boolean(state.selectedId)} available={$workspaceHeight} middlePercent={$layoutTuning.mobileSheetPercent ?? 48} expandedPercent={$layoutTuning.mobileExpandedPercent ?? 90} onchange={changeMobileSheet} onheight={height => sheetHeight.set(height)} /></div>
       <button class="rail-resize" type="button" aria-label="Resize search panel" title="Use left and right arrows to resize" onpointerdown={resizeRail} onkeydown={resizeRailKey}></button>
       <header hidden={Boolean(state.selectedId) || !workspaceOpen}><strong>{tr('Search records', $language)}</strong><button type="button" aria-label={tr('Close workspace', $language)} onclick={closeWorkspace}>×</button></header>
         <div class="search-tools" id="field-search-content" hidden={Boolean(state.selectedId) || !workspaceOpen}>
@@ -756,7 +778,7 @@
         </div>
       {#if $scopeError}<p class="search-error" hidden={Boolean(state.selectedId) || !workspaceOpen} role="alert">{$scopeError}</p>{/if}
       {#if mapMatchesStatus === 'error'}<p class="search-error" hidden={Boolean(state.selectedId) || !workspaceOpen} role="alert">{mapMatchesError} {#if onRetryMapMatches}<button type="button" onclick={() => onRetryMapMatches?.()}>{tr('Retry', $language)}</button>{/if}</p>{/if}
-      <div class="workspace-body">
+      <div class="workspace-body" id="field-detail-content">
         <div class="list-content" hidden={Boolean(state.selectedId) || !workspaceOpen}>
 {#if aggregateOpen}<details
         class="reading-sheet aggregate-sheet"
@@ -866,18 +888,18 @@
     {#if active && state.selectedId && mode !== "synthetic" && detailStatus === "loading"}<section
         class="reading-sheet dossier"
         role="status"
-        aria-label="Record evidence" hidden={$detailMapPreview}
+        aria-label="Record evidence" hidden={detailCollapsed}
       >
         <header class="dossier-header"><button class="back-to-results" type="button" onclick={dismissSelection}>← {tr('Back to results', $language)}</button><button class="detail-close" type="button" aria-label="Close record detail" onclick={dismissSelection}>×</button></header>
         <p class="dossier-message">Loading record evidence…</p>
       </section>{:else if active && state.selectedId && mode !== "synthetic" && (detailStatus === "error" || detailStatus === "unauthorized")}<section
         class="reading-sheet dossier"
         role="alert"
-        aria-label="Record evidence" hidden={$detailMapPreview}
+        aria-label="Record evidence" hidden={detailCollapsed}
       >
         <header class="dossier-header"><button class="back-to-results" type="button" onclick={dismissSelection}>← {tr('Back to results', $language)}</button><button class="detail-close" type="button" aria-label="Close record detail" onclick={dismissSelection}>×</button></header>
         <p class="dossier-message">{detailError}</p>
-      </section>{:else if active && state.selectedId && selected}<section class="reading-sheet dossier" aria-label="Record evidence" hidden={$detailMapPreview}>
+      </section>{:else if active && state.selectedId && selected}<section class="reading-sheet dossier" aria-label="Record evidence" hidden={detailCollapsed}>
         <header class="dossier-header"><button class="back-to-results" type="button" onclick={dismissSelection}>← {tr('Back to results', $language)}</button><button class="detail-close" type="button" aria-label="Close record detail" onclick={dismissSelection}>×</button></header>
         {#if aggregateOpen}<button type="button" class="back" onclick={dismissSelection}>← Members</button>{/if}
         <RecordDetail record={selected} presentation="rail" fullRecordHref={facilityPageHref} publicRelease={mode === "public-release"} publicReleaseId={mode === "public-release" ? publicReleaseId : null} onshowmap={selected.latitude !== null && selected.longitude !== null ? showSelectedOnMap : undefined} oncategoryfilter={mode === 'public-release' ? (value) => detailFilter('categories', value) : undefined} onsourcefilter={mode === 'public-release' ? (value) => detailFilter('sources', value) : undefined} />
@@ -906,6 +928,8 @@
   .field-view :global(.masthead) { position: relative; z-index: 6; flex: 0 0 auto; }
   .map-stage { position: relative; flex: 1 1 auto; min-height: 0; padding: 0; }
   .map-stage :global(.map-surface), .map-stage :global(.map-host) { position: absolute; inset: 0; }
+  .workspace-open .map-stage :global(.diagnostics-toggle) { left:calc(var(--workspace-width) + 1rem); }
+  .workspace-open .map-stage :global(.map-diagnostics) { left:calc(var(--workspace-width) + .65rem);width:min(25rem,calc(100% - var(--workspace-width) - 1.3rem)); }
   .search { display: flex; align-items: center; gap: .65rem; min-width: 0; height: 3.25rem; padding: 0 3.25rem 0 1rem; }
   .search label, .results > header strong, .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
   .search svg, .search-toggle svg { width: 1.1rem; height: 1.1rem; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; color: var(--muted); }
@@ -1000,10 +1024,10 @@
   .rail-resize:focus-visible { outline-offset: -3px; }
   .field-view [hidden] { display: none !important; }
   .workspace { position: relative; display: block; grid-template-columns: none; grid-template-rows: none; flex: 1 1 auto; min-height: 0; height: auto; border: 0; }
-  .workspace-open { display: grid; grid-template-columns: minmax(0, var(--workspace-width)) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+  .workspace-open { display:block; }
   .workspace .map-stage { width: 100%; height: 100%; min-width: 0; min-height: 0; }
   .workspace-open .map-stage { grid-column: 2; grid-row: 1; }
-  .workspace .results { position: relative; inset: auto; grid-column: 1; grid-row: 1; width: 100%; max-width: none; min-width: 0; min-height: 0; border: 0; border-right: 1px solid var(--line); background: var(--panel); }
+  .workspace .results { position:absolute;inset:0 auto 0 0;width:var(--workspace-width);max-width:none;min-width:0;min-height:0;border:0;border-right:1px solid var(--line);background:var(--panel); }
   .workspace .results > header { z-index: 5; }
   .workspace .results.rail-collapsed, .workspace .results.map-preview { display:none; }
   .mobile-sheet-control { display:none; }
@@ -1049,12 +1073,19 @@
     .workspace .dossier-header > button:last-child { flex: 0 0 2.75rem; }
   }
   @media (max-width: 40rem) {
-    .workspace, .workspace-open { display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) minmax(0,var(--mobile-sheet-height,56px));flex:0 1 var(--visual-workspace-height);height:var(--visual-workspace-height);max-height:var(--visual-workspace-height); }
+    .workspace, .workspace-open { display:block;flex:0 1 var(--visual-workspace-height);height:var(--visual-workspace-height);max-height:var(--visual-workspace-height); }
     .workspace .map-stage, .workspace-open .map-stage { grid-column:1;grid-row:1; }
-    .workspace .results { grid-column:1;grid-row:2;border-right:0;border-top:1px solid var(--line);border-radius:12px 12px 0 0; }
+    .workspace .results { position:absolute;inset:auto 0 0;width:100%;height:var(--mobile-sheet-height,56px);border-right:0;border-top:1px solid var(--line);border-radius:12px 12px 0 0; }
+    .map-stage :global(.maplibregl-ctrl-bottom-left), .map-stage :global(.maplibregl-ctrl-bottom-right) { left:auto;right:.5rem;bottom:calc(var(--mobile-sheet-height,56px) + .15rem); }
+    .map-stage :global(.maplibregl-ctrl-attrib) { box-sizing:border-box;width:128px;margin:0;white-space:normal;overflow-wrap:anywhere; }
+    .workspace .map-stage :global(.diagnostics-toggle) { left:.65rem;bottom:min(calc(var(--mobile-sheet-height,56px) + 3rem),calc(100% - 3rem)); }
+    .workspace .map-stage :global(.map-diagnostics) { left:.65rem;width:calc(100% - 1.3rem);bottom:calc(var(--mobile-sheet-height,56px) + .4rem);max-height:calc(100% - var(--mobile-sheet-height,56px) - 1rem); }
+    .workspace.debug-active .map-stage { z-index:9; }
+    .workspace.debug-active .map-stage :global(.diagnostics-toggle) { top:.65rem;bottom:auto; }
+    .workspace.debug-active .map-stage :global(.map-diagnostics) { bottom:.65rem;max-height:calc(100% - 4.5rem); }
     .workspace .results.rail-collapsed, .workspace .results.map-preview { display:flex; }
     .mobile-sheet-control { display:block;flex:0 0 auto; }
-    .workspace.detail-active .results { position:absolute;inset:0;grid-row:1 / -1;grid-column:1 / -1;z-index:20;width:100%;max-height:none;border:0;border-radius:0;padding:0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+    .workspace.detail-active .results { padding:0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
     .workspace .reading-sheet.dossier { position: relative; inset: auto; width: 100%; height: auto; max-height: none; padding: 0; }
     .search-toggle { display:none; }
     .workspace .results > header { top:2.9rem; }

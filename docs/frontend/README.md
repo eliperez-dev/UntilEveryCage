@@ -52,8 +52,9 @@ API schemas own supported fields. They are not additional roadmaps.
   available, including a download link from map search.
   Existing informational/download routes remain compatible aliases.
 - Keep Search map on the map. Street/Satellite and 2D/3D remain in header Tools.
-  A compact map navigation toolbar groups compass/reset north, zoom, Your
-  location and Search this area, with expandable pan/rotate controls.
+  A compact map toolbar groups View (Street/Satellite), 2D/3D, Your location
+  and Search this area. Native map gestures and keyboard navigation remain
+  available. The 3D view uses a 60-degree pitch; 2D looks straight down.
   On desktop, the collapsed Search map control sits flush against the map's top-left,
   directly below the shared header.
   Preserve the compact controls, theme styles and 44px touch targets.
@@ -61,24 +62,29 @@ API schemas own supported fields. They are not additional roadmaps.
   Do not change panel layout without the maintainer's specific approval.
 - The map stage fills the space below the header, including when navigation
   wraps. On desktop Search opens a resizable left workspace at one-third width;
-  the map occupies the remaining two-thirds and really resizes, retaining the current
-  camera rather than recentering an existing selection. Search, filters, results and facility detail share that workspace.
+  the map remains full-size underneath it. Opening, closing or resizing the
+  overlay preserves the map canvas, camera and marker positions. Search,
+  filters, results and facility detail share that overlay.
   Back to results restores the list and its scroll position. Mobile uses a
   bottom search sheet with collapsed, middle and expanded positions. The
   collapsed sheet is only a 56px Search map pull handle plus the safe area;
   tapping, keyboard steps or dragging that handle opens it. Normal result
-  scrolling never drags the sheet. The map resizes into the remaining space
-  without recreating its renderer. The middle and expanded height settings
+  scrolling never drags the sheet. The sheet overlays the unchanged map canvas;
+  its handle stays reachable even when expanded. Toolbar and attribution sit
+  above the mobile sheet; the toolbar can hide when a short viewport leaves
+  no usable map strip. The middle and expanded height settings
   are bounded, temporary controls under Layout & density in the debug menu.
-  Mobile detail fills the workspace and replaces all search, filters, totals
-  and download chrome, including while loading or reporting a detail error.
-  Back restores the previous sheet position and list context. Show on map
+  Mobile detail uses the same three sheet positions and replaces all search,
+  filters, totals and download chrome, including while loading or reporting a
+  detail error. A new selection or selected deep link opens at the middle
+  position; its handle remains visible and draggable. Collapsing retains the
+  selected record, and expanding retains its detail. Back restores the previous
+  results position and list context. Show on map
   collapses the sheet while retaining the selection; View facility details
   returns to that record. Unmapped records have no Show on map action.
   Below Search, keep Filters with its
   sliders icon and the result count on one compact row. Keep detail dense and
-  readable, with a prominent outlined `Open facility page` action directly
-  below the facility name.
+  readable, with an outlined `Open facility page` action at the bottom.
   Keep checkbox multi-selection, totals/pagination, evidence and relationship
   controls. Public category filters reuse their existing semantic color swatches.
 
@@ -153,13 +159,16 @@ API schemas own supported fields. They are not additional roadmaps.
 - Full page order: facility name and chain-icon Copy facility link action;
   category and classification overview; Location facts; single-record map;
   remaining facts. The map panel uses the same overview before Location,
-  with Open facility page directly beneath the name.
+  with Open facility page at the bottom of the map detail.
   No separate copy-record-ID button or repeated Record Evidence heading.
 - Copy actions show a brief checkmark only after the clipboard write succeeds,
   with a localized live-region status. Failure shows an X and accessible status;
   neither state shifts the facility heading or share button.
 - Map detail has an `Open facility page` link, selected-release context and
-  close control. It fills the mobile viewport with scrollable content.
+  close control. It shares the mobile map sheet with scrollable content.
+  Detailed classification follows Location immediately before Source facts,
+  collapsed by default. Connections start collapsed when none exist and expand
+  when connections are available; loading and errors remain accessible.
 - Full mapped records have `Open in Map`, centering/selecting that facility
   in the same release. Unmapped records have no location map/action.
 - Single-record previews use the existing providers/pins: source/exact
@@ -205,7 +214,12 @@ API schemas own supported fields. They are not additional roadmaps.
 Contribute opens Add a facility. Three main tasks are Add a facility, Update a
 record and Report a problem; Update groups correction, evidence and duplicate.
 Keep Privacy/removal directly accessible and Track submission near the page
-heading. Preserve older task URLs and target/return-map context. Bug reports
+heading. On mobile and narrow tablets, use a compact labeled task chooser in place
+of the desktop task cards, with Privacy/removal included. Put the current form
+directly below it, retain the update subtype links, and keep inputs at 16px.
+Mobile forms use the normal page scroll; submit and receipt actions remain fully
+readable without nested frames or fixed overlays. Preserve older task URLs and
+target/return-map context. Bug reports
 save into the system and return confirmation/tracking, never an email draft.
 Use short task-specific forms, with optional location/classification details
 behind a disclosure. Preserve the existing structured fields, category pins,

@@ -1,15 +1,17 @@
 <script lang="ts">
   import { language, tr } from '../../app/language';
   import { classificationSummary, type ClassificationRecord } from './classificationSummary';
-  let { record }: { record: ClassificationRecord } = $props();
+  let { record, presentation = 'all' }: { record: ClassificationRecord; presentation?: 'all' | 'summary' | 'details' } = $props();
   const classification = $derived(classificationSummary(record, label => tr(label, $language)));
 </script>
 
 <div class="classification-summary">
-  {#if classification.summary}<p class="summary">{classification.summary}</p>{/if}
-  {#if !classification.summary && !classification.supportingActivities.length && !classification.sourceLabels.length}<p class="summary">{tr('Activity details not provided', $language)}</p>{/if}
-  {#if classification.activities.length && classification.hasAphisClassification}<p class="additional-activities"><span>{tr('Recorded activities', $language)}:</span> {classification.activities.join(', ')}</p>{/if}
-  {#if classification.supportingActivities.length || classification.sourceLabels.length || classification.categories.length > 1}
+  {#if presentation !== 'details'}
+    {#if classification.summary}<p class="summary">{classification.summary}</p>{/if}
+    {#if !classification.summary && !classification.supportingActivities.length && !classification.sourceLabels.length}<p class="summary">{tr('Activity details not provided', $language)}</p>{/if}
+    {#if classification.activities.length && classification.hasAphisClassification}<p class="additional-activities"><span>{tr('Recorded activities', $language)}:</span> {classification.activities.join(', ')}</p>{/if}
+  {/if}
+  {#if presentation !== 'summary' && (classification.supportingActivities.length || classification.sourceLabels.length || classification.categories.length > 1)}
     <details>
       <summary>{tr('Classification details', $language)}</summary>
       <dl>

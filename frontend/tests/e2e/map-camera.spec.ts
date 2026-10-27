@@ -376,7 +376,7 @@ test('cluster bodies render on cold and warm public maps through satellite, 3D a
   await expectClusterBody('satellite');
   const toggle = page.locator('#shared-tools-menu .map-camera-toggle'); await toggle.click();
   // The first tilt waits for the bounded DEM request before animating.
-  await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getPitch()), { timeout: 12_000 }).toBe(45);
+  await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getPitch()), { timeout: 12_000 }).toBe(60);
   await expectClusterBody('3d'); await toggle.click();
   await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getPitch())).toBe(0);
   await expectClusterBody('2d');
@@ -451,7 +451,7 @@ test('delayed high-elevation terrain keeps the selected geographic focus anchore
     await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.isMoving())).toBe(false);
     await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getPitch())).toBe(0);
     release();
-    await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getPitch())).toBe(45);
+    await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getPitch())).toBe(60);
     const camera = await page.evaluate(() => {
       const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
       return { zoom: map.getZoom(), bearing: map.getBearing() };
@@ -466,7 +466,7 @@ test('delayed high-elevation terrain keeps the selected geographic focus anchore
     await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getPitch())).toBe(0);
     await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getTerrain())).toMatchObject({ source: 'mapterhorn-terrain', exaggeration: 1 });
     await assertFocus(); await toggle.click();
-    await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getPitch())).toBe(45);
+    await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getPitch())).toBe(60);
     await assertFocus();
   } finally { release(); }
 });
@@ -572,9 +572,9 @@ test('camera tilt, map style, and URL state preserve the map view without compas
   await viewToggle.click();
   await expect(viewToggle).toHaveText('3D');
   await expect(viewToggle).toHaveAttribute('aria-pressed', 'true');
-  await expect.poll(() => new URL(page.url()).hash).toContain('pitch=45');
+  await expect.poll(() => new URL(page.url()).hash).toContain('pitch=60');
   await expect.poll(() => new URL(page.url()).hash).toContain('bearing=24');
-  await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getPitch())).toBe(45);
+  await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getPitch())).toBe(60);
   await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getTerrain())).toMatchObject({ source: 'mapterhorn-terrain', exaggeration: 1 });
 
   const mapStyle = page.getByLabel('Map style');
@@ -591,7 +591,7 @@ test('camera tilt, map style, and URL state preserve the map view without compas
   await expect.poll(() => page.evaluate(() => {
     const instance = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     return [instance.getPitch(), instance.getBearing(), instance.getZoom(), Boolean(instance.getLayer('clusters'))];
-  })).toEqual([45, 24, mapState.zoom, true]);
+  })).toEqual([60, 24, mapState.zoom, true]);
   await mapStyle.selectOption('vector');
   await expect(mapStyle).toHaveValue('vector');
   await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getStyle().sources.base.tiles[0]), { timeout: basemapHandoffTimeout }).toContain('tile.openstreetmap.org');
@@ -619,7 +619,7 @@ test('flat camera URLs stay compact and the camera control remains usable on tou
   await viewToggle.click();
   await expect(viewToggle).toHaveText('3D');
   await expect(viewToggle).toHaveAttribute('aria-pressed', 'true');
-  await expect.poll(() => new URL(page.url()).hash).toContain('pitch=45');
+  await expect.poll(() => new URL(page.url()).hash).toContain('pitch=60');
 });
 
 test('compact map view control toggles 3D and shows the map gesture hint without compass controls', async ({ page }, testInfo) => {
@@ -650,7 +650,7 @@ test('compact map view control toggles 3D and shows the map gesture hint without
   await expect(viewToggle).toHaveAttribute('title', 'Right-drag to tilt and rotate');
   await page.waitForFunction(() => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
-    return map.getPitch() === 45 && !map.isMoving();
+    return map.getPitch() === 60 && !map.isMoving();
   });
   await page.screenshot({ path: testInfo.outputPath('map-controls-desktop.png') });
   const before = await page.evaluate(() => {

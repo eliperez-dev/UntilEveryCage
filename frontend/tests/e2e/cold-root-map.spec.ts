@@ -65,7 +65,11 @@ test('cold landing entry and warmed reload keep map controls and exact/approxima
     total_count: ids.length, mapped_count: ids.length,
   } });
   let feedRequests = 0;
-  const tile = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/F2sAAAAASUVORK5CYII=', 'base64');
+  const tile = Buffer.from(await page.evaluate(() => {
+    const canvas=document.createElement('canvas');canvas.width=canvas.height=256;
+    const context=canvas.getContext('2d')!;context.fillStyle='#252525';context.fillRect(0,0,256,256);
+    return canvas.toDataURL('image/png').split(',')[1]!;
+  }), 'base64');
   await page.route('https://tile.openstreetmap.org/**', route => route.fulfill({ status: 200, contentType: 'image/png', body: tile }));
   await page.route('https://server.arcgisonline.com/**', route => route.fulfill({ status: 200, contentType: 'image/png', body: tile }));
   await page.route(url => new URL(url.href).pathname === '/api/v2/releases/manifest', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(testManifest()) }));
@@ -114,13 +118,13 @@ test('cold landing entry and warmed reload keep map controls and exact/approxima
       return data.features.map((feature: any) => feature.properties.facility_id).sort();
     })).toEqual([...ids].sort());
   };
-  const expectMapWidth = async (fraction: number) => {
-    await expect.poll(() => page.evaluate((expectedFraction) => {
+  const expectMapWidth = async () => {
+    await expect.poll(() => page.evaluate(() => {
       const current = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
-      const expectedWidth = document.querySelector('.workspace')!.getBoundingClientRect().width * expectedFraction;
+      const expectedWidth = document.querySelector('.workspace')!.getBoundingClientRect().width;
       const widths = [current.getCanvas().getBoundingClientRect().width, current.getContainer().getBoundingClientRect().width, document.querySelector('.map-stage')!.getBoundingClientRect().width];
       return Math.max(...widths.map(width => Math.abs(width - expectedWidth)));
-    }, fraction)).toBeLessThan(1);
+    })).toBeLessThan(1);
   };
   const expectSelectedCentered = async (point: [number, number]) => {
     await expect.poll(() => page.evaluate((coordinate) => {
@@ -143,7 +147,7 @@ test('cold landing entry and warmed reload keep map controls and exact/approxima
   const search = page.getByRole('button', { name: /Search map/ });
   await expect(search).toBeVisible();
   await search.click();
-  await expectMapWidth(2 / 3);
+  await expectMapWidth();
   await expect(page.getByRole('combobox', { name: 'Search across public release records' })).toBeVisible();
   await expect(page.getByText('Exact fixture record')).toBeVisible();
   const searchBox = page.getByRole('combobox', { name: 'Search across public release records' });
@@ -173,7 +177,7 @@ test('cold landing entry and warmed reload keep map controls and exact/approxima
   await expectMapIds([exactId, approximateId]);
   expect(new URL(page.url()).hash).toContain('list=open');
   await page.getByRole('button', { name: 'Close workspace', exact: true }).click();
-  await expectMapWidth(1);
+  await expectMapWidth();
 
   await page.getByRole('button', { name: 'Tools' }).click();
   await page.getByLabel('Map style').selectOption('satellite');
@@ -258,13 +262,13 @@ test('cold landing entry and warmed reload keep map controls and exact/approxima
 
   await moveAndCheckFeature(exactId, exactPoint, 'v1-source-pins');
   await expect.poll(() => new URL(page.url()).hash).toContain(`selected=${exactId}`);
-  await expectMapWidth(2 / 3);
+  await expectMapWidth();
   await expectSelectedCentered(exactPoint);
   expect(await page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getSource('approximate-reference-area')._data.geojson.features)).toHaveLength(0);
   await page.getByRole('button', { name: 'Close record detail' }).click();
   await expect.poll(() => new URL(page.url()).hash).not.toContain(`selected=${exactId}`);
   await page.getByRole('button', { name: 'Close workspace', exact: true }).click();
-  await expectMapWidth(1);
+  await expectMapWidth();
   await expectSelectedCentered(exactPoint);
 
   await page.evaluate((point) => (window as any).__UEC_LOCAL_PREVIEW_MAP__.jumpTo({ center: point, zoom: 16 }), approximatePoint);
@@ -306,7 +310,7 @@ test('cold landing entry and warmed reload keep map controls and exact/approxima
   expect(radiusAt17.ring).toEqual(radiusAt15.ring);
   await page.getByRole('button', { name: 'Close record detail' }).click();
   await page.getByRole('button', { name: 'Close workspace', exact: true }).click();
-  await expectMapWidth(1);
+  await expectMapWidth();
   await expectSelectedCentered(approximatePoint);
   await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getSource('approximate-reference-area')._data.geojson.features.length)).toBe(0);
   await page.mouse.move(1, 1);
@@ -319,14 +323,19 @@ test('cold landing entry and warmed reload keep map controls and exact/approxima
   expect(feedRequests).toBe(1);
 
   const navigation = page.getByRole('navigation', { name: 'Map navigation', exact: true });
-  await navigation.getByRole('button', { name: 'More map controls', exact: true }).click();
-  await navigation.getByRole('button', { name: 'Rotate right', exact: true }).click();
-  await expect.poll(() => page.evaluate(() => Math.round((window as any).__UEC_LOCAL_PREVIEW_MAP__.getBearing()))).toBe(30);
-  await navigation.getByRole('button', { name: 'Reset north', exact: true }).click();
-  await expect.poll(() => page.evaluate(() => Math.round((window as any).__UEC_LOCAL_PREVIEW_MAP__.getBearing()))).toBe(0);
-  await navigation.getByRole('button', { name: 'Zoom out', exact: true }).click();
-  await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getZoom())).toBe(16);
-  await navigation.getByRole('button', { name: 'More map controls', exact: true }).click();
+  await expect(navigation.getByRole('button',{name:'More map controls',exact:true})).toHaveCount(0);
+  await expect(navigation.getByRole('button',{name:'Zoom out',exact:true})).toHaveCount(0);
+  await navigation.getByRole('button',{name:'View',exact:true}).click();
+  await navigation.getByRole('button',{name:'Satellite',exact:true}).click();
+  await expect.poll(()=>page.evaluate(()=>(window as any).__UEC_LOCAL_PREVIEW_MAP__.getStyle().sources.base.tiles[0])).toContain('World_Imagery');
+  await navigation.getByRole('button',{name:'View',exact:true}).click();
+  await navigation.getByRole('button',{name:'Street',exact:true}).click();
+  await expect(navigation.getByRole('button',{name:'Switch to 3D',exact:true})).toBeEnabled();
+  // Native camera gestures remain supported; the toolbar uses the terrain-aware
+  // shared request handler when returning to an overhead view.
+  await page.evaluate(()=>(window as any).__UEC_LOCAL_PREVIEW_MAP__.jumpTo({pitch:30}));
+  await navigation.getByRole('button',{name:'Switch to 2D',exact:true}).click();
+  await expect.poll(()=>page.evaluate(()=>(window as any).__UEC_LOCAL_PREVIEW_MAP__.getPitch())).toBe(0);
 
   // Synthetic browser position only. The app must never request location on load,
   // or serialize the device-derived view into any navigation link or history URL.
@@ -338,8 +347,10 @@ test('cold landing entry and warmed reload keep map controls and exact/approxima
     const center = (window as any).__UEC_LOCAL_PREVIEW_MAP__.getCenter();
     return Math.abs(center.lat - 12.345678) + Math.abs(center.lng - 98.765432);
   })).toBeLessThan(.00001);
-  await navigation.getByRole('button', { name: 'Zoom out', exact: true }).click();
-  await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getZoom())).toBe(11);
+  const canvas=(await page.locator('.maplibregl-canvas').boundingBox())!;
+  await page.mouse.move(canvas.x+canvas.width/2,canvas.y+canvas.height/2);
+  await page.mouse.wheel(0,120);
+  await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getZoom())).toBeLessThan(12);
   const privateViewUrl = new URLSearchParams(new URL(page.url()).hash.split('?')[1]);
   expect(privateViewUrl.get('lat')).toBe(beforeLocate.get('lat'));
   expect(privateViewUrl.get('lon')).toBe(beforeLocate.get('lon'));
@@ -357,7 +368,8 @@ test('cold landing entry and warmed reload keep map controls and exact/approxima
   const debug = page.getByRole('complementary', { name: 'Debug menu', exact: true });
   await expect(debug).toBeVisible();
   await debug.locator('#debug-panel-width').press('End');
-  await expectMapWidth(.45);
+  await expectMapWidth();
+  await expect.poll(()=>page.evaluate(()=>document.querySelector('.results')!.getBoundingClientRect().width/document.querySelector('.workspace')!.getBoundingClientRect().width)).toBeCloseTo(.55,2);
   await debug.locator('summary').filter({ hasText: 'Map tuning' }).click();
   await debug.locator('#cluster-mode').selectOption('off');
   await expect(debug.locator('#cluster-mode')).toHaveValue('off');
@@ -373,7 +385,7 @@ test('cold landing entry and warmed reload keep map controls and exact/approxima
   expect(copied).not.toContain(exactId);
   expect(report.tuning.panelWidthPercent).toBe(55);
   await debug.getByRole('button', { name: 'Reset temporary settings', exact: true }).click();
-  await expectMapWidth(2 / 3);
+  await expectMapWidth();
   await expect(debug.locator('#cluster-mode')).toHaveValue('auto');
   await debug.getByRole('button', { name: 'Close debug menu', exact: true }).click();
 });
