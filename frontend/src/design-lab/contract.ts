@@ -51,7 +51,7 @@ export type LabAction =
   | { type: 'list'; value: boolean } | { type: 'viewport'; value: Viewport }
   | { type: 'private-camera'; value: Viewport }
   | { type: 'filters'; value: LabFilters } | { type: 'reset-filters' }
-  | { type: 'scope'; value: SearchScope }
+  | { type: 'scope'; value: SearchScope; preserveWorkspace?: boolean }
   | { type: 'search'; value: { query: string; filters: LabFilters } }
   | { type: 'results' } | { type: 'close-workspace' };
 

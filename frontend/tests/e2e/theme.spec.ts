@@ -136,17 +136,20 @@ test('saved theme is applied before the app module starts', async ({ page }) => 
   await expect(page.getByRole('heading', { name: 'About Until Every Cage is Empty' })).toBeVisible();
 });
 
-test('masthead theme toggle is square, directly before Tools, and outside the Tools menu', async ({ page }) => {
+test('masthead theme toggle is square, before language and Tools, and outside the Tools menu', async ({ page }) => {
   await page.goto('./#/about');
   const toggle = page.locator('.masthead .theme-toggle');
   const tools = page.getByRole('button', { name: 'Tools', exact: true });
   const boxes = await page.evaluate(() => {
     const toggleRect = document.querySelector('.masthead .theme-toggle')!.getBoundingClientRect();
+    const languageRect = document.querySelector('.masthead .language-action')!.getBoundingClientRect();
     const toolsRect = document.querySelector('.masthead .tools-action')!.getBoundingClientRect();
-    return { width: toggleRect.width, height: toggleRect.height, gap: toolsRect.left - toggleRect.right };
+    return { width: toggleRect.width, height: toggleRect.height, gap: languageRect.left - toggleRect.right, languageWidth: languageRect.width, toolsGap: toolsRect.left - languageRect.right };
   });
   expect(Math.abs(boxes.width - boxes.height)).toBeLessThan(1);
   expect(boxes.gap).toBeGreaterThanOrEqual(0);
+  expect(boxes.languageWidth).toBeGreaterThanOrEqual(44);
+  expect(boxes.toolsGap).toBeGreaterThanOrEqual(0);
   await tools.click();
   await expect(page.locator('#shared-tools-menu').getByRole('button', { name: /Light theme|Dark theme/ })).toHaveCount(0);
   await expect(toggle).toBeVisible();

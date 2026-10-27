@@ -10,11 +10,11 @@ test('Spanish selection changes primary and map controls without changing route 
   const languageControl = async () => {
     // The shell header can appear before the lazy map module is mounted.
     await expect(page.getByRole('navigation', { name: /^(Map navigation|Navegación del mapa)$/ })).toBeVisible();
-    await page.getByRole('button', { name: /^(Tools|Herramientas)$/ }).click();
-    return page.getByLabel(/^(Language|Idioma)$/);
+    await page.getByRole('button', { name: /^(Language|Idioma)$/ }).click();
+    return page.locator('#shared-language-menu').getByRole('button', { name: 'Español', exact: true });
   };
   const control = await languageControl();
-  await control.selectOption('es');
+  await control.click();
   await expect(page.getByRole('navigation', { name: 'Navegación principal' }).getByRole('link', { name: 'Mapa', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: /Volver a los resultados/ })).toBeVisible();
   await expect(page.locator('.search-tools')).toBeHidden();
@@ -28,7 +28,6 @@ test('Spanish selection changes primary and map controls without changing route 
   expect(mapParams.get('category')).toBe('Processing');
   expect(mapParams.get('precision')).toBe('exact');
   expect(mapParams.get('country')).toBe('US');
-  await page.getByRole('button', { name:'Cerrar herramientas' }).click();
   await page.getByRole('button', { name:/Volver a los resultados/ }).click();
   await expect(page.getByText('Buscar registros', { exact: true })).toBeVisible();
   await expect(page.getByText('Filtros 6', { exact: true })).toBeVisible();
@@ -37,18 +36,17 @@ test('Spanish selection changes primary and map controls without changing route 
   await page.reload();
   await expect(page.getByRole('navigation', { name: 'Navegación principal' }).getByRole('link', { name: 'Mapa', exact: true })).toBeVisible();
   const restoredControl = await languageControl();
-  await expect(restoredControl).toHaveValue('es');
+  await expect(restoredControl).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('Spanish renders the localized FAQ while retaining the English manifest when English is selected', async ({ page }) => {
   await page.goto('./#/faq');
-  await page.getByRole('button', { name: 'Tools' }).click();
-  await page.getByLabel('Language').selectOption('es');
+  await page.getByRole('button', { name: 'Language', exact: true }).click();
+  await page.getByRole('button', { name: 'Español', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Preguntas frecuentes' })).toBeVisible();
-  await page.getByRole('button', { name: 'Cerrar herramientas' }).click();
   await page.getByRole('navigation', { name: 'Navegación principal' }).getByRole('link', { name: 'Acerca de' }).click();
-  await page.getByRole('button', { name: 'Herramientas', exact: true }).click();
-  await page.getByLabel('Idioma').selectOption('en');
+  await page.getByRole('button', { name: 'Idioma', exact: true }).click();
+  await page.getByRole('button', { name: 'English', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'About Until Every Cage is Empty' })).toBeVisible();
   await expect(page.locator('.manifesto')).toContainText('The violence inflicted on these animals is not accidental');
 });
@@ -57,8 +55,8 @@ test('map search and the bug contribution form expose Spanish controls', async (
   await installEmptyPublicMap(page, 'synthetic-release');
   await page.goto('./#/map?list=open');
   await expect(page.getByRole('combobox', { name: 'Search across public release records' })).toBeVisible();
-  await page.getByRole('button', { name: 'Tools' }).click();
-  await page.getByLabel('Language').selectOption('es');
+  await page.getByRole('button', { name: 'Language', exact: true }).click();
+  await page.getByRole('button', { name: 'Español', exact: true }).click();
   await expect(page.getByRole('combobox', { name: 'Buscar en los registros de la versión pública' })).toBeVisible();
   await expect(page.getByRole('button', { name:'Cerrar el panel' })).toBeVisible();
   await page.goto('./#/contribute?type=bug');

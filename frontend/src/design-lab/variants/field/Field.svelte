@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick } from "svelte";
-  import { writable } from "svelte/store";
+  import { get, writable } from "svelte/store";
   import type {
     DirectionViewProps,
     LabRecord,
@@ -170,7 +170,7 @@
     const disclosure = node.closest('details');
     const measure = () => {
       frame = 0;
-      if (!disclosure?.open || !matchMedia('(max-width:40rem)').matches) return;
+      if (!disclosure?.open) return;
       const viewportBottom = window.visualViewport ? window.visualViewport.offsetTop + window.visualViewport.height : window.innerHeight;
       const safeArea = parseFloat(getComputedStyle(node).getPropertyValue('--filter-safe-bottom')) || 0;
       node.style.setProperty('--filter-available-height', `${filterViewportHeight(node.getBoundingClientRect().top, viewportBottom, safeArea)}px`);
@@ -328,15 +328,21 @@
   let hadSelection = false;
   let activeSelectionId: string | null = null;
   let pendingRailFocusId: string | null = null;
+  function selectionSheetSnap(): SheetSnap {
+    const expanded = hadSelection && state.selectedId
+      ? !get(detailMapPreview) && get(detailSheetSnap) === 'expanded'
+      : state.listOpen && get(resultsSheetSnap) === 'expanded';
+    return expanded ? 'expanded' : 'middle';
+  }
   $effect(() => {
     if (state.selectedId) {
-      hadSelection = true;
       if (activeSelectionId !== state.selectedId) {
+        detailSheetSnap.set(selectionSheetSnap());
         detailMapPreview.set(false);
-        detailSheetSnap.set('middle');
         activeSelectionId = state.selectedId;
         pendingRailFocusId = state.selectedId;
       }
+      hadSelection = true;
       // A Forward navigation can restore the dossier without calling
       // selectRecord again. Keep its row as the dismissal fallback.
       selectionOriginRecordId ??= state.selectedId;
@@ -377,7 +383,7 @@
   });
   function selectRecord(id: string) {
     if (!state.selectedId) previousResultsOpen = state.listOpen || aggregateOpen;
-    detailSheetSnap.set('middle');
+    detailSheetSnap.set(selectionSheetSnap());
     detailMapPreview.set(false);
     autocompleteOpen.set(false);
     selectionOrigin = document.activeElement instanceof HTMLElement && document.activeElement !== document.body
@@ -506,6 +512,7 @@
   }
   function onKeydown(event: KeyboardEvent) {
     if (!active) return;
+    if (document.querySelector('#shared-language-menu, #shared-tools-menu')) return;
     const target = event.target;
     const editing = target instanceof HTMLElement && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
     if (event.key === "/" && !editing && !event.ctrlKey && !event.metaKey && !event.altKey) {
@@ -609,12 +616,16 @@
     dispatch({ type: 'close-workspace' });
   }
   function searchArea() {
+    if (state.searchScope?.kind === 'area') {
+      scopeError.set('');
+      dispatch({ type: 'scope', value: null, preserveWorkspace: true });
+      return;
+    }
     if (!$currentBounds) return;
     const scope = areaScopeFromBounds($currentBounds);
     if (!scope) { scopeError.set(tr('This map area crosses the date line. Zoom in and try again.', $language)); return; }
     scopeError.set('');
-    dispatch({ type: 'scope', value: scope });
-    dispatch({ type: 'results' });
+    dispatch({ type: 'scope', value: scope, preserveWorkspace: true });
   }
   function searchNear(place: PlaceSuggestion) {
     scopeError.set('');
@@ -946,7 +957,7 @@
   .filters[open] summary::after { transform: rotate(225deg) translate(-2px, -1px); }
   .filters summary::-webkit-details-marker { display: none; }
   .filters summary b { min-width: 1.25rem; padding: 0 .3rem; background: var(--panel-selected); text-align: center; font-weight: 500; font-variant-numeric: tabular-nums; }
-  .filter-sheet { position: absolute; z-index: 8; top: 100%; left: -1px; right: -1px; max-height: min(30rem, 58dvh); overflow: auto; overscroll-behavior: contain; padding: .25rem 1rem 1rem; border: 1px solid var(--line); background: var(--panel); box-shadow: 0 .7rem 1.5rem #0002; }
+  .filter-sheet { --filter-safe-bottom:env(safe-area-inset-bottom);position: absolute; z-index: 8; top: 100%; left: -1px; right: -1px; box-sizing:border-box;height:var(--filter-available-height,50dvh);max-height:var(--filter-available-height,50dvh); overflow: auto; overscroll-behavior: contain; padding: .25rem 1rem 1rem; border: 1px solid var(--line); background: var(--panel); box-shadow: 0 .7rem 1.5rem #0002; }
   .filter-sheet fieldset { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(11rem, 100%), 1fr)); gap: .1rem .75rem; margin: .8rem 0 0; padding: .6rem 0 0; border: 0; border-top: 1px solid var(--line); }
   .filter-sheet fieldset.source-options { grid-template-columns: minmax(0, 1fr); }
   .filter-sheet legend { padding: 0 .5rem 0 0; color: var(--muted); font-size: .75rem; font-weight: 500; }
@@ -1092,7 +1103,6 @@
     .workspace .results.rail-collapsed .workspace-body,.workspace .results.map-preview .workspace-body { display:none; }
     .rail-resize { display: none; }
     .search input { font-size: 1rem; }
-    .filter-sheet { --filter-safe-bottom:env(safe-area-inset-bottom);position:absolute;top:100%;max-height:min(45dvh,22rem,var(--filter-available-height,45dvh)); }
     .filter-sheet label { min-height: 2.75rem; }
     .workspace .aggregate-sheet dl, .workspace .aggregate-sheet .evidence-note, .workspace .aggregate-sheet .open-members { display: block; }
     .place-suggestions .results-heading { min-height: 2.75rem; gap: .4rem; padding: 0 .65rem; }

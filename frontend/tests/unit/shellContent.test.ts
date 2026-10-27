@@ -17,7 +17,7 @@ const picker = readFileSync(resolve(process.cwd(), 'src/app/ContributionPinPicke
 const mapSurface = readFileSync(resolve(process.cwd(), 'src/design-lab/components/MapSurface.svelte'), 'utf8');
 const aphisReports = readFileSync(resolve(process.cwd(), 'src/app/AphisReports.svelte'), 'utf8');
 const publicRecord = readFileSync(resolve(process.cwd(), 'src/app/PublicRecord.svelte'), 'utf8');
-const language = readFileSync(resolve(process.cwd(), 'src/app/language.ts'), 'utf8');
+const language = readFileSync(resolve(process.cwd(), 'src/app/locales/es.ts'), 'utf8');
 
 describe('normal shell content', () => {
   it('keeps release context compact and removes unavailable account controls', () => {

@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { filterViewportHeight, nearestSheetSnap, sheetHeights, sheetKeyboardSnap } from '../../src/design-lab/components/mobileSheet';
 describe('mobile search sheet geometry', () => {
   it('bounds the filter scroll viewport below its actual toolbar position', () => {
-    expect(filterViewportHeight(641,844)).toBe(195);
-    expect(filterViewportHeight(541,667,20)).toBe(98);
+    expect(filterViewportHeight(641,844)).toBe(203);
+    expect(filterViewportHeight(541,667,20)).toBe(106);
     expect(filterViewportHeight(800,667)).toBe(0);
   });
   it('uses the actual remaining workspace and safe area', () => {

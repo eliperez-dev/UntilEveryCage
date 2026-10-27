@@ -68,7 +68,9 @@ export function reduceLabState(state: LabState, action: LabAction): LabState {
     case 'scenario': return { ...state, scenario: action.value };
     case 'query': return { ...state, query: action.value, selectedId: null };
     case 'search': return { ...state, query: action.value.query, filters: { categories: unique(action.value.filters.categories), precisions: unique(action.value.filters.precisions), countries: unique(action.value.filters.countries), sources: unique(action.value.filters.sources), activities: unique(action.value.filters.activities) }, selectedId: null, aggregateMemberIds: null, listOpen: true };
-    case 'scope': return isSearchScope(action.value) ? { ...state, searchScope: action.value, selectedId: null, aggregateMemberIds: null, listOpen: true } : state;
+    case 'scope': return isSearchScope(action.value) ? action.preserveWorkspace
+      ? { ...state, searchScope: action.value }
+      : { ...state, searchScope: action.value, selectedId: null, aggregateMemberIds: null, listOpen: true } : state;
     case 'results': return { ...state, selectedId: null, listOpen: true };
     case 'close-workspace': return { ...state, selectedId: null, listOpen: false, aggregateMemberIds: null, expandedCluster: null };
     case 'select': return { ...state, selectedId: action.value };

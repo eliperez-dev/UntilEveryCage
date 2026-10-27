@@ -2,7 +2,7 @@ export type SheetSnap = 'collapsed' | 'middle' | 'expanded';
 export type SheetTuning = Readonly<{ middlePercent?: number; expandedPercent?: number }>;
 export const COLLAPSED_SHEET_HEIGHT = 56;
 export function filterViewportHeight(top: number, viewportBottom: number, safeArea = 0): number {
-  return Math.max(0, Math.floor(viewportBottom - top - Math.max(0, safeArea) - 8));
+  return Math.max(0, Math.floor(viewportBottom - top - Math.max(0, safeArea)));
 }
 export function sheetHeights(available: number, tuning: SheetTuning = {}, safeArea = 0) {
   const workspace = Math.max(0, Number.isFinite(available) ? available : 0);

@@ -46,7 +46,9 @@ async function mockSanitizedApi(page: Page) {
 async function setSpanishAndTheme(page: Page, theme: 'Claro' | 'Oscuro') {
   const tools = page.getByRole('button', { name: 'Herramientas', exact: true });
   if (await tools.getAttribute('aria-expanded') !== 'true') await tools.click();
-  await page.getByLabel('Idioma', { exact: true }).selectOption('es');
+  await page.locator('.language-action').click();
+  await page.locator('#shared-language-menu').getByRole('button', { name: 'Español', exact: true }).click();
+  await tools.click();
   const toggle = page.locator('.masthead .theme-toggle');
   const selectedLight = theme === 'Claro';
   if ((await toggle.getAttribute('aria-pressed')) !== String(selectedLight)) await toggle.click();
@@ -87,7 +89,10 @@ test('Spanish map controls stay usable in Tools at 320px, 375px and 390px in eit
 
       await page.screenshot({ path: testInfo.outputPath(`spanish-map-${width}-${theme.toLowerCase()}.png`) });
       if (width === 390) {
-        await expect(page.getByLabel('Idioma', { exact: true })).toHaveValue('es');
+        await page.locator('.language-action').click();
+        await expect(page.locator('#shared-language-menu').getByRole('button', { name: 'Español', exact: true })).toHaveAttribute('aria-pressed', 'true');
+        await page.keyboard.press('Escape');
+        await page.getByRole('button', { name: 'Herramientas', exact: true }).click();
         await expect(page.locator('#shared-tools-menu').getByRole('button', { name: /Tema (claro|oscuro)/ })).toHaveCount(0);
         await expect(page.locator('.masthead .theme-toggle')).toHaveAttribute('aria-pressed', String(theme === 'Claro'));
         await page.screenshot({ path: testInfo.outputPath(`spanish-tools-390-${theme.toLowerCase()}.png`) });

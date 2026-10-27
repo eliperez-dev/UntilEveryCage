@@ -50,6 +50,9 @@ test('mobile selection preserves query and sheet state, and map preview retains 
   await expect(page.locator('.record-list .activity-summary').first()).not.toHaveText('');
   await page.locator('[data-record-id="syn-001"]').click();
   await expect(page.locator('.dossier')).toBeVisible();
+  const detailHandle = page.getByRole('button', { name:'View facility details', exact:true });
+  await expect(detailHandle).toHaveAttribute('data-sheet-state','expanded');
+  await detailHandle.focus(); await page.keyboard.press('ArrowDown');
   const view=page.getByRole('navigation',{name:'Map navigation',exact:true}).getByRole('button',{name:'View',exact:true});
   await expect(view).toBeEnabled();
   await view.click();
@@ -58,7 +61,6 @@ test('mobile selection preserves query and sheet state, and map preview retains 
   await expect(page.locator('#map-navigation-view')).toHaveCount(0);
   await expect(page.locator('.dossier')).toBeVisible();
   expect(new URL(page.url()).hash).toContain('selected=syn-001');
-  const detailHandle = page.getByRole('button', { name:'View facility details', exact:true });
   await expect(detailHandle).toHaveAttribute('data-sheet-state','middle');
   await detailHandle.focus(); await page.keyboard.press('End');
   await expect(detailHandle).toHaveAttribute('data-sheet-state','expanded');
@@ -104,6 +106,34 @@ test('selected deep links start at middle and the detail handle drags through al
   expect(await page.locator('.maplibregl-canvas').evaluate(canvas=>canvas===(window as any).__sheetOriginalCanvas)).toBe(true);
 });
 
+test('new and repeated pin selections preserve expanded detail and reopen collapsed detail at middle', async ({ page }) => {
+  await page.setViewportSize({width:390,height:844});
+  await openFixture(page,'open');
+  const canvas = await page.locator('.map-stage').boundingBox();
+  await page.locator('[data-record-id="syn-001"]').click();
+  const handle=page.getByRole('button',{name:'View facility details',exact:true});
+  await handle.focus();await page.keyboard.press('End');
+  async function selectPin(id:string) {
+    await page.waitForFunction(()=>{const map=(window as any).__UEC_LOCAL_PREVIEW_MAP__;return map?.getLayer('exact-pins')&&!map.isMoving()});
+    await page.evaluate(id=>{
+      const map=(window as any).__UEC_LOCAL_PREVIEW_MAP__, original=map.queryRenderedFeatures;
+      const feature={type:'Feature',geometry:{type:'Point',coordinates:[10.2059,56.1649]},properties:{id},layer:{id:'exact-pins'}};
+      map.queryRenderedFeatures=(_point:unknown,options:{layers?:string[]}={})=>options.layers?.includes('exact-pins')?[feature]:[];
+      map.fire('click',{point:{x:20,y:20},lngLat:{lng:10.2059,lat:56.1649},originalEvent:new MouseEvent('click')});
+      map.queryRenderedFeatures=original;
+    },id);
+  }
+  await selectPin('syn-002');
+  await expect(page.locator('.dossier h1')).toContainText('Synthetic processing record 2');
+  await expect(handle).toHaveAttribute('data-sheet-state','expanded');
+  await selectPin('syn-002');
+  await expect(handle).toHaveAttribute('data-sheet-state','expanded');
+  await handle.focus();await page.keyboard.press('Home');
+  await selectPin('syn-002');
+  await expect(handle).toHaveAttribute('data-sheet-state','middle');
+  expect(await page.locator('.map-stage').boundingBox()).toEqual(canvas);
+});
+
 test('cancelled mobile handle gestures settle without stranding a drag', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 740 });
   await openFixture(page);
@@ -142,6 +172,7 @@ for (const width of [320,390]) test(`mobile filters keep their final option and 
   await page.locator('.filters > summary').click();
   const popup = page.locator('.filter-sheet');
   await expect.poll(async () => (await popup.boundingBox())!.y + (await popup.boundingBox())!.height).toBeLessThanOrEqual(844);
+  await expect.poll(async () => (await popup.boundingBox())!.y + (await popup.boundingBox())!.height).toBeGreaterThan(830);
   await popup.evaluate(node => { node.scrollTop = node.scrollHeight; });
   const last = popup.getByRole('checkbox').last();
   await expect(last).toBeInViewport();
@@ -162,4 +193,15 @@ for (const width of [320,390]) test(`mobile filters keep their final option and 
   await expect(popup).toBeHidden();
   await expect(page.locator('.filters > summary')).toBeFocused();
   await expect(handle).toHaveAttribute('data-sheet-state','expanded');
+});
+
+test('desktop filters extend to the available viewport bottom and retain the clear action', async ({page})=>{
+  await page.setViewportSize({width:1440,height:960});await openFixture(page,'open');
+  await page.locator('.filters > summary').click();
+  const popup=page.locator('.filter-sheet');
+  await expect.poll(async()=>{const r=(await popup.boundingBox())!;return r.y+r.height}).toBeGreaterThan(946);
+  await expect.poll(async()=>{const r=(await popup.boundingBox())!;return r.y+r.height}).toBeLessThanOrEqual(960);
+  await popup.getByRole('checkbox').last().check();
+  await popup.getByRole('button',{name:'Clear all filters',exact:true}).click();
+  await expect(popup.getByRole('checkbox').last()).not.toBeChecked();
 });

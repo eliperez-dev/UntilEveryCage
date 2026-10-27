@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tick } from "svelte";
   import type { Basemap } from '../design-lab/contract';
-  import { language, tr } from './language';
+  import { language, tr, LANGUAGE_OPTIONS, languageLoadState, selectLanguage, type Language } from './language';
   import ThemeControl from './ThemeControl.svelte';
   let {
     current,
@@ -44,6 +44,9 @@
   const contributeHref = $derived(`#/contribute${context ? `?${context}` : ''}`);
   const menuHref = (path: string) => `#/${path}${context ? `?${context}` : ''}`;
   let toolsOpen = $state(false);
+  let languageOpen = $state(false);
+  let languageButton = $state<HTMLButtonElement>();
+  let languageMenu = $state<HTMLElement>();
   const displayReleaseLabel = (label: string) => label.replaceAll('—', ':');
   const displayedReleaseLabel = $derived(publicReleaseLabel ? displayReleaseLabel(publicReleaseLabel) : 'No verified public release loaded');
   let actionArea = $state<HTMLDivElement>();
@@ -54,12 +57,26 @@
   }
   function toggleTools(event: MouseEvent) {
     event.stopPropagation();
+    languageOpen = false;
     toolsOpen = !toolsOpen;
+  }
+  function closeLanguages(returnFocus = false) {
+    languageOpen = false;
+    if (returnFocus) void tick().then(() => languageButton?.focus());
+  }
+  function toggleLanguages(event: MouseEvent) {
+    event.stopPropagation();
+    closeTools();
+    languageOpen = !languageOpen;
+    if (languageOpen) void tick().then(() => languageMenu?.querySelector<HTMLButtonElement>('[aria-pressed="true"]')?.focus());
+  }
+  async function chooseLanguage(value: Language) {
+    if (await selectLanguage(value) && languageOpen) closeLanguages(true);
   }
 </script>
 
-<svelte:window onhashchange={() => closeTools()} onkeydown={(event) => { if (event.key === "Escape" && toolsOpen) { event.preventDefault(); closeTools(true); } }} onclick={(event) => { if (event.target instanceof Node && !actionArea?.contains(event.target)) closeTools(); }} />
-<div class="masthead" role="banner">
+<svelte:window onhashchange={() => { closeTools(); closeLanguages(); }} onkeydown={(event) => { if (event.key === 'Escape') { if (languageOpen) { event.preventDefault(); closeLanguages(true); } else if (toolsOpen) { event.preventDefault(); closeTools(true); } } }} onclick={(event) => { if (event.target instanceof Node) { if (!actionArea?.contains(event.target)) closeTools(); if (!languageMenu?.contains(event.target) && !languageButton?.contains(event.target)) closeLanguages(); } }} />
+<div class="masthead" role="banner" style:z-index={toolsOpen || languageOpen ? 20 : undefined}>
   <a class="wordmark" href="#/" aria-label={tr('Until Every Cage home', $language)}>
     <img src={logo} alt="" />
     <span>Until Every Cage</span>
@@ -73,12 +90,19 @@
   </nav>
   <div class="masthead-actions" bind:this={actionArea}>
     <ThemeControl />
+    <button bind:this={languageButton} type="button" class="header-action language-action" aria-label={tr('Language', $language)} aria-expanded={languageOpen} aria-controls="shared-language-menu" onclick={toggleLanguages}>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 8 6 6M4 5h12M10 3v2M13 5c-1 6-5 10-9 12m11 4 4-10 4 10m-7-3h6" /></svg>
+    </button>
     <button bind:this={toolsButton} type="button" class="header-action tools-action" aria-label={tr('Tools', $language)} aria-expanded={toolsOpen} aria-controls="shared-tools-menu" onclick={toggleTools}>
       <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg><span>{tr('Tools', $language)}</span>
     </button>
+    {#if languageOpen}<div bind:this={languageMenu} id="shared-language-menu" class="header-menu language-menu" role="dialog" tabindex="-1" aria-label={tr('Language', $language)} aria-busy={$languageLoadState.state === 'loading'}>
+      <header><strong>{tr('Language', $language)}</strong><button type="button" aria-label={tr('Close', $language)} onclick={() => closeLanguages(true)}>×</button></header>
+      <div class="language-options">{#each LANGUAGE_OPTIONS as option}<button type="button" lang={option.code} aria-pressed={$language === option.code} onclick={() => void chooseLanguage(option.code)}><span>{option.name}</span><span aria-hidden="true">{$language === option.code ? '✓' : ''}</span></button>{/each}</div>
+      {#if $languageLoadState.state === 'loading'}<p role="status">{tr('Loading…', $language)}</p>{:else if $languageLoadState.state === 'failed'}<div class="language-error"><p role="alert">{tr('Language could not be loaded.', $language)}</p><button type="button" onclick={() => void chooseLanguage($languageLoadState.requested)}>{tr('Retry', $language)}</button></div>{/if}
+    </div>{/if}
     {#if toolsOpen}<aside id="shared-tools-menu" class="header-menu tools-menu" aria-label={tr('Tools', $language)}>
       <header><strong><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> {tr('Tools', $language)}</strong><button type="button" aria-label={tr('Close Tools', $language)} onclick={() => closeTools(true)}>×</button></header>
-      <section><label for="language-choice">{tr('Language', $language)}</label><select id="language-choice" aria-label={tr('Language', $language)} value={$language} onchange={event => language.set(event.currentTarget.value === 'es' ? 'es' : 'en')}><option value="en">English</option><option value="es">Español</option></select></section>
       {#if current === 'map' && onmapbasemap && onmapviewtoggle}<section class="map-view-tools" role="group" aria-label={tr('Map view', $language)}>
         <h2>{tr('Map view', $language)}</h2>
         <div class="map-view-controls">
@@ -129,6 +153,15 @@
   .masthead-actions { position:relative; justify-self:end; display:flex; align-items:center; gap:.3125rem; font-family:system-ui,sans-serif; }
   .header-action { display:flex; align-items:center; justify-content:center; gap:.5625rem; min-height:2.75rem; padding:.5rem .5625rem; border:1px solid transparent; border-radius:0; background:transparent; color:inherit; cursor:pointer; font:400 .75rem/1.4 system-ui,sans-serif; }
   .header-action:hover, .header-action[aria-expanded="true"] { background:var(--ui-hover); }
+  .language-action { width:2.75rem; flex:none; padding:.5rem; }
+  .language-menu { width:min(15rem,calc(100vw - 1.5rem)); }
+  .language-options { display:grid; padding:.35rem; }
+  .language-options button { min-height:2.75rem; display:flex; align-items:center; justify-content:space-between; gap:.75rem; width:100%; padding:.6rem .75rem; border:1px solid transparent; border-radius:0; color:inherit; background:transparent; font:400 .875rem/1.4 system-ui,sans-serif; text-align:left; cursor:pointer; }
+  .language-options button:hover { background:var(--ui-hover); }
+  .language-options button[aria-pressed=true] { background:var(--ui-selected); border-color:var(--ui-line); }
+  .language-menu>p,.language-error { margin:0; padding:.6rem 1rem; font-size:.8rem; }
+  .language-error p { margin:0 0 .4rem; }
+  .language-error button { min-height:2.75rem; padding:.5rem .75rem; background:transparent; color:inherit; border:1px solid var(--ui-line); font:inherit; cursor:pointer; }
   .header-action svg, .header-menu svg { width:1.0625rem; height:1.0625rem; flex:none; fill:none; stroke:currentColor; stroke-width:1.5; stroke-linecap:round; stroke-linejoin:round; }
   .header-menu { position:absolute; z-index:30; top:calc(100% + .5rem); right:0; width:min(19rem, calc(100vw - 1.5rem)); max-height:calc(100dvh - 5.5rem); overflow:auto; overscroll-behavior:contain; border:1px solid var(--ui-line); background:var(--ui-raised); color:var(--ui-ink); box-shadow:0 .5rem 1.25rem #0002; }
   .header-menu header { display:flex; align-items:center; justify-content:space-between; min-height:3rem; padding:.25rem .75rem .25rem 1rem; border-bottom:1px solid var(--ui-line); }
@@ -171,6 +204,10 @@
     nav { font-size:.65625rem; gap:.375rem; }
   }
   @media (max-width: 22rem) {
+    .masthead { column-gap:.25rem; }
+    .wordmark { font-size:.875rem; gap:.375rem; }
+    .wordmark img { width:1.375rem; height:1.375rem; }
+    .masthead-actions { gap:0; }
     nav { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:0 .375rem; }
     nav a { justify-content:center; text-align:center; white-space:normal; }
   }

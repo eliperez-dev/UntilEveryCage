@@ -76,8 +76,9 @@ API schemas own supported fields. They are not additional roadmaps.
   are bounded, temporary controls under Layout & density in the debug menu.
   Mobile detail uses the same three sheet positions and replaces all search,
   filters, totals and download chrome, including while loading or reporting a
-  detail error. A new selection or selected deep link opens at the middle
-  position; its handle remains visible and draggable. Collapsing retains the
+  detail error. A new selection preserves an expanded sheet; from collapsed
+  or middle it opens at middle. Cold selected deep links start at middle.
+  Its handle remains visible and draggable. Collapsing retains the
   selected record, and expanding retains its detail. Back restores the previous
   results position and list context. Show on map
   collapses the sheet while retaining the selection; View facility details
@@ -148,6 +149,9 @@ API schemas own supported fields. They are not additional roadmaps.
   Saved searches are removed. Do not load or write old saved-search storage,
   and do not create automatic search history. Filters wrap into multiple
   columns when space allows, with full readable source labels.
+  Filters extend to the available viewport bottom and scroll within that space.
+  Search this area applies without opening or changing the workspace position;
+  its active clear action removes only the spatial scope, retaining other filters.
 - Browse-record links open the full facility page directly. Do not restore
   the intermediate database preview panel.
 - API offers full-release CSV, explicitly bounded exports, paginated JSON and
@@ -236,6 +240,7 @@ approval, and removing intake does not establish removal of its public target.
 Do not show simulated decisions, unsupported reply/email controls or an E2EE
 claim. New messaging and notification features require the actual backend
 capability and verified transport before appearing in the public flow.
+Beside Copy tracking link, show: `Save this link. You cannot access your submission again without it.`
 
 Use one Track submission link, with its capability in the fragment and status
 credentials sent in a POST body. Accounts, uploads, automated email and receipt
@@ -348,14 +353,20 @@ and usable narrow/zoomed layouts. Test the actual public built route and real
 approved data where available; synthetic unit/negative tests supplement, not
 replace, real-data acceptance.
 
-English and Spanish are available in Tools. English is the default and missing
-translations fall back to English. Language switching preserves map camera,
+English, Spanish, French, German, Dutch and Danish are available from the
+language button between the theme control and Tools. The popover shows native
+language names, closes with Escape or an outside click, and returns keyboard
+focus to its button. Opening it closes Tools and vice versa. English is the
+default; missing translations fall back to English. Additional catalogs load on
+demand, keeping the current language until loading succeeds. Reloading restores
+a saved language without overwriting its preference during loading.
+Language switching preserves map camera,
 release, filters and selection. Source names, identifiers and evidence retain
 their original language; some secondary community/operator and generated API
 reference strings remain English. Extend the existing dictionary rather than
 creating another localization path or rewriting approved English copy.
 
-The square theme button immediately left of Tools shows a moon in Dark and a
+The square theme button immediately left of the language button shows a moon in Dark and a
 sun in Light, indicating the current mode; clicking switches modes. Theme
 selection does not also appear in Tools. Dark is the default; explicit language
 and theme choices persist as nonsensitive browser preferences. Initialize the theme
