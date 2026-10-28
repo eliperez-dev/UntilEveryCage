@@ -1,6 +1,15 @@
 {
   "contract_version": "preview-enabled-source-v1",
   "sources": {
+    "pl.giw.approved-food": {
+      "enabled": true, "runtime_classification": "production-e2e", "public_release": false,
+      "runner": "pipeline.refresh_private:pl.giw.approved-food", "terms_review": "pipeline/sources/poland/terms-review.json",
+      "terms_decision": "approved", "freshness_max_days": 14,
+      "expected_artifacts": ["Complete GIW Sections 0-XVI paged HTML bundle"],
+      "allowed_preview_fields": ["establishment_id", "trading_name", "country_code", "nation", "source_section", "source_section_label", "source_activity_codes", "source_species_scope", "source_associated_activities", "source_regulatory_notes", "source_article_44", "source_approval_details", "source_scope_eligibility", "private_location_evidence", "privacy_gate", "publication_gate", "coordinates"],
+      "display_policy": {"kind": "unmapped_until_separate_enrichment", "disclosure": "GIW approved-establishment address; geocoding handled separately"},
+      "adapter_version": "pl-giw-approved-food-v1", "schema_version": "pl-giw-html-sections-v1"
+    },
     "eu.eea.intensive-livestock": {
       "enabled": true,
       "runtime_classification": "production-e2e",

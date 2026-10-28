@@ -48,6 +48,7 @@ def _crosswalk_version(source_id: str) -> str:
     return {
         "eu.eea.intensive-livestock": "eea-livestock-source-crosswalk-v2",
         "no.fiskeridir.aquaculture": "no-aquaculture-source-crosswalk-v2",
+        "pl.giw.approved-food": "pl-giw-source-crosswalk-v1",
         "de.locations": "de-bltu-source-crosswalk-v1",
         "mx.locations": "mx-denue-source-crosswalk-v1",
         "nz.locations": "nz-mpi-rmp-source-crosswalk-v1",
@@ -146,6 +147,21 @@ def _decision(source: str, normalized: dict[str, Any], original: dict[str, Any])
                 unknown = True
         return assignments, ("partial" if assignments and unknown else
                              "mapped" if assignments else "unmapped" if codes else "unclassified")
+    elif source == "pl.giw.approved-food":
+        section = normalized.get("source_section")
+        leaves = {"SH": "slaughter", "CP": "cutting", "CS": "logistics_and_storage",
+                  "RW": "logistics_and_storage", "WM": "general_food_business",
+                  "PP": {9: "fish_processing", 10: "dairy_processing", 11: "egg_processing"}.get(section, "processing"),
+                  "MM": "processing", "MP": "processing", "MSM": "processing", "PC": "processing",
+                  "DC": "processing", "PCG": "processing", "CC": "logistics_and_storage"}
+        for code in sorted(set(_values(normalized, ("source_activity_codes",)))):
+            if code in leaves:
+                leaf = leaves[code]
+                assignments.append({"leaf_activity": leaf, "primary": _primary_for_leaf(leaf), "method": "direct",
+                                    "source_code_reference": "normalized.source_activity_codes", "source_code": code})
+        if not assignments and section in range(1,18):
+            assignments.append({"leaf_activity": "general_food_business", "primary": "other_regulated_premises",
+                                "method": "derived", "source_code_reference": "normalized.source_section", "source_code": str(section)})
     elif source == "eu.eea.intensive-livestock":
         if normalized.get("source_activity") == "Livestock" and normalized.get("source_reporting_year") == 2024:
             assignments.append({"leaf_activity": "animal_production",
@@ -544,6 +560,18 @@ def crosswalk_document(source_id: str) -> dict[str, Any]:
     elif source_id == "be.locations":
         rules = [{"source_field": "activity_codes", "signature": "exact LAP/PAP place+activity+product codebook tuple",
                   "leaf_key": "source_activity_category", "mapping_method": "direct"}]
+    elif source_id == "pl.giw.approved-food":
+        rules = [{"source_field": "normalized.source_activity_codes", "source_code": code,
+                  "leaf_key": leaf, "primary_key": _primary_for_leaf(leaf), "mapping_method": "direct"}
+                 for code, leaf in {"SH": "slaughter", "CP": "cutting", "CS": "logistics_and_storage",
+                                    "RW": "logistics_and_storage", "WM": "general_food_business", "PP": "processing",
+                                    "MM": "processing", "MP": "processing", "MSM": "processing", "PC": "processing",
+                                    "DC": "processing", "PCG": "processing", "CC": "logistics_and_storage"}.items()]
+        rules.extend({"source_field": "normalized.source_section", "source_code": "PP", "section": section,
+                      "leaf_key": leaf, "primary_key": "processing_and_preparation", "mapping_method": "direct"}
+                     for section, leaf in ((9, "fish_processing"), (10, "dairy_processing"), (11, "egg_processing")))
+        rules.append({"source_field": "normalized.source_section", "source_label": "GIW approved food establishment with unmapped native category",
+                      "leaf_key": "general_food_business", "primary_key": "other_regulated_premises", "mapping_method": "derived"})
     elif source_id == "eu.eea.intensive-livestock":
         rules = [{"source_field": "normalized.source_activity", "source_label": "Livestock",
                   "reporting_year": 2024, "leaf_key": "animal_production",

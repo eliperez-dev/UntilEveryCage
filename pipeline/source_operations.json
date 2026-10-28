@@ -2,6 +2,7 @@
   "schema_version": "1.0",
   "purpose": "Private-alpha scheduling, freshness, retention, and bounded retry expectations. This file does not authorize publication.",
   "schedules": [
+    {"source_id":"pl.giw.approved-food","cadence":"provider-defined","interval_hours":null,"stale_after_hours":null,"max_attempts":1,"backoff_seconds":0,"max_backoff_seconds":0,"manual_fallback":"verify GIW section counts, pagination, WNI identity and table schema before reacquiring"},
     {"source_id":"eu.eea.intensive-livestock","cadence":"annual","interval_hours":null,"stale_after_hours":null,"max_attempts":1,"backoff_seconds":0,"max_backoff_seconds":0,"manual_fallback":"verify EEA version/year, CC BY metadata, livestock-only scope, ID completeness and CRS"},
     {"source_id":"es.cat.feed-sandach","cadence":"quarterly","interval_hours":2160,"stale_after_hours":3000,"max_attempts":2,"backoff_seconds":1,"max_backoff_seconds":30,"manual_fallback":"fail closed; rediscover current Generalitat metadata and schema; never reuse a retained export"},
     {"source_id":"be.locations","cadence":"weekly","interval_hours":168,"stale_after_hours":240,"max_attempts":3,"backoff_seconds":1,"max_backoff_seconds":30,"manual_fallback":"use the authorized two-file operator capture"},

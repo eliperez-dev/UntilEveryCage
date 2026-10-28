@@ -650,6 +650,14 @@ def register_first_wave(catalog: Any) -> None:
         country_code="nl", source_kind="facility_master",
         operational_classification="live", live_callable=True,
     ))
+    from .poland.refresh import GiwApprovedFoodRefreshAdapter
+    catalog.register(GiwApprovedFoodRefreshAdapter(), AdapterCapabilities(
+        source_id="pl.giw.approved-food", adapter_version="pl-giw-approved-food-v1",
+        schema_version="pl-giw-html-sections-v1", acquisition="bounded_private_fetch",
+        geocoding="separate-private-profile", publication="human_gate_required",
+        adapter_path="pipeline/sources/poland/refresh.py", country_code="pl",
+        source_kind="facility_master", operational_classification="live", live_callable=True,
+    ))
     from .eea.refresh import EeaLivestockRefreshAdapter
     catalog.register(EeaLivestockRefreshAdapter(), AdapterCapabilities(
         source_id="eu.eea.intensive-livestock", adapter_version="eea-intensive-livestock-v1",

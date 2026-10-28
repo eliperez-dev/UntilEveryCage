@@ -26,6 +26,7 @@ from pipeline.scripts.release_baseline import load_contract, verify
 
 SOURCE_ID = "eu.eea.intensive-livestock"
 SOURCES = {SOURCE_ID: ("Livestock", "eea-acceptance.json"),
+           "pl.giw.approved-food": (None, "poland-acceptance.json"),
            "no.fiskeridir.aquaculture": ("animal", "norway-acceptance.json")}
 ROOT = Path(__file__).resolve().parents[2]
 DATABASE = "uec_launch_sources_test_20261025"
@@ -56,7 +57,8 @@ def release_input_check(ledger_path: Path, source_id: str) -> dict[str, Any]:
     spec.loader.exec_module(bridge)
     handoff = bridge.verify_handoff({"source_id": source_id, "handoff_manifest_path": str(path.resolve())},
                                    {"snapshot": snapshot, "counts": {"imported_observation_count": manifest["normalized_rows"]}})
-    kept = {"eu.eea.intensive-livestock": ("source_reporting_year", "source_activity", "source_activity_details",
+    kept = {"pl.giw.approved-food": ("source_section", "source_species_scope", "source_approval_details", "source_scope_eligibility"),
+            "eu.eea.intensive-livestock": ("source_reporting_year", "source_activity", "source_activity_details",
                                           "source_facility_count", "source_installation_count"),
             "no.fiskeridir.aquaculture": ("source_species_scope", "source_locality_status", "source_capacity",
                                           "source_production_form", "source_production_purpose", "source_water_environment")}[source_id]
@@ -96,7 +98,8 @@ def check(ledger_path: Path, database_url: str, *, executable: Path | None = Non
         if len(rows) != expected_count or len({r[1] for r in rows}) != expected_count:
             raise ValueError("Spatial-source candidate counts or identities do not reconcile")
         expected = {r[0]: r for r in rows if r[3] is not None and r[4] is not None}
-        if len(expected) != imported["map_visible_count"] or any(not r[5] or r[6] != "animal_keeping_and_production" for r in rows):
+        categories = {"slaughter", "processing_and_preparation", "other_regulated_premises"} if source_id == "pl.giw.approved-food" else {"animal_keeping_and_production"}
+        if len(expected) != imported["map_visible_count"] or any(not r[5] or r[6] not in categories for r in rows):
             raise ValueError("Spatial-source names, categories or map counts do not reconcile")
         samples = {}
         for row in rows:
@@ -107,6 +110,19 @@ def check(ledger_path: Path, database_url: str, *, executable: Path | None = Non
         public = db.execute("SELECT count(*) FROM uec.release_members m JOIN uec.observations o USING(observation_id) JOIN uec.source_records s USING(source_record_id) WHERE s.source_id=%s", (source_id,)).fetchone()[0]
         if public:
             raise ValueError("Spatial-source candidates unexpectedly entered a public release")
+        queued_geocode_targets = None
+        if source_id == "pl.giw.approved-food":
+            handoff = ledger_path.parent / "sources" / source_id / "candidate-handoff/normalized/records.jsonl"
+            eligible = set()
+            for line in handoff.read_text(encoding="utf-8").splitlines():
+                normalized = json.loads(line)["normalized"]
+                location = normalized.get("private_location_evidence", {})
+                if normalized.get("source_scope_eligibility") == "eligible" and (location.get("address") or location.get("address_lines")):
+                    eligible.add(normalized["establishment_id"])
+            queued = db.execute("SELECT DISTINCT source_record_key FROM real_preview.geocode_targets WHERE source_id=%s AND snapshot_sha256=%s", (source_id, snapshot[0])).fetchall()
+            if {row[0] for row in queued} != eligible:
+                raise ValueError("Poland address queue does not match eligible source approvals")
+            queued_geocode_targets = len(queued)
     executable = executable or ROOT / "target/debug" / ("uec-api.exe" if os.name == "nt" else "uec-api")
     if not executable.is_file():
         raise ValueError("Build the existing API binary before Spatial-source acceptance")
@@ -147,7 +163,7 @@ def check(ledger_path: Path, database_url: str, *, executable: Path | None = Non
         listing = request("/dev/real-preview/locations?" + source_query + "&limit=100")
         if not listing.get("data") or any(r["source_id"] != source_id for r in listing["data"]):
             raise ValueError("Spatial-source private source listing failed")
-        search = request("/dev/real-preview/locations?" + source_query + "&" + urllib.parse.urlencode({"q": search_text, "limit": 1}))
+        search = request("/dev/real-preview/locations?" + source_query + "&" + urllib.parse.urlencode({"q": search_text or rows[0][5], "limit": 1}))
         if not search.get("data"):
             raise ValueError("Spatial-source private source search failed")
         feed = request("/dev/real-preview/map/feed?" + source_query)
@@ -166,10 +182,11 @@ def check(ledger_path: Path, database_url: str, *, executable: Path | None = Non
         after = verify(database_url, contract)
         if before != after:
             raise ValueError("V0 baseline changed during Spatial-source acceptance")
-        receipt = {"source_id": source_id, "run_id": ledger["run_id"], "status": "verified_private_e2e",
+        receipt = {"source_id": source_id, "run_id": ledger["run_id"], "status": "verified_private_import_geocoding_pending" if source_id == "pl.giw.approved-food" and not features else "verified_private_e2e",
                    "candidate_observations": len(rows), "mapped_candidates": len(features), "country_count": country_count,
                    "detail_country_samples": country_count, "detail_samples": len(detail_ids), "full_map_membership_checked": True,
                    "list_and_search_passed": True, "private_auth_passed": True, "idempotent_replay": True,
+                   **({"queued_geocode_targets": queued_geocode_targets} if queued_geocode_targets is not None else {}),
                    "baseline": after, "public_source_rows": public, "owned_api_stopped": True,
                    "api_binary_sha256": hashlib.sha256(executable.read_bytes()).hexdigest(), "deployment": "not_attempted"}
     finally:

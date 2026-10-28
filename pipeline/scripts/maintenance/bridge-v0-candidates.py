@@ -77,6 +77,8 @@ _SAFE_REASON = re.compile(r"^[a-z][a-z0-9_:-]{0,63}$")
 _FORBIDDEN_KEYS = {"name", "canonical_name", "operator_name", "trading_name", "contact",
                    "email", "phone", "telephone", "fax", "raw", "source_values", "payload"}
 _NORMALIZED_KEYS = {
+    "source_approval_details", "source_scope_eligibility",
+    "source_section", "source_section_label", "source_associated_activities", "source_regulatory_notes", "source_article_44",
     "source_locality_name", "source_species_scope", "source_locality_status", "source_capacity",
     "source_production_form", "source_production_purpose", "source_water_environment",
     "source_reporting_year", "source_activity_details", "source_facility_count", "source_installation_count",
@@ -120,6 +122,7 @@ _PRIVATE_LOCATION_KEYS = {"address", "address_lines", "city", "postal_code", "re
 # facilities and people. Keep this projection separate from raw_fields so
 # replay equality and the retained evidence schema remain unchanged.
 _FACILITY_NAME_FIELDS = {
+    "pl.giw.approved-food": ("trading_name",),
     "no.fiskeridir.aquaculture": ("source_locality_name",),
     "eu.eea.intensive-livestock": ("facility_name",),
     "au.npi.facilities": ("facility_name", "trading_name", "name", "registered_business_name"),
@@ -162,6 +165,16 @@ def _retained_source_artifact_digest(source: str, path: Path) -> tuple[str, int]
     if path.is_symlink():
         raise BridgeError("retained_artifact_locator_invalid")
     if path.is_dir():
+        if source == "pl.giw.approved-food":
+            from pipeline.sources.poland.adapter import bundle_digest, GiwApprovedFoodAdapter
+            files = list(path.glob("section-*-page-*.html"))
+            if not files or any(p.is_symlink() for p in path.iterdir()):
+                raise BridgeError("retained_artifact_locator_invalid")
+            try:
+                GiwApprovedFoodAdapter().parse(path)
+                return bundle_digest(path)
+            except (ValueError, OSError):
+                raise BridgeError("retained_artifact_verification_failed") from None
         if source in {"eu.eea.intensive-livestock", "no.fiskeridir.aquaculture"}:
             if source == "eu.eea.intensive-livestock":
                 from pipeline.sources.eea.adapter import bundle_digest, EeaLivestockAdapter
@@ -379,7 +392,7 @@ def verify_handoff(entry: dict[str, Any], inventory_source: dict[str, Any]) -> d
     source = str(entry["source_id"])
     manifest_path, normalized_path, graph_manifest_path, graph_records_path = _source_paths(entry)
     manifest = _read_json(manifest_path)
-    graph_not_applicable = source in {"nz.locations", "eu.eea.intensive-livestock", "no.fiskeridir.aquaculture"}
+    graph_not_applicable = source in {"pl.giw.approved-food", "nz.locations", "eu.eea.intensive-livestock", "no.fiskeridir.aquaculture"}
     if graph_not_applicable:
         if (graph_manifest_path.exists() or graph_manifest_path.is_symlink()
                 or graph_records_path.exists() or graph_records_path.is_symlink()):
@@ -488,6 +501,19 @@ def verify_handoff(entry: dict[str, Any], inventory_source: dict[str, Any]) -> d
                     or normalized.get("source_activity") != values.get("eea_activities") or values.get("eea_activities") != "Livestock"
                     or normalized.get("source_reporting_year") != YEAR or values.get("Site_reporting_year") != YEAR):
                 raise BridgeError("eea_site_identity_or_scope_invalid")
+    if source == "pl.giw.approved-food":
+        from pipeline.sources.poland.adapter import SECTIONS, valid_approval_identifier
+        for row in rows:
+            normalized, native = row.get("normalized", {}), row.get("source_values", {})
+            wni = native.get("wni")
+            if (not valid_approval_identifier(wni)
+                    or normalized.get("establishment_id") != wni or normalized.get("country_code") != "PL"
+                    or normalized.get("trading_name") != native.get("name")
+                    or normalized.get("source_section") not in SECTIONS
+                    or normalized.get("source_section") != native.get("section")
+                    or not row.get("source_record_key", "").startswith(f"approval:{wni}:section:{native.get('section')}:")
+                    or normalized.get("coordinates") is not None):
+                raise BridgeError("poland_approval_identity_or_scope_invalid")
     if source == "no.fiskeridir.aquaculture":
         identities = set()
         for row in rows:
@@ -553,6 +579,7 @@ def verify_handoff(entry: dict[str, Any], inventory_source: dict[str, Any]) -> d
         "normalized_byte_size": normalized_bytes,
         "graph_records_sha256": graph_hash,
         "graph_handoff_state": ("not_applicable_programme_not_unique_site" if source == "nz.locations" else
+                                "not_applicable_approval_observations_only" if source == "pl.giw.approved-food" else
                                 "not_applicable_locality_identity_only" if source == "no.fiskeridir.aquaculture" else
                                 "not_applicable_site_identity_only" if source == "eu.eea.intensive-livestock" else "private_candidates_verified"),
         "terms_review_sha256": terms_digest,
@@ -864,6 +891,9 @@ def _safe_normalized(normalized: Any, source: str | None = None, source_values: 
 
 def _facility_display_name(source: str, normalized: Any, source_values: Any = None) -> str | None:
     """Return a bounded source-typed facility label, never a contact/operator name."""
+    if source == "pl.giw.approved-food":
+        from pipeline.sources.poland.adapter import display_label
+        return display_label(normalized.get("trading_name")) if isinstance(normalized, dict) else None
     if source == "ca.ontario.meat-plants":
         # Ontario's adapter normalizes a dedicated Plant Name column, while
         # the shared Canadian adapter also handles CFIA operator-name data.

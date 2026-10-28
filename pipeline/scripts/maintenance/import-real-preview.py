@@ -368,6 +368,7 @@ SOURCE_NAMES = {
     "mx.locations": "INEGI — Directorio Estadístico Nacional de Unidades Económicas (DENUE)",
     "nz.locations": "New Zealand Ministry for Primary Industries — Risk Management Programme Register",
     "no.fiskeridir.aquaculture": "Norwegian Directorate of Fisheries — Aquaculture Register",
+    "pl.giw.approved-food": "Główny Inspektorat Weterynarii (GIW)",
     "gb.scot.marine.aquaculture": "Scottish Government — Finfish and Shellfish Aquaculture Sites",
     "us.epa.echo-animal-production": "US Environmental Protection Agency — ECHO CWA/NPDES Facilities",
     "us.aphis": "USDA Animal and Plant Health Inspection Service — Animal Care",
@@ -397,6 +398,7 @@ SOURCE_MEDIA_TYPES = {
     "mx.locations": "application/json",
     "nz.locations": "text/csv",
     "no.fiskeridir.aquaculture": "application/geo+json",
+    "pl.giw.approved-food": "text/html",
     "gb.scot.marine.aquaculture": "application/geo+json",
     "us.epa.echo-animal-production": "application/zip",
     "dk.smiley": "application/xml",
@@ -540,6 +542,9 @@ def parse_row(source: str, row: Any) -> tuple[Any, ...]:
         # Retain the AESAN business label in the authorized private preview.
         # This does not change its privacy label or permit public publication.
         name = safe_preview_text(pick(normalized, "name"), 200)
+    elif source == "pl.giw.approved-food":
+        from pipeline.sources.poland.adapter import display_label
+        name = display_label(pick(normalized, "trading_name"))
     elif source in {"mx.locations", "nz.locations"}:
         # Retain source-native names in restricted private cache; this is not
         # privacy clearance or authority to publish.
@@ -1975,6 +1980,12 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
                     or acquired_at > datetime.now(timezone.utc) + timedelta(minutes=5)
                     or datetime.now(timezone.utc) - acquired_at > timedelta(days=max_age)):
                 raise ImportFailure("nl_acquisition_provenance_mismatch")
+        elif source_id == "pl.giw.approved-food":
+            from pipeline.sources.poland.validation import validate_acquisition
+            try:
+                acquisition_evidence = validate_acquisition(root, run_id, manifest, source_summary, max_age)
+            except (ValueError, OSError):
+                raise ImportFailure("poland_acquisition_provenance_mismatch") from None
         elif source_id == "eu.eea.intensive-livestock":
             from pipeline.sources.eea.validation import validate_acquisition
             try:
@@ -2353,7 +2364,9 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
             if manifest["normalized_rows"] != expected.get(source) or (source_id is None and EXPECTED_OBSERVATIONS[source] != expected.get(source)):
                 raise ImportFailure("readiness_observation_mismatch")
             source_hash, _, _, source_url, source_retrieved_at, _, _ = manifest_provenance(manifest)
-            artifact_size = acquisition_evidence.get("byte_size") if isinstance(acquisition_evidence, dict) else None
+            artifact_size = acquisition_evidence.get(
+                "artifact_byte_size" if source == "pl.giw.approved-food" else "byte_size"
+            ) if isinstance(acquisition_evidence, dict) else None
             rows, exact, coarse_rows, candidate_rows, unmapped_rows, mapped_non_candidate_rows, _, _, zero_zero_rows, precision_unknown_rows, source_provided_rows, group_keys, placeable_rows, unplaceable_rows = import_rows(
                 db, source, artifacts[source], expected[source], snapshot,
                 municipality_index if source_id == source else None,

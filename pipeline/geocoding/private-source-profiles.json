@@ -47,6 +47,11 @@
   },
   "profiles": [
     {
+      "profile_id": "geoapify-pl-giw-approved-food", "source_id": "pl.giw.approved-food",
+      "country_code": "PL", "status": "enabled-private-only",
+      "source_scope": "GIW source business-site address evidence; WNI-grouped approvals; names and contacts excluded from provider queries; execute only after the maintainer authorizes transfer and with available daily credits"
+    },
+    {
       "profile_id": "locationiq-es-cat-feed-sandach",
       "provider_id": "locationiq",
       "source_id": "es.cat.feed-sandach",

@@ -1032,7 +1032,8 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
                     "--mode", "live-acquisition", "--authorize-live-source", source_id,
                     "--terms-review", f"{source_id}={review}", "--output-root", str(output_root),
                     "--retries", "1", "--timeout-seconds", "180", "--run-id", run_id,
-                ], cwd=ROOT, env=env, capture_output=True, text=True, timeout=600)
+                ], cwd=ROOT, env=env, capture_output=True, text=True,
+                   timeout=1200 if source_id == "pl.giw.approved-food" else 600)
                 try:
                     refresh_result = json.loads(refresh.stdout)
                 except json.JSONDecodeError:
@@ -1097,7 +1098,7 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
             if not isinstance(runner_run_id, str) or not runner_run_id:
                 write_job("failed", "lifecycle", "source_run_id_missing")
                 raise PreviewError("source runner returned no unique run identifier")
-            if source_id in {"eu.eea.intensive-livestock", "no.fiskeridir.aquaculture", "gb.scot.marine.aquaculture",
+            if source_id in {"pl.giw.approved-food", "eu.eea.intensive-livestock", "no.fiskeridir.aquaculture", "gb.scot.marine.aquaculture",
                              "us.epa.echo-animal-production", "fr.georisques.icpe.animal", "es.locations"}:
                 # The shared runner binds acquisition sidecars to its
                 # canonical plan ID. Use that same identity for importer
@@ -1627,6 +1628,16 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
                 "exact": 0, "city_or_postal_only": import_result.get("city_postal_count"),
                 "unmapped": import_result.get("unmapped_map_candidate_count")},
         })
+    elif source_id == "pl.giw.approved-food":
+        source_result = next(item for item in refresh_result["results"] if item.get("source_id") == source_id)
+        from pipeline.sources.poland.validation import validate_acquisition
+        acquisition_evidence = validate_acquisition(source_root, run_id,
+            json.loads(handoff_manifest.read_text(encoding="utf-8")), source_result["summary"], 14)
+        ledger.update({"acquisition": acquisition_evidence,
+                       "normalized_sha256": import_result.get("normalized_sha256"),
+                       "quarantine": {"input_rows": source_result["summary"]["input_rows"],
+                                      "accepted_rows": source_result["summary"]["normalized_rows"],
+                                      "quarantined_rows": source_result["summary"]["quarantined_rows"]}})
     elif source_id == "eu.eea.intensive-livestock":
         source_result = next(item for item in refresh_result["results"] if item.get("source_id") == source_id)
         source_summary = source_result["summary"]
@@ -1949,7 +1960,7 @@ def refresh_source(source_id: str = "be.locations", existing_runner_run_id: str 
 def strict_live_private_e2e(source_id: str, existing_runner_run_id: str | None = None) -> dict[str, object]:
     """Run one bounded live source acquisition through disposable private preview and certification."""
     global PROJECT, VOLUME, DB_PORT, API_PORT, WEB_PORT, PRIVATE_ROOT, ACTIVE_PREVIEW_TOKEN
-    if source_id in {"eu.eea.intensive-livestock", "no.fiskeridir.aquaculture"}:
+    if source_id in {"pl.giw.approved-food", "eu.eea.intensive-livestock", "no.fiskeridir.aquaculture"}:
         # Reuse the explicitly assigned V0-backed mutable copy; no additional
         # containers, databases or frontend server for a source-only check.
         from pipeline.common.source_acceptance import run
@@ -1958,7 +1969,7 @@ def strict_live_private_e2e(source_id: str, existing_runner_run_id: str | None =
         except (ValueError, OSError) as error:
             # Do not expose a candidate URL, database driver diagnostic or
             # private payload through the shared command's error output.
-            raise PreviewError(f"EEA private acceptance failed ({type(error).__name__}); inspect local evidence") from None
+            raise PreviewError(f"Source private acceptance failed ({type(error).__name__}); inspect local evidence") from None
     if source_id not in {"be.locations", "ca.ontario.meat-plants", "ca.cfia.federal-meat", "au.npi.facilities",
                           "au.sa.epa.licensed-activities", "fsa_approved_establishments",
                           "fss_approved_establishments", "es.cat.feed-sandach", "br.sif.registered",

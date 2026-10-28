@@ -75,7 +75,7 @@ def source_geocode_query(record: dict[str, Any], *, country_name: str | None = N
             parts.append(str(value).strip())
     country = private_location.get("country_code") or normalized.get("nation") or normalized.get("country_code") or country_name
     if isinstance(country, str):
-        country = {"GB": "United Kingdom", "DK": "Denmark", "NL": "Netherlands"}.get(country.upper(), country)
+        country = {"GB": "United Kingdom", "DK": "Denmark", "NL": "Netherlands", "PL": "Poland"}.get(country.upper(), country)
     if country:
         parts.append(str(country).strip())
     query = ", ".join(dict.fromkeys(" ".join(part.split()) for part in parts if part))

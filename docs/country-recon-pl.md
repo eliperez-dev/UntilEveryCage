@@ -1,12 +1,18 @@
 # Poland source reconnaissance
 
-Status: private research and integration planning only. Checked 2026-09-16. No release, deployment, public map, publication approval, or claim of national completeness is implied.
+Current readiness and measured counts: [source inventory](source-status.json), entry `pl.giw.approved-food`. The notes below retain the original 2026-09-16 reconnaissance; they are not current acquisition status.
+
+## Implemented acquisition
+
+The adapter under `pipeline/sources/poland/` uses the existing shared refresh/import path. It downloads all published pages of Sections 0-XVI, preserves native approval/activity/species observations, and groups records by the source WNI identifier. Sections use either 20 or 25 entries per page. `poprzedniaSekcja` must accompany `sekcja` to keep paging effective. Numbering gaps actually present in source pages are recorded separately from returned records; repeated or wrong pages are rejected.
+
+The HTML register supplies addresses, not coordinates. A separate Polish-address Geoapify profile uses the existing queue; acquisition does not spend geocoding credits. Its derived query separates street, town and postcode while retaining the original address. Conflicting addresses under one WNI are retained but excluded from automatic geocoding. Private integration uses [GIW's reuse conditions](https://bip.wetgiw.gov.pl/743---ponowne-wykorzystanie-informacji); the linked register subdomain's public redistribution scope remains part of release review. Other Polish source families below remain separate research targets.
 
 ## Decision
 
 Poland is a strong implementation candidate for the animal-products lane. The Chief Veterinary Inspectorate (GIW) exposes a national approved-establishment register with a stable-looking veterinary identifier (`WNI`), section filters, species/category/activity fields, and an XLS export route. The rendered current view is unusually useful for a source-local facility candidate layer, but it is not a clean one-row-per-facility data product: the same WNI can occur across sections and the displayed activity/species/product values are observations attached to that source identity.
 
-Integration difficulty is medium-high. The food register is accessible in HTML but its XLS export could not be captured in this environment; registered-food and animal-by-product lists are separate families; inspection statistics are report-shaped; environmental permits are regional; the EIA database states that access from outside Poland is blocked; and KRS/REGON are organization-identity services rather than facility masters. Keep all publication blocked until terms, privacy, schema drift, identity links, and review gates are complete.
+The original research found HTML access but no usable XLS capture. Registered-food and animal-by-product lists are separate families; inspection statistics are report-shaped; environmental permits are regional; the EIA database states that access from outside Poland is blocked; and KRS/REGON are organization-identity services rather than facility masters.
 
 The strongest next-country recommendation is Ireland. The [Food Safety Authority of Ireland approved-premises page](https://www.fsai.ie/enforcement-and-legislation/official-controls/mancp/approved-food-premises) coordinates DAFM, HSE, and SFPA lists, while the [HSE approved-establishments view](https://oapi.fsai.ie/HSEApprovedEstablishments.aspx) currently exposes a refreshed structured view with approval number, trading name, address, business type, activity, and species. That is a good multi-authority adapter rehearsal after Poland, not a claim that Ireland is complete or publication-ready.
 

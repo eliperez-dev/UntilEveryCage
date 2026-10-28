@@ -52,7 +52,7 @@ def profiles() -> list[dict[str, Any]]:
                 *UK_LOCATIONIQ_PROFILES,
         } and row.get("query_kind") != "source_address_first_pass"):
             raise ValueError("LocationIQ first-pass profile query kind is invalid")
-        if row.get("country_code") not in {"GB", "DK", "NL", "US", "ES", "DE", "NZ"}:
+        if row.get("country_code") not in {"GB", "DK", "NL", "US", "ES", "DE", "NZ", "PL"}:
             raise ValueError("private Geoapify profile country is not enabled")
         if row.get("status") != ENABLED:
             raise ValueError("private Geoapify profile status is invalid")

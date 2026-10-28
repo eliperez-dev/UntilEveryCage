@@ -43,7 +43,7 @@ class GeoapifyAdapter:
             raise ValueError("country_code must be a lowercase ISO alpha-2 code")
         if pilot_auto_display and country_code != "au":
             raise ValueError("automatic preview display is only configured for the AU pilot")
-        if private_source_profile and country_code not in {"gb", "dk", "nl", "us", "es", "de"}:
+        if private_source_profile and country_code not in {"gb", "dk", "nl", "us", "es", "de", "pl"}:
             raise ValueError("private source profiles are not enabled for this country")
         if pilot_auto_display and private_source_profile:
             raise ValueError("AU pilot and source profile modes are mutually exclusive")
@@ -251,6 +251,8 @@ class GeoapifyAdapter:
                 None, None, "geoapify_forward", False,
                 {"error": "country_mismatch"},
             )
+        if self.private_source_profile and self.country_code == "pl" and not (13.8 <= longitude <= 24.3 and 48.8 <= latitude <= 55.2):
+            return self._failed("outside_poland_bounds", False)
 
         rank = properties.get("rank")
         rank = rank if isinstance(rank, dict) else {}

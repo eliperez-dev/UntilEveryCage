@@ -1,0 +1,15 @@
+{
+  "source_id": "pl.giw.approved-food",
+  "decision": "approved",
+  "scope": "Bounded public register download, private normalization/import and local validation authorized by the maintainer on 2026-10-28. No publication decision or external geocoding authorization is implied.",
+  "private_preview_only": true,
+  "public_release_approved": false,
+  "license": "GIW public-information reuse conditions; not a Creative Commons grant",
+  "license_url": "https://bip.wetgiw.gov.pl/743---ponowne-wykorzystanie-informacji",
+  "source_url": "https://zywnosc.wetgiw.gov.pl/spi/zatw/index.php",
+  "source_index_url": "https://www.wetgiw.gov.pl/handel-eksport-import/listy-zakladow",
+  "attribution": "Source: Główny Inspektorat Weterynarii (GIW), approved-establishment register",
+  "requirements": ["Identify GIW and the source register", "Retain supplied source dates and acquisition timestamps", "Identify transformed data", "Keep personal-contact details and raw records private"],
+  "reviewed_at": "2026-10-28",
+  "public_reuse_scope_note": "The published general policy names www.wetgiw.gov.pl and old.wetgiw.gov.pl. Confirm its application to the linked zywnosc register during release review; do not claim unrestricted redistribution or a specific open licence."
+}

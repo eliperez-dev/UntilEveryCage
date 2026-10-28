@@ -1,0 +1,10 @@
+{
+  "source_id": "pl.giw.approved-food",
+  "source_url": "https://zywnosc.wetgiw.gov.pl/spi/zatw/index.php",
+  "adapter_version": "pl-giw-approved-food-v1",
+  "schema_version": "pl-giw-html-sections-v1",
+  "config_version": "pl-giw-approved-food-config-v1",
+  "coverage": "GIW approved animal-origin food establishments; Sections 0-XVI; approval observations grouped by WNI, not summed across sections",
+  "terms_status": "private_integration_only_public_review_separate",
+  "geocoding": "separate-private-profile"
+}
