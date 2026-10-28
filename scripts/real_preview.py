@@ -1949,12 +1949,12 @@ def refresh_source(source_id: str = "be.locations", existing_runner_run_id: str 
 def strict_live_private_e2e(source_id: str, existing_runner_run_id: str | None = None) -> dict[str, object]:
     """Run one bounded live source acquisition through disposable private preview and certification."""
     global PROJECT, VOLUME, DB_PORT, API_PORT, WEB_PORT, PRIVATE_ROOT, ACTIVE_PREVIEW_TOKEN
-    if source_id == "eu.eea.intensive-livestock":
+    if source_id in {"eu.eea.intensive-livestock", "no.fiskeridir.aquaculture"}:
         # Reuse the explicitly assigned V0-backed mutable copy; no additional
         # containers, databases or frontend server for a source-only check.
-        from pipeline.sources.eea.verify import run
+        from pipeline.common.source_acceptance import run
         try:
-            return run(existing_runner_run_id=existing_runner_run_id, refresh_callback=refresh_source)
+            return run(existing_runner_run_id=existing_runner_run_id, refresh_callback=refresh_source, source_id=source_id)
         except (ValueError, OSError) as error:
             # Do not expose a candidate URL, database driver diagnostic or
             # private payload through the shared command's error output.

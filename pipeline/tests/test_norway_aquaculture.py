@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import io
 import json
 import tempfile
@@ -33,6 +34,8 @@ def feature(object_id: int, locality_id: int, *, species: str = "Salmon", symbol
         "symbol": symbol, "status_lokalitet": "Active", "kommune": "Example",
         "fylke": "Example region", "navn": f"Synthetic locality {locality_id}",
         "til_innehavere": "synthetic holder",
+        "kapasitet_lok": 100, "tempcapacity": 80, "kapasitet_unittype": "TONN",
+        "til_produksjonsform": "Synthetic production", "til_formaal": "Synthetic purpose", "vannmiljo": "Sea",
     }, "geometry": {"type": "Point", "coordinates": list(coordinates)}}
 
 
@@ -56,6 +59,35 @@ class NorwayAquacultureParserTests(unittest.TestCase):
         self.assertIn("not permit-holder mailing address", parsed["accepted"][0]["normalized"]["coordinates"]["location_semantics"])
         self.assertEqual(parsed["quarantined"][0]["reasons"], ["out_of_animal_aquaculture_scope"])
         self.assertNotIn("til_innehavere", json.dumps(parsed["accepted"]))
+        normalized = parsed["accepted"][0]["normalized"]
+        self.assertEqual(normalized["source_capacity"], {"approved": 100, "current": 80, "unit": "TONN"})
+        self.assertEqual(normalized["source_species_scope"], "Salmon")
+        self.assertEqual(normalized["source_production_form"], "Synthetic production")
+
+    def test_release_projection_preserves_names_species_capacity_and_crosswalk(self):
+        from pipeline.taxonomy_crosswalk import crosswalk_document, project_observation
+        with temporary_directory() as temporary:
+            root = Path(temporary)
+            path = root / "source.geojson"
+            path.write_bytes(collection([feature(1, 10)]))
+            row = NorwayAquacultureAdapter().parse(path)["accepted"][0]
+            spec = importlib.util.spec_from_file_location("norway_bridge_test", Path(__file__).parents[1] / "scripts/maintenance/bridge-v0-candidates.py")
+            bridge = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(bridge)
+            safe = bridge._safe_normalized(row["normalized"], SOURCE_ID, row["source_values"])
+            self.assertEqual(safe["facility_display_name"], "Synthetic locality 10")
+            for key in ("source_species_scope", "source_locality_status", "source_capacity", "source_production_form"):
+                self.assertEqual(safe[key], row["normalized"][key])
+            self.assertEqual(project_observation(row)["taxonomy_display_category"], "animal_keeping_and_production")
+            self.assertTrue(crosswalk_document(SOURCE_ID)["rules"])
+
+    def test_blank_species_and_projected_crs_never_become_map_points(self):
+        with temporary_directory() as temporary:
+            path = Path(temporary) / "source.geojson"
+            path.write_bytes(collection([feature(1, 10, species=""), feature(2, 20, coordinates=(500000, 6800000))]))
+            parsed = NorwayAquacultureAdapter().parse(path)
+        self.assertEqual(len(parsed["accepted"]), 0)
+        self.assertEqual(len(parsed["quarantined"]), 2)
 
     def test_duplicate_locality_and_out_of_envelope_point_are_quarantined(self):
         with temporary_directory() as temporary:
@@ -140,6 +172,42 @@ class NorwayAquacultureAcquisitionTests(unittest.TestCase):
         self.assertEqual(metadata["artifact_sha256"], digest)
         self.assertEqual(metadata["artifact_byte_size"], size)
 
+    def test_release_bridge_accepts_paged_artifact_and_rejects_wrong_site_identity(self):
+        from pipeline.contracts.adapter_contract import SourceArtifact
+        from pipeline.contracts.candidate_handoff import write_handoff
+        from datetime import datetime, timezone
+        spec = importlib.util.spec_from_file_location("norway_bridge_identity_test", Path(__file__).parents[1] / "scripts/maintenance/bridge-v0-candidates.py")
+        bridge = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(bridge)
+        with temporary_directory() as temporary:
+            root = Path(temporary)
+            review = root / "terms.json"
+            review.write_text(json.dumps({"source_id": SOURCE_ID, "decision": "approved", "license": LICENSE,
+                                         "license_version": LICENSE_VERSION, "private_preview_only": True}), encoding="utf-8")
+            facts = fetch(output_root=root / "raw", run_id="synthetic", terms_review_path=review, opener=_PagedOpener())
+            self.assertEqual(bridge._retained_source_artifact_digest(SOURCE_ID, Path(facts["artifact_path"])),
+                             (facts["artifact_sha256"], facts["artifact_byte_size"]))
+            rows = NorwayAquacultureAdapter().parse(facts["artifact_path"])["accepted"]
+            artifact = SourceArtifact(facts["canonical_url"], datetime.now(timezone.utc).isoformat(),
+                                      facts["artifact_sha256"], facts["artifact_byte_size"],
+                                      code_version=ADAPTER_VERSION, config_version=SCHEMA_VERSION)
+            for wrong_identity in (False, True):
+                if wrong_identity:
+                    rows[0]["normalized"]["country_code"] = "SE"
+                manifest = write_handoff(root / "handoff", rows, artifact, source_id=SOURCE_ID, emit_graph_candidates=False)
+                inventory = {"snapshot": {"source_artifact_sha256": manifest["checksum_sha256"],
+                    "normalized_sha256": manifest["normalized_sha256"], "retrieved_at": manifest["retrieved_at_utc"],
+                    "handoff_code_version": ADAPTER_VERSION, "handoff_config_version": SCHEMA_VERSION,
+                    "source_host": urlparse(facts["canonical_url"]).hostname}, "counts": {"imported_observation_count": 3}}
+                entry = {"source_id": SOURCE_ID, "handoff_manifest_path": str((root / "handoff/manifest.json").resolve())}
+                if wrong_identity:
+                    with self.assertRaisesRegex(bridge.BridgeError, "norway_locality_identity_or_scope_invalid"):
+                        bridge.verify_handoff(entry, inventory)
+                else:
+                    result = bridge.verify_handoff(entry, inventory)
+                    self.assertEqual(len(result["groups"]), 3)
+                    self.assertEqual(result["graph_handoff_state"], "not_applicable_locality_identity_only")
+
     def test_shared_refresh_runner_writes_private_candidate_handoff(self):
         with temporary_directory() as temporary:
             root = Path(temporary)
@@ -169,6 +237,7 @@ class NorwayAquacultureAcquisitionTests(unittest.TestCase):
         self.assertEqual(handoff_row["normalized"]["facility_name"], "Synthetic locality 10")
         self.assertEqual(handoff_row["normalized"]["source_locality_name"], "Synthetic locality 10")
         self.assertEqual(handoff_row["source_values"]["navn"], "Synthetic locality 10")
+        self.assertEqual(handoff_row["normalized"]["source_capacity"]["current"], 80)
 
 
 if __name__ == "__main__":

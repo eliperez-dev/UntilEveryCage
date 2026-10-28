@@ -660,7 +660,7 @@ def register_first_wave(catalog: Any) -> None:
     ))
     from .norway.refresh import NorwayAquacultureRefreshAdapter
     catalog.register(NorwayAquacultureRefreshAdapter(), AdapterCapabilities(
-        source_id="no.fiskeridir.aquaculture", adapter_version="no-fiskeridir-aquaculture-v1",
+        source_id="no.fiskeridir.aquaculture", adapter_version="no-fiskeridir-aquaculture-v2",
         schema_version="no-fiskeridir-mapserver-geojson-v1", acquisition="bounded_private_fetch",
         geocoding="disabled", publication="human_gate_required",
         adapter_path="pipeline/sources/norway/refresh.py", country_code="no",

@@ -66,11 +66,9 @@ class NorwayAquacultureRefreshAdapter:
         if lifecycle.get("status") == "candidate-ready":
             lifecycle_root = Path(lifecycle["run_dir"])
             rows = read_jsonl(lifecycle_root / "normalized" / "records.jsonl")
-            safe_rows = [{**row, "source_values": {
-                key: row.get("source_values", {}).get(key)
-                for key in ("navn",) if row.get("source_values", {}).get(key)
-            }} for row in rows]
-            handoff = write_handoff(run_dir / "candidate-handoff", safe_rows, source_artifact,
+            # The source adapter selects locality/species/capacity values and
+            # excludes permit-holder contacts. Preserve that selected evidence.
+            handoff = write_handoff(run_dir / "candidate-handoff", rows, source_artifact,
                                     source_id=SOURCE_ID, emit_graph_candidates=False)
             candidate = True
         else:
@@ -110,11 +108,7 @@ class RefreshRunnerAdapter:
 def run_live(*, terms_review_path: Path, output_root: Path,
              timeout_seconds: float = 60.0, max_bytes: int = 24 * 1024 * 1024,
              page_size: int = 500) -> dict[str, Any]:
-    """Use the shared runner with a source-local capability registration.
-
-    The project registry already identifies this source; the capability entry
-    is supplied here until the owning integration lane adds it centrally.
-    """
+    """Source-local CLI using the same versioned shared-runner contract."""
     catalog = RefreshCatalog()
     capabilities = AdapterCapabilities(
         source_id=SOURCE_ID, adapter_version=ADAPTER_VERSION, schema_version=SCHEMA_VERSION,

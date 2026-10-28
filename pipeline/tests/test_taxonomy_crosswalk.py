@@ -221,7 +221,8 @@ class TaxonomyCrosswalkTests(unittest.TestCase):
             document = crosswalk_document(source)
             self.assertEqual(document["source_id"], source)
             self.assertEqual(document["taxonomy_version"], TAXONOMY_VERSION)
-            self.assertEqual(document["crosswalk_version"], CROSSWALK_VERSION)
+            self.assertEqual(document["crosswalk_version"],
+                             "no-aquaculture-source-crosswalk-v2" if source == "no.fiskeridir.aquaculture" else CROSSWALK_VERSION)
             self.assertTrue(document["crosswalk_version"])
             self.assertTrue(document["ruleset_version"])
             self.assertTrue(document["rules"])

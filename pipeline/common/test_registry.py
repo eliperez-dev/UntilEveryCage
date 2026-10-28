@@ -13,7 +13,7 @@ class RegistryTests(unittest.TestCase):
         self.assertEqual(eea["country_code"], "eu")  # Publisher scope; facility countries stay source-owned.
         by_source = {entry["source_id"]: entry for entry in registry["adapters"]}
         expected = {
-            "no.fiskeridir.aquaculture": ("no", "no-fiskeridir-aquaculture-v1", "no-fiskeridir-mapserver-geojson-v1"),
+            "no.fiskeridir.aquaculture": ("no", "no-fiskeridir-aquaculture-v2", "no-fiskeridir-mapserver-geojson-v1"),
             "gb.scot.marine.aquaculture": ("gb", "gb-scot-marine-aquaculture-v1", "gb-scot-aquaculture-wfs-geojson-v1"),
             "us.epa.echo-animal-production": ("us", "us-epa-echo-animal-adapter-v1", "us-epa-echo-facilities-cwa-animal-production-v1"),
         }

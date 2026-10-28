@@ -77,6 +77,8 @@ _SAFE_REASON = re.compile(r"^[a-z][a-z0-9_:-]{0,63}$")
 _FORBIDDEN_KEYS = {"name", "canonical_name", "operator_name", "trading_name", "contact",
                    "email", "phone", "telephone", "fax", "raw", "source_values", "payload"}
 _NORMALIZED_KEYS = {
+    "source_locality_name", "source_species_scope", "source_locality_status", "source_capacity",
+    "source_production_form", "source_production_purpose", "source_water_environment",
     "source_reporting_year", "source_activity_details", "source_facility_count", "source_installation_count",
     "activity_categories", "activity_code", "activity_codes", "activity_descriptions",
     "activity_description", "activities", "animal_class", "classification_category",
@@ -118,6 +120,7 @@ _PRIVATE_LOCATION_KEYS = {"address", "address_lines", "city", "postal_code", "re
 # facilities and people. Keep this projection separate from raw_fields so
 # replay equality and the retained evidence schema remain unchanged.
 _FACILITY_NAME_FIELDS = {
+    "no.fiskeridir.aquaculture": ("source_locality_name",),
     "eu.eea.intensive-livestock": ("facility_name",),
     "au.npi.facilities": ("facility_name", "trading_name", "name", "registered_business_name"),
     "dk.smiley": ("trading_name",),
@@ -159,14 +162,19 @@ def _retained_source_artifact_digest(source: str, path: Path) -> tuple[str, int]
     if path.is_symlink():
         raise BridgeError("retained_artifact_locator_invalid")
     if path.is_dir():
-        if source == "eu.eea.intensive-livestock":
-            from pipeline.sources.eea.adapter import bundle_digest, EeaLivestockAdapter
+        if source in {"eu.eea.intensive-livestock", "no.fiskeridir.aquaculture"}:
+            if source == "eu.eea.intensive-livestock":
+                from pipeline.sources.eea.adapter import bundle_digest, EeaLivestockAdapter
+                adapter = EeaLivestockAdapter()
+            else:
+                from pipeline.sources.norway.aquaculture import bundle_digest, NorwayAquacultureAdapter
+                adapter = NorwayAquacultureAdapter()
             files = sorted(path.glob("page-*.geojson"))
             if (not files or any(child.is_symlink() for child in path.iterdir())
                     or [item.name for item in files] != [f"page-{i:04d}.geojson" for i in range(1, len(files) + 1)]):
                 raise BridgeError("retained_artifact_locator_invalid")
             try:
-                parsed = EeaLivestockAdapter().parse(path)
+                parsed = adapter.parse(path)
                 if parsed["input_rows"] != len(parsed["accepted"]) + len(parsed["quarantined"]):
                     raise ValueError("count mismatch")
                 return bundle_digest(path)
@@ -371,7 +379,7 @@ def verify_handoff(entry: dict[str, Any], inventory_source: dict[str, Any]) -> d
     source = str(entry["source_id"])
     manifest_path, normalized_path, graph_manifest_path, graph_records_path = _source_paths(entry)
     manifest = _read_json(manifest_path)
-    graph_not_applicable = source in {"nz.locations", "eu.eea.intensive-livestock"}
+    graph_not_applicable = source in {"nz.locations", "eu.eea.intensive-livestock", "no.fiskeridir.aquaculture"}
     if graph_not_applicable:
         if (graph_manifest_path.exists() or graph_manifest_path.is_symlink()
                 or graph_records_path.exists() or graph_records_path.is_symlink()):
@@ -480,6 +488,21 @@ def verify_handoff(entry: dict[str, Any], inventory_source: dict[str, Any]) -> d
                     or normalized.get("source_activity") != values.get("eea_activities") or values.get("eea_activities") != "Livestock"
                     or normalized.get("source_reporting_year") != YEAR or values.get("Site_reporting_year") != YEAR):
                 raise BridgeError("eea_site_identity_or_scope_invalid")
+    if source == "no.fiskeridir.aquaculture":
+        identities = set()
+        for row in rows:
+            normalized, values = row.get("normalized", {}), row.get("source_values", {})
+            locality = normalized.get("establishment_id")
+            if (not isinstance(locality, str) or not locality.strip() or locality in identities
+                    or row.get("source_id") != source or row.get("source_record_key") != f"locality:{locality}"
+                    or normalized.get("country_code") != "NO"
+                    or normalized.get("facility_grouping") != "source-aquaculture-locality-number"
+                    or normalized.get("activity_categories") != ["animal-aquaculture"]
+                    or not normalized.get("source_species_scope")
+                    or normalized.get("source_locality_name") != values.get("navn")
+                    or normalized.get("facility_name") != values.get("navn")):
+                raise BridgeError("norway_locality_identity_or_scope_invalid")
+            identities.add(locality)
     policy_path = ROOT / "pipeline" / "preview-enabled-sources.json"
     policy = json.loads(policy_path.read_text(encoding="utf-8")).get("sources", {}).get(source)
     if not isinstance(policy, dict) or policy.get("enabled") is not True:
@@ -530,6 +553,7 @@ def verify_handoff(entry: dict[str, Any], inventory_source: dict[str, Any]) -> d
         "normalized_byte_size": normalized_bytes,
         "graph_records_sha256": graph_hash,
         "graph_handoff_state": ("not_applicable_programme_not_unique_site" if source == "nz.locations" else
+                                "not_applicable_locality_identity_only" if source == "no.fiskeridir.aquaculture" else
                                 "not_applicable_site_identity_only" if source == "eu.eea.intensive-livestock" else "private_candidates_verified"),
         "terms_review_sha256": terms_digest,
         "rows": parsed,

@@ -26,7 +26,7 @@ LICENSE_URL = "https://www.fiskeridir.no/statistikk-tall-og-analyse/lisens-for-b
 LICENSE = "Norwegian Licence for Open Government Data (NLOD)"
 LICENSE_VERSION = "2.0"
 LICENSE_TEXT_URL = "https://data.norge.no/nlod/en/2.0"
-ADAPTER_VERSION = "no-fiskeridir-aquaculture-v1"
+ADAPTER_VERSION = "no-fiskeridir-aquaculture-v2"
 SCHEMA_VERSION = "no-fiskeridir-mapserver-geojson-v1"
 COVERAGE = "Norway; registered aquaculture locality points; animal-species localities only; not a census of farms or permit holders"
 MAX_BYTES = 24 * 1024 * 1024
@@ -187,6 +187,12 @@ class NorwayAquacultureAdapter:
                     "activity_categories": ["animal-aquaculture"],
                     "source_species_scope": species,
                     "source_locality_status": status,
+                    "source_capacity": {"approved": properties.get("kapasitet_lok"),
+                                        "current": properties.get("tempcapacity"),
+                                        "unit": properties.get("kapasitet_unittype")},
+                    "source_production_form": properties.get("til_produksjonsform"),
+                    "source_production_purpose": properties.get("til_formaal"),
+                    "source_water_environment": properties.get("vannmiljo"),
                     "source_observed_at": None,
                     "source_object_id": object_key,
                     "coordinates": coordinates,
@@ -203,7 +209,10 @@ class NorwayAquacultureAdapter:
                                                    "source_species_scope": species,
                                                    "locality_status": status,
                                                    "municipality": municipality,
-                                                   "region": region},
+                                                   "region": region,
+                                                   **{key: properties.get(key) for key in (
+                                                       "kapasitet_lok", "tempcapacity", "kapasitet_unittype",
+                                                       "til_produksjonsform", "til_formaal", "vannmiljo")}},
                                  "normalized": normalized})
         fingerprint = hashlib.sha256(json.dumps(sorted(fingerprint_fields), separators=(",", ":")).encode()).hexdigest()
         return {"accepted": accepted, "quarantined": quarantined,
