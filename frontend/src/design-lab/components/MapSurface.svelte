@@ -30,6 +30,7 @@
     Viewport,
     ViewportBounds,
     PinHoverLabel,
+    PinHoverResolver,
     MapDisplaySettings,
     MapDisplaySettingsRequest,
     AreaSummary,
@@ -78,6 +79,7 @@
   import { CLUSTERING_POPULATION_THRESHOLD, clusterFilteredPopulation, maskPublicMapMatches, representedMappedCount, resizeWorkspaceMap } from './mapWorkspace';
   import { categoryPresentation } from '../../features/locations/categoryPresentation';
   import { individualHoverPin } from '../pinHoverLabels';
+  import { pinHoverVisual } from '../pinHoverVisual';
   import { applyFacilityPinScale, DEFAULT_FACILITY_PIN_SCALE } from './facilityPinScale';
   import { mergeMapDisplaySettings } from './mapDisplaySettings';
   import { emptyAreaSummary, summarizeMappedArea } from '../../features/search/areaSummary';
@@ -171,7 +173,7 @@
     ondebugopenchange?(open: boolean): void;
     onviewport(value: Viewport): void;
     onbounds?(bounds: ViewportBounds): void;
-    resolvePinHover?(id: string, signal: AbortSignal): Promise<PinHoverLabel | null>;
+    resolvePinHover?: PinHoverResolver;
     displaySettingsRequest?: MapDisplaySettingsRequest | null;
     onDisplaySettingsChange?(settings: MapDisplaySettings): void;
     onAreaSummary?(summary: AreaSummary): void;
@@ -182,13 +184,10 @@
   let hoverLabel = $state<(PinHoverLabel & { x: number; y: number; below: boolean }) | null>(null);
   let hoverMark = $state<{ x: number; y: number } | null>(null);
   let hoverPin: ReturnType<typeof individualHoverPin> = null;
-  let hoverTimer: ReturnType<typeof setTimeout> | undefined;
   let hoverAbort: AbortController | undefined;
   let hoverGeneration = 0;
   function clearPinHover() {
     hoverGeneration++;
-    if (hoverTimer) clearTimeout(hoverTimer);
-    hoverTimer = undefined;
     hoverAbort?.abort(); hoverAbort = undefined;
     hoverPin = null; hoverLabel = null; hoverMark = null;
   }
@@ -208,16 +207,18 @@
     hoverMark = { x: hoverPoint.x, y: hoverPoint.y };
     const ticket = hoverGeneration;
     const controller = new AbortController(); hoverAbort = controller;
-    hoverTimer = setTimeout(() => {
-      hoverTimer = undefined;
-      void resolvePinHover!(pin.id, controller.signal).then(label => {
-        if (!label || !active || controller.signal.aborted || ticket !== hoverGeneration
-          || hoverPin?.id !== pin.id || !map || map.isMoving()) return;
-        const point = map.project(pin.coordinates);
-        const halfWidth = Math.min(128, (host.clientWidth - 20) / 2);
-        hoverLabel = { ...label, x: Math.max(halfWidth + 10, Math.min(host.clientWidth - halfWidth - 10, point.x)), y: point.y, below: point.y < 145 };
-      }).catch(() => { /* A hover is optional; detail selection retains its own error state. */ });
-    }, 170);
+    const showLabel = (label: PinHoverLabel | null) => {
+      if (!label || !active || controller.signal.aborted || ticket !== hoverGeneration
+        || hoverPin?.id !== pin.id || !map || map.isMoving()) return;
+      const point = map.project(pin.coordinates);
+      const halfWidth = Math.min(128, (host.clientWidth - 20) / 2);
+      hoverLabel = { ...label, x: Math.max(halfWidth + 10, Math.min(host.clientWidth - halfWidth - 10, point.x)), y: point.y, below: point.y < 145 };
+    };
+    try {
+      const result = resolvePinHover(pin.id, controller.signal);
+      if (result instanceof Promise) void result.then(showLabel).catch(() => {});
+      else showLabel(result);
+    } catch { /* A hover is optional; detail selection retains its own error state. */ }
   }
   let nativeStyleReady = $state(false);
   let resumePending = false;
@@ -359,6 +360,7 @@
   // available for focused renderer diagnostics, but dots are not the normal
   // visitor-facing representation.
   let useV1Pins = $state(true);
+  const hoverVisual = $derived(pinHoverVisual(useV1Pins, pinScale, coordinateRadius, import.meta.env.BASE_URL));
   let pinModeError = $state("");
   let clusterZoomDuration = $state(460);
   let clusterMotionDuration = $state(DEFAULT_CLUSTER_MOTION_MS);
@@ -971,6 +973,7 @@
       addRealPreviewMapLayers(instance, withPersistentIndexIdentity(data), { enabled, radius: clusterRadius, maxZoom: clusterMaxZoom });
       appliedNativeClustering = enabled;
     }
+    nativeMotionController?.configureLayers();
     const source = instance.getSource('locations');
     if (source) useCameraZoomLod(source as GeoJSONSource & CameraLodSource);
     updateVisualSettings();
@@ -1920,7 +1923,7 @@
     });
     instance.on("movestart", (event: any) => {
       clearPinHover();
-      nativeMotionController?.cancel();
+      nativeMotionController?.onMoveStart();
       if (event?.originalEvent) { pendingSelectionFocus = null; selectionFocus = null; }
       if (event?.originalEvent && terrainPending) {
         terrainViewGeneration++; terrainViewAbort?.abort(); terrainPending = false;
@@ -2203,7 +2206,9 @@
   aria-label={tr('Map showing records', $language)}
 >
   <div class="map-host" bind:this={host}></div>
-  {#if hoverMark}<div class="pin-hover-halo" aria-hidden="true" style:left={`${hoverMark.x}px`} style:top={`${hoverMark.y}px`} style:--hover-halo-size={`${useV1Pins ? Math.max(32, 50 * pinScale) : coordinateRadius * 2 + 20}px`} style:--hover-halo-offset={`${useV1Pins ? -22 * pinScale : 0}px`}></div>{/if}
+  {#if hoverMark}<div class="pin-hover-halo" class:dot={hoverVisual.kind === 'dot'} data-kind={hoverVisual.kind} aria-hidden="true" style:left={`${hoverMark.x}px`} style:top={`${hoverMark.y}px`} style:width={`${hoverVisual.width}px`} style:height={`${hoverVisual.height}px`} style:transform={hoverVisual.transform}>
+    <span style:mask-image={hoverVisual.maskUrl ? `url("${hoverVisual.maskUrl}")` : 'none'}></span>
+  </div>{/if}
   {#if hoverLabel}<div class="pin-hover-label" class:below={hoverLabel.below} role="tooltip" style:left={`${hoverLabel.x}px`} style:top={`${hoverLabel.y}px`} style:--hover-pin-height={`${useV1Pins ? 41 * pinScale + 3 : coordinateRadius + 5}px`}>
     <strong>{hoverLabel.name}</strong>
     <span>{tr(categoryPresentation(hoverLabel.categoryKey).label, $language)}</span>
@@ -2313,7 +2318,9 @@
 </section>
 
 <style>
-  .pin-hover-halo { position:absolute;z-index:2;width:var(--hover-halo-size);height:var(--hover-halo-size);transform:translate(-50%,calc(-50% + var(--hover-halo-offset)));border-radius:50%;box-sizing:border-box;border:1px solid color-mix(in srgb,var(--ink,#f2f0e8) 24%,transparent);background:color-mix(in srgb,var(--ink,#f2f0e8) 10%,transparent);pointer-events:none; }
+  .pin-hover-halo { position:absolute;z-index:2;pointer-events:none;filter:drop-shadow(0 0 2px #fff) drop-shadow(0 0 5px #fffc); }
+  .pin-hover-halo > span { display:block;width:100%;height:100%;box-sizing:border-box;background:#fff4;mask-mode:alpha;mask-size:100% 100%;mask-repeat:no-repeat; }
+  .pin-hover-halo.dot > span { border-radius:50%;border:2px solid #ffff;background:#fff2; }
   .map-surface {
     position: relative;
     overflow: hidden;

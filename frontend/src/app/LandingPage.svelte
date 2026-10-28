@@ -22,6 +22,7 @@
   let nearbyController: AbortController | null = null;
   let summary = $state<LandingReleaseSummary | null>(null);
   let summaryState = $state<'loading' | 'ready' | 'unavailable'>('loading');
+  let countriesPending = $state(false);
   let summaryController: AbortController | null = null;
   let summaryRetry = $state(0);
   const categoryLinks: readonly { key: TaxonomyPrimaryKey; label: string }[] = [
@@ -33,10 +34,12 @@
     void summaryRetry;
     const requestedRelease = new URLSearchParams(mapHref.split('?')[1] ?? '').get('release_id') ?? undefined;
     const controller = new AbortController(); summaryController = controller;
-    summary = null; summaryState = 'loading';
-    void loadLandingReleaseSummary(controller.signal, requestedRelease).then(value => {
-      if (!controller.signal.aborted) { summary = value; summaryState = value ? 'ready' : 'unavailable'; }
-    }).catch(() => { if (!controller.signal.aborted) summaryState = 'unavailable'; });
+    summary = null; summaryState = 'loading'; countriesPending = false;
+    void loadLandingReleaseSummary(controller.signal, requestedRelease, globalThis.fetch, value => {
+      if (!controller.signal.aborted) { summary = value; summaryState = 'ready'; countriesPending = true; }
+    }).then(value => {
+      if (!controller.signal.aborted) { summary = value; summaryState = value ? 'ready' : 'unavailable'; countriesPending = false; }
+    }).catch(() => { if (!controller.signal.aborted) { summary = null; summaryState = 'unavailable'; countriesPending = false; } });
     return () => controller.abort();
   });
   async function findNearby() {
@@ -108,7 +111,7 @@
             <div><dt>{tr('Records in this release', $language)}</dt><dd>{summary.records.toLocaleString($language)}</dd></div>
             <div><dt>{tr('With map locations', $language)}</dt><dd>{summary.mapped.toLocaleString($language)}</dd></div>
             <div><dt>{tr('Public sources', $language)}</dt><dd>{summary.sources.toLocaleString($language)}</dd></div>
-            <div class="mapped-countries"><dt>{tr('Countries mapped', $language)}</dt><dd class:unavailable={summary.countries === null}>{summary.countries === null ? tr('Unavailable', $language) : summary.countries.toLocaleString($language)}</dd></div>
+            <div class="mapped-countries"><dt>{tr('Countries mapped', $language)}</dt><dd aria-busy={countriesPending} class:unavailable={summary.countries === null}>{countriesPending ? tr('Loading…', $language) : summary.countries === null ? tr('Unavailable', $language) : summary.countries.toLocaleString($language)}</dd></div>
           </dl>
           <nav class="activity-links" aria-label={tr('Explore by activity', $language)}>
             {#each categoryLinks as category}<a href={landingCategoryHref(mapHref, summary.releaseId, category.key)}><span class="category-swatch" style:background={CATEGORY_PRESENTATIONS[category.key].color}></span><span>{tr(category.label, $language)}</span>{@render arrow()}</a>{/each}

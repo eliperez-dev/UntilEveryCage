@@ -53,6 +53,16 @@ API schemas own supported fields. They are not additional roadmaps.
   source counts from validated public aggregates, with activity links into map
   results. Distinguish unavailable totals from zero; do not add animal-death or
   other unsupported estimates to this section.
+  Check the manifest before requesting live aggregates. Publish records,
+  mapped locations and sources after their release/restriction identity check;
+  countries finish separately. Recheck identity after the country queries and
+  discard the summary on a mismatch. Do not reuse unchecked totals from storage.
+  One aggregate-only localStorage entry (at most 2 KiB, 24-hour lifetime) may
+  reuse complete checked totals after a fresh no-store manifest confirms the
+  same official profile, release, manifest hash and restriction generation.
+  Never display it offline or before validation. Identity changes, unavailable
+  releases, errors and invalid entries clear it; blocked storage falls back to
+  live aggregates. Cache hits skip the heavier facet/country queries.
   Countries mapped is the union of countries in source-reported, approximate and
   exact precision partitions. Each release/ruleset-bound country facet must sum
   to that precision's complete count; truncated, duplicate, invalid or failed
@@ -127,13 +137,16 @@ API schemas own supported fields. They are not additional roadmaps.
 
 - Individual pins show a compact, subtly rounded escaped-text name/category label on fine-pointer
   hover. Labels use the validated release-pinned public detail projection, with
-  debouncing, cancellation and a bounded short-lived in-memory cache. Release,
+  cancellation and a bounded short-lived in-memory cache. Verified loaded records
+  and cached names render synchronously; an unseen name starts its detail request
+  immediately, without a hover timer. Release,
   restrictions, filter and active-state changes invalidate labels; clusters and
   aggregate references never expose a facility tooltip. Hover does not move the
   camera or obstruct pin selection. The category uses muted text without a
   colored swatch; the pin already communicates category color.
-  A faint static halo marks the hovered facility for both PNG and optimized
-  pins. Do not pulse clusters or rebuild map data to show the hover cue.
+  PNG highlights follow the actual pin's alpha mask and rendered size, with a
+  stronger static white glow. Optimized dots use a centered ring. Do not pulse
+  clusters or rebuild map data to show the hover cue.
 - Search this area captures fixed bounds and draws a native geographic perimeter.
   Panning, rotation and style changes retain those bounds. There is no separate
   Searching this area indicator. With any box, radius or device-derived scope
@@ -574,12 +587,19 @@ baseline changes when the handoff commits. Source metadata alone does not
 establish tile readiness. Source errors and cancellation still end the wait
 immediately and follow the existing fallback.
 
-Native cluster animation holds a bounded, geographically anchored snapshot
-throughout a continuous zoom gesture. Once the final hierarchy is ready,
+Native cluster animation keeps unchanged identities visible in the native
+renderer and holds only vanished originals on a bounded, geographically anchored
+canvas during a zoom gesture. Permanent feature-state paint expressions mask
+only changing identities; gestures do not rewrite layer paint or reload source
+tiles. Promote the existing point key to preserve full UUID feature identities.
+Once the final hierarchy is ready,
 children travel from their parent cluster to their new positions; merges reverse
-that movement. Native marks are masked before hierarchy changes and the overlay
-remains until their replacement paint is ready. Reuse existing pin/cluster
-artwork and read-only native child queries, without bounce or repeated restarts.
+that movement. Keep native bottom-to-top stacking on the canvas and retain the
+held scene through rapid zoom reversals. The overlay remains until replacement
+native paint is ready. Reuse existing pin/cluster artwork and read-only native
+child queries, without bounce or repeated restarts.
+If a new zoom starts during a short playing cue, finish that cue without resetting
+its progress, then hold its destination identities for the next transition.
 The default is 210 ms and at most 1,200 animated marks in total. Debug
 controls tune duration from 0–400 ms (0 disables it), the mark cap from
 50–2,000, and camera idle delay from 0–500 ms (default 0). A bounded in-memory

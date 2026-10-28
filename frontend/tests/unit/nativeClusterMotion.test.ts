@@ -1,5 +1,98 @@
 import { describe, expect, it, vi } from 'vitest';
-import { clusterMotionImage, clusterMotionKey, NativeClusterMotionController } from '../../src/design-lab/components/nativeClusterMotion';
+import { createExpression } from '@maplibre/maplibre-gl-style-spec';
+import { CLUSTER_MOTION_HIDDEN_STATE, clusterMotionImage, clusterMotionKey, clusterMotionOpacity, clusterMotionPaintOrder, NativeClusterMotionController } from '../../src/design-lab/components/nativeClusterMotion';
+
+describe('selective native visibility and stacking', () => {
+  function opacity(original: unknown, hidden: boolean, properties: Record<string, unknown>) {
+    const parsed = createExpression(clusterMotionOpacity(original), 'icon-opacity');
+    expect(parsed.result).toBe('success');
+    if (parsed.result !== 'success') throw new Error(JSON.stringify(parsed.value));
+    return parsed.value.evaluate({ zoom: 7 }, { type: 'Point', properties }, { [CLUSTER_MOTION_HIDDEN_STATE]: hidden });
+  }
+  it('leaves unchanged clusters and pins native while hiding new descendants', () => {
+    expect(opacity(undefined, false, { cluster_id: 12 })).toBe(1);
+    expect(opacity(undefined, false, { key: 'stable' })).toBe(1);
+    expect(opacity(undefined, true, { cluster_id: 18 })).toBe(0);
+    expect(opacity(undefined, true, { facility_id: 'new' })).toBe(0);
+  });
+  it('hides only actual transition participants and preserves existing opacity', () => {
+    expect(opacity(.6, true, { cluster_id: 18 })).toBe(0);
+    expect(opacity(.6, true, { id: 'child' })).toBe(0);
+    expect(opacity(.6, false, { key: 'stable' })).toBe(.6);
+    expect(opacity(['case', ['get', 'dim'], .25, 1], false, { key: 'stable', dim: true })).toBe(.25);
+  });
+  it('paints overlapping children in native bottom-to-top order, independent of worker traversal', () => {
+    const node = (key: string) => ({ key, coordinates: [0, 0] as [number, number], properties: {}, layer: 'clusters' });
+    const parent = node('c:1'), top = node('p:top'), bottom = node('p:bottom');
+    const parentScene = new Map([[parent.key, parent]]), childScene = new Map([[top.key, top], [bottom.key, bottom]]);
+    const pairs = [{ parent, child: top }, { parent, child: bottom }];
+    for (const direction of ['split', 'merge'] as const) {
+      const ordered = clusterMotionPaintOrder(pairs, direction === 'split' ? parentScene : childScene, direction === 'split' ? childScene : parentScene, direction);
+      expect(ordered.parents).toEqual([parent]);
+      expect(ordered.pairs.map(pair => pair.child.key)).toEqual(['p:bottom', 'p:top']);
+    }
+  });
+  it('installs paint once and changes only its own bounded feature state during gestures', () => {
+    const paint = new Map<string, unknown>();
+    const map = {
+      getLayer: (id: string) => id === 'clusters', getSource: () => ({}),
+      getPaintProperty: (layer: string, property: string) => paint.get(`${layer}/${property}`),
+      setPaintProperty: vi.fn((layer: string, property: string, value: unknown) => { paint.set(`${layer}/${property}`, value); }),
+      setFeatureState: vi.fn(), removeFeatureState: vi.fn(), redraw: vi.fn(), triggerRepaint: vi.fn(), on: vi.fn(), off: vi.fn(), isSourceLoaded: () => true,
+    };
+    const controller = new NativeClusterMotionController({ getMap: () => map as any, reducedMotion: () => false, enabled: () => true, duration: () => 210, limit: () => 1000 }) as any;
+    controller.configureLayers(); controller.configureLayers();
+    expect(map.setPaintProperty).toHaveBeenCalledTimes(2);
+    controller.presentNodes = new Map([
+      ['c:0', { key: 'c:0', id: 0 }], ['p:child', { key: 'p:child', id: 'child' }],
+    ]);
+    controller.mask(new Set(['c:0']), true);
+    expect(map.setFeatureState).toHaveBeenLastCalledWith({ source: 'locations', id: 'child' }, { [CLUSTER_MOTION_HIDDEN_STATE]: true });
+    controller.mask(new Set(['c:0']), false);
+    expect(map.setFeatureState).toHaveBeenLastCalledWith({ source: 'locations', id: 0 }, { [CLUSTER_MOTION_HIDDEN_STATE]: true });
+    controller.applyMask(); controller.applyMask();
+    expect(map.redraw).toHaveBeenCalledTimes(2);
+    const clear = vi.spyOn(controller, 'clear');
+    controller.invalidate();
+    expect(clear).toHaveBeenCalled(); expect(controller.hidden.size).toBe(0); expect(controller.maskScope).toBeUndefined();
+    expect(map.removeFeatureState).toHaveBeenCalledWith({ source: 'locations', id: 'child' }, CLUSTER_MOTION_HIDDEN_STATE);
+    expect(map.removeFeatureState).toHaveBeenCalledWith({ source: 'locations', id: 0 }, CLUSTER_MOTION_HIDDEN_STATE);
+    expect(map.setPaintProperty).toHaveBeenCalledTimes(2);
+    paint.clear(); paint.set('clusters/icon-opacity', .7);
+    controller.configureLayers(); controller.configureLayers();
+    expect(paint.get('clusters/icon-opacity')).toEqual(clusterMotionOpacity(.7));
+    expect(map.setPaintProperty).toHaveBeenCalledTimes(4);
+  });
+  it('retains the original held scene through rapid camera retargets without rebuilding it', () => {
+    let zoom = 6;
+    const map = { getZoom: () => zoom, isZooming: () => true, getSource: () => undefined };
+    const controller = new NativeClusterMotionController({ getMap: () => map as any, reducedMotion: () => false, enabled: () => true, duration: () => 210, limit: () => 1000 }) as any;
+    const scene = new Map([['c:1', { key: 'c:1', coordinates: [0, 0], properties: { cluster_id: 1 }, layer: 'clusters' }]]);
+    controller.capture = vi.fn(() => scene); controller.image = () => ({}); controller.mask = vi.fn(); controller.draw = vi.fn();
+    controller.onZoomStart();
+    zoom = 7.5; controller.onMoveStart(); controller.onZoomStart();
+    expect(controller.before).toBe(scene); expect(controller.zoom).toBe(6); expect(controller.lastCameraZoom).toBe(7.5);
+    expect(controller.capture).toHaveBeenCalledTimes(1); expect(controller.mask).toHaveBeenCalledTimes(1);
+  });
+  it('cancels immediately when motion is disabled during a held gesture', () => {
+    const controller = new NativeClusterMotionController({ getMap: () => ({} as any), reducedMotion: () => true, enabled: () => true, duration: () => 210, limit: () => 1000 }) as any;
+    controller.armed = true;
+    const cancel = vi.spyOn(controller, 'cancel');
+    controller.onRender();
+    expect(cancel).toHaveBeenCalledWith(false, 'disabled'); expect(controller.armed).toBe(false);
+  });
+  it('continues the existing visible cue when another zoom starts during playback', () => {
+    const controller = new NativeClusterMotionController({ getMap: () => ({ getZoom: () => 10 } as any), reducedMotion: () => false, enabled: () => true, duration: () => 210, limit: () => 1000 }) as any;
+    const motion = { direction: 'split', pairs: [], parents: [], startedAt: 123 };
+    const destination = new Map([['p:child', { key: 'p:child' }]]);
+    controller.motion = motion; controller.after = destination; controller.targetZoom = 10;
+    controller.mask = vi.fn(); controller.capture = vi.fn();
+    controller.onZoomStart();
+    expect(controller.motion).toBe(motion); expect(controller.motion.startedAt).toBe(123);
+    expect(controller.before).toBe(destination); expect(controller.zoom).toBe(10); expect(controller.queued).toBe(true);
+    expect(controller.capture).not.toHaveBeenCalled();
+  });
+});
 
 describe('native cluster transition identities and artwork', () => {
   it('matches rendered features to native children without turning facility ids into cluster ids', () => {

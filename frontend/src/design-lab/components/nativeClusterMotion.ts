@@ -8,13 +8,14 @@ export const DEFAULT_CLUSTER_MOTION_LIMIT = 1200;
 export const MAX_CLUSTER_MOTION_LIMIT = 2000;
 export const DEFAULT_CLUSTER_IDLE_MS = 0;
 const NATIVE_PAINT_DEADLINE_MS = 500;
+export const CLUSTER_MOTION_HIDDEN_STATE = '__uecClusterMotionHidden';
 export type ClusterMotionState = 'idle' | 'holding' | 'settling' | 'pairing' | 'playing' | 'complete' | 'unchanged' | 'density-limit' | 'missing-artwork' | 'source-timeout' | 'pairing-timeout' | 'no-lineage' | 'interrupted' | 'data-change' | 'disabled';
 const LAYERS = ['clusters', 'v1-source-pins', 'approx-reference-pins', 'approx-reference-points'] as const;
 const MASK_LAYERS = [...LAYERS, 'v1-source-shadows', 'approx-reference-shadows', 'aggregate-count'];
 type Properties = Record<string, unknown>;
-type Node = { key: string; coordinates: [number, number]; properties: Properties; layer: string };
+type Node = { key: string; id?: string | number; coordinates: [number, number]; properties: Properties; layer: string };
 type Pair = { parent: Node; child: Node };
-type Motion = { direction: 'split' | 'merge'; pairs: Pair[]; startedAt: number };
+type Motion = { direction: 'split' | 'merge'; pairs: Pair[]; parents: Node[]; startedAt: number };
 type Options = { getMap: () => MapLibreMap | undefined; reducedMotion: () => boolean; enabled: () => boolean; duration: () => number; limit: () => number; idleDelay?: () => number; onState?: (state: ClusterMotionState) => void };
 
 /** The same stable identity exists in native children and rendered features. */
@@ -36,17 +37,42 @@ export function clusterMotionImage(properties: Properties): string {
   return CATEGORY_PIN_IMAGES[category ?? 'unclassified'] ?? CATEGORY_PIN_IMAGES.unclassified;
 }
 
+/** Keep stable native symbols; only the changing branch belongs to the canvas. */
+export function clusterMotionOpacity(original: unknown): unknown[] {
+  return ['*', original ?? 1, ['case', ['boolean', ['feature-state', CLUSTER_MOTION_HIDDEN_STATE], false], 0, 1]];
+}
+
+export function clusterMotionPaintOrder(pairs: Pair[], before: ReadonlyMap<string, Node>, after: ReadonlyMap<string, Node>, direction: 'split' | 'merge'): { parents: Node[]; pairs: Pair[] } {
+  const parentOrder = new Map([...(direction === 'split' ? before : after).keys()].map((key, index) => [key, index]));
+  const childOrder = new Map([...(direction === 'split' ? after : before).keys()].map((key, index) => [key, index]));
+  return {
+    parents: [...new Map(pairs.map(({ parent }) => [parent.key, parent])).values()]
+      .sort((a, b) => (parentOrder.get(b.key) ?? 0) - (parentOrder.get(a.key) ?? 0)),
+    pairs: [...pairs].sort((a, b) => (childOrder.get(b.child.key) ?? 0) - (childOrder.get(a.child.key) ?? 0)),
+  };
+}
+
 export class NativeClusterMotionController {
   private canvas: HTMLCanvasElement | undefined;
   private frame: number | undefined;
   private generation = 0;
   private before: Map<string, Node> | undefined;
+  private present = new Set<string>();
+  private presentNodes = new Map<string, Node>();
+  private maskScope: { keys: ReadonlySet<string>; retain: boolean } | undefined;
+  private hidden = new Map<string, string | number>();
+  private repainting = false;
+  private heldDrawn = false;
+  private prepared: { signature: string; direction: 'split' | 'merge'; promise: Promise<Pair[]> } | undefined;
+  private preparing = false;
   private children = new Map<number, Promise<readonly Node[]>>();
   private childCounts = new Map<number, number>();
   private hierarchySource: GeoJSONSource | undefined;
   private hierarchyGeneration = 0;
   private warming = false;
   private motion: Motion | undefined;
+  private queued = false;
+  private targetZoom = 0;
   private pending = false;
   private armed = false;
   private settleTimeout: ReturnType<typeof setTimeout> | undefined;
@@ -62,7 +88,6 @@ export class NativeClusterMotionController {
   private projected = new Map<string, { x: number; y: number }>();
   private frameCenter = 0;
   private frameScales = new Map<string, number>();
-  private originalPaint = new Map<string, unknown>();
   private handoff: { map: MapLibreMap; listener: () => void; finish: () => void } | undefined;
 
   constructor(private readonly options: Options) {}
@@ -75,7 +100,44 @@ export class NativeClusterMotionController {
     parent.append(this.canvas);
   }
 
+  /** Install once with the layers, rather than relayout native tiles per zoom. */
+  configureLayers(): void {
+    const map = this.options.getMap(); if (!map) return;
+    for (const layer of MASK_LAYERS) {
+      if (!map.getLayer(layer)) continue;
+      for (const property of ['icon-opacity', 'text-opacity'] as const) {
+        const original = map.getPaintProperty(layer, property);
+        if (JSON.stringify(original)?.includes(CLUSTER_MOTION_HIDDEN_STATE)) continue;
+        map.setPaintProperty(layer, property, clusterMotionOpacity(original) as never);
+      }
+    }
+  }
+
+  onMoveStart(): void {
+    // A new zoom target can arrive before the prior camera gesture settles.
+    // Keep its held scene; rotation/pitch listeners still cancel separately.
+    if (this.options.getMap()?.isZooming() && (this.armed && this.before || this.motion)) return;
+    this.cancel();
+  }
+
+  private retarget(): void {
+    this.generation++; this.pending = false; this.prepared = undefined; this.preparing = false;
+    clearTimeout(this.settleTimeout); this.settleTimeout = undefined;
+    clearTimeout(this.idleTimer); this.idleTimer = undefined; this.settledAt = undefined;
+    this.placementStartedAt = undefined; this.placementSignature = undefined; this.direction = undefined;
+    this.lastCameraZoom = this.options.getMap()?.getZoom() ?? this.lastCameraZoom;
+    this.report(this.motion ? 'playing' : 'holding'); this.canvas?.setAttribute('data-phase', this.motion ? 'moving' : 'holding');
+  }
+
   onZoomStart(): void {
+    this.handoff?.finish();
+    if (this.motion && this.after && this.allowed()) {
+      // Finish the short visible cue rather than snapping partially moved pins
+      // to their destinations. Its destination becomes the next held scene.
+      this.before = this.after; this.zoom = this.targetZoom; this.armed = true; this.queued = true;
+      this.retarget(); this.mask(new Set(this.before.keys()), true); return;
+    }
+    if (this.armed && this.before && this.allowed()) { this.retarget(); return; }
     this.cancel();
     const map = this.options.getMap();
     if (!map || !this.allowed()) { this.report('disabled'); return; }
@@ -86,10 +148,11 @@ export class NativeClusterMotionController {
     if ([...this.before.values()].some(node => !this.image(clusterMotionImage(node.properties)))) { this.before = undefined; this.report('missing-artwork'); return; }
     this.armed = true;
     this.report('holding');
-    // Own the bounded snapshot before the renderer changes cluster levels.
-    // Waiting to hide children until a later render flashes their destinations
-    // first, then visibly pulls them backwards to their parent.
-    this.mask();
+    // Existing identities remain in their native renderer. New descendants are
+    // hidden before placement, so they cannot flash at their final destinations.
+    this.present = new Set(this.before.keys());
+    this.presentNodes = this.before;
+    this.mask(this.present, true);
     this.canvas?.setAttribute('data-phase', 'holding');
     this.draw();
     // Prime actual immediate children while the camera begins its existing ease.
@@ -98,16 +161,30 @@ export class NativeClusterMotionController {
   }
 
   onRender(): void {
-    if (!this.armed || !this.allowed()) return;
+    if (this.repainting || !this.armed) return;
+    if (!this.allowed()) { this.cancel(false, 'disabled'); return; }
     const map = this.options.getMap();
     if (!map) return;
     const delta = map.getZoom() - this.lastCameraZoom;
     if (Math.abs(delta) > 0.001) {
-      if (this.direction !== undefined && Math.sign(delta) !== this.direction) { this.cancel(); return; }
+      if (this.direction !== undefined && Math.sign(delta) !== this.direction) this.retarget();
       this.direction = Math.sign(delta);
     }
     this.lastCameraZoom = map.getZoom();
-    if (this.pending || this.motion || this.handoff) return;
+    if (this.pending || this.handoff) return;
+    const after = this.capture(), before = this.before;
+    if (!after || !before) { this.cancel(false, 'density-limit'); return; }
+    this.present = new Set(after.keys());
+    this.presentNodes = after;
+    this.applyMask();
+    // Render events run before the browser composites the two canvases. Only
+    // originals no longer drawn natively need a geographic hold on the overlay.
+    this.draw();
+    if (this.motion) {
+      if (!map.isZooming()) this.settledAt ??= performance.now();
+      return;
+    }
+    this.prepare(after);
     // Like Leaflet.markercluster, resolve one final hierarchy after the camera
     // zoom. Intermediate native levels stay behind the following snapshot.
     if (map.isZooming()) return;
@@ -133,8 +210,6 @@ export class NativeClusterMotionController {
     }
     clearTimeout(this.settleTimeout); this.settleTimeout = undefined;
     if (Math.abs(map.getZoom() - this.zoom) < 0.01) { this.revealSnapshot(); return; }
-    const after = this.capture(), before = this.before;
-    if (!after || !before) { this.cancel(false, 'density-limit'); return; }
     // Worker/source readiness precedes native symbol placement. The first
     // post-zoom frame can still be empty or show the previous tile hierarchy.
     // Confirm a nonempty stable paint instead of treating that as no lineage.
@@ -156,7 +231,10 @@ export class NativeClusterMotionController {
     const generation = this.generation;
     const started = performance.now();
     const timeout = setTimeout(() => { if (generation === this.generation && this.pending) this.cancel(false, 'pairing-timeout'); }, 100);
-    void this.findPairs(direction === 'split' ? before : after, direction === 'split' ? after : before).then(pairs => {
+    const prepared = this.prepared;
+    const pairing = prepared?.signature === signature && prepared.direction === direction ? prepared.promise
+      : this.findPairs(direction === 'split' ? before : after, direction === 'split' ? after : before);
+    void pairing.then(pairs => {
       clearTimeout(timeout);
       if (generation !== this.generation) return;
       this.pending = false;
@@ -164,8 +242,11 @@ export class NativeClusterMotionController {
       const visibleMarks = new Set([...after.keys(), ...pairs.flatMap(pair => [pair.parent.key, pair.child.key])]).size;
       if (!pairs.length || visibleMarks > this.markLimit() || performance.now() - started > 100 || !this.allowed()) { this.cancel(false, !pairs.length ? 'no-lineage' : visibleMarks > this.markLimit() ? 'density-limit' : 'pairing-timeout'); return; }
       this.armed = false;
+      this.queued = false;
       this.after = after;
-      this.motion = { direction, pairs, startedAt: performance.now() };
+      this.targetZoom = map.getZoom();
+      this.mask(new Set(pairs.flatMap(({ parent, child }) => [parent.key, child.key])), false);
+      this.motion = { direction, ...clusterMotionPaintOrder(pairs, before, after, direction), startedAt: performance.now() };
       this.report('playing');
       this.canvas?.setAttribute('data-phase', 'moving');
       this.canvas?.setAttribute('data-direction', direction);
@@ -175,7 +256,9 @@ export class NativeClusterMotionController {
 
   /** Panning/rotation, new data, style switches and deactivation invalidate all work. */
   cancel(clearImages = false, reason: ClusterMotionState = 'interrupted'): void {
-    this.generation++; this.armed = false; this.pending = false; this.before = undefined;
+    const retainCanvas = !clearImages && reason !== 'data-change' && (this.hidden.size > 0 || this.heldDrawn || Boolean(this.motion));
+    this.generation++; this.armed = false; this.pending = false; this.before = undefined; this.queued = false;
+    this.present = new Set(); this.presentNodes = new Map(); this.prepared = undefined; this.preparing = false;
     clearTimeout(this.settleTimeout); this.settleTimeout = undefined; this.after = undefined;
     clearTimeout(this.idleTimer); this.idleTimer = undefined; this.settledAt = undefined;
     this.placementStartedAt = undefined; this.placementSignature = undefined;
@@ -184,8 +267,10 @@ export class NativeClusterMotionController {
     if (this.frame !== undefined) cancelAnimationFrame(this.frame);
     this.frame = undefined;
     if (clearImages) this.handoff?.finish();
-    // Data/restriction changes must discard the old snapshot immediately.
-    this.unmask(false); this.clear();
+    // Data/restriction changes discard the old snapshot immediately. Ordinary
+    // interruption keeps the last frame until restored native paint is visible.
+    this.unmask(retainCanvas);
+    if (!retainCanvas) this.clear();
     if (clearImages) { this.images.clear(); this.clearHierarchy(); }
     this.report(reason);
   }
@@ -224,6 +309,21 @@ export class NativeClusterMotionController {
   private clearHierarchy(): void { this.children.clear(); this.childCounts.clear(); this.hierarchySource = undefined; this.hierarchyGeneration++; this.warming = false; }
   private markLimit(): number { return Math.max(50, Math.min(MAX_CLUSTER_MOTION_LIMIT, this.options.limit())); }
 
+  /** Begin the bounded native walk while the existing camera gesture runs. */
+  private prepare(after: Map<string, Node>): void {
+    const before = this.before, map = this.options.getMap();
+    if (!before || !map || this.preparing || Math.abs(map.getZoom() - this.zoom) < 0.01
+      || after.size === before.size && [...after.keys()].every(key => before.has(key))) return;
+    const signature = [...after.keys()].sort().join('|');
+    const direction = map.getZoom() > this.zoom ? 'split' : 'merge';
+    if (this.prepared?.signature === signature && this.prepared.direction === direction) return;
+    const generation = this.generation;
+    this.preparing = true;
+    const promise = this.findPairs(direction === 'split' ? before : after, direction === 'split' ? after : before).catch(() => []);
+    this.prepared = { signature, direction, promise };
+    void promise.finally(() => { if (generation === this.generation) this.preparing = false; });
+  }
+
   dispose(): void { this.cancel(true); this.handoff?.finish(); this.canvas?.remove(); this.canvas = undefined; }
 
   private allowed(): boolean { return this.options.enabled() && !this.options.reducedMotion() && this.options.duration() > 0; }
@@ -246,7 +346,9 @@ export class NativeClusterMotionController {
     for (const feature of map.queryRenderedFeatures({ layers })) {
       const key = clusterMotionKey(feature.properties);
       if (!key || feature.geometry.type !== 'Point' || nodes.has(key)) continue;
-      nodes.set(key, { key, coordinates: feature.geometry.coordinates as [number, number], properties: feature.properties, layer: feature.layer.id });
+      const id = feature.id ?? feature.properties.cluster_id ?? feature.properties.key ?? feature.properties.id ?? feature.properties.facility_id;
+      if (typeof id !== 'string' && typeof id !== 'number') continue;
+      nodes.set(key, { key, id, coordinates: feature.geometry.coordinates as [number, number], properties: feature.properties, layer: feature.layer.id });
       if (nodes.size > this.markLimit()) return;
     }
     return nodes;
@@ -314,47 +416,50 @@ export class NativeClusterMotionController {
     return pairs;
   }
 
-  private mask(): void {
-    // Complete any earlier cancellation handoff before recording the genuine
-    // transition defaults for a new animation.
+  private mask(keys: ReadonlySet<string>, retain: boolean): void {
     this.handoff?.finish();
-    const map = this.options.getMap(); if (!map) return;
-    for (const layer of MASK_LAYERS) {
-      if (!map.getLayer(layer)) continue;
-      for (const property of ['icon-opacity', 'text-opacity'] as const) {
-        const original = map.getPaintProperty(layer, property);
-        this.originalPaint.set(`${layer}/${property}-transition`, map.getPaintProperty(layer, `${property}-transition`));
-        map.setPaintProperty(layer, `${property}-transition`, { duration: 0, delay: 0 });
-        this.originalPaint.set(`${layer}/${property}`, original);
-        // Constant zero makes MapLibre skip drawSymbol entirely, so freshly
-        // loaded tiles never populate the symbol-query metadata we need.
-        // Feature-dependent zero keeps native placement/querying active while
-        // the canvas owns the visible marks.
-        map.setPaintProperty(layer, property, ['case', ['has', 'cluster_id'], 0, 0] as never);
-      }
+    this.maskScope = { keys, retain }; this.applyMask();
+  }
+
+  private repaint(): void {
+    const map = this.options.getMap(); if (!map || this.repainting) return;
+    this.repainting = true;
+    try { map.redraw(); } finally { this.repainting = false; }
+  }
+
+  private applyMask(): void {
+    const map = this.options.getMap(), scope = this.maskScope;
+    if (!map?.getSource('locations') || !scope) return;
+    const next = new Map<string, string | number>();
+    const playing = this.queued ? new Set(this.motion?.pairs.flatMap(({ parent, child }) => [parent.key, child.key])) : undefined;
+    for (const node of this.presentNodes.values()) {
+      if (node.id !== undefined && (scope.keys.has(node.key) !== scope.retain || playing?.has(node.key))) next.set(node.key, node.id);
     }
+    let changed = false;
+    for (const [key, id] of this.hidden) if (!next.has(key)) { map.removeFeatureState({ source: 'locations', id }, CLUSTER_MOTION_HIDDEN_STATE); changed = true; }
+    for (const [key, id] of next) if (!this.hidden.has(key)) { map.setFeatureState({ source: 'locations', id }, { [CLUSTER_MOTION_HIDDEN_STATE]: true }); changed = true; }
+    this.hidden = next;
+    // The first native paint reveals which identities changed. State updates
+    // plus a synchronous repaint hide them before browser composition, without
+    // reloading tiles or letting children flash at their destination first.
+    if (changed) this.repaint();
   }
 
   private unmask(retainCanvas: boolean): void {
     const map = this.options.getMap();
-    if (!map || !this.originalPaint.size) { if (retainCanvas) { this.motion = undefined; this.clear(); } return; }
     this.handoff?.finish();
-    const paint = [...this.originalPaint]; this.originalPaint.clear();
+    this.maskScope = undefined;
+    if (!map || !this.hidden.size) { if (retainCanvas) { this.motion = undefined; this.clear(); } return; }
     const handoffMotion = this.motion;
     const handoffStarted = performance.now();
-    // MapLibre coalesces paint changes in a frame. Restoring its default
-    // transition in this same tick would add another 300ms opacity fade.
-    for (const [key, value] of paint.filter(([key]) => !key.endsWith('-transition'))) {
-      const [layer, property] = key.split('/');
-      if (layer && property && map.getLayer(layer)) map.setPaintProperty(layer, property as Parameters<MapLibreMap['setPaintProperty']>[1], value as never);
-    }
     const finish = () => {
       if (this.handoff?.listener !== listener) return;
       map.off('render', listener); this.handoff = undefined;
-      for (const [key, value] of paint.filter(([key]) => key.endsWith('-transition'))) {
-        const [layer, property] = key.split('/');
-        if (layer && property && map.getLayer(layer)) map.setPaintProperty(layer, property as Parameters<MapLibreMap['setPaintProperty']>[1], value as never);
-      }
+      if (map.getSource('locations')) for (const id of this.hidden.values()) map.removeFeatureState({ source: 'locations', id }, CLUSTER_MOTION_HIDDEN_STATE);
+      this.hidden.clear();
+      // Restore native pixels and remove the overlay in one composite. Keeping
+      // both visible while a source settles darkens edges and swaps stacking.
+      this.repaint();
       if (retainCanvas && this.motion === handoffMotion) {
         if (handoffMotion) this.report('complete');
         this.motion = undefined;
@@ -366,7 +471,9 @@ export class NativeClusterMotionController {
       if (!handoffMotion || !map.getSource('locations') || map.isSourceLoaded('locations') || performance.now() - handoffStarted > NATIVE_PAINT_DEADLINE_MS) finish();
     };
     this.handoff = { map, listener, finish };
-    map.on('render', listener); map.triggerRepaint();
+    map.on('render', listener);
+    if (!handoffMotion || !map.getSource('locations') || map.isSourceLoaded('locations')) finish();
+    else map.triggerRepaint();
   }
 
   private image(id: string): { canvas: HTMLCanvasElement; pixelRatio: number } | undefined {
@@ -410,33 +517,46 @@ export class NativeClusterMotionController {
     context.restore();
   }
 
-  private clear(): void { this.canvas?.getContext('2d')?.clearRect(0, 0, this.canvas.width, this.canvas.height); this.canvas?.removeAttribute('data-direction'); this.canvas?.removeAttribute('data-phase'); }
+  private clear(): void { this.canvas?.getContext('2d')?.clearRect(0, 0, this.canvas.width, this.canvas.height); this.heldDrawn = false; this.canvas?.removeAttribute('data-direction'); this.canvas?.removeAttribute('data-phase'); }
 
   private draw(): void {
     if (this.frame !== undefined) cancelAnimationFrame(this.frame);
     this.frame = undefined;
     const motion = this.motion, canvas = this.canvas;
     if (!canvas || !this.allowed()) { this.cancel(); return; }
+    const held = !motion && this.before && (this.armed || this.pending)
+      ? [...this.before.values()].filter(node => !this.present.has(node.key)) : [];
+    if (!motion && !held.length) {
+      if (this.heldDrawn) canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
+      this.heldDrawn = false;
+      return;
+    }
     this.projected.clear(); this.frameScales.clear(); this.frameCenter = this.options.getMap()?.getCenter().lng ?? 0;
     const rect = canvas.getBoundingClientRect(), context = resizeMotionCanvas(canvas, rect.width, rect.height, Math.min(2, window.devicePixelRatio || 1));
     if (!context) { this.cancel(); return; }
     context.clearRect(0, 0, rect.width, rect.height);
     if (!motion) {
-      if (!this.before || (!this.armed && !this.pending)) return;
-      for (const node of this.before.values()) this.drawNode(context, node, node, node, 1, 1);
-      this.frame = requestAnimationFrame(() => this.draw());
+      // Native queries return topmost first; canvas paint order is the reverse.
+      for (const node of held.reverse()) this.drawNode(context, node, node, node, 1, 1);
+      this.heldDrawn = true;
       return;
     }
     const progress = Math.min(1, (performance.now() - motion.startedAt) / this.options.duration());
-    const ease = 1 - Math.pow(1 - progress, 3), parents = new Set<string>();
-    const participants = new Set(motion.pairs.flatMap(({ parent, child }) => [parent.key, child.key]));
-    for (const node of this.after?.values() ?? []) if (!participants.has(node.key)) this.drawNode(context, node, node, node, 1, 1);
-    for (const { parent, child } of motion.pairs) {
-      if (!parents.has(parent.key)) { this.drawNode(context, parent, parent, parent, 1, motion.direction === 'split' ? 1 - ease : ease); parents.add(parent.key); }
+    const ease = 1 - Math.pow(1 - progress, 3);
+    // Keep native stacking through the handoff. Interleaving parent/child pairs
+    // in worker traversal order otherwise reverses overlapping facility pins.
+    for (const parent of motion.parents)
+      this.drawNode(context, parent, parent, parent, 1, motion.direction === 'split' ? 1 - ease : ease);
+    for (const { parent, child } of motion.pairs)
       this.drawNode(context, child, motion.direction === 'split' ? parent : child, motion.direction === 'split' ? child : parent, ease, motion.direction === 'split' ? ease : 1 - ease);
-    }
     if (progress < 1) this.frame = requestAnimationFrame(() => this.draw());
     else {
+      if (this.queued && this.before) {
+        this.queued = false; this.motion = undefined;
+        this.mask(new Set(this.before.keys()), true);
+        this.report('holding'); canvas.removeAttribute('data-direction'); canvas.setAttribute('data-phase', 'holding');
+        this.draw(); this.options.getMap()?.triggerRepaint(); return;
+      }
       if (!this.handoff) this.unmask(true);
       // A settled camera can otherwise go idle after the first restore frame
       // while symbols are still pending, leaving the canvas stranded forever.

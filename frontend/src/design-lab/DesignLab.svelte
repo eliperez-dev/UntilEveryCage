@@ -2,7 +2,7 @@
   import { onMount, untrack } from 'svelte';
   import { language, tr } from '../app/language';
   import { writable } from 'svelte/store';
-  import type { LabAction, LabRecord, LabState, MapDiagnostics, NearbySearchCommand } from './contract';
+  import type { LabAction, LabRecord, LabState, MapDiagnostics, NearbySearchCommand, PinHoverResolver } from './contract';
   import { decodeLabHash, encodeLabHash, reduceLabState } from './state';
   import { createLabViewModel } from './viewModel';
   import { createRealPreviewRepository, mapRealPreviewCandidate, RealPreviewError, type RealPreviewCounts, type RealPreviewFacet } from '../api/RealPreviewRepository';
@@ -76,11 +76,6 @@
   const pinHoverLabels = createPinHoverLabels(async (id, signal) => {
     const releaseId = $publicReleaseManifestIdentity?.releaseId;
     if (!dataActive || mode !== 'public-release' || !releaseId) return null;
-    let loaded: LabRecord | undefined;
-    if (detailStatus === 'ready' && detailRecord?.id === id && observedSelection === `${$publicReleaseIdentity}:${id}`) loaded = detailRecord;
-    if (!loaded && $dataStatus === 'ready' && !listRefreshing && !pageLoading
-      && apiRecordsIdentity === $publicReleaseIdentity && apiRecordsSearchKey === JSON.stringify(publicSearchFilters(labState))) loaded = apiRecords.find(record => record.id === id);
-    if (loaded) return { name: loaded.name, categoryKey: loaded.taxonomy?.displayCategory ?? 'unclassified' };
     const result = await publicLocationRepository.detail(id, 'official', signal, releaseId);
     return { name: result.location.name, categoryKey: result.location.taxonomy?.displayCategory ?? 'unclassified' };
   });
@@ -90,12 +85,19 @@
     ? JSON.stringify([releaseIdentityKey($publicReleaseManifestIdentity), labState.query, labState.sourceId, labState.filters, labState.searchScope, mapMatchesAttempt])
     : null);
   $effect(() => { pinHoverLabels.setContext(pinHoverContext); });
-  function resolvePinHover(id: string, signal: AbortSignal) {
+  const resolvePinHover: PinHoverResolver = (id, signal) => {
     // Synchronise at the call boundary too: no old-label window between an
     // identity/filter update and the next effect flush.
     pinHoverLabels.setContext(pinHoverContext);
-    return pinHoverLabels.resolve(id, signal);
-  }
+    if (signal.aborted || !pinHoverContext) return null;
+    const token = pinHoverLabels.contextToken();
+    let loaded: LabRecord | undefined;
+    if (detailStatus === 'ready' && detailRecord?.id === id && observedSelection === `${$publicReleaseIdentity}:${id}`) loaded = detailRecord;
+    if (!loaded && $dataStatus === 'ready' && !listRefreshing && !pageLoading
+      && apiRecordsIdentity === $publicReleaseIdentity && apiRecordsSearchKey === JSON.stringify(publicSearchFilters(labState))) loaded = apiRecords.find(record => record.id === id);
+    if (loaded) return pinHoverLabels.remember(id, { name: loaded.name, categoryKey: loaded.taxonomy?.displayCategory ?? 'unclassified' }, token);
+    return pinHoverLabels.peek(id) ?? pinHoverLabels.resolve(id, signal);
+  };
   const V0_ARCHIVE_RELEASE_ID = 'v0-candidate-2026-10-04-r3';
   const v0ArchiveVerified = writable(false);
   let refreshPinnedPublicRelease: (() => void) | undefined;
