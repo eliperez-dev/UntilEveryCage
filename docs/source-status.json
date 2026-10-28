@@ -120,6 +120,71 @@
     },
     "next_action": "Validate corrected Spanish provider queries on a small real-data pilot before resuming expansion; then finish the complete eligible country first pass within authorized account allowances. Keep results local and preserve failed outcomes. Assemble and test an updated dataset only after that gate completes. Do not cut over the earlier 93,058-point snapshot."
   },
+  "next_source_research": {
+    "checked_date_utc": "2026-10-28",
+    "status": "research_complete_no_import_or_publication",
+    "scope": "Rank additional government sources by relevant coverage, native coordinates or usable addresses, repeatable acquisition, reuse terms and integration effort",
+    "private_sample_manifest": "data/staging/source-shortlist-20261028/manifest.json",
+    "private_artifact_bytes": 2213055,
+    "external_geocoding_requests": 0,
+    "database_imports": 0,
+    "recommendation": "Implement the EEA livestock-only spatial lane first, use the existing Norway aquaculture pipeline as a low-effort companion, and keep Poland GIW as the next address-geocoded food-establishment source. Measure cross-source overlap before promising 100,000 mapped locations.",
+    "ranked_sources": [
+      {
+        "rank": 1,
+        "source_id": "eu.eea.intensive-livestock",
+        "publisher": "European Environment Agency",
+        "coverage": "Reported intensive-livestock sites across 25 European countries; latest available reporting year in the tested service is 2024",
+        "catalogue_url": "https://doi.org/10.2909/3bbf28cb-70e8-4073-8fe9-8c1d9c513f52",
+        "service_url": "https://air.discomap.eea.europa.eu/arcgis/rest/services/Air/IED_SiteMap/MapServer/0",
+        "license": "CC BY 4.0, verified in the exact version-16 spatial metadata",
+        "automation": "Public ArcGIS REST; count queries and ordered offset pagination tested; bounded GeoJSON with outSR=4326. The separate SQL endpoint returned 403 and is not required. Avoid the 2.1 GB tabular archive.",
+        "location_evidence": "Source site points; service CRS EPSG:3857 with explicit WGS84 output; source site-location semantics, not independently verified building entrances",
+        "tested_filter": "Site_reporting_year=2024 AND eprtr_sectors LIKE '%INTENSIVE LIVESTOCK%'",
+        "reported_site_rows": 20319,
+        "livestock_only_site_rows": 19890,
+        "mixed_activity_site_rows": 429,
+        "sample": {"rows": 100, "named": 100, "source_site_ids_present": 100, "valid_coordinates": 100},
+        "full_poland_subset": {"rows": 1403, "unique_source_site_ids": 1403, "named": 1403, "points_inside_poland_envelope": 1403, "livestock_only_sites": 1335, "sites_with_multiple_installations": 183},
+        "initial_scope": "Start with eea_activities='Livestock'; classify mixed sites separately. Retain activity details and source identifiers; do not add unrelated industry or infer animal counts from permit thresholds.",
+        "identity": "InspireSiteId within country, plus reporting-year observation; OBJECTID is a page cursor, not the enduring identity. Site counts are not installation counts.",
+        "integration_effort": "medium: new source adapter using existing bounded acquisition, manifests and candidate contracts; no geocoding dependency",
+        "remaining": ["Check full-feed identifier and geometry quality", "Measure overlap with prepared and published source records", "Preserve original activity codes and available permit/installation references", "Carry dated reporting evidence and explicit source precision into the release"],
+        "net_new_mapped_count": null
+      },
+      {
+        "rank": 2,
+        "source_id": "no.fiskeridir.aquaculture",
+        "publisher": "Norwegian Directorate of Fisheries",
+        "coverage": "Norwegian registered animal-aquaculture localities; new country compared with the prepared release",
+        "service_url": "https://gis.fiskeridir.no/server/rest/services/Yggdrasil/Akvakulturregisteret/MapServer/0",
+        "license_url": "https://www.fiskeridir.no/statistikk-tall-og-analyse/lisens-for-bruk-av-fiskeridirektoratets-data",
+        "license": "NLOD 2.0; Source: Fiskeridirektoratet attribution required",
+        "automation": "Existing acquisition and normalization adapter; public ArcGIS JSON/GeoJSON with object-ID enumeration and bounded paging, no token or geocoder",
+        "full_feed_recheck": {"input_rows": 1784, "animal_localities_accepted_by_existing_parser": 1686, "named_accepted_localities": 1686, "accepted_source_points": 1686, "excluded_algal_only": 96, "excluded_missing_species": 2, "locality_identifiers_unique": true},
+        "integration_effort": "low: existing private E2E capability; fresh source capture and dated-release integration still required",
+        "remaining": ["Retain source status and fish/shellfish scope", "Preserve available capacity values with their source units when extending the handoff; do not discard them or call every unit an animal count", "Confirm release field exposure, location labels and attribution", "Run existing source E2E against the new sample before release inclusion"]
+      },
+      {
+        "rank": 3,
+        "source_id": "pl.giw.approved-food",
+        "publisher": "Polish Chief Veterinary Inspectorate",
+        "coverage": "National approved animal-origin food establishments, including slaughter, cutting and processing; separate from EEA livestock-farm coverage",
+        "source_url": "https://zywnosc.wetgiw.gov.pl/spi/zatw/index.php",
+        "location_evidence": "Published business-site addresses; no coordinates observed in the register schema",
+        "sample": {"html_approval_rows": 60, "rows_with_names": 60, "rows_with_addresses": 60, "rows_with_activity_codes": 60, "rows_with_species": 58},
+        "automation": "Public HTML and its published pagenbr links worked. Two successive 20-row pages had no shared veterinary identifiers and retained the same selected section. Section selector 1 means Section 0 and selector 2 means Section I; preserve actual labels rather than assume numeric equivalence. XLS links returned empty responses or timed out; onpage=100 did not expand the page, so retain normal 20-row pagination.",
+        "identity": "Preserve WNI veterinary identifiers as strings, retaining leading zeros. Deduplicate establishments across sections and keep activity/species observations separately.",
+        "integration_effort": "medium: new HTML adapter, section reconciliation and address-geocoding pilot; less attractive than native-coordinate sources while credits are exhausted",
+        "remaining": ["Confirm reuse terms for the actual artifacts", "Capture and reconcile complete section coverage", "Measure unique WNI count rather than sum section rows", "Validate a small Polish-address geocoding pilot before batch expansion"],
+        "full_unique_facility_count": null
+      }
+    ],
+    "deferred_leads": [
+      {"source": "South Korea MOIS nationwide livestock-farming register", "catalogue_url": "https://www.data.go.kr/data/15101545/fileData.do", "catalogue_rows": 194926, "published_crs": "EPSG:5174", "reuse_metadata": "No licence-scope restriction stated in the catalogue", "reason": "Official download returned 403. Catalogue also says addresses are deliberately redacted where businesses overlap residences. Do not treat catalogue rows as mappable farms, bypass access controls, or reconstruct suppressed address detail. Revisit a permitted download path and facility-location exposure before implementation."},
+      {"source": "Chile SAG livestock register", "reason": "SIPEC is an authenticated operational system. One candidate public RUP layer is explicitly commune-level aggregation; a named-facility feed was not verified in this research. Not preferred over the tested native-coordinate sources."}
+    ]
+  },
   "china_research": {
     "checked_date": "2026-10-27",
     "status": "research_only_no_acquisition",
