@@ -186,6 +186,32 @@ ALLOWED_SKIPPED_TESTS.update(
 )
 
 
+# These exact checks are scoped to the assigned local V0-backed source DB;
+# retained-parent cases also need private provider responses. They are run
+# there, not against synthetic CI fixtures. Keep test/reason pairs explicit
+# so new skipped tests still fail the standard gate.
+_LOCAL_GEOCODING_CHECKS = {
+    "test_spanish_retained_reconciliation.SpanishRetainedPostgisTests": (
+        "opt-in local disposable database required", (
+            "test_street_format_and_administrative_parity",
+            "test_reference_region_and_province_alias_parity",
+            "test_real_parent_capture_and_forged_parent_are_rollback_only")),
+    "test_locationiq_postcode_reference.LocationIqPostcodeReferencePostgisTests": (
+        "opt-in checks on the assigned local source database required", (
+            "test_python_and_sql_matcher_parity",
+            "test_retained_parent_capture_is_approximate_and_rollback_only")),
+    "test_locationiq_first_pass_postgis.LocationIqFirstPassPostgisTests": (
+        "opt-in SELECT-only matcher checks on the assigned disposable database required", (
+            "test_es_accepts_exact_fragment_and_optional_source_context",
+            "test_gb_and_nz_matchers_check_source_fragments_country_and_bounds")),
+}
+ALLOWED_SKIPPED_TESTS.update(
+    (f"{prefix}{class_name}.{method}", reason)
+    for class_name, (reason, methods) in _LOCAL_GEOCODING_CHECKS.items()
+    for prefix in ("", "pipeline.tests.") for method in methods
+)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--start-directory", default="pipeline/tests")

@@ -37,12 +37,15 @@ class FirstPassInputTests(unittest.TestCase):
             self.assertIn(snippet,text)
         self.assertEqual(normalize_query("  One  ROAD, Town  "),"one road, town")
 
-    def test_geoapify_uses_full_source_address_and_verified_town_not_json(self):
+    def test_geoapify_formats_lookup_but_retains_full_source_address_and_verified_town(self):
         location={"address":"Unit 2, Calle Ejemplo 4", "region":"Madrid", "country_code":"ES"}
         group={"source":"es.locations", "query":structured_query("es.locations",location,municipality="Example Town")}
+        original_query = group["query"]
         self.assertEqual(provider_query(group,"locationiq"),group["query"])
         self.assertEqual(provider_query(group,"geoapify"),
-                         "Unit 2, Calle Ejemplo 4, Example Town, Madrid, Spain")
+                         "calle ejemplo 4, Example Town, Madrid, Spain")
+        self.assertEqual(group["query"], original_query)
+        self.assertEqual(json.loads(group["query"])["address"], location["address"])
         for provider, source in (("other","es.locations"),("geoapify","nz.locations"),
                                  ("geoapify","es.cat.feed-sandach")):
             with self.subTest(provider=provider,source=source), self.assertRaises(ValueError):
