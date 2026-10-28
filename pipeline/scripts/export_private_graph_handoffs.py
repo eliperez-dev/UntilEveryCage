@@ -14,6 +14,7 @@ import tempfile
 from collections import Counter
 from pathlib import Path
 from typing import Any, Iterable
+from urllib.parse import urlsplit
 
 import psycopg
 
@@ -64,6 +65,8 @@ COUNTRY_BY_SOURCE = {
     "it.1069-2009": "IT", "it.853-2004": "IT", "nl.nvwa.approved-food": "NL",
     "us.aphis": "US", "us.fsis": "US", "fr.dgal.section-i": "FR",
     "fr.dgal.section-ii": "FR",
+    "de.locations": "DE", "es.locations": "ES", "fr.georisques.icpe.animal": "FR",
+    "mx.locations": "MX", "nz.locations": "NZ",
 }
 
 
@@ -233,7 +236,10 @@ def export_clone(database_url: str, release_manifest: Path, output_root: Path) -
     except ValueError as exc:
         raise ValueError("private handoff output must remain under ignored data/staging") from exc
     output_root.mkdir(parents=True, exist_ok=True)
-    connection = psycopg.connect(database_url)
+    try:
+        connection = psycopg.connect(database_url)
+    except Exception:
+        raise CandidateExportError("candidate_database_unavailable") from None
     try:
         connection.execute("SET TRANSACTION READ ONLY")
         actual_db = connection.execute("SELECT current_database()").fetchone()[0]
@@ -317,6 +323,248 @@ def export_clone(database_url: str, release_manifest: Path, output_root: Path) -
             "us.inspections": "evidence-event handoff is owned by APHIS evidence lane",
         },
         "privacy": {"private_rows_written_to_ignored_output": True, "rows_emitted_to_stdout": False, "database_writes": False, "publication_authorized": False},
+    }
+
+
+class CandidateExportError(ValueError):
+    """Safe failure for the explicit frozen-candidate export path."""
+
+    def __init__(self, category: str):
+        super().__init__(category)
+        self.category = category
+
+
+_CANDIDATE_DATABASE = "uec_country_release_test_20261027"
+_CANDIDATE_RELEASE = "release-2026-10-27-r2"
+
+_CANDIDATE_MEMBER_SQL = """
+SELECT member.release_id, member.facility_id::text, member.observation_id::text,
+       observation.source_record_id::text, record.source_id, record.artifact_id::text,
+       artifact.sha256, taxonomy.contract,
+       record.source_record_key, record.raw_fields,
+       CASE WHEN jsonb_typeof(record.raw_fields->'source_values') = 'object'
+            THEN record.raw_fields->'source_values' ELSE '{}'::jsonb END AS source_values,
+       artifact.retrieved_at, observation.observed_at,
+       restricted.source_record_id IS NOT NULL AS is_restricted
+FROM uec.release_members member
+JOIN uec.observations observation ON observation.observation_id=member.observation_id
+JOIN uec.source_records record ON record.source_record_id=observation.source_record_id
+JOIN uec.raw_artifacts artifact ON artifact.artifact_id=record.artifact_id
+LEFT JOIN uec.public_access_restricted restricted ON restricted.source_record_id=record.source_record_id
+LEFT JOIN LATERAL (
+    SELECT jsonb_build_object(
+        'taxonomy_version', assignment_set.taxonomy_version,
+        'crosswalk_version', assignment_set.crosswalk_version,
+        'ruleset_version', assignment_set.ruleset_version,
+        'display_category', assignment_set.display_category,
+        'assignments', COALESCE(jsonb_agg(jsonb_build_object(
+            'assignment_ordinal', assignment.assignment_ordinal,
+            'primary_key', assignment.primary_key, 'leaf_key', assignment.leaf_key,
+            'leaf_label', assignment.leaf_label,
+            'source_code_reference', assignment.source_code_reference,
+            'source_label_reference', assignment.source_label_reference,
+            'source_code', assignment.source_code, 'source_label', assignment.source_label,
+            'mapping_method', assignment.mapping_method, 'mapping_status', assignment.mapping_status
+        ) ORDER BY assignment.assignment_ordinal), '[]'::jsonb)
+    ) AS contract
+    FROM uec.observation_taxonomy_assignment_sets assignment_set
+    LEFT JOIN uec.observation_taxonomy_assignments assignment USING (assignment_set_id)
+    WHERE assignment_set.observation_id=observation.observation_id
+      AND assignment_set.source_record_id=observation.source_record_id
+      AND assignment_set.source_id=record.source_id
+      AND assignment_set.artifact_id=record.artifact_id
+      AND NOT EXISTS (
+          SELECT 1 FROM uec.observation_taxonomy_assignment_sets newer
+          WHERE newer.observation_id=assignment_set.observation_id
+            AND newer.taxonomy_version=assignment_set.taxonomy_version
+            AND (newer.created_at,newer.assignment_set_id)>(assignment_set.created_at,assignment_set.assignment_set_id)
+      )
+    GROUP BY assignment_set.assignment_set_id
+    ORDER BY assignment_set.created_at DESC, assignment_set.assignment_set_id DESC
+    LIMIT 1
+) taxonomy ON true
+WHERE member.release_id=%s
+ORDER BY member.release_id, member.facility_id, member.observation_id,
+         observation.source_record_id, record.source_id, record.artifact_id
+"""
+
+
+def _candidate_paths(freeze_path: Path, review_path: Path, output_root: Path) -> tuple[dict[str, Any], dict[str, Any], Path]:
+    reports_root = (Path.cwd() / "data" / "reports").resolve()
+    staging_root = (Path.cwd() / "data" / "staging").resolve()
+    try:
+        for path in (freeze_path, review_path):
+            resolved = path.resolve(strict=True)
+            if path.is_symlink() or not resolved.is_file() or reports_root not in resolved.parents:
+                raise CandidateExportError("candidate_control_file_invalid")
+        freeze = json.loads(freeze_path.read_text(encoding="utf-8"))
+        review = json.loads(review_path.read_text(encoding="utf-8"))
+    except CandidateExportError:
+        raise
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        raise CandidateExportError("candidate_control_file_invalid") from None
+    if not isinstance(freeze, dict) or not isinstance(review, dict):
+        raise CandidateExportError("candidate_control_file_invalid")
+    from pipeline.common.release_cohort_review import canonical_sha256
+    expected_hashes = (review.get("freeze_sha256"), review.get("inventory_sha256"), review.get("member_sha256"))
+    if (freeze.get("schema_version") != "v0-candidate-freeze-v1"
+            or review.get("schema_version") != "uec-release-cohort-review-v1"
+            or review.get("release_id") != _CANDIDATE_RELEASE
+            or not isinstance(review.get("member_count"), int) or review["member_count"] < 1
+            or any(not isinstance(value, str) or len(value) != 64
+                   or any(character not in "0123456789abcdef" for character in value)
+                   for value in expected_hashes)
+            or not isinstance(freeze.get("inventory_sha256"), str)
+            or len(freeze["inventory_sha256"]) != 64
+            or review.get("freeze_sha256") != canonical_sha256(freeze)
+            or review.get("inventory_sha256") != freeze.get("inventory_sha256")):
+        raise CandidateExportError("candidate_control_hash_mismatch")
+    output = output_root.resolve(strict=False)
+    try:
+        output.relative_to(staging_root)
+    except ValueError:
+        raise CandidateExportError("candidate_output_outside_staging") from None
+    if output == staging_root or output.exists() or output_root.is_symlink() or not output.parent.is_dir():
+        raise CandidateExportError("candidate_output_must_be_new")
+    return freeze, review, output
+
+
+def _validate_candidate_database_url(database_url: str, expected_database: str) -> None:
+    try:
+        parsed = urlsplit(database_url)
+    except ValueError:
+        raise CandidateExportError("candidate_database_mismatch") from None
+    if (parsed.scheme not in {"postgres", "postgresql"}
+            or parsed.hostname not in {"127.0.0.1", "localhost", "::1"}
+            or parsed.path.lstrip("/") != expected_database
+            or expected_database != _CANDIDATE_DATABASE):
+        raise CandidateExportError("candidate_database_mismatch")
+
+
+def _member_payload(values: list[Any]) -> bytes:
+    return (json.dumps(values, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+
+
+def export_frozen_candidate(database_url: str, *, expected_database: str, release_id: str,
+                            freeze_path: Path, review_path: Path, output_root: Path) -> dict[str, Any]:
+    """Export only exact, unrestricted members of the assigned frozen candidate."""
+    if release_id != _CANDIDATE_RELEASE:
+        raise CandidateExportError("candidate_release_mismatch")
+    _validate_candidate_database_url(database_url, expected_database)
+    freeze, review, output = _candidate_paths(freeze_path, review_path, output_root)
+    if review.get("release_id") != release_id:
+        raise CandidateExportError("candidate_control_release_mismatch")
+    selected = freeze.get("selected_sources")
+    if not isinstance(selected, list) or not selected:
+        raise CandidateExportError("candidate_freeze_scope_invalid")
+    selected_ids = [item.get("source_id") for item in selected if isinstance(item, dict)]
+    if (len(selected_ids) != len(selected) or not all(isinstance(item, str) and item for item in selected_ids)
+            or len(set(selected_ids)) != len(selected_ids)):
+        raise CandidateExportError("candidate_freeze_scope_invalid")
+    frozen_sources = sorted(selected_ids)
+
+    connection = psycopg.connect(database_url)
+    try:
+        connection.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
+        actual_db = connection.execute("SELECT current_database()").fetchone()[0]
+        if actual_db != expected_database:
+            raise CandidateExportError("candidate_database_mismatch")
+        release = connection.execute(
+            "SELECT status,profile,test_only,ruleset_version,summary FROM uec.releases WHERE release_id=%s",
+            (release_id,),
+        ).fetchone()
+        if release is None:
+            raise CandidateExportError("candidate_release_missing")
+        status, profile, test_only, ruleset, summary = release
+        summary = summary if isinstance(summary, dict) else {}
+        summary_sources = summary.get("selected_sources")
+        replacement_sources = summary.get("replacement_sources", summary_sources)
+        if (status != "candidate" or profile != review.get("profile") or test_only is not False
+                or ruleset != review.get("ruleset_version") or summary.get("candidate_only") is not True
+                or summary.get("freeze_sha256") != review.get("freeze_sha256")
+                or summary.get("inventory_sha256") != review.get("inventory_sha256")
+                or not isinstance(summary_sources, list)
+                or summary_sources != sorted(set(summary_sources))
+                or not isinstance(replacement_sources, list)
+                or sorted(replacement_sources) != frozen_sources):
+            raise CandidateExportError("candidate_release_controls_mismatch")
+        member_count = int(connection.execute(
+            "SELECT count(*) FROM uec.release_members WHERE release_id=%s", (release_id,)
+        ).fetchone()[0])
+        if member_count != review.get("member_count"):
+            raise CandidateExportError("candidate_member_count_mismatch")
+
+        member_digest = hashlib.sha256()
+        seen_members = 0
+        restricted_count = 0
+        exported_member_count = 0
+        member_sources: set[str] = set()
+        source_urls = _source_urls()
+        cursor = connection.cursor(name="uec_frozen_candidate_graph_export")
+        cursor.execute(_CANDIDATE_MEMBER_SQL, (release_id,))
+
+        def export_rows():
+            nonlocal seen_members, restricted_count, exported_member_count
+            for row in cursor:
+                (row_release, facility_id, observation_id, source_record_id, source_id,
+                 artifact_id, artifact_sha, taxonomy, source_record_key, raw_fields, source_values,
+                 retrieved_at, observed_at, is_restricted) = row
+                if taxonomy is None:
+                    raise CandidateExportError("candidate_taxonomy_missing")
+                member_digest.update(_member_payload([
+                    row_release, facility_id, observation_id, source_record_id, source_id,
+                    artifact_id, artifact_sha, taxonomy,
+                ]))
+                seen_members += 1
+                member_sources.add(source_id)
+                if is_restricted:
+                    restricted_count += 1
+                    continue
+                if not isinstance(raw_fields, dict) or "normalized" not in raw_fields:
+                    raise CandidateExportError("candidate_normalized_payload_missing")
+                exported_member_count += 1
+                yield (source_id, source_record_key, raw_fields, source_values,
+                       artifact_sha, retrieved_at, observed_at)
+
+        with tempfile.TemporaryDirectory(prefix=".candidate-graph-export-", dir=str(output.parent)) as temporary:
+            temporary_root = Path(temporary)
+            result = _write_source(export_rows(), temporary_root / "released", scope="frozen-candidate-membership",
+                                  source_urls=source_urls)
+            if (seen_members != member_count or member_digest.hexdigest() != review.get("member_sha256")):
+                raise CandidateExportError("candidate_member_hash_mismatch")
+            if sorted(member_sources) != summary_sources:
+                raise CandidateExportError("candidate_member_source_scope_mismatch")
+            if result["total_candidates"] != exported_member_count:
+                raise CandidateExportError("candidate_export_incomplete")
+            manifest = {
+                "schema_version": "private-frozen-candidate-graph-export-v1",
+                "database": expected_database, "release_id": release_id,
+                "freeze_sha256": review["freeze_sha256"], "inventory_sha256": review["inventory_sha256"],
+                "member_count": member_count, "member_sha256": review["member_sha256"],
+                "restricted_member_count_excluded": restricted_count,
+                "exported_member_count": exported_member_count,
+                "release": result,
+                "privacy": {"rows_emitted_to_stdout": False, "database_writes": False,
+                            "publication_authorized": False},
+            }
+            (temporary_root / "manifest.json").write_text(
+                json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+            # On Windows, rename to an existing target fails rather than replacing it.
+            os.rename(temporary_root, output)
+        connection.rollback()
+    except CandidateExportError:
+        connection.rollback()
+        raise
+    except Exception:
+        connection.rollback()
+        raise CandidateExportError("candidate_export_failed") from None
+    finally:
+        connection.close()
+    return {
+        "status": "exported", "release_id": release_id, "member_count": member_count,
+        "restricted_member_count_excluded": restricted_count, "exported_member_count": exported_member_count,
+        "member_sha256": review["member_sha256"], "output_created": True,
+        "database_writes": False, "publication_authorized": False,
     }
 
 
@@ -580,13 +828,33 @@ def write_final_source_coverage(export_root: Path, receipt_path: Path, *,
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--database-url-env", default="UEC_GRAPH_EXPORT_URL")
-    parser.add_argument("--release-manifest", required=True)
+    parser.add_argument("--candidate-export", action="store_true",
+                        help="export the exact assigned frozen candidate, separately from legacy release mode")
+    parser.add_argument("--expected-database", choices=[_CANDIDATE_DATABASE])
+    parser.add_argument("--candidate-release-id", choices=[_CANDIDATE_RELEASE])
+    parser.add_argument("--freeze", type=Path)
+    parser.add_argument("--review-template", type=Path)
+    parser.add_argument("--release-manifest")
     parser.add_argument("--output-root", required=True)
     args = parser.parse_args()
     url = os.environ.get(args.database_url_env)
     if not url:
         raise SystemExit("private graph export database environment variable is unavailable")
-    report = export_clone(url, Path(args.release_manifest), Path(args.output_root))
+    if args.candidate_export:
+        if not all((args.expected_database, args.candidate_release_id, args.freeze, args.review_template)):
+            parser.error("candidate mode requires --expected-database, --candidate-release-id, --freeze and --review-template")
+        try:
+            report = export_frozen_candidate(
+                url, expected_database=args.expected_database, release_id=args.candidate_release_id,
+                freeze_path=args.freeze, review_path=args.review_template, output_root=Path(args.output_root),
+            )
+        except CandidateExportError as error:
+            print(json.dumps({"status": "blocked", "reason": error.category}, sort_keys=True))
+            return 2
+    else:
+        if not args.release_manifest:
+            parser.error("legacy mode requires --release-manifest")
+        report = export_clone(url, Path(args.release_manifest), Path(args.output_root))
     print(json.dumps(report, ensure_ascii=True, sort_keys=True))
     return 0
 
