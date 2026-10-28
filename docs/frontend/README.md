@@ -617,10 +617,16 @@ tiles. Promote the existing point key to preserve full UUID feature identities.
 When zoom-in settles, children travel from their parent cluster to their new
 positions. With the default zero idle delay, zoom-out merges advance through
 placed scenes while the camera moves, coalescing further changes until the
-current short cue finishes. New regions stay native while lineage is pending;
-never hide marks outside the held viewport without a painted replacement.
-If only a new region arrives, retain the original scene and keep tracking until
-its parent hierarchy arrives; remember the new identities to avoid repeated reads.
+current short cue finishes. Adopt each newly revealed region's first native
+scene immediately, including arrivals during a worker read or another cue.
+Advance the tracked viewport after that scene can paint, so its subsequent
+cluster changes use the same hold and parent-origin animation as the original
+region. Never blanket-hide space before observing its first scene. Keep
+unpaired arrivals through intermediate checkpoints and hold vanished marks
+even while a different branch animates. Retire them only when their matching
+parents replace them; do not discard them with an older worker snapshot.
+If only a new region arrives, retain the scene and keep tracking until its
+parent hierarchy arrives; remember the new identities to avoid repeated reads.
 An empty lookup also waits for the next native zoom level or zoomend before
 retrying, rather than querying each partially arrived tile scene.
 Changed branches inside the held viewport fade in on the same clock,

@@ -237,9 +237,24 @@ export class NativeClusterMotionController {
     if (this.handoff) return;
     const after = this.capture(), before = this.before;
     if (!after || !before) { this.cancel(false, 'density-limit'); return; }
+    // A zoom-out reveals fresh branches while an earlier cue/worker read is
+    // still running. Adopt their first native scene immediately, rather than
+    // forgetting it until the next checkpoint. Their subsequent parents then
+    // use the same hold and lineage path as the original viewport.
+    const participants = new Set([...(this.motion?.pairs.flatMap(({ parent, child }) => [parent.key, child.key]) ?? []), ...(this.motion?.appearing?.map(node => node.key) ?? [])]);
+    let adopted = false;
+    for (const node of after.values()) {
+      if (!before.has(node.key) && !participants.has(node.key) && !this.heldRegionContains(node)) { before.set(node.key, node); adopted = true; }
+    }
+    if (before.size > this.markLimit()) { this.cancel(false, 'density-limit'); return; }
     this.present = new Set(after.keys());
     this.presentNodes = after;
+    if (this.maskScope?.retain) this.maskScope = { keys: new Set(before.keys()), retain: true };
     this.applyMask();
+    // Only claim newly exposed space after its first scene was allowed to
+    // paint natively. Do not blanket-mask unseen regions while pairing waits.
+    const bounds = map.getBounds?.();
+    if (bounds) this.footprint = [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()];
     // Render events run before the browser composites the two canvases. Only
     // originals no longer drawn natively need a geographic hold on the overlay.
     this.draw();
@@ -297,7 +312,7 @@ export class NativeClusterMotionController {
     }
     // Tile placement can briefly drop old marks before supplying any parent.
     // That is not yet a merge scene and must not cancel the rest of the zoom.
-    if (mergingDuringZoom && [...after.keys()].every(key => before.has(key))) return;
+    if (mergingDuringZoom && !adopted && [...after.keys()].every(key => before.has(key))) return;
     // Partial tiles at the same native zoom can arrive in several frames.
     // After an empty lookup, wait for the next hierarchy level or zoomend.
     // New regions stay native and vanished originals stay on the overlay.
@@ -336,13 +351,17 @@ export class NativeClusterMotionController {
       this.armed = mergingDuringZoom;
       this.emptyLineageZoom = undefined;
       this.queued = mergingDuringZoom;
-      this.after = after;
+      const destination = new Map(before);
+      for (const { child } of pairs) destination.delete(child.key);
+      for (const [key, node] of after) destination.set(key, node);
+      if (destination.size > this.markLimit()) { this.cancel(false, 'density-limit'); return; }
+      this.after = mergingDuringZoom ? destination : after;
       this.targetZoom = sceneZoom;
       this.placementStartedAt = undefined; this.placementSignature = undefined; this.settledAt = undefined;
       this.motion = { direction, ...clusterMotionPaintOrder(pairs, before, after, direction), appearing };
       if (mergingDuringZoom) {
-        this.before = after; this.zoom = sceneZoom;
-        this.mask(new Set(after.keys()), true);
+        this.before = destination; this.zoom = sceneZoom;
+        this.mask(new Set(destination.keys()), true);
       } else this.mask(new Set([...participantKeys, ...appearing.map(node => node.key)]), false);
       this.report('playing');
       this.canvas?.setAttribute('data-phase', 'moving');
@@ -575,8 +594,9 @@ export class NativeClusterMotionController {
     this.frame = undefined;
     const motion = this.motion, canvas = this.canvas;
     if (!canvas || !this.allowed()) { this.cancel(); return; }
-    const held = !motion && this.before && (this.armed || this.pending)
-      ? [...this.before.values()].filter(node => !this.present.has(node.key)) : [];
+    const participants = new Set([...(motion?.pairs.flatMap(({ parent, child }) => [parent.key, child.key]) ?? []), ...(motion?.appearing?.map(node => node.key) ?? [])]);
+    const held = this.before && (this.armed || this.pending)
+      ? [...this.before.values()].filter(node => !this.present.has(node.key) && !participants.has(node.key)) : [];
     if (!motion && !held.length) {
       if (this.heldDrawn) canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
       this.heldDrawn = false;
@@ -590,9 +610,11 @@ export class NativeClusterMotionController {
     const bounds = map?.getRenderWorldCopies?.() && map.getProjection?.()?.type !== 'globe' ? map.getBounds() : undefined;
     this.frameWorldBounds = bounds ? [bounds.getWest(), bounds.getEast()] : undefined;
     context.clearRect(0, 0, rect.width, rect.height);
+    // Arrivals can change again during a different branch's short cue. Keep
+    // their last native marks too; they must not disappear behind that cue.
+    for (const node of held.reverse()) this.drawNode(context, node, node, node, 1, 1);
     if (!motion) {
       // Native queries return topmost first; canvas paint order is the reverse.
-      for (const node of held.reverse()) this.drawNode(context, node, node, node, 1, 1);
       this.heldDrawn = true;
       return;
     }

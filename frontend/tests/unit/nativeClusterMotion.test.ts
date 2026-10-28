@@ -316,7 +316,8 @@ describe('newly exposed regions', () => {
   });
   it('keeps tracking when a new region arrives before any existing branch merges', async () => {
     let zoom = 5.2;
-    const map = { getZoom: () => zoom, isZooming: () => true, getSource: () => ({}), triggerRepaint: vi.fn() };
+    const map = { getZoom: () => zoom, isZooming: () => true, getSource: () => ({}), triggerRepaint: vi.fn(),
+      getBounds: () => ({ getWest: () => -130, getSouth: () => 20, getEast: () => -60, getNorth: () => 50 }) };
     const controller = new NativeClusterMotionController({ getMap: () => map as any, reducedMotion: () => false, enabled: () => true, duration: () => 210, limit: () => 1200 }) as any;
     const original = { key: 'c:old', id: 1, coordinates: [-120, 35], properties: {} };
     const arrival = { key: 'c:new', id: 2, coordinates: [-75, 40], properties: {} };
@@ -335,8 +336,41 @@ describe('newly exposed regions', () => {
     controller.capture = () => new Map([['c:next', { ...arrival, key: 'c:next', id: 3 }]]);
     zoom = 5.1; controller.onRender('before'); await Promise.resolve();
     expect(controller.findPairs).toHaveBeenCalledTimes(1);
+    zoom = 5.05; controller.onRender('before'); await Promise.resolve();
+    expect(controller.findPairs).toHaveBeenCalledTimes(1);
     zoom = 4.9; controller.onRender('before'); await Promise.resolve();
     expect(controller.findPairs).toHaveBeenCalledTimes(2);
+    expect(controller.motion.appearing.map(node => node.key)).toEqual(['c:next']);
+  });
+  it('adopts new branches during a playing cue and pairs their next merge outside the original viewport', async () => {
+    const node = (key: string, lon: number) => ({ key, id: key, coordinates: [lon, 35], properties: {}, layer: 'clusters' });
+    const original = node('c:old', -120), arrival = node('c:arrival', -75), parent = node('c:parent', -74);
+    let scene = new Map([[arrival.key, arrival]]), zoom = 5.5;
+    const map = { getZoom: () => zoom, isZooming: () => true, getSource: () => ({}), triggerRepaint: vi.fn(),
+      getBounds: () => ({ getWest: () => -130, getSouth: () => 20, getEast: () => -60, getNorth: () => 50 }),
+      setFeatureState: vi.fn(), removeFeatureState: vi.fn() };
+    const controller = new NativeClusterMotionController({ getMap: () => map as any, reducedMotion: () => false, enabled: () => true, duration: () => 210, limit: () => 1200 }) as any;
+    controller.before = new Map([[original.key, original]]); controller.footprint = [-125, 30, -115, 42];
+    controller.capture = () => scene; controller.draw = vi.fn();
+    controller.armed = true; controller.zoom = 6; controller.lastCameraZoom = 6;
+    controller.maskScope = { keys: new Set([original.key]), retain: true };
+    controller.motion = { pairs: [], parents: [], appearing: [], direction: 'merge' }; controller.queued = true;
+    controller.onRender('before');
+    expect(controller.before.get(arrival.key)).toBe(arrival);
+    expect(controller.hidden.has(arrival.key)).toBe(false);
+    // The unrelated cue finishes; the freshly revealed branch changes level.
+    controller.motion = undefined; controller.queued = false;
+    scene = new Map([[parent.key, parent]]); zoom = 4.9;
+    controller.findPairs = vi.fn(async (_parents, children) => {
+      expect(children.get(arrival.key)).toBe(arrival);
+      return [{ parent, child: arrival }];
+    });
+    controller.onRender('before'); await Promise.resolve();
+    expect(controller.hidden.has(parent.key)).toBe(true);
+    expect(controller.motion.pairs).toEqual([{ parent, child: arrival }]);
+    expect(controller.before.has(arrival.key)).toBe(false);
+    expect(controller.before.get(parent.key)).toBe(parent);
+    expect(controller.before.get(original.key)).toBe(original);
   });
   it('never blanket-hides marks outside the original viewport', () => {
     const map = { getSource: () => ({}), setFeatureState: vi.fn(), removeFeatureState: vi.fn(), redraw: vi.fn(), on: vi.fn(), off: vi.fn(), triggerRepaint: vi.fn() };
@@ -353,5 +387,18 @@ describe('newly exposed regions', () => {
     }
     controller.mask(new Set(), false);
     expect(controller.hidden.size).toBe(0);
+  });
+  it('holds an unpaired arrival during another cue without painting fading arrivals twice', () => {
+    const map = { getCenter: () => ({ lng: 0 }), triggerRepaint: vi.fn() };
+    const controller = new NativeClusterMotionController({ getMap: () => map as any, reducedMotion: () => false, enabled: () => true, duration: () => 210, limit: () => 1200 }) as any;
+    const context = { setTransform: vi.fn(), clearRect: vi.fn() };
+    controller.canvas = { width: 320, height: 200, getContext: () => context, getBoundingClientRect: () => ({ width: 320, height: 200 }), setAttribute: vi.fn() };
+    const held = { key: 'c:held' }, fading = { key: 'c:fading' };
+    controller.before = new Map([[held.key, held], [fading.key, fading]]);
+    controller.armed = true; controller.queued = true;
+    controller.motion = { direction: 'merge', pairs: [], parents: [], appearing: [fading], startedAt: performance.now() - 211 };
+    controller.mask = vi.fn(); controller.drawNode = vi.fn();
+    controller.draw();
+    expect(controller.drawNode.mock.calls.map(call => call[1].key)).toEqual(['c:held', 'c:fading']);
   });
 });

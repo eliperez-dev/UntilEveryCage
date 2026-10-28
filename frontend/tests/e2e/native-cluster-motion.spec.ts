@@ -295,6 +295,48 @@ for (const pitch of [0, 60]) test(`large zoom jumps at ${pitch} degrees reveal n
   await page.screenshot({ path: testInfo.outputPath('large-zoom-complete.png') });
 });
 
+for (const pitch of [0, 60]) test(`newly revealed regions join subsequent animated merges at pitch ${pitch}`, async ({ page }, testInfo) => {
+  await fixture(page, undefined, false, 'spread');
+  await page.evaluate(pitch => (window as any).__UEC_LOCAL_PREVIEW_MAP__.jumpTo({ center: [-119, 35], zoom: 8, pitch }), pitch);
+  await page.waitForFunction(() => { const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__; return !map.isMoving() && map.isSourceLoaded('locations') && !document.querySelector('.native-cluster-motion')?.hasAttribute('data-phase'); });
+  await page.evaluate(async () => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__, bounds = map.getBounds();
+    const outside = (node: any) => !bounds.contains(node.coordinates);
+    const url = performance.getEntriesByType('resource').find(entry => entry.name.includes('/nativeClusterMotion.ts'))!.name;
+    const { NativeClusterMotionController } = await import(url);
+    const render = NativeClusterMotionController.prototype.advanceRender, drawNode = NativeClusterMotionController.prototype.drawNode;
+    const sample = { observed: 0, forgotten: 0, movingChildren: new Set<string>(), movingFrames: 0 };
+    (window as any).__newRegionMotion = sample;
+    NativeClusterMotionController.prototype.advanceRender = function () {
+      const result = render.call(this);
+      if (this.armed && this.before) {
+        const participants = new Set(this.motion?.pairs.flatMap(({ parent, child }: any) => [parent.key, child.key]));
+        for (const node of this.presentNodes.values()) {
+          if (!outside(node) || participants.has(node.key) || this.hidden.has(node.key)) continue;
+          sample.observed++;
+          if (!this.before.has(node.key)) sample.forgotten++;
+        }
+      }
+      return result;
+    };
+    NativeClusterMotionController.prototype.drawNode = function (...args: any[]) {
+      const [,, from, to, progress, opacity] = args;
+      if (this.motion?.direction === 'merge' && from.key !== to.key && outside(from) && progress > 0 && progress < 1 && opacity > .05) {
+        sample.movingChildren.add(from.key); sample.movingFrames++;
+      }
+      return drawNode.apply(this, args);
+    };
+    map.easeTo({ zoom: 2, duration: 3500 });
+  });
+  await page.waitForFunction(() => !(window as any).__UEC_LOCAL_PREVIEW_MAP__.isMoving() && !document.querySelector('.native-cluster-motion')?.hasAttribute('data-phase'));
+  const sample = await page.evaluate(() => { const sample = (window as any).__newRegionMotion; return { ...sample, movingChildren: sample.movingChildren.size }; });
+  await testInfo.attach('new-region-animated-coverage', { body: JSON.stringify(sample), contentType: 'application/json' });
+  expect(sample.observed).toBeGreaterThan(0);
+  expect(sample.forgotten).toBe(0);
+  expect(sample.movingChildren).toBeGreaterThan(3);
+  expect(sample.movingFrames).toBeGreaterThan(sample.movingChildren);
+});
+
 for (const population of [500, 1000]) test(`zoom-out retires the ${population}-pin dense cohort while the camera is still moving`, async ({ page }, testInfo) => {
   await fixture(page, population);
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
