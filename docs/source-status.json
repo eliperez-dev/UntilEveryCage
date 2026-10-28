@@ -34,6 +34,19 @@
       "initial_requests_by_source": {"es.locations": 18253, "es.cat.feed-sandach": 4299, "fsa_approved_establishments": 1609, "fss_approved_establishments": 2, "nz.locations": 945},
       "non_requestable_records": {"de_missing_address": 24, "uk_withheld_or_missing_address": 87, "nz_multiple_locations": 143},
       "already_attempted_shared_address_records_excluded": 161,
+      "latest_checkpoint": {
+        "checked_date": "2026-10-27",
+        "remaining_distinct_requests": 24163,
+        "remaining_by_source": {"es.locations": 18253, "es.cat.feed-sandach": 4299, "fsa_approved_establishments": 1609, "fss_approved_establishments": 2, "nz.locations": 0},
+        "new_zealand_new_requests": 945,
+        "new_zealand_accepted_results": 134,
+        "new_zealand_records_with_new_display_evidence": 140,
+        "first_pass_source_keys_with_multiple_requests_across_history": 0,
+        "active_owned_jobs": 0,
+        "locationiq_account_requests_in_current_window": {"primary": 486, "secondary": 459},
+        "remaining_execution_blocker": "Execution review requires explicit UK and Spain (including Catalonia) address-transfer authorization for LocationIQ. Requested from maintainer; no UK/Spain LocationIQ requests sent. Geoapify current-window allowance is exhausted.",
+        "hosted_dataset_changed": false
+      },
       "live_progress_authority": "Existing source-key-linked request reservations, results and job events in uec_launch_sources_test_20261025; count across all providers and snapshots",
       "previous_snapshot_requires_reassembly": true
     },
