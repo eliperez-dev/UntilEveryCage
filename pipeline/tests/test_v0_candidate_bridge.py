@@ -890,6 +890,10 @@ class CandidateBridgeTests(unittest.TestCase):
         candidate[28] = "locationiq"
         locationiq = bridge._coordinate({}, tuple(candidate), allow_display=True)
         self.assertEqual(locationiq[2:5], ("locationiq_forward", "house_number", "locationiq"))
+        candidate[24] = "provider_locality_approximate"
+        postcode = bridge._coordinate({}, tuple(candidate), allow_display=True)
+        self.assertEqual(postcode[2:5], ("locationiq_forward", "provider_locality_approximate", "locationiq"))
+        self.assertEqual(postcode[-1], "provider_derived")
 
         candidate[24] = None
         candidate[27:30] = [None, None, None]

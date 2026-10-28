@@ -198,6 +198,15 @@ matching address components and supplied context. NZ still requires exactly
 one physical location. Spanish municipality context comes only from retained,
 source-key-bound AESAN lookup evidence. Raw responses and queries remain private.
 
+UK postcode references can also be derived offline after migration 110:
+`python -m pipeline.geocoding.postcode_reference --limit 5000`. This accepts only
+a unique, explicitly typed British postcode point matching the full retained
+source postcode. It appends a parent-linked evaluation and approximate display
+evidence, without making a request or changing the original result. These are
+postcode references, not address matches; the release bridge preserves their
+approximate precision. The command is idempotent and restricted to the assigned
+local source database.
+
 ### LocationIQ fallback
 
 `LOCATIONIQ_API_KEY` supplies the backend-only token. The first enabled profile
