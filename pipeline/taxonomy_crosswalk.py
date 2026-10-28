@@ -46,6 +46,7 @@ _DE = {code: (rule["leaf_activity"], rule["primary_key"])
 
 def _crosswalk_version(source_id: str) -> str:
     return {
+        "eu.eea.intensive-livestock": "eea-livestock-source-crosswalk-v2",
         "de.locations": "de-bltu-source-crosswalk-v1",
         "mx.locations": "mx-denue-source-crosswalk-v1",
         "nz.locations": "nz-mpi-rmp-source-crosswalk-v1",
@@ -144,6 +145,13 @@ def _decision(source: str, normalized: dict[str, Any], original: dict[str, Any])
                 unknown = True
         return assignments, ("partial" if assignments and unknown else
                              "mapped" if assignments else "unmapped" if codes else "unclassified")
+    elif source == "eu.eea.intensive-livestock":
+        if normalized.get("source_activity") == "Livestock" and normalized.get("source_reporting_year") == 2024:
+            assignments.append({"leaf_activity": "animal_production",
+                                "primary": "animal_keeping_and_production", "method": "direct",
+                                "source_code_reference": "normalized.source_activity",
+                                "source_code": "Livestock", "source_label_reference": "normalized.source_activity",
+                                "source_label": "Livestock"})
     elif source == "no.fiskeridir.aquaculture":
         # A non-empty species scope plus the adapter's animal-only category
         # confirms aquaculture production. Use the existing animal-production
@@ -535,6 +543,10 @@ def crosswalk_document(source_id: str) -> dict[str, Any]:
     elif source_id == "be.locations":
         rules = [{"source_field": "activity_codes", "signature": "exact LAP/PAP place+activity+product codebook tuple",
                   "leaf_key": "source_activity_category", "mapping_method": "direct"}]
+    elif source_id == "eu.eea.intensive-livestock":
+        rules = [{"source_field": "normalized.source_activity", "source_label": "Livestock",
+                  "reporting_year": 2024, "leaf_key": "animal_production",
+                  "primary_key": "animal_keeping_and_production", "mapping_method": "direct"}]
     elif source_id == "us.fsis":
         rules = [{"source_field": "species_slaughtered", "leaf_key": "slaughter", "primary_key": "slaughter", "mapping_method": "direct"},
                  {"source_field": "processing_activities", "leaf_key": "processing", "primary_key": "processing_and_preparation", "mapping_method": "direct"}]

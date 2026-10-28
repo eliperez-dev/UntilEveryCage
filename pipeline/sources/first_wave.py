@@ -650,6 +650,14 @@ def register_first_wave(catalog: Any) -> None:
         country_code="nl", source_kind="facility_master",
         operational_classification="live", live_callable=True,
     ))
+    from .eea.refresh import EeaLivestockRefreshAdapter
+    catalog.register(EeaLivestockRefreshAdapter(), AdapterCapabilities(
+        source_id="eu.eea.intensive-livestock", adapter_version="eea-intensive-livestock-v1",
+        schema_version="eea-ied-sites-geojson-v16", acquisition="bounded_private_fetch",
+        geocoding="disabled", publication="human_gate_required",
+        adapter_path="pipeline/sources/eea/refresh.py", country_code="eu",
+        source_kind="facility_master", operational_classification="live", live_callable=True,
+    ))
     from .norway.refresh import NorwayAquacultureRefreshAdapter
     catalog.register(NorwayAquacultureRefreshAdapter(), AdapterCapabilities(
         source_id="no.fiskeridir.aquaculture", adapter_version="no-fiskeridir-aquaculture-v1",

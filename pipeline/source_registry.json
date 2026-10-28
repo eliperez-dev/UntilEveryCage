@@ -3,6 +3,7 @@
   "evidence_basis": "Repository evidence; source-specific live verification is documented in the linked evidence files.",
   "unknown_value": "unknown",
   "sources": [
+    {"source_id":"eu.eea.intensive-livestock","jurisdiction_scope":"EEA industrial reporting countries; livestock-only sites, reporting year 2024","legacy_paths":[],"url":"https://air.discomap.eea.europa.eu/arcgis/rest/services/Air/IED_SiteMap/MapServer/0","access_method":"Published count and complete ID enumeration, then bounded GeoJSON pages in output EPSG:4326","cadence":"annual reporting; version 16 covers 2007–2024","attribution_licensing_notes":"CC BY 4.0 in exact version-16 EEA metadata; attribute European Environment Agency. Private integration only.","adapter_status":"implemented","expected_artifact_schema":"Point sites keyed by countryCode and InspireSiteId; year, activities, installation/facility counts, permits, original fields and transformed geometry retained","blockers":["Release requires overlap and source-site privacy/location review. Sites are not unique installations, animal counts or a farm census."]},
     {
       "source_id": "br.sif.registered",
       "jurisdiction_scope": "Brazil; MAPA/DIPOA establishments registered under the federal SIF directory",

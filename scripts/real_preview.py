@@ -1097,7 +1097,7 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
             if not isinstance(runner_run_id, str) or not runner_run_id:
                 write_job("failed", "lifecycle", "source_run_id_missing")
                 raise PreviewError("source runner returned no unique run identifier")
-            if source_id in {"no.fiskeridir.aquaculture", "gb.scot.marine.aquaculture",
+            if source_id in {"eu.eea.intensive-livestock", "no.fiskeridir.aquaculture", "gb.scot.marine.aquaculture",
                              "us.epa.echo-animal-production", "fr.georisques.icpe.animal", "es.locations"}:
                 # The shared runner binds acquisition sidecars to its
                 # canonical plan ID. Use that same identity for importer
@@ -1627,6 +1627,20 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
                 "exact": 0, "city_or_postal_only": import_result.get("city_postal_count"),
                 "unmapped": import_result.get("unmapped_map_candidate_count")},
         })
+    elif source_id == "eu.eea.intensive-livestock":
+        source_result = next(item for item in refresh_result["results"] if item.get("source_id") == source_id)
+        source_summary = source_result["summary"]
+        from pipeline.sources.eea.validation import validate_acquisition
+        acquisition_evidence = validate_acquisition(source_root, run_id,
+            json.loads(handoff_manifest.read_text(encoding="utf-8")), source_summary, 30)
+        ledger.update({"acquisition": acquisition_evidence,
+                       "normalized_sha256": import_result.get("normalized_sha256"),
+                       "candidate_handoff_sha256": source_summary.get("candidate_handoff_sha256"),
+                       "schema_fingerprint": source_summary.get("schema_fingerprint"),
+                       "quarantine": {"input_rows": source_summary["input_rows"],
+                                      "accepted_rows": source_summary["normalized_rows"],
+                                      "quarantined_rows": source_summary["quarantined_rows"],
+                                      "reasons": source_summary.get("quarantine_reasons", {})}})
     elif source_id == "no.fiskeridir.aquaculture":
         acquisition_path = source_root / "acquisition" / source_id / run_id / "acquisition-metadata.json"
         if not acquisition_path.is_file() or acquisition_path.is_symlink():
@@ -1935,6 +1949,16 @@ def refresh_source(source_id: str = "be.locations", existing_runner_run_id: str 
 def strict_live_private_e2e(source_id: str, existing_runner_run_id: str | None = None) -> dict[str, object]:
     """Run one bounded live source acquisition through disposable private preview and certification."""
     global PROJECT, VOLUME, DB_PORT, API_PORT, WEB_PORT, PRIVATE_ROOT, ACTIVE_PREVIEW_TOKEN
+    if source_id == "eu.eea.intensive-livestock":
+        # Reuse the explicitly assigned V0-backed mutable copy; no additional
+        # containers, databases or frontend server for a source-only check.
+        from pipeline.sources.eea.verify import run
+        try:
+            return run(existing_runner_run_id=existing_runner_run_id, refresh_callback=refresh_source)
+        except (ValueError, OSError) as error:
+            # Do not expose a candidate URL, database driver diagnostic or
+            # private payload through the shared command's error output.
+            raise PreviewError(f"EEA private acceptance failed ({type(error).__name__}); inspect local evidence") from None
     if source_id not in {"be.locations", "ca.ontario.meat-plants", "ca.cfia.federal-meat", "au.npi.facilities",
                           "au.sa.epa.licensed-activities", "fsa_approved_establishments",
                           "fss_approved_establishments", "es.cat.feed-sandach", "br.sif.registered",

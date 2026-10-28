@@ -9,6 +9,7 @@ from pipeline.source_runtime_classification import (
 
 # Permission to run a private pipeline is not measured map/geocoding readiness.
 PRIVATE_PIPELINE_ALLOWLIST = {
+    "eu.eea.intensive-livestock",
     "au.sa.epa.licensed-activities",
     "au.npi.facilities",
     "br.sif.registered",

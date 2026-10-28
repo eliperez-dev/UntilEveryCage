@@ -1,0 +1,13 @@
+{
+  "source_id": "eu.eea.intensive-livestock",
+  "decision": "approved",
+  "license": "Creative Commons Attribution",
+  "license_version": "4.0",
+  "license_url": "https://creativecommons.org/licenses/by/4.0/",
+  "reference": "https://sdi.eea.europa.eu/catalogue/datahub/api/records/3bbf28cb-70e8-4073-8fe9-8c1d9c513f52/formatters/xml",
+  "reviewed_at": "2026-10-28",
+  "review_basis": "Exact version-16 publisher metadata states CC BY 4.0. Maintainer requested private EEA integration in BACKEND AGENT chat; public release is separate.",
+  "attribution": "European Environment Agency; Industrial Reporting version 16 (2007–2024)",
+  "private_preview_only": true,
+  "notes": "Use only published site features. Do not reconstruct withheld data or imply EEA endorsement. Preserve source year, site identity and location semantics. No personal contacts or ownership inference."
+}

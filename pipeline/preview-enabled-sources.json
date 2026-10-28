@@ -1,6 +1,20 @@
 {
   "contract_version": "preview-enabled-source-v1",
   "sources": {
+    "eu.eea.intensive-livestock": {
+      "enabled": true,
+      "runtime_classification": "production-e2e",
+      "public_release": false,
+      "runner": "pipeline.refresh_private:eu.eea.intensive-livestock",
+      "terms_review": "pipeline/sources/eea/terms-review.json",
+      "terms_decision": "approved",
+      "freshness_max_days": 30,
+      "expected_artifacts": ["ArcGIS scoped site-point GeoJSON response pages"],
+      "allowed_preview_fields": ["establishment_id", "facility_grouping", "country_code", "facility_name", "source_reporting_year", "source_activity", "activity_codes", "source_activity_details", "source_facility_count", "source_installation_count", "coordinates", "coordinate_precision", "coordinate_state", "coordinate_method", "coordinate_provider", "privacy_gate", "rights_gate", "publication_gate"],
+      "display_policy": {"kind": "source_numeric_coordinate", "precision": "source-precision-unknown", "disclosure": "EEA livestock reporting site point; source accuracy unspecified. Private only."},
+      "adapter_version": "eea-intensive-livestock-v1",
+      "schema_version": "eea-ied-sites-geojson-v16"
+    },
     "br.sif.registered": {
       "enabled": true,
       "runtime_classification": "production-e2e",

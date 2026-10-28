@@ -364,6 +364,7 @@ def safe_https_url(value: Any) -> str | None:
 
 
 SOURCE_NAMES = {
+    "eu.eea.intensive-livestock": "European Environment Agency — Intensive livestock sites",
     "mx.locations": "INEGI — Directorio Estadístico Nacional de Unidades Económicas (DENUE)",
     "nz.locations": "New Zealand Ministry for Primary Industries — Risk Management Programme Register",
     "no.fiskeridir.aquaculture": "Norwegian Directorate of Fisheries — Aquaculture Register",
@@ -392,6 +393,7 @@ SOURCE_NAMES = {
 }
 
 SOURCE_MEDIA_TYPES = {
+    "eu.eea.intensive-livestock": "application/geo+json",
     "mx.locations": "application/json",
     "nz.locations": "text/csv",
     "no.fiskeridir.aquaculture": "application/geo+json",
@@ -542,7 +544,7 @@ def parse_row(source: str, row: Any) -> tuple[Any, ...]:
         # Retain source-native names in restricted private cache; this is not
         # privacy clearance or authority to publish.
         name = safe_preview_text(pick(normalized, "name", "trading_name"), 200)
-    elif source in {"no.fiskeridir.aquaculture", "gb.scot.marine.aquaculture",
+    elif source in {"eu.eea.intensive-livestock", "no.fiskeridir.aquaculture", "gb.scot.marine.aquaculture",
                     "us.epa.echo-animal-production", "fr.georisques.icpe.animal"}:
         # Approved source-provided facility/locality labels may appear in the
         # private preview without changing privacy or publication status.
@@ -1973,6 +1975,12 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
                     or acquired_at > datetime.now(timezone.utc) + timedelta(minutes=5)
                     or datetime.now(timezone.utc) - acquired_at > timedelta(days=max_age)):
                 raise ImportFailure("nl_acquisition_provenance_mismatch")
+        elif source_id == "eu.eea.intensive-livestock":
+            from pipeline.sources.eea.validation import validate_acquisition
+            try:
+                acquisition_evidence = validate_acquisition(root, run_id, manifest, source_summary, max_age)
+            except (ValueError, OSError):
+                raise ImportFailure("eea_acquisition_provenance_mismatch") from None
         elif source_id == "no.fiskeridir.aquaculture":
             acquisition_path = root / "acquisition" / source_id / run_id / "acquisition-metadata.json"
             pages_path = acquisition_path.parent / "source-pages"

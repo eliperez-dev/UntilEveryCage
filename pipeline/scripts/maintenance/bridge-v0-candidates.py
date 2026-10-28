@@ -77,6 +77,7 @@ _SAFE_REASON = re.compile(r"^[a-z][a-z0-9_:-]{0,63}$")
 _FORBIDDEN_KEYS = {"name", "canonical_name", "operator_name", "trading_name", "contact",
                    "email", "phone", "telephone", "fax", "raw", "source_values", "payload"}
 _NORMALIZED_KEYS = {
+    "source_reporting_year", "source_activity_details", "source_facility_count", "source_installation_count",
     "activity_categories", "activity_code", "activity_codes", "activity_descriptions",
     "activity_description", "activities", "animal_class", "classification_category",
     "classification_mapping_status", "classification_optional_filter",
@@ -117,6 +118,7 @@ _PRIVATE_LOCATION_KEYS = {"address", "address_lines", "city", "postal_code", "re
 # facilities and people. Keep this projection separate from raw_fields so
 # replay equality and the retained evidence schema remain unchanged.
 _FACILITY_NAME_FIELDS = {
+    "eu.eea.intensive-livestock": ("facility_name",),
     "au.npi.facilities": ("facility_name", "trading_name", "name", "registered_business_name"),
     "dk.smiley": ("trading_name",),
     "ca.ontario.meat-plants": ("trading_name",),
@@ -157,6 +159,19 @@ def _retained_source_artifact_digest(source: str, path: Path) -> tuple[str, int]
     if path.is_symlink():
         raise BridgeError("retained_artifact_locator_invalid")
     if path.is_dir():
+        if source == "eu.eea.intensive-livestock":
+            from pipeline.sources.eea.adapter import bundle_digest, EeaLivestockAdapter
+            files = sorted(path.glob("page-*.geojson"))
+            if (not files or any(child.is_symlink() for child in path.iterdir())
+                    or [item.name for item in files] != [f"page-{i:04d}.geojson" for i in range(1, len(files) + 1)]):
+                raise BridgeError("retained_artifact_locator_invalid")
+            try:
+                parsed = EeaLivestockAdapter().parse(path)
+                if parsed["input_rows"] != len(parsed["accepted"]) + len(parsed["quarantined"]):
+                    raise ValueError("count mismatch")
+                return bundle_digest(path)
+            except (OSError, ValueError):
+                raise BridgeError("retained_artifact_verification_failed") from None
         if source != "fr.georisques.icpe.animal":
             raise BridgeError("retained_artifact_locator_invalid")
         try:
@@ -356,8 +371,8 @@ def verify_handoff(entry: dict[str, Any], inventory_source: dict[str, Any]) -> d
     source = str(entry["source_id"])
     manifest_path, normalized_path, graph_manifest_path, graph_records_path = _source_paths(entry)
     manifest = _read_json(manifest_path)
-    nz_graph_not_applicable = source == "nz.locations"
-    if nz_graph_not_applicable:
+    graph_not_applicable = source in {"nz.locations", "eu.eea.intensive-livestock"}
+    if graph_not_applicable:
         if (graph_manifest_path.exists() or graph_manifest_path.is_symlink()
                 or graph_records_path.exists() or graph_records_path.is_symlink()):
             raise BridgeError("nz_graph_artifacts_not_applicable")
@@ -375,7 +390,7 @@ def verify_handoff(entry: dict[str, Any], inventory_source: dict[str, Any]) -> d
             or manifest.get("privacy_gate") != "pending"
             or manifest.get("coordinate_gate") != "review_required"):
         raise BridgeError("handoff_policy_state_invalid")
-    if not nz_graph_not_applicable:
+    if not graph_not_applicable:
         if (graph_manifest.get("schema_version") != "private-graph-candidate-set-v1"
                 or graph_manifest.get("review_state") != "review_required"
                 or graph_manifest.get("privacy_status") != "pending"
@@ -410,19 +425,19 @@ def verify_handoff(entry: dict[str, Any], inventory_source: dict[str, Any]) -> d
         raise BridgeError("normalized_handoff_hash_mismatch")
     graph_hash = None
     graph_manifest_hash = None
-    if not nz_graph_not_applicable:
+    if not graph_not_applicable:
         graph_hash, _ = _digest(graph_records_path)
         if graph_hash != graph_manifest.get("records_sha256"):
             raise BridgeError("graph_handoff_hash_mismatch")
     manifest_hash, _ = _digest(manifest_path)
-    if not nz_graph_not_applicable:
+    if not graph_not_applicable:
         graph_manifest_hash, _ = _digest(graph_manifest_path)
     rows = _read_jsonl(normalized_path)
     if len(rows) != inventory_source["counts"]["imported_observation_count"]:
         raise BridgeError("normalized_handoff_count_mismatch")
-    if not nz_graph_not_applicable and graph_manifest.get("candidate_rows") != len(rows):
+    if not graph_not_applicable and graph_manifest.get("candidate_rows") != len(rows):
         raise BridgeError("graph_handoff_count_mismatch")
-    if nz_graph_not_applicable:
+    if source == "nz.locations":
         if len(rows) > 100_000:
             raise BridgeError("nz_programme_handoff_count_out_of_bounds")
         identifiers = set()
@@ -452,6 +467,19 @@ def verify_handoff(entry: dict[str, Any], inventory_source: dict[str, Any]) -> d
                     or normalized.get("location_role") !=
                     "RMP-associated physical address; not verified as a unique operating facility"):
                 raise BridgeError("nz_programme_identity_scope_invalid")
+    if source == "eu.eea.intensive-livestock":
+        from pipeline.sources.eea.adapter import COUNTRY_BOUNDS, YEAR
+        for row in rows:
+            normalized, values = row.get("normalized", {}), row.get("source_values", {})
+            country = values.get("countryCode")
+            identity = f"{country}:{values.get('InspireSiteId')}"
+            if (country not in COUNTRY_BOUNDS or not values.get("InspireSiteId")
+                    or normalized.get("country_code") != country
+                    or normalized.get("establishment_id") != identity
+                    or row.get("source_record_key") != f"site:{identity}:{YEAR}"
+                    or normalized.get("source_activity") != values.get("eea_activities") or values.get("eea_activities") != "Livestock"
+                    or normalized.get("source_reporting_year") != YEAR or values.get("Site_reporting_year") != YEAR):
+                raise BridgeError("eea_site_identity_or_scope_invalid")
     policy_path = ROOT / "pipeline" / "preview-enabled-sources.json"
     policy = json.loads(policy_path.read_text(encoding="utf-8")).get("sources", {}).get(source)
     if not isinstance(policy, dict) or policy.get("enabled") is not True:
@@ -467,7 +495,7 @@ def verify_handoff(entry: dict[str, Any], inventory_source: dict[str, Any]) -> d
         value = IMPORTER.parse_row(source, row)
         grouped[str(value[IMPORTER.SOURCE_GROUP_KEY_INDEX])].append((value, row))
         parsed.append((value, row))
-    if not nz_graph_not_applicable:
+    if not graph_not_applicable:
         graph_rows = _read_jsonl(graph_records_path)
         graph_keys = []
         for row in rows:
@@ -501,7 +529,8 @@ def verify_handoff(entry: dict[str, Any], inventory_source: dict[str, Any]) -> d
         "normalized_sha256": normalized_hash,
         "normalized_byte_size": normalized_bytes,
         "graph_records_sha256": graph_hash,
-        "graph_handoff_state": "not_applicable_programme_not_unique_site" if nz_graph_not_applicable else "private_candidates_verified",
+        "graph_handoff_state": ("not_applicable_programme_not_unique_site" if source == "nz.locations" else
+                                "not_applicable_site_identity_only" if source == "eu.eea.intensive-livestock" else "private_candidates_verified"),
         "terms_review_sha256": terms_digest,
         "rows": parsed,
         "groups": grouped,
@@ -924,15 +953,25 @@ def _ensure_artifact(connection: Any, entry: dict[str, Any], retrieved: datetime
     return str(row[0])
 
 
+def _publisher_country(source: str, countries: set[str]) -> str:
+    if source == "eu.eea.intensive-livestock":
+        from pipeline.sources.eea.adapter import COUNTRY_BOUNDS
+        if not countries or not countries <= COUNTRY_BOUNDS.keys():
+            raise BridgeError("source_country_inconsistent")
+        # Publisher scope only. Each facility retains its own country below.
+        return "EU"
+    if len(countries) != 1 or len(next(iter(countries), "")) != 2:
+        raise BridgeError("source_country_inconsistent")
+    return next(iter(countries))
+
+
 def _preflight_target_identity(connection: Any, entries: dict[str, dict[str, Any]],
                                handoffs: dict[str, dict[str, Any]]) -> dict[str, dict[str, tuple[Any, list[Any]]]]:
     """Read-only collision check for all frozen handoffs before baseline hashing or writes."""
     countries: dict[str, str] = {}
     for source, handoff in handoffs.items():
         values = {str(parsed[2]).upper() for parsed, _ in handoff["rows"] if parsed[2]}
-        if len(values) != 1 or len(next(iter(values), "")) != 2:
-            raise BridgeError("source_country_inconsistent")
-        countries[source] = next(iter(values))
+        countries[source] = _publisher_country(source, values)
 
     source_rows = connection.execute(
         "SELECT source_id,country_code FROM uec.sources WHERE source_id=ANY(%s)",
@@ -1498,9 +1537,7 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                 # Country code is source-owned in normalized data and must be
                 # internally consistent; do not infer it from source IDs.
                 country_values = {str(parsed[2]).upper() for parsed, _ in handoff["rows"] if parsed[2]}
-                if len(country_values) != 1:
-                    raise BridgeError("source_country_inconsistent")
-                country = next(iter(country_values))
+                country = _publisher_country(source, country_values)
                 source_name = IMPORTER.SOURCE_NAMES.get(source, source)
                 _insert_source(connection, source, country, source_name, source_url)
                 artifact_id = _ensure_artifact(connection, entry, retrieved)

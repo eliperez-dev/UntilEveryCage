@@ -79,6 +79,13 @@ Country implementation and UI features may run in independent lanes. Do not
 start another general backend overhaul or graph-expansion sprint in place of
 these launch requirements.
 
+The maintainer added three source targets on October 28: EEA livestock-only
+sites, Norway aquaculture and Poland GIW approved-food establishments. Complete
+their end-to-end integration before the next dataset release, or at latest
+before final website deployment. Start with EEA; Norway and Poland follow.
+Measure overlap rather than treating source rows as net-new physical sites.
+Source-specific progress and acceptance belong in the source inventory.
+
 ## Coverage: what the recent work did not deliver
 
 The latest Catalonia work made a fresh refresh/import plus separate locality

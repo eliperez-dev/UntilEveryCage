@@ -1,0 +1,11 @@
+{
+  "source_id": "eu.eea.intensive-livestock",
+  "source_url": "https://air.discomap.eea.europa.eu/arcgis/rest/services/Air/IED_SiteMap/MapServer/0",
+  "adapter_version": "eea-intensive-livestock-v1",
+  "schema_version": "eea-ied-sites-geojson-v16",
+  "config_version": "eea-livestock-2024-v1",
+  "reporting_year": 2024,
+  "coverage": "EEA industrial reporting sites whose sole published activity is Livestock, reporting year 2024; source sites, not installations or a census of farms",
+  "terms_status": "CC-BY-4.0; attribution required",
+  "geocoding": "disabled"
+}
