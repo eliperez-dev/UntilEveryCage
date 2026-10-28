@@ -617,7 +617,13 @@ tiles. Promote the existing point key to preserve full UUID feature identities.
 When zoom-in settles, children travel from their parent cluster to their new
 positions. With the default zero idle delay, zoom-out merges advance through
 placed scenes while the camera moves, coalescing further changes until the
-current short cue finishes. Newly exposed branches fade in on the same clock,
+current short cue finishes. New regions stay native while lineage is pending;
+never hide marks outside the held viewport without a painted replacement.
+If only a new region arrives, retain the original scene and keep tracking until
+its parent hierarchy arrives; remember the new identities to avoid repeated reads.
+An empty lookup also waits for the next native zoom level or zoomend before
+retrying, rather than querying each partially arrived tile scene.
+Changed branches inside the held viewport fade in on the same clock,
 so the original viewport cannot remain a dense island inside a coarser map.
 A custom nonzero idle delay still waits for the camera to stop.
 Keep native bottom-to-top stacking on the canvas and retain the
@@ -633,20 +639,45 @@ message queues cannot delay the animation reply; close it after completion or
 timeout. The existing native query channel remains a compatibility fallback. Return
 identity pairs only; do not recursively fetch descendants, warm a second cache,
 or issue hierarchy requests on every camera frame. Skipping several
-zoom levels uses the same lookup. Coalesce feature-state redraws in a microtask
-after MapLibre's input/render task returns, before browser composition; never
-call synchronous redraw from inside its task queue. Clear the canvas only after
-the restoring native redraw returns, including held scenes whose identities
+zoom levels uses the same lookup. Prepare visibility in a custom layer's
+`prerender`, after native symbol placement and before symbols draw. Flush only
+the locations source's paint attributes; never repaint the whole scene or run
+camera tasks, source selection or symbol placement a second time. Worker
+replies and animation timers queue the next native frame. Start each cue when
+that frame can paint its mask, rather than when a worker reply arrives.
+Clear the canvas only after
+the restoring native paint returns, including held scenes whose identities
 are temporarily absent from the native query. Source readiness alone is not
 confirmation that replacement pixels have painted.
+This also applies to each in-flight zoom-out merge checkpoint: a cue can finish
+in a canvas RAF between native paints. Retain its final pixels until the next
+native paint has drawn the unmasked destination, then resume the held scene.
+Reuse projected positions between native camera paints; invalidate them on
+each native render, zoom start and cancellation so movement and terrain updates
+still reproject correctly.
+Cache each fixed pin-and-shadow sprite once, then fade and draw it as one
+image. Do not cache facility identities or counts in this artwork cache.
+Use CPU-backed canvases for the short overlay and its small artwork so drawing
+them does not synchronize additional graphics contexts with the WebGL map.
+Initialize the overlay and its label font during map startup.
+Chromium browser checks use its full compositor (`channel: chromium`), matching
+the normal browser rather than the separate headless shell. Firefox and WebKit
+remain part of the configured browser coverage.
+Animation timing fixtures keep the real pitched camera over a controlled flat
+surface. The camera/terrain journey and the elevation fixtures retain terrain
+rendering; animation frame and freeze limits remain explicit.
+Freeze checks compare the last painted overlay's camera pose with the current
+camera, and include a deliberately stale overlay as a negative control.
 If a new zoom starts during a short playing cue, finish that cue without resetting
 its progress, then hold its destination identities for the next transition.
 The default is 210 ms and at most 1,200 animated marks in total. Debug
 controls tune duration from 0–400 ms (0 disables it), the mark cap from
 50–2,000, and camera idle delay from 0–500 ms (default 0). A bounded in-memory
 lineage lookup stays in the native worker and returns at most the selected
-number of identity pairs. Settled lookups have a 100 ms budget; moving merges
-share the 500 ms native-paint deadline to tolerate busy placement frames.
+number of identity pairs. Both directions share the 500 ms native-paint
+deadline so a busy browser frame does not incorrectly classify a fast reply
+as a stalled worker. Allow up to two seconds for source tile readiness after
+rapid zoom reversals, retaining the visible scene while input stays live.
 Neither wait blocks input. Data, index and style changes cancel stale lookups.
 Local pin artwork loads in parallel. Pan and
 bearing-only rotation remain native. Reduced motion, views beyond the selected
