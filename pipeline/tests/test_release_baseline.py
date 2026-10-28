@@ -37,18 +37,35 @@ class _Result:
 
 
 class _Connection:
-    def __init__(self, manifest, digest, counts, migrations):
+    def __init__(self, manifest, digest, counts, migrations, *, status="promoted",
+                 model_digest=None, history=None, live_counts=None,
+                 restriction_counts=None, coverage=(0, 0)):
         self.manifest = manifest
         self.digest = digest
+        self.model_digest = model_digest if model_digest is not None else digest
         self.counts = counts
         self.migrations = migrations
+        self.status = status
+        self.history = history if history is not None else [("candidate-r3", "official")]
+        self.live_counts = live_counts if live_counts is not None else counts
+        self.restriction_counts = restriction_counts if restriction_counts is not None else self.live_counts
+        self.coverage = coverage
 
     def execute(self, query, params=None):
         if "schema_migrations" in query:
             return _Result(list(self.migrations.items()))
         if "public_discovery_read_models" in query:
-            return _Result([("promoted", "official", False, self.manifest, self.digest,
-                             self.digest, self.counts["public_rows"])])
+            return _Result([(self.status, "official", False, self.manifest, self.digest,
+                             self.model_digest, self.counts["public_rows"])])
+        if "public_release_history" in query:
+            return _Result(self.history)
+        if "FULL OUTER JOIN actual" in query:
+            return _Result([self.coverage])
+        if "public_discovery_read_model_rows" in query:
+            return _Result([tuple((self.restriction_counts if "public_access_restricted" in query
+                                  else self.counts)[key] for key in baseline.COUNT_FIELDS)])
+        if "public_discovery_api_read_model" in query:
+            return _Result([tuple(self.live_counts[key] for key in baseline.COUNT_FIELDS)])
         if "map_facilities_public_discovery_read_model" in query:
             return _Result([tuple(self.counts[key] for key in baseline.COUNT_FIELDS)])
         raise AssertionError("unexpected query")
@@ -111,6 +128,56 @@ class ReleaseBaselineTests(unittest.TestCase):
         with self.assertRaisesRegex(baseline.BaselineError, "identity_mismatch"):
             baseline.verify_connection(_Connection(wrong, digest, self.counts, self.migrations),
                                        contract, self.migrations)
+
+    def test_validated_release_requires_explicit_historical_mode(self):
+        connection = _Connection(self.manifest, self.digest, self.counts, self.migrations,
+                                 status="validated")
+        with self.assertRaisesRegex(baseline.BaselineError, "identity_mismatch"):
+            baseline.verify_connection(connection, self.contract, self.migrations)
+
+    def test_historical_mode_matches_frozen_contract_and_exact_live_rows(self):
+        live_counts = {**self.counts, "public_rows": 8, "mapped_rows": 6,
+                       "named_rows": 7, "unmapped_rows": 2}
+        connection = _Connection(self.manifest, self.digest, self.counts, self.migrations,
+                                 status="validated", live_counts=live_counts)
+        report = baseline.verify_connection(connection, self.contract, self.migrations,
+                                            allow_validated_historical=True)
+        self.assertTrue(report["historical"])
+        self.assertEqual(report["counts"], live_counts)
+
+    def test_historical_mode_rejects_bad_history_cache_or_live_membership(self):
+        options = {"status": "validated", "live_counts": {
+            **self.counts, "public_rows": 8, "mapped_rows": 6, "named_rows": 7, "unmapped_rows": 2}}
+        bad_cases = (
+            {**options, "history": []},
+            {**options, "history": [("candidate-r3", "community")]},
+            {**options, "history": [("candidate-r3", "official"), ("candidate-r3", "official")]},
+            {**options, "coverage": (1, 0)},
+            {**options, "coverage": (0, 1)},
+            {**options, "live_counts": {**self.counts, "public_rows": 9},
+             "restriction_counts": {**self.counts, "public_rows": 8,
+                                    "mapped_rows": 6, "named_rows": 7, "unmapped_rows": 2}},
+        )
+        for case in bad_cases:
+            with self.subTest(case=case):
+                connection = _Connection(self.manifest, self.digest, self.counts,
+                                         self.migrations, **case)
+                with self.assertRaises(baseline.BaselineError):
+                    baseline.verify_connection(connection, self.contract, self.migrations,
+                                               allow_validated_historical=True)
+
+    def test_historical_mode_rejects_changed_model_hash_or_frozen_counts(self):
+        connection = _Connection(self.manifest, self.digest, self.counts, self.migrations,
+                                 status="validated", model_digest="f" * 64)
+        with self.assertRaisesRegex(baseline.BaselineError, "manifest_digest"):
+            baseline.verify_connection(connection, self.contract, self.migrations,
+                                       allow_validated_historical=True)
+        changed_cache = {**self.counts, "public_rows": 9}
+        connection = _Connection(self.manifest, self.digest, changed_cache, self.migrations,
+                                 status="validated")
+        with self.assertRaisesRegex(baseline.BaselineError, "cached_contract_counts"):
+            baseline.verify_connection(connection, self.contract, self.migrations,
+                                       allow_validated_historical=True)
 
 
 if __name__ == "__main__":
