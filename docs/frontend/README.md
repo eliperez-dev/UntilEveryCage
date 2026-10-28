@@ -621,6 +621,8 @@ current short cue finishes. New regions stay native while lineage is pending;
 never hide marks outside the held viewport without a painted replacement.
 If only a new region arrives, retain the original scene and keep tracking until
 its parent hierarchy arrives; remember the new identities to avoid repeated reads.
+An empty lookup also waits for the next native zoom level or zoomend before
+retrying, rather than querying each partially arrived tile scene.
 Changed branches inside the held viewport fade in on the same clock,
 so the original viewport cannot remain a dense island inside a coarser map.
 A custom nonzero idle delay still waits for the camera to stop.

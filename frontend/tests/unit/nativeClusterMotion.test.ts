@@ -292,7 +292,8 @@ describe('native cluster transition identities and artwork', () => {
 
 describe('newly exposed regions', () => {
   it('keeps tracking when a new region arrives before any existing branch merges', async () => {
-    const map = { getZoom: () => 5, isZooming: () => true, getSource: () => ({}), triggerRepaint: vi.fn() };
+    let zoom = 5.2;
+    const map = { getZoom: () => zoom, isZooming: () => true, getSource: () => ({}), triggerRepaint: vi.fn() };
     const controller = new NativeClusterMotionController({ getMap: () => map as any, reducedMotion: () => false, enabled: () => true, duration: () => 210, limit: () => 1200 }) as any;
     const original = { key: 'c:old', id: 1, coordinates: [-120, 35], properties: {} };
     const arrival = { key: 'c:new', id: 2, coordinates: [-75, 40], properties: {} };
@@ -308,6 +309,11 @@ describe('newly exposed regions', () => {
     expect([...controller.before.keys()]).toEqual(['c:old', 'c:new']);
     controller.onRender('before'); await Promise.resolve();
     expect(controller.findPairs).toHaveBeenCalledTimes(1);
+    controller.capture = () => new Map([['c:next', { ...arrival, key: 'c:next', id: 3 }]]);
+    zoom = 5.1; controller.onRender('before'); await Promise.resolve();
+    expect(controller.findPairs).toHaveBeenCalledTimes(1);
+    zoom = 4.9; controller.onRender('before'); await Promise.resolve();
+    expect(controller.findPairs).toHaveBeenCalledTimes(2);
   });
   it('never blanket-hides marks outside the original viewport', () => {
     const map = { getSource: () => ({}), setFeatureState: vi.fn(), removeFeatureState: vi.fn(), redraw: vi.fn(), on: vi.fn(), off: vi.fn(), triggerRepaint: vi.fn() };

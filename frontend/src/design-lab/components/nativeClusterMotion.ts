@@ -93,6 +93,7 @@ export class NativeClusterMotionController {
   private queued = false;
   private targetZoom = 0;
   private pending = false;
+  private emptyLineageZoom: number | undefined;
   private armed = false;
   private settleTimeout: ReturnType<typeof setTimeout> | undefined;
   private idleTimer: ReturnType<typeof setTimeout> | undefined;
@@ -161,6 +162,7 @@ export class NativeClusterMotionController {
 
   private retarget(): void {
     this.generation++; this.pending = false;
+    this.emptyLineageZoom = undefined;
     clearTimeout(this.settleTimeout); this.settleTimeout = undefined;
     clearTimeout(this.idleTimer); this.idleTimer = undefined; this.settledAt = undefined;
     this.placementStartedAt = undefined; this.placementSignature = undefined; this.direction = undefined;
@@ -296,6 +298,10 @@ export class NativeClusterMotionController {
     // Tile placement can briefly drop old marks before supplying any parent.
     // That is not yet a merge scene and must not cancel the rest of the zoom.
     if (mergingDuringZoom && [...after.keys()].every(key => before.has(key))) return;
+    // Partial tiles at the same native zoom can arrive in several frames.
+    // After an empty lookup, wait for the next hierarchy level or zoomend.
+    // New regions stay native and vanished originals stay on the overlay.
+    if (mergingDuringZoom && this.emptyLineageZoom === Math.floor(map.getZoom())) return;
     const direction = map.getZoom() > this.zoom ? 'split' : 'merge';
     this.pending = true;
     this.report('pairing');
@@ -321,12 +327,14 @@ export class NativeClusterMotionController {
         const expanded = new Map([...before, ...after]);
         if (expanded.size > this.markLimit()) { this.cancel(false, 'density-limit'); return; }
         this.before = expanded; this.mask(new Set(expanded.keys()), true);
+        this.emptyLineageZoom = Math.floor(sceneZoom);
         this.report('holding'); return;
       }
       // A slow worker must never postpone input or make settled pins jump back.
       const visibleMarks = new Set([...after.keys(), ...pairs.flatMap(pair => [pair.parent.key, pair.child.key])]).size;
       if ((!pairs.length && !appearing.length) || visibleMarks > this.markLimit() || performance.now() - started > pairingBudget || !this.allowed()) { this.cancel(false, !pairs.length ? 'no-lineage' : visibleMarks > this.markLimit() ? 'density-limit' : 'pairing-timeout'); return; }
       this.armed = mergingDuringZoom;
+      this.emptyLineageZoom = undefined;
       this.queued = mergingDuringZoom;
       this.after = after;
       this.targetZoom = sceneZoom;
@@ -349,6 +357,7 @@ export class NativeClusterMotionController {
   cancel(clearImages = false, reason: ClusterMotionState = 'interrupted'): void {
     const retainCanvas = !clearImages && reason !== 'data-change' && (this.hidden.size > 0 || this.heldDrawn || Boolean(this.motion));
     this.generation++; this.armed = false; this.pending = false; this.before = undefined; this.queued = false;
+    this.emptyLineageZoom = undefined;
     this.present = new Set(); this.presentNodes = new Map();
     clearTimeout(this.settleTimeout); this.settleTimeout = undefined; this.after = undefined;
     clearTimeout(this.idleTimer); this.idleTimer = undefined; this.settledAt = undefined;
