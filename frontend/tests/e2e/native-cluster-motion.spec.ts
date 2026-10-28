@@ -5,12 +5,12 @@ import { CLUSTER_MOTION_HIDDEN_STATE, clusterMotionOpacity } from '../../src/des
 
 test.use({ video: { mode: 'on', size: { width: 1280, height: 720 } }, viewport: { width: 1280, height: 720 } });
 
-async function fixture(page: Page, focusedCount?: number, stableNeighbor = false, worldwide = false) {
+async function fixture(page: Page, focusedCount?: number, stableNeighbor = false, worldwide: boolean | 'spread' = false) {
   const requests = { feeds: 0, manifests: 0 };
   const hubs = [[-122, 37], [-75, 40], [-47, -15], [12, 48], [38, 9], [80, 21], [120, 35], [136, -25], [-171, -13], [174, -37]];
   const features = Array.from({ length: 3200 }, (_, i) => ({
     type: 'Feature', id: `123e4567-e89b-42d3-a456-${i.toString(16).padStart(12, '0')}`,
-    geometry: { type: 'Point', coordinates: worldwide ? [hubs[i % hubs.length]![0]! + (i % 17) * .03, hubs[i % hubs.length]![1]! + (i % 13) * .03]
+    geometry: { type: 'Point', coordinates: worldwide === 'spread' ? [-124 + i % 80 * .7, 25 + Math.floor(i / 80) * .6] : worldwide ? [hubs[i % hubs.length]![0]! + (i % 17) * .03, hubs[i % hubs.length]![1]! + (i % 13) * .03]
       : focusedCount === undefined ? [4.45 + i % 80 * .012, 50.95 + Math.floor(i / 80) * .012]
       : i < focusedCount ? [4.87 + i % 32 * .004, 51.13 + Math.floor(i / 32) * .004]
         : stableNeighbor && i === focusedCount ? [4.5, 51.19] : [100 + i % 80 * .012, 30 + Math.floor(i / 80) * .012] },
@@ -57,7 +57,7 @@ async function fixture(page: Page, focusedCount?: number, stableNeighbor = false
       return result;
     };
   }, focusedCount !== undefined);
-  await page.goto('./#/map?release_id=synthetic-release-2026-09&lat=51.19&lon=4.93&z=6');
+  await page.goto(`./#/map?release_id=synthetic-release-2026-09&${worldwide === 'spread' ? 'lat=38&lon=-98&z=4' : 'lat=51.19&lon=4.93&z=6'}`);
   await page.waitForFunction(() => { const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__; return map?.getLayer('clusters') && map.isSourceLoaded('locations') && map.queryRenderedFeatures({ layers: ['clusters'] }).length; });
   return requests;
 }
@@ -125,6 +125,108 @@ async function monitorMotion(page: Page) {
     };
   });
 }
+
+test('cancelling a masked transition inside the native input task never reenters rendering or freezes gestures', async ({ page }, testInfo) => {
+  await fixture(page);
+  await page.waitForFunction(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getLayoutProperty('v1-source-pins', 'visibility') === 'visible');
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.route('https://tiles.mapterhorn.com/**', route => route.abort());
+  await page.evaluate(async () => {
+    const url = performance.getEntriesByType('resource').find(entry => entry.name.includes('/nativeClusterMotion.ts'))?.name;
+    const { NativeClusterMotionController } = await import(url!);
+    const start = NativeClusterMotionController.prototype.onZoomStart;
+    NativeClusterMotionController.prototype.onZoomStart = function () { (window as any).__motionUnderInput = this; return start.call(this); };
+  });
+  await page.evaluate(() => {
+    const map=(window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    // Capture the live controller, then deterministically enter the exact
+    // native task-queue cancellation path from the reported error trace.
+    map.easeTo({ zoom: 8, duration: 450 });
+    const controller=(window as any).__motionUnderInput;
+    const feature=map.queryRenderedFeatures({ layers: ['clusters'] })[0];
+    if (!feature) throw new Error('Fixture requires a native cluster to mask');
+    controller.hidden.set('c:' + feature.properties.cluster_id, feature.id);
+    map.setFeatureState({ source: 'locations', id: feature.id }, { __uecClusterMotionHidden: true });
+    map._renderTaskQueue.add(() => { controller.cancel(); (window as any).__cancelledInNativeTask = true; });
+    map.triggerRepaint();
+  });
+  await page.waitForFunction(() => (window as any).__cancelledInNativeTask);
+  await page.mouse.move(900, 420);
+  await page.mouse.down({ button: 'right' });
+  await page.mouse.move(1050, 560, { steps: 12 });
+  await page.mouse.up({ button: 'right' });
+  await page.mouse.wheel(0, 1000);
+  await page.waitForFunction(() => !(window as any).__UEC_LOCAL_PREVIEW_MAP__.isMoving());
+  expect(errors).toEqual([]);
+  const before = await page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getCenter().lng);
+  await page.mouse.move(1000, 500);
+  await page.mouse.down();
+  await page.mouse.move(780, 500, { steps: 8 });
+  await page.mouse.up();
+  await page.waitForFunction(() => !(window as any).__UEC_LOCAL_PREVIEW_MAP__.isMoving());
+  expect(await page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getCenter().lng)).not.toBe(before);
+  expect(errors).toEqual([]);
+  await page.screenshot({ path: testInfo.outputPath('wheel-tilt-responsive.png') });
+});
+
+for (const pitch of [0, 60]) test(`large zoom jumps at ${pitch} degrees reveal new regions and pair skipped levels without descendant RPCs`, async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1910, height: 900 });
+  await fixture(page, undefined, false, 'spread');
+  await monitorMotion(page);
+  await page.route('https://tiles.mapterhorn.com/**', route => route.abort());
+  await page.evaluate(pitch => (window as any).__UEC_LOCAL_PREVIEW_MAP__.jumpTo({ center: [-119, 35], zoom: 8, pitch, bearing: pitch ? 20 : 0 }), pitch);
+  await page.waitForFunction(() => { const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__; return map.isSourceLoaded('locations') && !map.isMoving() && !document.querySelector('.native-cluster-motion')?.hasAttribute('data-phase'); });
+  await page.evaluate(() => new Promise<void>(resolve => { const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__; map.once('idle', () => resolve()); map.triggerRepaint(); }));
+  await page.evaluate(async (hidden) => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__, source = map.getSource('locations');
+    const sample = { childRequests: 0, lineageRequests: 0, newRegionChecks: 0, missingNewRegion: 0, frameCosts: [] as number[], drawingCosts: [] as number[], duplicateNative: 0, missingExamples: [] as any[] };
+    (window as any).__largeJump = sample; (window as any).__monitorNewRegions = true;
+    const actor = await source.actorPromise, send = actor.sendAsync.bind(actor);
+    actor.sendAsync = (message: any, ...args: any[]) => {
+      if (message.type === 'GCC') { if (message.data?.uecMotionLineage) sample.lineageRequests++; else sample.childRequests++; }
+      return send(message, ...args);
+    };
+    const url = performance.getEntriesByType('resource').find(entry => entry.name.includes('/nativeClusterMotion.ts'))?.name;
+    const { NativeClusterMotionController } = await import(url!);
+    const render = NativeClusterMotionController.prototype.onRender, draw = NativeClusterMotionController.prototype.draw;
+    NativeClusterMotionController.prototype.onRender = function (...args: any[]) {
+      const start = performance.now(), result = render.apply(this, args);
+      if (!this.repainting) sample.frameCosts.push(performance.now() - start);
+      return result;
+    };
+    NativeClusterMotionController.prototype.draw = function (...args: any[]) {
+      const start = performance.now(), result = draw.apply(this, args);
+      sample.drawingCosts.push(performance.now() - start);
+      return result;
+    };
+    map.on('render', () => {
+      if (!map.isZooming() || !(window as any).__monitorNewRegions) return;
+      for (const feature of map.queryRenderedFeatures({ layers: ['clusters'] })) {
+        if (feature.geometry.coordinates[0] < -100) continue;
+        sample.newRegionChecks++;
+        if (map.getFeatureState({ source: 'locations', id: feature.id })[hidden]) { sample.missingNewRegion++; if (sample.missingExamples.length < 12) sample.missingExamples.push({ coordinates: feature.geometry.coordinates, id: feature.id, zoom: map.getZoom(), phase: document.querySelector('.native-cluster-motion')?.getAttribute('data-phase') }); }
+      }
+    });
+    map.easeTo({ zoom: 2, duration: 850 });
+  }, CLUSTER_MOTION_HIDDEN_STATE);
+  await page.waitForFunction(() => !(window as any).__UEC_LOCAL_PREVIEW_MAP__.isMoving() && !document.querySelector('.native-cluster-motion')?.hasAttribute('data-phase'));
+  await page.evaluate(() => { (window as any).__monitorNewRegions = false; (window as any).__motionLifecycle.length = 0; (window as any).__UEC_LOCAL_PREVIEW_MAP__.easeTo({ zoom: 7, duration: 850 }); });
+  await page.waitForFunction(() => !(window as any).__UEC_LOCAL_PREVIEW_MAP__.isMoving() && !document.querySelector('.native-cluster-motion')?.hasAttribute('data-phase'));
+  const sample = await page.evaluate(() => ({ ...(window as any).__largeJump, lifecycle: (window as any).__motionLifecycle, state: document.querySelector('.native-cluster-motion')?.getAttribute('data-state') }));
+  await writeFile(testInfo.outputPath('large-jump-coverage-and-cost.json'), JSON.stringify(sample));
+  await testInfo.attach('large-jump-coverage-and-cost', { body: JSON.stringify(sample), contentType: 'application/json' });
+  expect(sample.newRegionChecks).toBeGreaterThan(0);
+  expect(sample.missingNewRegion).toBe(0);
+  expect(sample.childRequests).toBe(0);
+  expect(sample.lineageRequests).toBe(2);
+  expect(sample.state).toBe('complete');
+  expect(Math.max(...sample.frameCosts)).toBeLessThan(80);
+  expect(Math.max(...sample.drawingCosts)).toBeLessThan(80);
+  const sortedDraws = [...sample.drawingCosts].sort((a: number, b: number) => a - b);
+  expect(sortedDraws[Math.floor(sortedDraws.length * .95)]).toBeLessThan(24);
+  await page.screenshot({ path: testInfo.outputPath('large-zoom-complete.png') });
+});
 
 test('a zoom within one cluster generation never hides or redraws unchanged native clusters', async ({ page }, testInfo) => {
   await fixture(page, 500);
@@ -348,10 +450,12 @@ test('a slow pairing worker skips decorative motion without blocking camera move
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__, source = map.getSource('locations');
     const moduleUrl = performance.getEntriesByType('resource').find(entry => entry.name.includes('/nativeClusterMotion.ts'))?.name;
     const { NativeClusterMotionController } = await import(moduleUrl!);
-    NativeClusterMotionController.prototype.warm = function () { (window as any).__motionController = this; return Promise.resolve(); };
-    map.fire('idle'); (window as any).__motionController.invalidate();
-    const read = source.getClusterChildren.bind(source);
-    source.getClusterChildren = async (id: number) => { await new Promise(resolve => setTimeout(resolve, 800)); return read(id); };
+    const actor = await source.actorPromise;
+    const read = actor.sendAsync.bind(actor);
+    actor.sendAsync = async (message: any, ...args: any[]) => {
+      if (message.data?.uecMotionLineage) await new Promise(resolve => setTimeout(resolve, 800));
+      return read(message, ...args);
+    };
     map.easeTo({ zoom: 8, duration: 200 });
   });
   await page.waitForFunction(() => !(window as any).__UEC_LOCAL_PREVIEW_MAP__.isMoving());
@@ -372,7 +476,7 @@ for (const width of [1280, 390]) for (const population of [250, 500, 1000]) {
       const findPairs = NativeClusterMotionController.prototype.findPairs;
       NativeClusterMotionController.prototype.findPairs = async function (parents: Map<string, any>, targets: Map<string, any>) {
         const pairs = await findPairs.call(this, parents, targets);
-        (window as any).__motionPairing = { parents: parents.size, targets: targets.size, cached: this.children.size, parentKeys: [...parents.keys()].slice(0, 8), targetKeys: [...targets.keys()].slice(0, 8), pairs: pairs.length };
+        (window as any).__motionPairing = { parents: parents.size, targets: targets.size,  parentKeys: [...parents.keys()].slice(0, 8), targetKeys: [...targets.keys()].slice(0, 8), pairs: pairs.length };
         return pairs;
       };
       const draw = NativeClusterMotionController.prototype.draw;

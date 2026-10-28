@@ -1955,7 +1955,6 @@
           instance.isSourceLoaded("locations")) startupStage = "ready";
     });
     instance.on("idle", () => {
-      void nativeMotionController?.warm();
       settlePendingSelectionFocus();
       if (isNativeMap()) {
         updateVisibleApproximateCount(instance);

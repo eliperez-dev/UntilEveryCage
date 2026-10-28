@@ -1,6 +1,7 @@
 import NativeWorker from 'maplibre-gl/dist/maplibre-gl-worker.mjs';
 import { decodePublicMapTransport } from './publicMapSourceTransport';
 import { exportClusterIndex, restoreClusterIndex } from './clusterIndexCodec';
+import { matchNativeClusterLineage, type NativeLineageRequest } from './nativeClusterLineage';
 import { clusterIndexKey, INDEX_CACHE_CHANNEL, INDEX_CACHE_FIELD, publicIndexIdentity, readClusterIndex, writeClusterIndex, indexCacheFailureReason, type IndexCacheDiagnostic, type IndexCacheFailureReason, type IndexCacheTimings } from './clusterIndexCache';
 
 type Index = unknown;
@@ -10,6 +11,7 @@ type Parameters = {
 };
 type Source = {
   _geoJSONIndex: Index;
+  getClusterChildren(parameters: { clusterId: number; uecMotionLineage?: NativeLineageRequest }): unknown;
   _createGeoJSONIndex(data: unknown, parameters: Parameters): Index;
   loadAndProcessGeoJSON(parameters: Parameters, controller: AbortController): Promise<unknown>;
 };
@@ -40,6 +42,11 @@ if (typeof originalGetSource === 'function') {
     if (type !== 'geojson' || sourceId !== 'locations' || installed.has(source)
       || typeof source.loadAndProcessGeoJSON !== 'function' || typeof source._createGeoJSONIndex !== 'function') return source;
     installed.add(source);
+    const originalChildren = source.getClusterChildren;
+    source.getClusterChildren = function(parameters) {
+      if (parameters.uecMotionLineage) return matchNativeClusterLineage(this._geoJSONIndex, parameters.uecMotionLineage);
+      return originalChildren.call(this, parameters);
+    };
     const originalLoad = source.loadAndProcessGeoJSON;
     const originalFactory = source._createGeoJSONIndex;
     const restorations = new WeakMap<Parameters, Index>();

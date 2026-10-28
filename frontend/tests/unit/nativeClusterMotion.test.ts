@@ -55,7 +55,7 @@ describe('selective native visibility and stacking', () => {
       expect(ordered.pairs.map(pair => pair.child.key)).toEqual(['p:bottom', 'p:top']);
     }
   });
-  it('installs paint once and changes only its own bounded feature state during gestures', () => {
+  it('installs paint once and changes only its own bounded feature state during gestures', async () => {
     const paint = new Map<string, unknown>();
     const map = {
       getLayer: (id: string) => id === 'clusters', getSource: () => ({}),
@@ -69,12 +69,16 @@ describe('selective native visibility and stacking', () => {
     controller.presentNodes = new Map([
       ['c:0', { key: 'c:0', id: 0 }], ['p:child', { key: 'p:child', id: 'child' }],
     ]);
+    controller.footprint = [-1, -1, 1, 1];
+    controller.presentNodes.get('p:child').coordinates = [0, 0];
     controller.mask(new Set(['c:0']), true);
     expect(map.setFeatureState).toHaveBeenLastCalledWith({ source: 'locations', id: 'child' }, { [CLUSTER_MOTION_HIDDEN_STATE]: true });
     controller.mask(new Set(['c:0']), false);
     expect(map.setFeatureState).toHaveBeenLastCalledWith({ source: 'locations', id: 0 }, { [CLUSTER_MOTION_HIDDEN_STATE]: true });
     controller.applyMask(); controller.applyMask();
-    expect(map.redraw).toHaveBeenCalledTimes(2);
+    expect(map.redraw).not.toHaveBeenCalled();
+    await Promise.resolve();
+    expect(map.redraw).toHaveBeenCalledTimes(1);
     const clear = vi.spyOn(controller, 'clear');
     controller.invalidate();
     expect(clear).toHaveBeenCalled(); expect(controller.hidden.size).toBe(0); expect(controller.maskScope).toBeUndefined();
@@ -86,9 +90,19 @@ describe('selective native visibility and stacking', () => {
     expect(paint.get('clusters/icon-opacity')).toEqual(clusterMotionOpacity(.7));
     expect(map.setPaintProperty).toHaveBeenCalledTimes(4);
   });
+  it('coalesces redraws after the current native input/render task returns', async () => {
+    let insideInputTask = true;
+    const map = { redraw: vi.fn(() => { if (insideInputTask) throw new Error('Attempting to run(), but is already running.'); }) };
+    const controller = new NativeClusterMotionController({ getMap: () => map as any, reducedMotion: () => false, enabled: () => true, duration: () => 210, limit: () => 1200 }) as any;
+    controller.repaint(); controller.repaint(); controller.repaint();
+    expect(map.redraw).not.toHaveBeenCalled();
+    insideInputTask = false;
+    await Promise.resolve();
+    expect(map.redraw).toHaveBeenCalledTimes(1);
+  });
   it('retains the original held scene through rapid camera retargets without rebuilding it', () => {
     let zoom = 6;
-    const map = { getZoom: () => zoom, isZooming: () => true, getSource: () => undefined };
+    const map = { getBounds: () => ({ getWest: () => -1, getEast: () => 1, getSouth: () => -1, getNorth: () => 1 }), getZoom: () => zoom, isZooming: () => true, getSource: () => undefined };
     const controller = new NativeClusterMotionController({ getMap: () => map as any, reducedMotion: () => false, enabled: () => true, duration: () => 210, limit: () => 1000 }) as any;
     const scene = new Map([['c:1', { key: 'c:1', coordinates: [0, 0], properties: { cluster_id: 1 }, layer: 'clusters' }]]);
     controller.capture = vi.fn(() => scene); controller.image = () => ({}); controller.mask = vi.fn(); controller.draw = vi.fn();
@@ -105,7 +119,7 @@ describe('selective native visibility and stacking', () => {
     expect(cancel).toHaveBeenCalledWith(false, 'disabled'); expect(controller.armed).toBe(false);
   });
   it('continues the existing visible cue when another zoom starts during playback', () => {
-    const controller = new NativeClusterMotionController({ getMap: () => ({ getZoom: () => 10 } as any), reducedMotion: () => false, enabled: () => true, duration: () => 210, limit: () => 1000 }) as any;
+    const controller = new NativeClusterMotionController({ getMap: () => ({ getZoom: () => 10, getBounds: () => ({ getWest: () => -1, getEast: () => 1, getSouth: () => -1, getNorth: () => 1 }) } as any), reducedMotion: () => false, enabled: () => true, duration: () => 210, limit: () => 1000 }) as any;
     const motion = { direction: 'split', pairs: [], parents: [], startedAt: 123 };
     const destination = new Map([['p:child', { key: 'p:child' }]]);
     controller.motion = motion; controller.after = destination; controller.targetZoom = 10;
@@ -145,62 +159,18 @@ describe('native cluster transition identities and artwork', () => {
   });
 });
 
-describe('bounded native hierarchy reuse', () => {
-  const node = (id: number) => ({ key: `c:${id}`, coordinates: [0, 0], properties: { cluster_id: id }, layer: 'clusters' });
-  const point = (id: number) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [0, 0] }, properties: { key: `synthetic-${id}` } });
-  function fixture() {
-    let source = { getClusterChildren: vi.fn(async (id: number) => [point(id)]) };
-    const map = { getSource: () => source, isMoving: () => false, isSourceLoaded: () => true };
-    const controller = new NativeClusterMotionController({ getMap: () => map as any, reducedMotion: () => false, enabled: () => true, duration: () => 210, limit: () => 1000 }) as any;
-    return { controller, source, replaceSource: () => { source = { getClusterChildren: vi.fn(async (id: number) => [point(id)]) }; return source; } };
-  }
-  it('retains child queries across camera cancellation and invalidates on data/source changes', async () => {
-    const { controller, source, replaceSource } = fixture();
-    await controller.getChildren(node(1)); controller.cancel(); await controller.getChildren(node(1));
-    expect(source.getClusterChildren).toHaveBeenCalledTimes(1);
-    controller.invalidate(); await controller.getChildren(node(1));
-    expect(source.getClusterChildren).toHaveBeenCalledTimes(2);
-    const replacement = replaceSource(); await controller.getChildren(node(1));
-    expect(replacement.getClusterChildren).toHaveBeenCalledTimes(1);
-  });
-  it('keeps both cache entries and retained child nodes bounded', async () => {
-    const { controller, source } = fixture();
-    source.getClusterChildren.mockImplementation(async id => Array.from({ length: 20 }, (_, index) => point(id * 20 + index)));
-    for (let id = 0; id < 600; id++) await controller.getChildren(node(id));
-    expect(controller.children.size).toBeLessThanOrEqual(512);
-    expect([...controller.childCounts.values()].reduce((sum: number, count) => sum + Number(count), 0)).toBeLessThanOrEqual(4096);
-  });
-  it('warms native child reads while idle and stops after data invalidation', async () => {
-    const { controller, source } = fixture();
-    controller.capture = () => new Map([[node(1).key, node(1)]]);
-    await controller.warm();
-    expect(source.getClusterChildren).toHaveBeenCalledTimes(1);
-    await controller.getChildren(node(1));
-    expect(source.getClusterChildren).toHaveBeenCalledTimes(1);
-  });
-  it('pairs the whole visible scene instead of stopping after the first 80 branches', async () => {
-    const { controller } = fixture();
-    const parents = new Map(Array.from({ length: 100 }, (_, i) => [node(i).key, node(i)]));
-    const targets = new Map(Array.from({ length: 100 }, (_, i) => [`p:synthetic-${i}`, { key: `p:synthetic-${i}` }]));
-    expect(await controller.findPairs(parents, targets)).toHaveLength(100);
-  });
-  it('does not play a partial regional transition when the remaining lineage exceeds its budget', async () => {
-    const { controller, source } = fixture();
-    source.getClusterChildren.mockImplementation(async id => id === 1 ? [point(1)] : [{
-      type: 'Feature', geometry: { type: 'Point', coordinates: [0, 0] }, properties: { cluster_id: id + 1 },
-    }] as any);
-    const parents = new Map([[node(1).key, node(1)], [node(2).key, node(2)]]);
-    const targets = new Map([['p:synthetic-1', { key: 'p:synthetic-1' }]]);
-    expect(await controller.findPairs(parents, targets)).toEqual([]);
-  });
-  it('ignores late lineage from an invalidated data generation', async () => {
-    const { controller, source } = fixture();
-    let finish!: (rows: any[]) => void;
-    source.getClusterChildren.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
-    const old = controller.getChildren(node(1)); controller.invalidate();
-    const current = await controller.getChildren(node(1));
-    finish([point(900)]);
-    expect(await old).toEqual([]);
-    expect(await controller.getChildren(node(1))).toEqual(current);
+describe('newly exposed regions', () => {
+  it('never blanket-hides marks outside the original viewport', () => {
+    const map = { getSource: () => ({}), setFeatureState: vi.fn(), removeFeatureState: vi.fn(), redraw: vi.fn() };
+    const controller = new NativeClusterMotionController({ getMap: () => map as any, reducedMotion: () => false, enabled: () => true, duration: () => 210, limit: () => 1200 }) as any;
+    controller.footprint = [-125, 30, -115, 42];
+    controller.presentNodes = new Map([
+      ['c:1', { key: 'c:1', id: 1, coordinates: [-120, 35] }],
+      ['c:2', { key: 'c:2', id: 2, coordinates: [-75, 40] }],
+    ]);
+    controller.mask(new Set(['c:old']), true);
+    expect([...controller.hidden.keys()]).toEqual(['c:1']);
+    controller.mask(new Set(), false);
+    expect(controller.hidden.size).toBe(0);
   });
 });

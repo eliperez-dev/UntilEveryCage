@@ -622,16 +622,22 @@ native paint is ready. Reuse existing pin/cluster artwork and read-only native
 child queries, without bounce or repeated restarts.
 Draw every visible wrapped world copy of a masked identity, and align parent and
 child longitudes across the short antimeridian path. Reproject held marks while
-worker pairing is pending. The hierarchy walk scales with the visible scene,
-within a 2,048-query bound; an incomplete walk never plays a regional subset.
+worker pairing is pending. Newly exposed regions outside the original viewport
+remain native and visible during zoom-out. Resolve lineage once for the settled
+scene through a worker-only read of the existing index's parent links. Return
+identity pairs only; do not recursively fetch descendants, warm a second cache,
+or issue hierarchy requests for intermediate zoom frames. Skipping several
+zoom levels uses the same lookup. Coalesce feature-state redraws in a microtask
+after MapLibre's input/render task returns, before browser composition; never
+call synchronous redraw from inside its task queue.
 If a new zoom starts during a short playing cue, finish that cue without resetting
 its progress, then hold its destination identities for the next transition.
 The default is 210 ms and at most 1,200 animated marks in total. Debug
 controls tune duration from 0–400 ms (0 disables it), the mark cap from
 50–2,000, and camera idle delay from 0–500 ms (default 0). A bounded in-memory
-lineage cache warms native child queries while idle, retaining at most 512
-cluster entries and 4,096 child nodes. Data, index and style changes invalidate
-it; camera gestures reuse it. Local pin artwork loads in parallel. Pan and
+lineage lookup stays in the native worker and returns at most the selected
+number of identity pairs. Data, index and style changes cancel stale lookups.
+Local pin artwork loads in parallel. Pan and
 bearing-only rotation remain native. Reduced motion, views beyond the selected
 mark limit, slow lookups and camera/style/data changes may skip or cancel a
 transition; Debug exposes the current state or skip reason. Animation never changes source data or
