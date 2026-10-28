@@ -53,7 +53,7 @@ class LocationIqFirstPassTests(unittest.TestCase):
             seen["timeout"] = timeout
             return Response(payload)
 
-        return LocationIqAdapter(api_key="synthetic-secret", opener=opener, country_code=country,
+        return LocationIqAdapter(api_key="test-token-synthetic", opener=opener, country_code=country,
                                  private_source_profile=private, query_kind=query_kind,
                                  first_pass_source=allow_acceptance), seen
 
@@ -65,7 +65,7 @@ class LocationIqFirstPassTests(unittest.TestCase):
             profile = profile_for_source(source, provider_id="locationiq")
             self.assertEqual(profile["query_kind"], "source_address_first_pass")
             from unittest.mock import patch
-            with patch.dict(os.environ, {"LOCATIONIQ_API_KEY": "synthetic-secret"}):
+            with patch.dict(os.environ, {"LOCATIONIQ_API_KEY": "test-token-synthetic"}):
                 adapter = get_adapter("locationiq", private_source_profile_id=profile["profile_id"])
             self.assertEqual(adapter.query_kind, "source_address_first_pass")
         nz_profile = profile_for_source("nz.locations", provider_id="locationiq")
@@ -137,7 +137,7 @@ class LocationIqFirstPassTests(unittest.TestCase):
 
     def test_first_pass_rejects_bad_terminator_or_missing_context_before_request(self):
         calls = []
-        adapter = LocationIqAdapter(api_key="synthetic-secret", country_code="es", private_source_profile=True,
+        adapter = LocationIqAdapter(api_key="test-token-synthetic", country_code="es", private_source_profile=True,
                                     query_kind="source_address_first_pass",
                                     opener=lambda *_a, **_k: calls.append(True))
         invalid = ("Calle Example 4, Madrid", json.dumps({"schema_version": "wrong"}),
@@ -196,15 +196,15 @@ class LocationIqFirstPassTests(unittest.TestCase):
                          "invalid_provider_schema")
         for status, expected in ((401, "authentication_rejected"), (429, "provider_rate_limited")):
             def fail(*_args, status=status, **_kwargs):
-                raise urllib.error.HTTPError("https://provider/?key=synthetic-secret", status,
-                                             "synthetic-secret", {}, None)
-            adapter = LocationIqAdapter(api_key="synthetic-secret", country_code="es",
+                raise urllib.error.HTTPError("https://provider/?key=test-token-synthetic", status,
+                                             "test-token-synthetic", {}, None)
+            adapter = LocationIqAdapter(api_key="test-token-synthetic", country_code="es",
                                         private_source_profile=True, query_kind="source_address_first_pass",
                                         opener=fail)
             outcome = adapter.geocode(query("Calle Example 4"))
             self.assertEqual(outcome.acceptance, expected)
-            self.assertNotIn("synthetic-secret", str(outcome.response))
-            self.assertNotIn("synthetic-secret", repr(outcome))
+            self.assertNotIn("test-token-synthetic", str(outcome.response))
+            self.assertNotIn("test-token-synthetic", repr(outcome))
         self.assertTrue(outcome.retryable)
 
 
