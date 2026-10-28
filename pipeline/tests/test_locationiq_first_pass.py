@@ -78,7 +78,7 @@ class LocationIqFirstPassTests(unittest.TestCase):
         self.assertEqual((outcome.status, outcome.precision), ("accepted", "locationiq_address_point"))
         self.assertEqual((outcome.latitude, outcome.longitude), (40.4168, -3.7038))
         params = urllib.parse.parse_qs(urllib.parse.urlsplit(seen["request"].full_url).query)
-        self.assertEqual(params["q"], ["Old Street, Calle Example 4, Local 2, Madrid, 28001, Comunidad de Madrid, Spain"])
+        self.assertEqual(params["q"], ["calle example 4, Madrid, 28001, Comunidad de Madrid, Spain"])
         self.assertEqual(params["countrycodes"], ["es"])
         self.assertEqual(params["limit"], ["2"])
 
@@ -114,6 +114,7 @@ class LocationIqFirstPassTests(unittest.TestCase):
         params = urllib.parse.parse_qs(urllib.parse.urlsplit(seen["request"].full_url).query)
         self.assertEqual(params["q"], ["Example Road, London, SW1A 1AA, United Kingdom"])
         self.assertEqual(params["countrycodes"], ["gb"])
+        self.assertEqual(params["normalizeaddress"], ["1"])
 
     def test_structured_new_zealand_request_matches_one_comma_delimited_address_fragment(self):
         item = candidate(lat="-36.8509", lon="174.7645", address={
@@ -126,6 +127,7 @@ class LocationIqFirstPassTests(unittest.TestCase):
         params = urllib.parse.parse_qs(urllib.parse.urlsplit(seen["request"].full_url).query)
         self.assertEqual(params["q"], ["Unit 2, 12 Sample Road, Auckland, 1010, New Zealand"])
         self.assertEqual(params["countrycodes"], ["nz"])
+        self.assertEqual(params["normalizeaddress"], ["1"])
         legacy_candidate = candidate(lat="-36.8509", lon="174.7645", address={
             "house_number": "12", "road": "Sample Road", "city": "Auckland",
             "postcode": "1010", "country_code": "nz"})
@@ -139,6 +141,7 @@ class LocationIqFirstPassTests(unittest.TestCase):
                                     query_kind="source_address_first_pass",
                                     opener=lambda *_a, **_k: calls.append(True))
         invalid = ("Calle Example 4, Madrid", json.dumps({"schema_version": "wrong"}),
+                   json.dumps({**json.loads(query("Calle Example 4")), "business_name": "not permitted"}),
                    query("Calle Example 4", country="GB"),
                    query("Example Road", locality="", postcode="SW1A 1AA", region=None, country="GB"),
                    json.dumps({"schema_version": "uec-address-query-v1", "address": "x" * 1201,

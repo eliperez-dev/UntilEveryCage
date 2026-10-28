@@ -11,6 +11,7 @@ from typing import Callable
 
 from .base import GeocodeOutcome
 from .geoapify import GeoapifyAdapter
+from . import spanish_addresses
 
 
 class LocationIqAdapter:
@@ -46,6 +47,7 @@ class LocationIqAdapter:
         except (TypeError, json.JSONDecodeError):
             return None
         if (not isinstance(payload, dict) or payload.get("schema_version") != "uec-address-query-v1"
+                or set(payload) != {"schema_version", "address", "locality", "postcode", "region", "country_code"}
                 or payload.get("country_code") != country_code.upper()):
             return None
         address = payload.get("address")
@@ -68,7 +70,8 @@ class LocationIqAdapter:
             return None
         if not locality and not ((country_code == "es" and region) or (country_code == "gb" and postcode)):
             return None
-        provider_parts = [address, locality, postcode, region, country_name]
+        provider_address = spanish_addresses.provider_address(address) if country_code == "es" else address
+        provider_parts = [provider_address, locality, postcode, region, country_name]
         provider_query = ", ".join(part for part in provider_parts if part)
         if len(provider_query) > 1000:
             return None
@@ -230,7 +233,7 @@ class LocationIqAdapter:
                 safe[key] = value
             elif key not in {"place_id", "lat", "lon"} and isinstance(value, str):
                 safe[key] = value[:300]
-        address_keys = {"house_number", "road", "postcode", "city", "town", "municipality", "village", "suburb", "state", "state_code", "county", "country_code"}
+        address_keys = {"house_number", "road", "postcode", "city", "town", "municipality", "village", "suburb", "state", "state_code", "county", "province", "state_district", "country_code"}
         address = {key: (item["address"][key][:300] if isinstance(item["address"][key], str) else item["address"][key])
                    for key in address_keys if isinstance(item["address"].get(key), (str, int))
                    and not isinstance(item["address"].get(key), bool)}
@@ -270,7 +273,7 @@ class LocationIqAdapter:
             "en" if (is_nz or is_gb or is_first_pass) else "de")
         params = urllib.parse.urlencode({
             "key": self.api_key, "q": query, "format": "json", "countrycodes": request_country,
-            "addressdetails": 1, "normalizeaddress": 1, "normalizecity": 1,
+            "addressdetails": 1, "normalizeaddress": 0 if is_first_pass and self.country_code == "es" else 1, "normalizecity": 1,
             "statecode": 1, "limit": 2,
         })
         request = urllib.request.Request(self.endpoint + "?" + params,
@@ -335,7 +338,8 @@ class LocationIqAdapter:
             if is_first_pass:
                 house_address_node = (safe.get("class") == "place" and result_type == "house"
                                       and address_type in {"", "house", "building"})
-                result_is_address = result_is_address or house_address_node
+                result_is_address = ((result_is_address and result_type != "houses"
+                                      and address_type != "houses") or house_address_node)
                 country = self.country_code
                 in_bounds = ((-19 <= coords[1] <= 5 and 27 <= coords[0] <= 44.5)
                              if country == "es" else
@@ -348,6 +352,11 @@ class LocationIqAdapter:
                     isinstance(value, str) and self._normalize(value) == self._normalize(locality)
                     for value in locality_values if locality))
                 source_address_match = self._first_pass_address_matches(source_address, road, number)
+                if country == "es":
+                    source_address_match = spanish_addresses.street_matches(source_address, road, number)
+                    locality_match = bool(locality) and any(
+                        spanish_addresses.locality_key(value) == spanish_addresses.locality_key(locality)
+                        for value in locality_values if isinstance(value, str))
                 provider_postcode = re.sub(r"\s+", "", str(address.get("postcode", ""))).upper()
                 postcode_match = (postcode is None or provider_postcode ==
                                   re.sub(r"\s+", "", postcode).upper())
@@ -355,6 +364,8 @@ class LocationIqAdapter:
                 region_match = (region is None or any(
                     isinstance(value, str) and self._normalize(value) == self._normalize(region)
                     for value in region_values))
+                if country == "es":
+                    region_match = spanish_addresses.province_matches(address, region, postcode)
                 if (str(address.get("country_code", "")).lower() == country and in_bounds
                         and result_is_address and source_address_match and locality_match
                         and postcode_match and region_match):

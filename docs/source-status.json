@@ -28,7 +28,7 @@
     "hosted_dataset_changed": false,
     "evidence": ["data/reports/country-release-20261027-freeze.json", "data/staging/country-release-20261027/acceptance.json"],
     "first_pass_gate": {
-      "required": "Every eligible never-attempted address in the agreed countries must receive one provider attempt before the next release is assembled or deployed. Existing source coordinates do not need external geocoding. Never retry failed matches in this sprint.",
+      "required": "Every eligible never-attempted address in the agreed countries must receive one provider attempt before the next release is assembled or deployed. Existing source coordinates do not need external geocoding. Do not retry failures automatically. The maintainer separately authorized correcting Spanish matching: replay retained responses first, then evaluate a small corrected-query pilot before any further Spanish expansion or corrective retries.",
       "initial_remaining_distinct_requests": 25108,
       "initial_remaining_records": 25918,
       "initial_requests_by_source": {"es.locations": 18253, "es.cat.feed-sandach": 4299, "fsa_approved_establishments": 1609, "fss_approved_establishments": 2, "nz.locations": 945},
@@ -70,13 +70,37 @@
         "locationiq_account_requests_in_current_window": {"primary": 5000, "secondary": 5000},
         "geoapify_requests_in_current_window": 3000,
         "next_quota_window_utc": "2026-10-29T00:00:00Z",
-        "remaining_execution_blocker": "Both LocationIQ account allowances and the Geoapify allowance are exhausted for the current UTC window. The two LocationIQ runs exited normally; all eligible UK, New Zealand and Catalonia addresses have a first attempt. National Spain still has 15,108 new distinct requests. Geoapify transfer authorization is now recorded separately in this first-pass gate; only renewed provider allowances block further requests. Resume unattempted addresses within actual allowances, without failure retries. Deployment remains held.",
+        "remaining_execution_blocker": "Both LocationIQ account allowances and the Geoapify allowance are exhausted for the current UTC window. All eligible UK, New Zealand and Catalonia addresses have a first attempt; national Spain still has 15,108 unattempted distinct requests. Spanish expansion is additionally held for a corrected-query real-data pilot following the low-yield audit. Do not blindly resume the old batch or retry failures. Deployment remains held.",
         "hosted_dataset_changed": false
+      },
+      "spanish_matching_correction": {
+        "checked_date_utc": "2026-10-28",
+        "status": "offline_recovery_saved_external_pilot_pending",
+        "maintainer_authorization": "Correct Spanish matching and queries; replay retained responses first and check real evidence before resuming external calls",
+        "ruleset": "spanish-address-format-v2",
+        "implementation": ["pipeline/geocoding/spanish_addresses.py", "pipeline/geocoding/spanish_retained_reconciliation.py", "pipeline/migrations/111_spanish_retained_address_replay.sql"],
+        "verification": {"focused_and_adapter_regression_tests_passed": 65, "baseline_before_and_after": "verified", "real_parent_capture_and_forgery_tests": "rollback_only"},
+        "original_locationiq_requests": 7444,
+        "original_accepted_results": 6,
+        "requests_with_retained_candidates": 6722,
+        "retained_candidates_checked": 10379,
+        "python_sql_matcher_differences": 0,
+        "additional_accepted_results": 140,
+        "additional_address_records": 144,
+        "additional_address_records_by_source": {"es.cat.feed-sandach": 99, "es.locations": 45},
+        "new_provider_calls": 0,
+        "original_results_and_request_accounting_unchanged": true,
+        "second_apply_added_results": 0,
+        "real_evidence_component_sample": {"accepted": 20, "rejected": 20, "accepted_street_house_locality_admin_postcode_checks_passed": 20},
+        "sample_is_independent_property_verification": false,
+        "remaining_response_limits": {"requests_with_candidates_but_no_numbered_road": 4643, "requests_with_no_results": 722, "queries_missing_locality": 105},
+        "response_projection_note": "Previous normalized LocationIQ responses roll administrative levels into state/county. Missing standalone province fields do not prove evidence was discarded. Future Spanish calls request raw address details and preserve province/state_district fields when returned.",
+        "next_action": "When credits renew, evaluate a small corrected-query pilot, including previously weak queries, before expanding. Source queries remain unchanged; only a unique explicit numbered road can have unit/estate clutter removed from provider text. Confirm actual address-match yield rather than request-completion counts. Do not treat street-only results as facility points. Keep all results local and deployment held."
       },
       "live_progress_authority": "Existing source-key-linked request reservations, results and job events in uec_launch_sources_test_20261025; count across all providers and snapshots",
       "previous_snapshot_requires_reassembly": true
     },
-    "next_action": "Finish the complete eligible country first pass using the authorized provider/account allowances. Keep results local, retain failed outcomes without retries, then assemble and test the updated dataset. Do not cut over the earlier 93,058-point snapshot."
+    "next_action": "Validate corrected Spanish provider queries on a small real-data pilot before resuming expansion; then finish the complete eligible country first pass within authorized account allowances. Keep results local and preserve failed outcomes. Assemble and test an updated dataset only after that gate completes. Do not cut over the earlier 93,058-point snapshot."
   },
   "china_research": {
     "checked_date": "2026-10-27",
