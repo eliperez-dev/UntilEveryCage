@@ -335,12 +335,10 @@ describe('newly exposed regions', () => {
     expect(controller.findPairs).toHaveBeenCalledTimes(1);
     controller.capture = () => new Map([['c:next', { ...arrival, key: 'c:next', id: 3 }]]);
     zoom = 5.1; controller.onRender('before'); await Promise.resolve();
-    expect(controller.findPairs).toHaveBeenCalledTimes(1);
-    zoom = 5.05; controller.onRender('before'); await Promise.resolve();
-    expect(controller.findPairs).toHaveBeenCalledTimes(1);
-    zoom = 4.9; controller.onRender('before'); await Promise.resolve();
     expect(controller.findPairs).toHaveBeenCalledTimes(2);
     expect(controller.motion.appearing.map(node => node.key)).toEqual(['c:next']);
+    zoom = 5.05; controller.onRender('before'); await Promise.resolve();
+    expect(controller.findPairs).toHaveBeenCalledTimes(2);
   });
   it('adopts new branches during a playing cue and pairs their next merge outside the original viewport', async () => {
     const node = (key: string, lon: number) => ({ key, id: key, coordinates: [lon, 35], properties: {}, layer: 'clusters' });
