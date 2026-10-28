@@ -33,7 +33,15 @@ def get_adapter(provider_id: str, *, au_npi_pilot: bool = False,
                 raise ValueError("private source profile provider does not match")
             if provider_id == "locationiq":
                 return LocationIqAdapter(api_key=key, country_code=profile["country_code"].lower(),
-                                         private_source_profile=True)
+                                         private_source_profile=True,
+                                         query_kind=profile.get("query_kind"),
+                                         first_pass_source=(profile["profile_id"] in {
+                                             "locationiq-es-aesan-rgseaa",
+                                             "locationiq-es-cat-feed-sandach",
+                                             "locationiq-gb-fsa-approved-establishments",
+                                             "locationiq-gb-fss-approved-establishments",
+                                             "locationiq-nz-mpi-rmp",
+                                         }))
             return GeoapifyAdapter(country_code=profile["country_code"].lower(),
                                    private_source_profile=True,
                                    locality_only=profile.get("query_kind") in {

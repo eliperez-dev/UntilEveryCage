@@ -9,6 +9,7 @@ from typing import Any
 PROFILE_PATH = Path(__file__).with_name("private-source-profiles.json")
 ENABLED = "enabled-private-only"
 SPAIN_ADDRESS_PROFILE_ID = "geoapify-es-aesan-rgseaa"
+SPAIN_LOCATIONIQ_PROFILE_ID = "locationiq-es-aesan-rgseaa"
 SPAIN_MUNICIPALITY_PROFILE_ID = "geoapify-es-aesan-verified-municipality"
 NEW_ZEALAND_LOCATIONIQ_PROFILE_ID = "locationiq-nz-mpi-rmp"
 UK_LOCATIONIQ_PROFILES = {
@@ -40,9 +41,17 @@ def profiles() -> list[dict[str, Any]]:
         if provider == "locationiq" and (profile_id, source_id, row.get("country_code")) not in {
                 ("locationiq-de-bltu", "de.locations", "DE"),
                 (NEW_ZEALAND_LOCATIONIQ_PROFILE_ID, "nz.locations", "NZ"),
+                (SPAIN_LOCATIONIQ_PROFILE_ID, "es.locations", "ES"),
+                ("locationiq-es-cat-feed-sandach", "es.cat.feed-sandach", "ES"),
                 *((key, source, "GB") for key, source in UK_LOCATIONIQ_PROFILES.items()),
         }:
             raise ValueError("LocationIQ private profile identity is invalid")
+        if (provider == "locationiq" and profile_id in {
+                SPAIN_LOCATIONIQ_PROFILE_ID, NEW_ZEALAND_LOCATIONIQ_PROFILE_ID,
+                "locationiq-es-cat-feed-sandach",
+                *UK_LOCATIONIQ_PROFILES,
+        } and row.get("query_kind") != "source_address_first_pass"):
+            raise ValueError("LocationIQ first-pass profile query kind is invalid")
         if row.get("country_code") not in {"GB", "DK", "NL", "US", "ES", "DE", "NZ"}:
             raise ValueError("private Geoapify profile country is not enabled")
         if row.get("status") != ENABLED:
@@ -52,12 +61,14 @@ def profiles() -> list[dict[str, Any]]:
             raise ValueError("Spain private geocoding profile identity is invalid")
         seen_ids.add(profile_id)
         profiles_by_source.setdefault((source_id, provider), []).append(row)
-    for (source_id, _provider), source_profiles in profiles_by_source.items():
+    for (source_id, provider_id), source_profiles in profiles_by_source.items():
         if source_id == "es.locations":
             by_id = {row["profile_id"]: row for row in source_profiles}
-            if SPAIN_ADDRESS_PROFILE_ID not in by_id:
+            expected_ids = ({SPAIN_LOCATIONIQ_PROFILE_ID} if provider_id == "locationiq" else
+                            {SPAIN_ADDRESS_PROFILE_ID, SPAIN_MUNICIPALITY_PROFILE_ID})
+            if (provider_id == "geoapify" and SPAIN_ADDRESS_PROFILE_ID not in by_id):
                 raise ValueError("Spain address geocoding profile is required")
-            if set(by_id) - {SPAIN_ADDRESS_PROFILE_ID, SPAIN_MUNICIPALITY_PROFILE_ID}:
+            if set(by_id) - expected_ids:
                 raise ValueError("Spain private geocoding profile ID is invalid")
             if len(source_profiles) > 2:
                 raise ValueError("Spain private geocoding profile count is invalid")
@@ -65,7 +76,10 @@ def profiles() -> list[dict[str, Any]]:
                 if row.get("country_code") != "ES":
                     raise ValueError("Spain private geocoding profile country is invalid")
                 expected_kind = ("verified_municipality_only"
-                                 if row["profile_id"] == SPAIN_MUNICIPALITY_PROFILE_ID else None)
+                                 if row["profile_id"] == SPAIN_MUNICIPALITY_PROFILE_ID else
+                                 "source_address_first_pass"
+                                 if row["profile_id"] == SPAIN_LOCATIONIQ_PROFILE_ID
+                                 else None)
                 if row.get("query_kind") != expected_kind:
                     raise ValueError("Spain private geocoding profile query kind is invalid")
         elif len(source_profiles) != 1:

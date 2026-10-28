@@ -169,6 +169,35 @@ for actual outcomes; no acceptance threshold was loosened.
 
 ## Operator commands and credentials
 
+### Complete country first pass
+
+`python -m pipeline.geocoding.first_pass` is a read-only inventory of eligible
+unattempted addresses in the assigned source test database. It excludes any
+source key with a request reservation across all providers and snapshots,
+honors restrictions, and groups shared addresses into one request with all
+source targets retained. Current scope and the release completion gate are in
+`source-status.json`; the planner and database are the live count authority.
+
+After source/destination transfer authorization, use an explicit source list:
+
+```powershell
+python -m pipeline.geocoding.first_pass --run --sources nz.locations --account primary --limit 5000
+```
+
+The selected account keeps its existing 5,000-request ledger and 1.05-second
+interval. Two workers can partition the queue with `--partitions 2` and distinct
+`--partition 0` / `--partition 1`, each selecting its authorized account. The
+worker makes one provider call per job and stops on authentication/quota errors;
+it does not retry failed matches. A finite account allowance is not completion
+of the country sprint. Resume the unattempted queue with available authorized
+allowances; do not publish an intermediate snapshot instead.
+
+Structured source-address queries preserve commas and do not require a house
+number merely to request a lookup. Exact-point acceptance separately requires
+matching address components and supplied context. NZ still requires exactly
+one physical location. Spanish municipality context comes only from retained,
+source-key-bound AESAN lookup evidence. Raw responses and queries remain private.
+
 ### LocationIQ fallback
 
 `LOCATIONIQ_API_KEY` supplies the backend-only token. The first enabled profile

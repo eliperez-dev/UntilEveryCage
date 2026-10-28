@@ -416,6 +416,7 @@ def run(
             private_source_profile_id not in {
                 "locationiq-de-bltu", "locationiq-nz-mpi-rmp",
                 "locationiq-gb-fsa-approved-establishments", "locationiq-gb-fss-approved-establishments",
+                "locationiq-es-aesan-rgseaa", "locationiq-es-cat-feed-sandach",
             } or limit is None
             or limit > 5000 or daily_budget > 5000 or provider_interval < 1.05):
         raise ValueError("LocationIQ requires an allowlisted country profile, a finite limit and free-plan rate/quota bounds")

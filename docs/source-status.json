@@ -4,7 +4,7 @@
   "next_release_candidate": {
     "checked_date": "2026-10-27",
     "release_id": "release-2026-10-27-r2",
-    "status": "isolated_render_database_runtime_verified_cutover_pending",
+    "status": "held_until_agreed_country_first_pass_complete",
     "database": "uec_country_release_test_20261027",
     "replacement_sources": ["de.locations", "es.locations", "fr.georisques.icpe.animal", "mx.locations", "nz.locations", "fsa_approved_establishments", "fss_approved_establishments"],
     "retained_other_sources": 12,
@@ -27,7 +27,17 @@
     "approval_basis": "Maintainer-authorized automated business-record, field-exposure, source-licence and location checks; factual review remains unreviewed",
     "hosted_dataset_changed": false,
     "evidence": ["data/reports/country-release-20261027-freeze.json", "data/staging/country-release-20261027/acceptance.json"],
-    "next_action": "Finish final-revision CI, then cut over to the verified isolated Render database and check the public origin. Fresh first-pass geocoding runs separately in source staging for a later release; failed addresses are not retried."
+    "first_pass_gate": {
+      "required": "Every eligible never-attempted address in the agreed countries must receive one provider attempt before the next release is assembled or deployed. Existing source coordinates do not need external geocoding. Never retry failed matches in this sprint.",
+      "initial_remaining_distinct_requests": 25108,
+      "initial_remaining_records": 25918,
+      "initial_requests_by_source": {"es.locations": 18253, "es.cat.feed-sandach": 4299, "fsa_approved_establishments": 1609, "fss_approved_establishments": 2, "nz.locations": 945},
+      "non_requestable_records": {"de_missing_address": 24, "uk_withheld_or_missing_address": 87, "nz_multiple_locations": 143},
+      "already_attempted_shared_address_records_excluded": 161,
+      "live_progress_authority": "Existing source-key-linked request reservations, results and job events in uec_launch_sources_test_20261025; count across all providers and snapshots",
+      "previous_snapshot_requires_reassembly": true
+    },
+    "next_action": "Finish the complete eligible country first pass using the authorized provider/account allowances. Keep results local, retain failed outcomes without retries, then assemble and test the updated dataset. Do not cut over the earlier 93,058-point snapshot."
   },
   "china_research": {
     "checked_date": "2026-10-27",

@@ -23,7 +23,8 @@ class LocationIqAdapter:
 
     def __init__(self, api_key: str | None = None, timeout: int = 20,
                  opener: Callable = urllib.request.urlopen, *, country_code: str | None = None,
-                 private_source_profile: bool = False):
+                 private_source_profile: bool = False, query_kind: str | None = None,
+                 first_pass_source: bool = False):
         self.api_key = (api_key or os.environ.get("LOCATIONIQ_API_KEY", "")).strip()
         if not self.api_key:
             raise ValueError("LOCATIONIQ_API_KEY is required")
@@ -34,6 +35,54 @@ class LocationIqAdapter:
         self.opener = opener
         self.country_code = country_code
         self.private_source_profile = private_source_profile
+        self.query_kind = query_kind
+        self.first_pass_source = first_pass_source
+
+    @staticmethod
+    def _parse_first_pass_query(query: str, country_code: str):
+        """Decode the bounded structured first-pass request and provider query."""
+        try:
+            payload = json.loads(query)
+        except (TypeError, json.JSONDecodeError):
+            return None
+        if (not isinstance(payload, dict) or payload.get("schema_version") != "uec-address-query-v1"
+                or payload.get("country_code") != country_code.upper()):
+            return None
+        address = payload.get("address")
+        locality = payload.get("locality")
+        postcode = payload.get("postcode")
+        region = payload.get("region")
+        if (not isinstance(address, str) or not address.strip() or len(address) > 1200
+                or not isinstance(locality, str) or len(locality) > 200
+                or (postcode is not None and (not isinstance(postcode, str) or len(postcode) > 20))
+                or (region is not None and (not isinstance(region, str) or len(region) > 200))):
+            return None
+        address = " ".join(address.split())
+        locality = " ".join(locality.split())
+        postcode = " ".join(postcode.split()) if isinstance(postcode, str) else None
+        region = " ".join(region.split()) if isinstance(region, str) else None
+        postcode = postcode or None
+        region = region or None
+        country_name = {"es": "Spain", "gb": "United Kingdom", "nz": "New Zealand"}.get(country_code)
+        if country_name is None:
+            return None
+        if not locality and not ((country_code == "es" and region) or (country_code == "gb" and postcode)):
+            return None
+        provider_parts = [address, locality, postcode, region, country_name]
+        provider_query = ", ".join(part for part in provider_parts if part)
+        if len(provider_query) > 1000:
+            return None
+        return address, locality, postcode, region, provider_query
+
+    @classmethod
+    def _first_pass_address_matches(cls, source_address: str, road, number) -> bool:
+        """Require one exact comma-delimited source fragment for house + road."""
+        if not isinstance(road, str) or not isinstance(number, (str, int)):
+            return False
+        expected = {cls._normalize(f"{number} {road}"), cls._normalize(f"{road} {number}")}
+        matches = [part for part in source_address.split(",")
+                   if cls._normalize(part.strip()) in expected]
+        return len(matches) == 1
 
     @staticmethod
     def _normalize(value: str) -> str:
@@ -181,7 +230,7 @@ class LocationIqAdapter:
                 safe[key] = value
             elif key not in {"place_id", "lat", "lon"} and isinstance(value, str):
                 safe[key] = value[:300]
-        address_keys = {"house_number", "road", "postcode", "city", "town", "municipality", "village", "suburb", "state", "state_code", "country_code"}
+        address_keys = {"house_number", "road", "postcode", "city", "town", "municipality", "village", "suburb", "state", "state_code", "county", "country_code"}
         address = {key: (item["address"][key][:300] if isinstance(item["address"][key], str) else item["address"][key])
                    for key in address_keys if isinstance(item["address"].get(key), (str, int))
                    and not isinstance(item["address"].get(key), bool)}
@@ -201,16 +250,24 @@ class LocationIqAdapter:
         query = query.strip() if isinstance(query, str) else ""
         if not query:
             return self._outcome("unresolved", "empty_query", {"error": "empty_query"})
-        if len(query) > 1000:
+        is_first_pass_profile = self.query_kind == "source_address_first_pass"
+        is_first_pass = is_first_pass_profile and query.lstrip().startswith("{")
+        if len(query) > (2500 if is_first_pass else 1000):
             return self._outcome("review_required", "invalid_source_address", {"error": "invalid_source_address"})
         is_nz = self.country_code == "nz"
         is_gb = self.country_code == "gb"
-        parsed = (self._parse_gb_query(query) if is_gb else
+        parsed = (self._parse_first_pass_query(query, self.country_code)
+                  if is_first_pass else
+                  self._parse_gb_query(query) if is_gb else
                   self._parse_nz_query(query) if is_nz else self._parse_query(query))
         if parsed is None:
             return self._outcome("review_required", "invalid_source_address", {"error": "invalid_source_address"})
-        request_country = "nz" if is_nz else "gb" if is_gb else "de"
-        language = "en" if (is_nz or is_gb) else "de"
+        if is_first_pass:
+            source_address, locality, postcode, region, query = parsed
+        request_country = (self.country_code if is_first_pass else
+                           "nz" if is_nz else "gb" if is_gb else "de")
+        language = "es" if is_first_pass and self.country_code == "es" else (
+            "en" if (is_nz or is_gb or is_first_pass) else "de")
         params = urllib.parse.urlencode({
             "key": self.api_key, "q": query, "format": "json", "countrycodes": request_country,
             "addressdetails": 1, "normalizeaddress": 1, "normalizecity": 1,
@@ -244,7 +301,9 @@ class LocationIqAdapter:
         if not payload:
             return self._outcome("unresolved", "no_results", {"results": []})
 
-        if is_nz:
+        if is_first_pass:
+            pass
+        elif is_nz:
             source_street, source_number, locality, postcode = parsed
         elif is_gb:
             source_street, source_number, locality, postcode = parsed
@@ -273,7 +332,34 @@ class LocationIqAdapter:
             result_is_address = (address_type not in {"road", "city", "town", "village", "municipality", "postcode"}
                                  and safe.get("class") not in {"highway", "boundary", "place", "landuse"}
                                  and result_type not in {"road", "city", "town", "village", "municipality", "postcode"})
-            if is_nz:
+            if is_first_pass:
+                house_address_node = (safe.get("class") == "place" and result_type == "house"
+                                      and address_type in {"", "house", "building"})
+                result_is_address = result_is_address or house_address_node
+                country = self.country_code
+                in_bounds = ((-19 <= coords[1] <= 5 and 27 <= coords[0] <= 44.5)
+                             if country == "es" else
+                             (-8.7 <= coords[1] <= 2.1 and 49.8 <= coords[0] <= 60.9)
+                             if country == "gb" else
+                             (166 <= coords[1] <= 179.9 and -47.5 <= coords[0] <= -34.0))
+                locality_values = [address.get(key) for key in
+                                   ("city", "town", "municipality", "village", "suburb")]
+                locality_match = ((not locality and country == "gb" and bool(postcode)) or any(
+                    isinstance(value, str) and self._normalize(value) == self._normalize(locality)
+                    for value in locality_values if locality))
+                source_address_match = self._first_pass_address_matches(source_address, road, number)
+                provider_postcode = re.sub(r"\s+", "", str(address.get("postcode", ""))).upper()
+                postcode_match = (postcode is None or provider_postcode ==
+                                  re.sub(r"\s+", "", postcode).upper())
+                region_values = [address.get(key) for key in ("state", "state_code", "county")]
+                region_match = (region is None or any(
+                    isinstance(value, str) and self._normalize(value) == self._normalize(region)
+                    for value in region_values))
+                if (str(address.get("country_code", "")).lower() == country and in_bounds
+                        and result_is_address and source_address_match and locality_match
+                        and postcode_match and region_match):
+                    viable.append((len(candidates) - 1, coords, safe))
+            elif is_nz:
                 # LocationIQ/Nominatim returns address-node results as
                 # class=place,type=house with house-like/absent addresstype.
                 # Keep this NZ-only exception; interpolated `houses` and
@@ -328,7 +414,11 @@ class LocationIqAdapter:
                     viable.append((len(candidates) - 1, coords, safe))
 
         envelope = {"results": candidates}
-        if len(viable) != 1 or not (self.private_source_profile and self.country_code in {"de", "nz", "gb"}):
+        profile_can_accept = (self.private_source_profile and
+                              self.country_code in {"de", "nz", "gb"})
+        profile_can_accept = profile_can_accept or (
+            is_first_pass and self.private_source_profile and self.first_pass_source)
+        if len(viable) != 1 or not profile_can_accept:
             reason = "ambiguous_multiple_viable_results" if len(viable) > 1 else "address_components_match_required"
             return self._outcome("review_required", reason, envelope)
         index, (lat, lon), candidate = viable[0]

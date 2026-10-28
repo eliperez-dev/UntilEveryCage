@@ -92,7 +92,9 @@ joins AESAN registration/province evidence to official IGN municipality points;
 those points remain approximate. Germany validates address, postcode and locality
 context before displaying provider points. Its usable unqueried address cohort
 has completed a first pass; unmatched attempts remain recorded in the existing queue for a later
-release. Complete geocoding is not a launch requirement. The BLtU reuse licence is identified in the official federal catalogue,
+release. The agreed launch gate is one attempt for every eligible address in
+the selected countries, not successful matching of every address. Failed
+matches are retained and must not be retried in this sprint. The BLtU reuse licence is identified in the official federal catalogue,
 with attribution evidence retained. Mexico now has a scoped national DENUE
 capture with 5,377 source-coordinate records. New Zealand's supplied MPI export
 has passed private staging, but supplies programme records rather than a
@@ -138,9 +140,12 @@ migration 107 replaces release-wide eligibility materialization with keyed
 probes, preserving all 2,048 current/historical reference rows and the existing
 publication gates. The local full-reference comparison fell from 29.2 seconds
 to 1.05 seconds; this is not a hosted-browser timing. Required CI passed on
-earlier backend checkpoints; the final repair revision still needs green CI.
-The public service and its existing databases are unchanged. Fresh first-pass
-geocoding continues separately in source staging for a later release. The
+revision `aaa20c4e` (all seven jobs). This prepared snapshot is held, not ready
+for cutover: it predates completion of the agreed country first pass.
+The public service and its existing databases are unchanged. Finish all eligible
+never-attempted country addresses in source staging, include their outcomes in
+a new assembled snapshot, and rerun the affected release checks before cutover.
+Do not use a provider batch limit as the sprint completion boundary. The
 separate frontend story is not part of this backend deployment.
 
 ## Roadmap
@@ -159,8 +164,12 @@ separate frontend story is not part of this backend deployment.
 3. Deliver missing country coverage through source-specific lanes using the
    existing shared runner and separate enrichment jobs. Complete Spain address
    matching and scale its verified municipality enrichment. Carry Germany's
-   completed first pass into release preparation without repeating unchanged
-   matches; unfinished geocoding is deferred. Mexico capture is complete. UK and New Zealand
+   completed first pass into release preparation without repeating failed
+   matches. Drain eligible unattempted addresses across the available authorized
+   providers and accounts, including the national and Catalonia Spain sources.
+   Do not exclude usable addresses merely because they contain commas or lack
+   a house number; exact-point acceptance remains a separate evidence check.
+   Mexico capture is complete. UK and New Zealand
    must also pass fresh end-to-end source/map checks and be included in the final
    launch dataset. Extend languages through the same system.
 4. Build the new dated launch dataset; preserve current and historical releases.

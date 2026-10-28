@@ -78,7 +78,7 @@ class LocationIqIntegrationTests(unittest.TestCase):
         for provider, profile in (("geoapify","locationiq-de-bltu"),("locationiq","geoapify-de-bltu")):
             with self.assertRaises(ValueError):
                 get_adapter(provider, private_source_profile_id=profile)
-        self.assertIsNone(profile_for_source("es.locations", provider_id="locationiq"))
+        self.assertEqual(profile_for_source("es.locations", provider_id="locationiq")["profile_id"], "locationiq-es-aesan-rgseaa")
         self.assertEqual(profile_by_id("geoapify-es-aesan-rgseaa")["source_id"], "es.locations")
 
     def test_locationiq_requires_explicit_source_finite_batch_and_shared_free_tier_limits(self):
