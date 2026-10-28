@@ -66,6 +66,17 @@ class CountryReleaseAcceptanceTests(unittest.TestCase):
         self.assertEqual(len(api.calls), 4)
         self.assertEqual(api.calls[1][0], "/api/v2/map/matches")
 
+        # An unnamed member is still searchable by its public source name.
+        responses[("/api/v2/locations/" + facility_id, None, None)]["data"].update(
+            canonical_name=None, city=None,
+        )
+        responses[("/api/v2/locations", "synthetic", None)] = responses[
+            ("/api/v2/locations", "synthetic sample", None)
+        ]
+        unnamed_api = FakeApi(responses)
+        acceptance._check_sources(unnamed_api, contract)
+        self.assertEqual(unnamed_api.calls[-1][1]["q"], "synthetic")
+
     def test_graph_actual_array_page_shape_is_bounded_and_filtered(self):
         release = "country-r1"
         source = "mx.locations"

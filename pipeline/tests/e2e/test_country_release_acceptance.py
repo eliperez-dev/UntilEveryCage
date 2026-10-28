@@ -214,7 +214,10 @@ def _check_sources(api: LocalApi, contract: dict) -> None:
             classification = detail.get("taxonomy_primary_categories")
             if not isinstance(classification, list):
                 raise AcceptanceFailure("source_classification_missing")
-            term = detail.get("canonical_name") or detail.get("city")
+            # Some sources intentionally omit both the business name and city.
+            # Source names are also indexed public search fields.
+            term = (detail.get("canonical_name") or detail.get("city")
+                    or detail.get("provenance_source_name"))
             if not isinstance(term, str) or not term.strip():
                 raise AcceptanceFailure("source_sample_not_searchable")
             search_payload, _ = api.get("/api/v2/locations", {
