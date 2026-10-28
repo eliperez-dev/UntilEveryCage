@@ -2,6 +2,7 @@
 import type { GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl';
 import { CATEGORY_PRIMARY_BY_SOURCE_KEY, CATEGORY_PIN_IMAGES } from '../../features/locations/categoryPresentation';
 import { readNativeClusterLineage } from '../../map/nativeClusterLineage';
+import { repaintPlacedScene } from '../../map/repaintPlacedScene';
 import { resizeMotionCanvas } from './mapSurfaceMotion';
 
 export const DEFAULT_CLUSTER_MOTION_MS = 210;
@@ -261,9 +262,9 @@ export class NativeClusterMotionController {
     const generation = this.generation;
     const sceneZoom = map.getZoom();
     const started = performance.now();
-    // Moving placement can occupy a software-rendered frame for over 200ms.
-    // Reuse the bounded native-paint window without blocking camera input.
-    const pairingBudget = mergingDuringZoom ? NATIVE_PAINT_DEADLINE_MS : 100;
+    // Worker replies can wait behind a busy software-rendered browser frame.
+    // Use the same bounded paint window for both directions; input stays live.
+    const pairingBudget = NATIVE_PAINT_DEADLINE_MS;
     const timeout = setTimeout(() => { if (generation === this.generation && this.pending) this.cancel(false, 'pairing-timeout'); }, pairingBudget);
     const pairing = this.findPairs(direction === 'split' ? before : after, direction === 'split' ? after : before);
     void pairing.then(pairs => {
@@ -383,14 +384,13 @@ export class NativeClusterMotionController {
     if (afterPaint) this.afterPaint.push(afterPaint);
     const map = this.options.getMap(); if (!map || this.repainting || this.repaintQueued) return;
     this.repaintQueued = true;
-    // Input handlers run inside MapLibre's render task queue. Reentering
-    // redraw there throws and can strand the queue in its running state.
-    // A microtask runs after that stack, still before browser composition.
+    // Upload feature state after the native task stack, before composition.
+    // Paint the existing scene without advancing input or placement again.
     queueMicrotask(() => {
       this.repaintQueued = false;
       if (this.options.getMap() !== map) { this.afterPaint = []; return; }
       this.repainting = true;
-      try { map.redraw(); } finally { this.repainting = false; }
+      try { repaintPlacedScene(map); } finally { this.repainting = false; }
       const callbacks = this.afterPaint; this.afterPaint = [];
       for (const callback of callbacks) callback();
     });
