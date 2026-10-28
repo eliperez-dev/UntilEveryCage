@@ -6,6 +6,7 @@ import json
 import os
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -21,7 +22,10 @@ def _canonical(value):
 
 
 class CandidateBridgeTests(unittest.TestCase):
-    def test_preview_timeline_binds_first_handoff_and_latest_verified_acquisition(self):
+    @patch.object(bridge, "datetime", wraps=datetime)
+    def test_preview_timeline_binds_first_handoff_and_latest_verified_acquisition(self, clock):
+        # Keep the future-timestamp rejection deterministic after UTC rollover.
+        clock.now.return_value = datetime(2026, 10, 27, tzinfo=timezone.utc)
         first = "2026-10-25T15:18:37Z"
         latest = "2026-10-25T22:54:43Z"
         inventory_source = {"snapshot": {
