@@ -82,6 +82,8 @@ export class NativeClusterMotionController {
   private hidden = new Map<string, string | number>();
   private repainting = false;
   private repaintQueued = false;
+  private nativePaint = false;
+  private repaintWait: { map: MapLibreMap; listener: () => void } | undefined;
   private afterPaint: (() => void)[] = [];
   private heldDrawn = false;
   private footprint: [number, number, number, number] | undefined;
@@ -182,7 +184,12 @@ export class NativeClusterMotionController {
     this.draw();
   }
 
-  onRender(): void {
+  onRender(nativePaint = true): void {
+    this.nativePaint = nativePaint;
+    try { this.advanceRender(); } finally { this.nativePaint = false; }
+  }
+
+  private advanceRender(): void {
     // Native paint follows camera/terrain/layout updates. Animation-only RAFs
     // between those paints reuse the same projected positions and icon sizes.
     this.projected.clear(); this.frameScales.clear();
@@ -222,7 +229,7 @@ export class NativeClusterMotionController {
     const remaining = idleDelay - (performance.now() - this.settledAt);
     if (remaining > 0 && !mergingDuringZoom) {
       this.report('settling');
-      if (this.idleTimer === undefined) this.idleTimer = setTimeout(() => { this.idleTimer = undefined; this.onRender(); }, remaining);
+      if (this.idleTimer === undefined) this.idleTimer = setTimeout(() => { this.idleTimer = undefined; this.onRender(false); }, remaining);
       return;
     }
     if (!mergingDuringZoom && !map.isSourceLoaded('locations')) {
@@ -232,7 +239,7 @@ export class NativeClusterMotionController {
           if (generation !== this.generation) return;
           // Source completion can precede the next native render (notably in
           // Firefox). Use its ready hierarchy rather than aborting a valid cue.
-          if (this.options.getMap()?.isSourceLoaded('locations')) this.onRender();
+          if (this.options.getMap()?.isSourceLoaded('locations')) this.onRender(false);
           else this.cancel(false, 'source-timeout');
         }, NATIVE_PAINT_DEADLINE_MS);
       }
@@ -332,7 +339,12 @@ export class NativeClusterMotionController {
   private report(state: ClusterMotionState): void { this.canvas?.setAttribute('data-state', state); this.options.onState?.(state); }
   private markLimit(): number { return Math.max(50, Math.min(MAX_CLUSTER_MOTION_LIMIT, this.options.limit())); }
 
-  dispose(): void { this.cancel(true); this.handoff?.finish(); this.canvas?.remove(); this.canvas = undefined; }
+  dispose(): void {
+    this.cancel(true); this.handoff?.finish();
+    if (this.repaintWait) this.repaintWait.map.off('render', this.repaintWait.listener);
+    this.repaintWait = undefined; this.repaintQueued = false; this.afterPaint = [];
+    this.canvas?.remove(); this.canvas = undefined;
+  }
 
   private allowed(): boolean { return this.options.enabled() && !this.options.reducedMotion() && this.options.duration() > 0; }
 
@@ -390,16 +402,25 @@ export class NativeClusterMotionController {
     if (afterPaint) this.afterPaint.push(afterPaint);
     const map = this.options.getMap(); if (!map || this.repainting || this.repaintQueued) return;
     this.repaintQueued = true;
-    // Upload feature state after the native task stack, before composition.
-    // Paint the existing scene without advancing input or placement again.
-    queueMicrotask(() => {
+    const paint = () => {
+      if (this.repaintWait?.listener === paint) {
+        map.off('render', paint); this.repaintWait = undefined;
+      }
       this.repaintQueued = false;
       if (this.options.getMap() !== map) { this.afterPaint = []; return; }
       this.repainting = true;
       try { repaintPlacedScene(map); } finally { this.repainting = false; }
       const callbacks = this.afterPaint; this.afterPaint = [];
       for (const callback of callbacks) callback();
-    });
+    };
+    // A worker can install a new symbol bucket between native frames. Uploading
+    // it before placement allocates an empty opacity buffer that the next frame
+    // cannot resize. Only repaint a scene immediately after native placement.
+    if (this.nativePaint) queueMicrotask(paint);
+    else {
+      this.repaintWait = { map, listener: paint };
+      map.on('render', paint); map.triggerRepaint();
+    }
   }
 
   private applyMask(): void {

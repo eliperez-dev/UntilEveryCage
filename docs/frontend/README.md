@@ -634,11 +634,14 @@ timeout. The existing native query channel remains a compatibility fallback. Ret
 identity pairs only; do not recursively fetch descendants, warm a second cache,
 or issue hierarchy requests on every camera frame. Skipping several
 zoom levels uses the same lookup. Coalesce feature-state redraws in a microtask
-after MapLibre's input/render task returns, before browser composition; never
+after MapLibre's native render returns, before browser composition; never
 call synchronous redraw from inside its task queue. The pinned painter adapter
 uploads feature state and repaints the already-placed scene without rerunning
 camera tasks, source selection or symbol placement. It preserves the scheduled
-native frame and its timestamp. Clear the canvas only after
+native frame and its timestamp. Worker replies and animation timers wait for
+the next native render before using that adapter: newly arrived symbol buckets
+must complete placement before their GPU opacity buffers are first uploaded.
+Clear the canvas only after
 the restoring native paint returns, including held scenes whose identities
 are temporarily absent from the native query. Source readiness alone is not
 confirmation that replacement pixels have painted.

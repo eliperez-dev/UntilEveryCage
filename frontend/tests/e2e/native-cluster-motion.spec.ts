@@ -4,6 +4,9 @@ import releaseManifest from '../fixtures/release-map/manifest.json' with { type:
 import { CLUSTER_MOTION_HIDDEN_STATE, clusterMotionOpacity } from '../../src/design-lab/components/nativeClusterMotion';
 
 test.use({ video: { mode: 'on', size: { width: 1280, height: 720 } }, viewport: { width: 1280, height: 720 } });
+// Includes Vite module loading, worker startup and several recorded WebGL
+// scenes on software-rendered CI. Per-frame and gesture limits stay explicit.
+test.setTimeout(60_000);
 
 async function fixture(page: Page, focusedCount?: number, stableNeighbor = false, worldwide: boolean | 'spread' = false, samplePixels = false) {
   const requests = { feeds: 0, manifests: 0 };

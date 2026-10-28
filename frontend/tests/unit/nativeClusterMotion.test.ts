@@ -78,6 +78,8 @@ describe('selective native visibility and stacking', () => {
     controller.applyMask(); controller.applyMask();
     expect(map.redraw).not.toHaveBeenCalled();
     await Promise.resolve();
+    expect(map.redraw).not.toHaveBeenCalled();
+    map.on.mock.calls.at(-1)![1]();
     expect(map.redraw).toHaveBeenCalledTimes(1);
     const clear = vi.spyOn(controller, 'clear');
     controller.invalidate();
@@ -90,44 +92,74 @@ describe('selective native visibility and stacking', () => {
     expect(paint.get('clusters/icon-opacity')).toEqual(clusterMotionOpacity(.7));
     expect(map.setPaintProperty).toHaveBeenCalledTimes(4);
   });
-  it('coalesces redraws after the current native input/render task returns', async () => {
+  it('waits for native placement when a worker installs new buckets between frames', async () => {
     let insideInputTask = true;
-    const map = { redraw: vi.fn(() => { if (insideInputTask) throw new Error('Attempting to run(), but is already running.'); }) };
+    let placed = false;
+    const map = { on: vi.fn(), off: vi.fn(), triggerRepaint: vi.fn(), redraw: vi.fn(() => {
+      if (insideInputTask) throw new Error('Attempting to run(), but is already running.');
+      if (!placed) throw new Error('Length of new data is 101, which does not match current length of 0');
+    }) };
     const controller = new NativeClusterMotionController({ getMap: () => map as any, reducedMotion: () => false, enabled: () => true, duration: () => 210, limit: () => 1200 }) as any;
     controller.repaint(); controller.repaint(); controller.repaint();
     expect(map.redraw).not.toHaveBeenCalled();
     insideInputTask = false;
     await Promise.resolve();
+    expect(map.redraw).not.toHaveBeenCalled();
+    expect(map.triggerRepaint).toHaveBeenCalledTimes(1);
+    placed = true;
+    map.on.mock.calls.at(-1)![1]();
     expect(map.redraw).toHaveBeenCalledTimes(1);
   });
   it('keeps the overlay until restored native pixels have actually repainted', async () => {
     const order: string[] = [];
-    const map = { getSource: () => ({}), isSourceLoaded: () => true, on: vi.fn(), off: vi.fn(), removeFeatureState: vi.fn(), redraw: vi.fn(() => order.push('native paint')) };
+    const map = { getSource: () => ({}), isSourceLoaded: () => true, on: vi.fn(), off: vi.fn(), triggerRepaint: vi.fn(), removeFeatureState: vi.fn(), redraw: vi.fn(() => order.push('native paint')) };
     const controller = new NativeClusterMotionController({ getMap: () => map as any, reducedMotion: () => false, enabled: () => true, duration: () => 210, limit: () => 1200 }) as any;
     controller.hidden.set('c:1', 1);
     controller.clear = vi.fn(() => order.push('clear overlay'));
     controller.unmask(true);
     expect(order).toEqual([]);
     await Promise.resolve();
+    expect(order).toEqual([]);
+    map.on.mock.calls.at(-1)![1]();
     expect(order).toEqual(['native paint', 'clear overlay']);
+  });
+  it('repaints a native render in the same composite but never treats a timer as placement', async () => {
+    const map = { on: vi.fn(), off: vi.fn(), triggerRepaint: vi.fn(), redraw: vi.fn() };
+    const controller = new NativeClusterMotionController({ getMap: () => map as any, reducedMotion: () => false, enabled: () => true, duration: () => 210, limit: () => 1200 }) as any;
+    controller.advanceRender = () => controller.repaint();
+    controller.onRender();
+    expect(map.redraw).not.toHaveBeenCalled();
+    await Promise.resolve();
+    expect(map.redraw).toHaveBeenCalledTimes(1);
+    expect(map.on).not.toHaveBeenCalled();
+    controller.onRender(false);
+    await Promise.resolve();
+    expect(map.redraw).toHaveBeenCalledTimes(1);
+    expect(map.on).toHaveBeenCalledOnce();
+    map.on.mock.calls.at(-1)![1]();
+    expect(map.redraw).toHaveBeenCalledTimes(2);
   });
   it('completes handoffs requested by a render listener in the same paint', async () => {
     const done = vi.fn();
     let controller: any;
     const map = { redraw: () => controller.repaint(done) };
     controller = new NativeClusterMotionController({ getMap: () => map as any, reducedMotion: () => false, enabled: () => true, duration: () => 210, limit: () => 1200 });
+    controller.nativePaint = true;
     controller.repaint();
+    controller.nativePaint = false;
     await Promise.resolve();
     expect(done).toHaveBeenCalledTimes(1);
   });
   it('repaints before dropping a held scene even when its hidden marks left the native query', async () => {
     const order: string[] = [];
-    const map = { getSource: () => ({}), isSourceLoaded: () => true, on: vi.fn(), off: vi.fn(), redraw: () => order.push('native paint') };
+    const map = { getSource: () => ({}), isSourceLoaded: () => true, on: vi.fn(), off: vi.fn(), triggerRepaint: vi.fn(), redraw: () => order.push('native paint') };
     const controller = new NativeClusterMotionController({ getMap: () => map as any, reducedMotion: () => false, enabled: () => true, duration: () => 210, limit: () => 1200 }) as any;
     controller.heldDrawn = true; controller.clear = () => order.push('clear overlay');
     controller.unmask(true);
     expect(order).toEqual([]);
     await Promise.resolve();
+    expect(order).toEqual([]);
+    map.on.mock.calls.at(-1)![1]();
     expect(order).toEqual(['native paint', 'clear overlay']);
   });
   it('retains the original held scene through rapid camera retargets without rebuilding it', () => {
@@ -202,7 +234,7 @@ describe('native cluster transition identities and artwork', () => {
 
 describe('newly exposed regions', () => {
   it('never blanket-hides marks outside the original viewport', () => {
-    const map = { getSource: () => ({}), setFeatureState: vi.fn(), removeFeatureState: vi.fn(), redraw: vi.fn() };
+    const map = { getSource: () => ({}), setFeatureState: vi.fn(), removeFeatureState: vi.fn(), redraw: vi.fn(), on: vi.fn(), off: vi.fn(), triggerRepaint: vi.fn() };
     const controller = new NativeClusterMotionController({ getMap: () => map as any, reducedMotion: () => false, enabled: () => true, duration: () => 210, limit: () => 1200 }) as any;
     controller.footprint = [-125, 30, -115, 42];
     controller.presentNodes = new Map([
