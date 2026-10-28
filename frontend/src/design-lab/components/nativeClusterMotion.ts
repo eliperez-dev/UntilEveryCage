@@ -312,7 +312,7 @@ export class NativeClusterMotionController {
       if (generation !== this.generation) return;
       this.pending = false;
       const participantKeys = new Set(pairs.flatMap(pair => [pair.parent.key, pair.child.key]));
-      const appearing = this.liveMerge ? [...after.values()].filter(node => !before.has(node.key) && !participantKeys.has(node.key)).reverse() : [];
+      const appearing = this.liveMerge ? [...after.values()].filter(node => !before.has(node.key) && !participantKeys.has(node.key) && this.heldRegionContains(node)).reverse() : [];
       // A slow worker must never postpone input or make settled pins jump back.
       const visibleMarks = new Set([...after.keys(), ...pairs.flatMap(pair => [pair.parent.key, pair.child.key])]).size;
       if ((!pairs.length && !appearing.length) || visibleMarks > this.markLimit() || performance.now() - started > pairingBudget || !this.allowed()) { this.cancel(false, !pairs.length ? 'no-lineage' : visibleMarks > this.markLimit() ? 'density-limit' : 'pairing-timeout'); return; }
@@ -444,7 +444,7 @@ export class NativeClusterMotionController {
     const playing = this.queued ? new Set([...(this.motion?.pairs.flatMap(({ parent, child }) => [parent.key, child.key]) ?? []), ...(this.motion?.appearing.map(node => node.key) ?? [])]) : undefined;
     for (const node of this.presentNodes.values()) {
       if (node.id !== undefined && (playing?.has(node.key) || (scope.retain
-        ? !scope.keys.has(node.key) && (this.liveMerge || this.heldRegionContains(node))
+        ? !scope.keys.has(node.key) && this.heldRegionContains(node)
         : scope.keys.has(node.key)))) next.set(node.key, node.id);
     }
     let changed = false;

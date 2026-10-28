@@ -299,8 +299,11 @@ describe('newly exposed regions', () => {
       ['c:1', { key: 'c:1', id: 1, coordinates: [-120, 35] }],
       ['c:2', { key: 'c:2', id: 2, coordinates: [-75, 40] }],
     ]);
-    controller.mask(new Set(['c:old']), true);
-    expect([...controller.hidden.keys()]).toEqual(['c:1']);
+    for (const merging of [false, true]) {
+      controller.liveMerge = merging;
+      controller.mask(new Set(['c:old']), true);
+      expect([...controller.hidden.keys()]).toEqual(['c:1']);
+    }
     controller.mask(new Set(), false);
     expect(controller.hidden.size).toBe(0);
   });

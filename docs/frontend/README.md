@@ -617,7 +617,9 @@ tiles. Promote the existing point key to preserve full UUID feature identities.
 When zoom-in settles, children travel from their parent cluster to their new
 positions. With the default zero idle delay, zoom-out merges advance through
 placed scenes while the camera moves, coalescing further changes until the
-current short cue finishes. Newly exposed branches fade in on the same clock,
+current short cue finishes. New regions stay native while lineage is pending;
+never hide marks outside the held viewport without a painted replacement.
+Changed branches inside the held viewport fade in on the same clock,
 so the original viewport cannot remain a dense island inside a coarser map.
 A custom nonzero idle delay still waits for the camera to stop.
 Keep native bottom-to-top stacking on the canvas and retain the
