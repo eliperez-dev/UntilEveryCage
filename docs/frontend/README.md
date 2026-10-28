@@ -647,6 +647,9 @@ each native render, zoom start and cancellation so movement and terrain updates
 still reproject correctly.
 Cache each fixed pin-and-shadow sprite once, then fade and draw it as one
 image. Do not cache facility identities or counts in this artwork cache.
+Chromium browser checks use its full compositor (`channel: chromium`), matching
+the normal browser rather than the separate headless shell. Firefox and WebKit
+remain part of the configured browser coverage.
 If a new zoom starts during a short playing cue, finish that cue without resetting
 its progress, then hold its destination identities for the next transition.
 The default is 210 ms and at most 1,200 animated marks in total. Debug
