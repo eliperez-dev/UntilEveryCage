@@ -619,9 +619,13 @@ positions. With the default zero idle delay, zoom-out merges advance through
 placed scenes while the camera moves, coalescing further changes until the
 current short cue finishes. Adopt each newly revealed region's first native
 scene immediately, including arrivals during a worker read or another cue.
-Advance the tracked viewport after that scene can paint, so its subsequent
-cluster changes use the same hold and parent-origin animation as the original
-region. Never blanket-hide space before observing its first scene. Keep
+Identify related branches by native ancestor IDs carried in tile-local
+properties, rather than treating a viewport rectangle as evidence of a prior
+child. Late first arrivals inside that rectangle must also remain visible.
+Derive numeric parent links once per native tree generation; clone tile tags
+so the added ancestry never changes source data or persisted index snapshots.
+Each observed region's subsequent changes use the same hold and parent-origin animation
+as the original region. Never blanket-hide space before observing its first scene. Keep
 unpaired arrivals through intermediate checkpoints and hold vanished marks
 even while a different branch animates. Retire them only when their matching
 parents replace them; do not discard them with an older worker snapshot.

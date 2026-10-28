@@ -291,6 +291,22 @@ describe('native cluster transition identities and artwork', () => {
 });
 
 describe('newly exposed regions', () => {
+  it('keeps late births visible inside the previous viewport and masks only native relatives', () => {
+    const map = { getSource: () => ({}), setFeatureState: vi.fn(), removeFeatureState: vi.fn(), triggerRepaint: vi.fn() };
+    const controller = new NativeClusterMotionController({ getMap: () => map as any, reducedMotion: () => false, enabled: () => true, duration: () => 210, limit: () => 1200 }) as any;
+    const node = (key: string, ancestors: string[]) => ({ key, id: key, coordinates: [-120, 35], ancestors });
+    controller.before = new Map([['c:child', node('c:child', ['c:parent', 'c:grandparent'])]]);
+    controller.footprint = [-130, 20, -60, 50];
+    controller.presentNodes = new Map([
+      ['c:birth', node('c:birth', [])], ['c:parent', node('c:parent', ['c:grandparent'])], ['c:grandparent', node('c:grandparent', [])],
+    ]);
+    controller.mask(new Set(controller.before.keys()), true);
+    expect([...controller.hidden.keys()]).toEqual(['c:parent', 'c:grandparent']);
+    controller.before = new Map([['c:parent', node('c:parent', ['c:grandparent'])]]);
+    controller.presentNodes = new Map([['c:descendant', node('c:descendant', ['c:parent', 'c:grandparent'])], ['c:birth', node('c:birth', [])]]);
+    controller.mask(new Set(controller.before.keys()), true);
+    expect([...controller.hidden.keys()]).toEqual(['c:descendant']);
+  });
   it('starts the stable-placement deadline after camera movement, not during partial arrivals', async () => {
     let now = 0, moving = true;
     const clock = vi.spyOn(performance, 'now').mockImplementation(() => now);
