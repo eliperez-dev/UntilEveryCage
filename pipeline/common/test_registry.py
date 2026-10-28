@@ -8,7 +8,9 @@ from .adapter_registry import load
 class RegistryTests(unittest.TestCase):
     def test_registered_adapters_have_versioned_capabilities(self):
         registry = load(Path(__file__).parents[1] / "adapter-capabilities.json")
-        self.assertEqual({entry["country_code"] for entry in registry["adapters"]}, {"au", "be", "br", "ca", "de", "dk", "es", "fr", "gb", "mx", "nl", "no", "nz", "us"})
+        self.assertEqual({entry["country_code"] for entry in registry["adapters"]}, {"au", "be", "br", "ca", "de", "dk", "es", "eu", "fr", "gb", "mx", "nl", "no", "nz", "us"})
+        eea = next(entry for entry in registry["adapters"] if entry["source_id"] == "eu.eea.intensive-livestock")
+        self.assertEqual(eea["country_code"], "eu")  # Publisher scope; facility countries stay source-owned.
         by_source = {entry["source_id"]: entry for entry in registry["adapters"]}
         expected = {
             "no.fiskeridir.aquaculture": ("no", "no-fiskeridir-aquaculture-v1", "no-fiskeridir-mapserver-geojson-v1"),
