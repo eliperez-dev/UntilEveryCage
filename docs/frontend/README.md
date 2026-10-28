@@ -633,14 +633,12 @@ message queues cannot delay the animation reply; close it after completion or
 timeout. The existing native query channel remains a compatibility fallback. Return
 identity pairs only; do not recursively fetch descendants, warm a second cache,
 or issue hierarchy requests on every camera frame. Skipping several
-zoom levels uses the same lookup. Coalesce feature-state redraws in a microtask
-after MapLibre's native render returns, before browser composition; never
-call synchronous redraw from inside its task queue. The pinned painter adapter
-uploads feature state and repaints the already-placed scene without rerunning
-camera tasks, source selection or symbol placement. It preserves the scheduled
-native frame and its timestamp. Worker replies and animation timers wait for
-the next native render before using that adapter: newly arrived symbol buckets
-must complete placement before their GPU opacity buffers are first uploaded.
+zoom levels uses the same lookup. Prepare visibility in a custom layer's
+`prerender`, after native symbol placement and before symbols draw. Flush only
+the locations source's paint attributes; never repaint the whole scene or run
+camera tasks, source selection or symbol placement a second time. Worker
+replies and animation timers queue the next native frame. Start each cue when
+that frame can paint its mask, rather than when a worker reply arrives.
 Clear the canvas only after
 the restoring native paint returns, including held scenes whose identities
 are temporarily absent from the native query. Source readiness alone is not
@@ -650,9 +648,17 @@ each native render, zoom start and cancellation so movement and terrain updates
 still reproject correctly.
 Cache each fixed pin-and-shadow sprite once, then fade and draw it as one
 image. Do not cache facility identities or counts in this artwork cache.
+Use CPU-backed canvases for the short overlay and its small artwork so drawing
+them does not synchronize additional graphics contexts with the WebGL map.
+Initialize the overlay and its label font during map startup.
 Chromium browser checks use its full compositor (`channel: chromium`), matching
 the normal browser rather than the separate headless shell. Firefox and WebKit
 remain part of the configured browser coverage.
+Animation timing fixtures keep the real pitched camera over a controlled flat
+surface. The camera/terrain journey and the elevation fixtures retain terrain
+rendering; animation frame and freeze limits remain explicit.
+Freeze checks compare the last painted overlay's camera pose with the current
+camera, and include a deliberately stale overlay as a negative control.
 If a new zoom starts during a short playing cue, finish that cue without resetting
 its progress, then hold its destination identities for the next transition.
 The default is 210 ms and at most 1,200 animated marks in total. Debug

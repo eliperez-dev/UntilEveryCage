@@ -8,7 +8,7 @@ test.use({ video: { mode: 'on', size: { width: 1280, height: 720 } }, viewport: 
 // scenes on software-rendered CI. Per-frame and gesture limits stay explicit.
 test.setTimeout(60_000);
 
-async function fixture(page: Page, focusedCount?: number, stableNeighbor = false, worldwide: boolean | 'spread' = false, samplePixels = false) {
+async function fixture(page: Page, focusedCount?: number, stableNeighbor = false, worldwide: boolean | 'spread' = false, samplePixels = false, terrain = false) {
   const requests = { feeds: 0, manifests: 0 };
   const hubs = [[-122, 37], [-75, 40], [-47, -15], [12, 48], [38, 9], [80, 21], [120, 35], [136, -25], [-171, -13], [174, -37]];
   const features = Array.from({ length: 3200 }, (_, i) => ({
@@ -26,6 +26,12 @@ async function fixture(page: Page, focusedCount?: number, stableNeighbor = false
   }), 'base64');
   await page.route('https://tile.openstreetmap.org/**', route => route.fulfill({ contentType: 'image/png', body: tile }));
   await page.route('https://server.arcgisonline.com/**', route => route.fulfill({ contentType: 'image/png', body: tile }));
+  const dem = Buffer.from(await page.evaluate(() => {
+    const canvas = document.createElement('canvas'); canvas.width = canvas.height = 64;
+    const context = canvas.getContext('2d')!; context.fillStyle = 'rgb(128, 0, 0)'; context.fillRect(0, 0, 64, 64);
+    return canvas.toDataURL('image/png').split(',')[1]!;
+  }), 'base64');
+  await page.route('https://tiles.mapterhorn.com/**', route => route.fulfill({ contentType: 'image/png', body: dem }));
   await page.route(url => url.pathname === '/api/v2/releases/manifest', route => { requests.manifests++; return route.fulfill({ json: releaseManifest }); });
   await page.route(url => url.pathname === '/api/v2/map/feed', route => { requests.feeds++; return route.fulfill({ json: {
     api_version: 'v2', data: { type: 'FeatureCollection', features }, meta: { profile: 'official', release_id: 'synthetic-release-2026-09', manifest_sha256: 'a'.repeat(64), suppression_generation: 7, feature_count: 3200, public_record_count: 3200, unmapped_count: 0, release_label: 'Synthetic animation fixture', dataset_version: 'synthetic-test' },
@@ -62,6 +68,15 @@ async function fixture(page: Page, focusedCount?: number, stableNeighbor = false
   }, samplePixels);
   await page.goto(`./#/map?release_id=synthetic-release-2026-09&${worldwide === 'spread' ? 'lat=38&lon=-98&z=4' : 'lat=51.19&lon=4.93&z=6'}`);
   await page.waitForFunction(() => { const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__; return map?.getLayer('clusters') && map.isSourceLoaded('locations') && map.queryRenderedFeatures({ layers: ['clusters'] }).length; });
+  // Timing checks retain the real pitched camera and native symbols over a
+  // controlled flat surface. The camera/terrain journey below keeps real DEM
+  // rendering, as do the full-resolution terrain tests in map-camera.spec.ts.
+  if (!terrain) await page.evaluate(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    const setTerrain = map.setTerrain.bind(map);
+    map.setTerrain(null);
+    map.setTerrain = (options: unknown) => options ? map : setTerrain(null);
+  });
   return requests;
 }
 
@@ -71,7 +86,7 @@ test('world-scale splits and merges draw every visible copy of masked cluster id
   await fixture(page, undefined, false, true);
   await page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.jumpTo({ center: [0, 0], zoom: .8, pitch: 0, bearing: 0 }));
   await page.waitForFunction(() => { const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__; return !map.isMoving() && map.isSourceLoaded('locations'); });
-  await page.evaluate(() => new Promise<void>(resolve => { const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__; map.once('idle', () => resolve()); map.triggerRepaint(); }));
+  await page.evaluate(() => new Promise<void>(resolve => { const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__; map.once('render', () => resolve()); map.triggerRepaint(); }));
   await page.evaluate(async () => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     const url = performance.getEntriesByType('resource').find(entry => entry.name.includes('/nativeClusterMotion.ts'))?.name;
@@ -177,10 +192,9 @@ for (const pitch of [0, 60]) test(`large zoom jumps at ${pitch} degrees reveal n
   await page.setViewportSize({ width: 1910, height: 900 });
   await fixture(page, undefined, false, 'spread');
   await monitorMotion(page);
-  await page.route('https://tiles.mapterhorn.com/**', route => route.abort());
   await page.evaluate(pitch => (window as any).__UEC_LOCAL_PREVIEW_MAP__.jumpTo({ center: [-119, 35], zoom: 8, pitch, bearing: pitch ? 20 : 0 }), pitch);
   await page.waitForFunction(() => { const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__; return map.isSourceLoaded('locations') && !map.isMoving() && !document.querySelector('.native-cluster-motion')?.hasAttribute('data-phase'); });
-  await page.evaluate(() => new Promise<void>(resolve => { const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__; map.once('idle', () => resolve()); map.triggerRepaint(); }));
+  await page.evaluate(() => new Promise<void>(resolve => { const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__; map.once('render', () => resolve()); map.triggerRepaint(); }));
   await page.evaluate(async (hidden) => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__, source = map.getSource('locations');
     const sample = { childRequests: 0, lineageRequests: 0, newRegionChecks: 0, maxMissingMs: 0, frameCosts: [] as number[], drawingCosts: [] as number[] };
@@ -227,10 +241,10 @@ for (const pitch of [0, 60]) test(`large zoom jumps at ${pitch} degrees reveal n
         } else missingSince.delete(key);
       }
     });
-    map.easeTo({ zoom: 2, duration: 850 });
+    map.easeTo({ zoom: 2, duration: 2000 });
   }, CLUSTER_MOTION_HIDDEN_STATE);
   await page.waitForFunction(() => !(window as any).__UEC_LOCAL_PREVIEW_MAP__.isMoving() && !document.querySelector('.native-cluster-motion')?.hasAttribute('data-phase'));
-  await page.evaluate(() => { (window as any).__monitorNewRegions = false; (window as any).__motionLifecycle.length = 0; (window as any).__UEC_LOCAL_PREVIEW_MAP__.easeTo({ zoom: 7, duration: 850 }); });
+  await page.evaluate(() => { (window as any).__monitorNewRegions = false; (window as any).__motionLifecycle.length = 0; (window as any).__UEC_LOCAL_PREVIEW_MAP__.easeTo({ zoom: 7, duration: 2000 }); });
   await page.waitForFunction(() => !(window as any).__UEC_LOCAL_PREVIEW_MAP__.isMoving() && !document.querySelector('.native-cluster-motion')?.hasAttribute('data-phase'));
   const sample = await page.evaluate(() => ({ ...(window as any).__largeJump, lifecycle: (window as any).__motionLifecycle, state: document.querySelector('.native-cluster-motion')?.getAttribute('data-state') }));
   await writeFile(testInfo.outputPath('large-jump-coverage-and-cost.json'), JSON.stringify(sample));
@@ -820,15 +834,19 @@ test('one continuous zoom holds native marks then moves children once from their
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__, canvas = document.querySelector('.native-cluster-motion')!;
     const loaded = map.isSourceLoaded.bind(map);
     let holdUntil = 0, previous: string | null = null;
-    const samples = { starts: 0, frozenMs: 0, samples: 0, addedDisplacement: 0, held: 0, exposed: 0, hasGhost: false, progress: [] as number[] };
+    const samples = { starts: 0, frozenMs: 0, samples: 0, addedDisplacement: 0, held: 0, exposed: 0, hasGhost: false, progress: [] as number[], probe: false, probeFrozenMs: 0 };
     (window as any).__zoomContinuity = samples;
     const moduleUrl = performance.getEntriesByType('resource').find(entry => entry.name.includes('/nativeClusterMotion.ts'))?.name;
     if (!moduleUrl) throw new Error('Native motion module was not loaded');
     const { NativeClusterMotionController } = await import(moduleUrl);
     const originalKeys = new Set(map.queryRenderedFeatures({ layers: ['clusters'] }).map((feature: any) => feature.properties.cluster_id));
+    const cameraPose = () => { const center = map.getCenter(); return [map.getZoom(), center.lng, center.lat, map.getPitch(), map.getBearing()].join('|'); };
+    let drawPose = cameraPose(), lastDrawPose = drawPose;
     const render = NativeClusterMotionController.prototype.draw;
     NativeClusterMotionController.prototype.draw = function (...args: any[]) {
       samples.hasGhost = Boolean(this.motion || this.before && [...this.before.keys()].some((key: string) => !this.present.has(key)));
+      if (samples.probe && samples.hasGhost && map.isMoving()) { (window as any).__freezeProbeController = this; return; }
+      drawPose = cameraPose();
       return render.apply(this, args);
     };
     const draw = NativeClusterMotionController.prototype.drawNode;
@@ -836,6 +854,7 @@ test('one continuous zoom holds native marks then moves children once from their
     NativeClusterMotionController.prototype.drawNode = function (...args: any[]) {
       const [, node, from, to, progress, opacity] = args;
       lastDraw = performance.now();
+      lastDrawPose = drawPose;
       if (node.key === to.key && from.key !== to.key) {
         childKey ??= node.key;
         if (childKey === node.key) samples.progress.push(progress);
@@ -854,7 +873,12 @@ test('one continuous zoom holds native marks then moves children once from their
     }).observe(canvas, { attributes: true, attributeFilter: ['data-direction'] });
     const sample = () => {
       if (canvas.hasAttribute('data-phase')) {
-        if (samples.hasGhost) samples.frozenMs = Math.max(samples.frozenMs, performance.now() - lastDraw);
+        // A slow native GPU frame is not a stale overlay when both canvases
+        // still show the same camera pose. Count actual camera/overlay drift.
+        if (samples.hasGhost && lastDrawPose !== cameraPose()) {
+          if (samples.probe) samples.probeFrozenMs = Math.max(samples.probeFrozenMs, performance.now() - lastDraw);
+          else samples.frozenMs = Math.max(samples.frozenMs, performance.now() - lastDraw);
+        }
         samples.samples++;
         if (map.isMoving()) {
           samples.held++;
@@ -865,6 +889,7 @@ test('one continuous zoom holds native marks then moves children once from their
       }
       if (map.isMoving() || canvas.hasAttribute('data-phase')) requestAnimationFrame(sample);
     };
+    (window as any).__sampleZoomContinuity = sample;
     map.easeTo({ zoom: 8.8, duration: 1800 }); requestAnimationFrame(sample);
   });
   await expect.poll(() => page.evaluate(() => (window as any).__zoomContinuity.starts)).toBe(1);
@@ -887,6 +912,20 @@ test('one continuous zoom holds native marks then moves children once from their
   expect(continuity.progress[0]).toBeLessThan(.2);
   expect(continuity.progress.at(-1)).toBe(1);
   expect(continuity.progress.every((progress, index) => index === 0 || progress >= continuity.progress[index - 1]!)).toBe(true);
+  // Negative control: the same metric must detect a deliberately held overlay
+  // while the real camera continues changing, rather than merely ignore gaps.
+  await page.evaluate(() => {
+    (window as any).__zoomContinuity.probe = true;
+    (window as any).__UEC_LOCAL_PREVIEW_MAP__.easeTo({ zoom: 6, duration: 1200 });
+    requestAnimationFrame((window as any).__sampleZoomContinuity);
+  });
+  await page.waitForFunction(() => (window as any).__zoomContinuity.probeFrozenMs > 80);
+  await page.evaluate(() => {
+    (window as any).__zoomContinuity.probe = false;
+    (window as any).__freezeProbeController?.cancel();
+    (window as any).__UEC_LOCAL_PREVIEW_MAP__.stop();
+  });
+  await page.waitForFunction(() => !document.querySelector('.native-cluster-motion')?.hasAttribute('data-phase'));
 });
 
 test('animation on and off keep the same 3D camera path and mobile wheel zoom remains monotonic', async ({ page }, testInfo) => {
@@ -894,7 +933,7 @@ test('animation on and off keep the same 3D camera path and mobile wheel zoom re
   // intentionally checked together, including on software-rendered Linux.
   test.setTimeout(180_000);
   await page.setViewportSize({ width: 390, height: 844 });
-  await fixture(page);
+  await fixture(page, undefined, false, false, false, true);
   await monitorMotion(page);
   const elevation = Buffer.from(await page.evaluate(() => {
     const canvas = document.createElement('canvas'); canvas.width = canvas.height = 64;

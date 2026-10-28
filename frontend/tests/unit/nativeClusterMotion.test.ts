@@ -26,6 +26,11 @@ describe('wrapped transition geometry', () => {
 });
 
 describe('selective native visibility and stacking', () => {
+  function paintMap(prepare = vi.fn()) {
+    return { style: { tileManagers: { locations: { prepare } } }, painter: { context: {} },
+      getSource: () => ({}), isSourceLoaded: () => true, on: vi.fn(), off: vi.fn(),
+      triggerRepaint: vi.fn(), removeFeatureState: vi.fn(), redraw: vi.fn() };
+  }
   function opacity(original: unknown, hidden: boolean, properties: Record<string, unknown>) {
     const parsed = createExpression(clusterMotionOpacity(original), 'icon-opacity');
     expect(parsed.result).toBe('success');
@@ -58,7 +63,7 @@ describe('selective native visibility and stacking', () => {
   it('installs paint once and changes only its own bounded feature state during gestures', async () => {
     const paint = new Map<string, unknown>();
     const map = {
-      getLayer: (id: string) => id === 'clusters', getSource: () => ({}),
+      getLayer: (id: string) => id === 'clusters', getSource: () => ({}), addLayer: vi.fn(),
       getPaintProperty: (layer: string, property: string) => paint.get(`${layer}/${property}`),
       setPaintProperty: vi.fn((layer: string, property: string, value: unknown) => { paint.set(`${layer}/${property}`, value); }),
       setFeatureState: vi.fn(), removeFeatureState: vi.fn(), redraw: vi.fn(), triggerRepaint: vi.fn(), on: vi.fn(), off: vi.fn(), isSourceLoaded: () => true,
@@ -79,8 +84,9 @@ describe('selective native visibility and stacking', () => {
     expect(map.redraw).not.toHaveBeenCalled();
     await Promise.resolve();
     expect(map.redraw).not.toHaveBeenCalled();
-    map.on.mock.calls.at(-1)![1]();
-    expect(map.redraw).toHaveBeenCalledTimes(1);
+    controller.onRender('before'); controller.onRender('after');
+    expect(map.redraw).not.toHaveBeenCalled();
+    expect(map.triggerRepaint).toHaveBeenCalledTimes(1);
     const clear = vi.spyOn(controller, 'clear');
     controller.invalidate();
     expect(clear).toHaveBeenCalled(); expect(controller.hidden.size).toBe(0); expect(controller.maskScope).toBeUndefined();
@@ -92,27 +98,41 @@ describe('selective native visibility and stacking', () => {
     expect(paint.get('clusters/icon-opacity')).toEqual(clusterMotionOpacity(.7));
     expect(map.setPaintProperty).toHaveBeenCalledTimes(4);
   });
+  it('owns one prepaint hook per style and removes it on disposal', () => {
+    const layers = new Set(['clusters']);
+    const map = { ...paintMap(), getLayer: (id: string) => layers.has(id),
+      addLayer: vi.fn((layer: { id: string }) => layers.add(layer.id)),
+      removeLayer: vi.fn((id: string) => layers.delete(id)), getPaintProperty: () => 1, setPaintProperty: vi.fn() };
+    const controller = new NativeClusterMotionController({ getMap: () => map as any, reducedMotion: () => false, enabled: () => true, duration: () => 210, limit: () => 1200 });
+    controller.configureLayers(); controller.configureLayers();
+    expect(map.addLayer).toHaveBeenCalledOnce();
+    expect(map.addLayer).toHaveBeenCalledWith(expect.objectContaining({ type: 'custom', prerender: expect.any(Function) }), 'clusters');
+    controller.dispose();
+    expect(map.removeLayer).toHaveBeenCalledWith('uec-cluster-motion-state');
+  });
   it('waits for native placement when a worker installs new buckets between frames', async () => {
     let insideInputTask = true;
     let placed = false;
-    const map = { on: vi.fn(), off: vi.fn(), triggerRepaint: vi.fn(), redraw: vi.fn(() => {
+    const prepare = vi.fn(() => {
       if (insideInputTask) throw new Error('Attempting to run(), but is already running.');
       if (!placed) throw new Error('Length of new data is 101, which does not match current length of 0');
-    }) };
+    });
+    const map = paintMap(prepare);
     const controller = new NativeClusterMotionController({ getMap: () => map as any, reducedMotion: () => false, enabled: () => true, duration: () => 210, limit: () => 1200 }) as any;
     controller.repaint(); controller.repaint(); controller.repaint();
     expect(map.redraw).not.toHaveBeenCalled();
     insideInputTask = false;
     await Promise.resolve();
     expect(map.redraw).not.toHaveBeenCalled();
+    expect(prepare).not.toHaveBeenCalled();
     expect(map.triggerRepaint).toHaveBeenCalledTimes(1);
     placed = true;
-    map.on.mock.calls.at(-1)![1]();
-    expect(map.redraw).toHaveBeenCalledTimes(1);
+    controller.onRender('before');
+    expect(prepare).toHaveBeenCalledOnce(); expect(map.redraw).not.toHaveBeenCalled();
   });
   it('keeps the overlay until restored native pixels have actually repainted', async () => {
     const order: string[] = [];
-    const map = { getSource: () => ({}), isSourceLoaded: () => true, on: vi.fn(), off: vi.fn(), triggerRepaint: vi.fn(), removeFeatureState: vi.fn(), redraw: vi.fn(() => order.push('native paint')) };
+    const map = paintMap(vi.fn(() => order.push('prepare attributes')));
     const controller = new NativeClusterMotionController({ getMap: () => map as any, reducedMotion: () => false, enabled: () => true, duration: () => 210, limit: () => 1200 }) as any;
     controller.hidden.set('c:1', 1);
     controller.clear = vi.fn(() => order.push('clear overlay'));
@@ -120,47 +140,43 @@ describe('selective native visibility and stacking', () => {
     expect(order).toEqual([]);
     await Promise.resolve();
     expect(order).toEqual([]);
-    map.on.mock.calls.at(-1)![1]();
-    expect(order).toEqual(['native paint', 'clear overlay']);
+    controller.onRender('before');
+    expect(order).toEqual(['prepare attributes']);
+    order.push('native paint'); controller.onRender('after');
+    expect(order).toEqual(['prepare attributes', 'native paint', 'clear overlay']);
   });
-  it('repaints a native render in the same composite but never treats a timer as placement', async () => {
-    const map = { on: vi.fn(), off: vi.fn(), triggerRepaint: vi.fn(), redraw: vi.fn() };
+  it('prepares changes before native paint and never treats a timer as placement', async () => {
+    const prepare = vi.fn(), map = paintMap(prepare);
     const controller = new NativeClusterMotionController({ getMap: () => map as any, reducedMotion: () => false, enabled: () => true, duration: () => 210, limit: () => 1200 }) as any;
     controller.advanceRender = () => controller.repaint();
-    controller.onRender();
-    expect(map.redraw).not.toHaveBeenCalled();
+    controller.onRender('timer');
     await Promise.resolve();
-    expect(map.redraw).toHaveBeenCalledTimes(1);
-    expect(map.on).not.toHaveBeenCalled();
-    controller.onRender(false);
-    await Promise.resolve();
-    expect(map.redraw).toHaveBeenCalledTimes(1);
-    expect(map.on).toHaveBeenCalledOnce();
-    map.on.mock.calls.at(-1)![1]();
-    expect(map.redraw).toHaveBeenCalledTimes(2);
+    expect(prepare).not.toHaveBeenCalled();
+    controller.onRender('before');
+    expect(prepare).toHaveBeenCalledOnce(); expect(map.redraw).not.toHaveBeenCalled();
   });
-  it('completes handoffs requested by a render listener in the same paint', async () => {
+  it('waits for the next native paint when a late render listener requests a handoff', () => {
     const done = vi.fn();
-    let controller: any;
-    const map = { redraw: () => controller.repaint(done) };
-    controller = new NativeClusterMotionController({ getMap: () => map as any, reducedMotion: () => false, enabled: () => true, duration: () => 210, limit: () => 1200 });
-    controller.nativePaint = true;
+    const map = paintMap();
+    const controller = new NativeClusterMotionController({ getMap: () => map as any, reducedMotion: () => false, enabled: () => true, duration: () => 210, limit: () => 1200 }) as any;
+    controller.onRender('before');
     controller.repaint();
-    controller.nativePaint = false;
-    await Promise.resolve();
+    controller.repaint(done); controller.onRender('after');
+    expect(done).not.toHaveBeenCalled();
+    controller.onRender('before'); controller.onRender('after');
     expect(done).toHaveBeenCalledTimes(1);
   });
   it('repaints before dropping a held scene even when its hidden marks left the native query', async () => {
     const order: string[] = [];
-    const map = { getSource: () => ({}), isSourceLoaded: () => true, on: vi.fn(), off: vi.fn(), triggerRepaint: vi.fn(), redraw: () => order.push('native paint') };
+    const map = paintMap(vi.fn(() => order.push('prepare attributes')));
     const controller = new NativeClusterMotionController({ getMap: () => map as any, reducedMotion: () => false, enabled: () => true, duration: () => 210, limit: () => 1200 }) as any;
     controller.heldDrawn = true; controller.clear = () => order.push('clear overlay');
     controller.unmask(true);
     expect(order).toEqual([]);
     await Promise.resolve();
     expect(order).toEqual([]);
-    map.on.mock.calls.at(-1)![1]();
-    expect(order).toEqual(['native paint', 'clear overlay']);
+    controller.onRender('before'); order.push('native paint'); controller.onRender('after');
+    expect(order).toEqual(['prepare attributes', 'native paint', 'clear overlay']);
   });
   it('retains the original held scene through rapid camera retargets without rebuilding it', () => {
     let zoom = 6;
@@ -177,7 +193,7 @@ describe('selective native visibility and stacking', () => {
     const controller = new NativeClusterMotionController({ getMap: () => ({} as any), reducedMotion: () => true, enabled: () => true, duration: () => 210, limit: () => 1000 }) as any;
     controller.armed = true;
     const cancel = vi.spyOn(controller, 'cancel');
-    controller.onRender();
+    controller.onRender('before');
     expect(cancel).toHaveBeenCalledWith(false, 'disabled'); expect(controller.armed).toBe(false);
   });
   it('does not disarm a merge on the tiny first eased camera step', () => {
@@ -187,7 +203,7 @@ describe('selective native visibility and stacking', () => {
     controller.capture = () => controller.before;
     controller.draw = vi.fn(); controller.armed = true; controller.zoom = 6; controller.lastCameraZoom = 6;
     const reveal = vi.spyOn(controller, 'revealSnapshot');
-    controller.onRender();
+    controller.onRender('before');
     expect(controller.armed).toBe(true);
     expect(reveal).not.toHaveBeenCalled();
   });
@@ -201,7 +217,7 @@ describe('selective native visibility and stacking', () => {
       controller.applyMask = vi.fn(); controller.draw = vi.fn();
       controller.armed = true; controller.zoom = 6; controller.lastCameraZoom = 8;
       const cancel = vi.spyOn(controller, 'cancel');
-      controller.onRender();
+      controller.onRender('before');
       vi.advanceTimersByTime(1500);
       expect(controller.armed).toBe(true); expect(cancel).not.toHaveBeenCalled();
       vi.advanceTimersByTime(500);
