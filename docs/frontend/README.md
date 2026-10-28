@@ -46,6 +46,21 @@ API schemas own supported fields. They are not additional roadmaps.
   Use the same shared four-link header, theme control and More tools as the other pages;
   landing does not mark a navigation destination active.
   Its still-image motion has pause/resume and a static reduced-motion fallback.
+  `See the scale` scrolls to the integrated outreach story without replacing the
+  hash route or release context. A single dot introduces an individual, followed
+  by a funnel and an alternate snaking batch grid. Land-animal slaughter (2024)
+  and estimated finfish capture/slaughter (2019) remain separate dated views;
+  they are not release totals or counts attributed to mapped facilities.
+  The human comparison uses a separately dated worldwide all-cause mortality
+  benchmark, with one human glyph per person and one animal dot per individual.
+  All streams share active time: pause, hidden tabs and offscreen sections do
+  not accumulate animation time. Reduced motion shows a static equivalent.
+  Sources, conversion assumptions and ranges are available in the collapsed
+  methodology. Population and conditional drip/pool comparisons illustrate
+  counts; the water analogy does not describe resource use.
+  This locally implemented story uses a private-validated statistics edition;
+  publication approval remains governed by the
+  [aggregate statistics specification](../statistics/aggregate-statistics-spec.md).
   Keep `Open the map` primary and `Find locations near me` secondary. Only that
   explicit nearby click requests device permission. A one-time in-memory command
   opens the map and searches within 50 miles; reloads and links never replay it.
