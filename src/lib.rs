@@ -321,7 +321,7 @@ pub struct PublicMapFeedParams {
     pub format: Option<String>,
 }
 
-const PUBLIC_MAP_FEED_MAX_FEATURES: i64 = 75_000;
+const PUBLIC_MAP_FEED_MAX_FEATURES: i64 = 150_000;
 const PUBLIC_MAP_FEED_CACHE_MAX_ENTRIES: usize = 8;
 // Increment whenever the private candidate map projection changes while its
 // immutable candidate snapshot may remain the same. This keeps both the
@@ -537,24 +537,6 @@ pub async fn get_v2_public_map_feed_handler(
     if rows.iter().filter(|row| row.get::<_, Option<uuid::Uuid>>(2).is_some()).count() as i64 != feature_count {
         return v2_error(StatusCode::SERVICE_UNAVAILABLE, "map_feed_unavailable", "public map feed is inconsistent with its release counts");
     }
-    let features: Vec<Value> = rows.iter().filter_map(|row| {
-        let facility_id: uuid::Uuid = row.get::<_, Option<uuid::Uuid>>(2)?;
-        let category_key: String = row.get(7);
-        Some(json!({
-            "type": "Feature",
-            "id": facility_id,
-            "geometry": {"type": "Point", "coordinates": [row.get::<_, f64>(3), row.get::<_, f64>(4)]},
-            "properties": {
-                "facility_id": facility_id,
-                "source_id": row.get::<_, String>(6),
-                "country_code": row.get::<_, String>(9),
-                "category_key": category_key,
-                "category_keys": row.get::<_, Vec<String>>(8),
-                "precision": row.get::<_, String>(5),
-                "weight": 1
-            }
-        }))
-    }).collect();
     if transaction.commit().await.is_err() {
         return v2_error(StatusCode::SERVICE_UNAVAILABLE, "database_transaction_failed", "V2 database transaction failed");
     }
@@ -594,6 +576,25 @@ pub async fn get_v2_public_map_feed_handler(
         }).collect::<Vec<_>>();
         json!({"format":"compact-v1", "dictionaries":{"source_ids":source_ids,"category_keys":category_keys,"precisions":precisions}, "features":compact_features})
     } else {
+        // Compact requests should not also allocate a full GeoJSON copy.
+        let features: Vec<Value> = rows.iter().filter_map(|row| {
+            let facility_id: uuid::Uuid = row.get::<_, Option<uuid::Uuid>>(2)?;
+            let category_key: String = row.get(7);
+            Some(json!({
+                "type": "Feature",
+                "id": facility_id,
+                "geometry": {"type": "Point", "coordinates": [row.get::<_, f64>(3), row.get::<_, f64>(4)]},
+                "properties": {
+                    "facility_id": facility_id,
+                    "source_id": row.get::<_, String>(6),
+                    "country_code": row.get::<_, String>(9),
+                    "category_key": category_key,
+                    "category_keys": row.get::<_, Vec<String>>(8),
+                    "precision": row.get::<_, String>(5),
+                    "weight": 1
+                }
+            }))
+        }).collect();
         json!({"type": "FeatureCollection", "features": features})
     };
     let body = Json(json!({

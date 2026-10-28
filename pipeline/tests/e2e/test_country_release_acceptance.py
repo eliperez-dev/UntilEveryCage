@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import re
 import sys
@@ -19,7 +20,7 @@ from urllib.parse import urlsplit
 
 
 MAX_SOURCES = 32
-MAX_MAPPED_IDS = 75_000  # Public map/matches endpoint hard ceiling.
+MAX_MAPPED_IDS = 150_000  # Public map/matches endpoint hard ceiling.
 MAX_TOTAL_COUNT = 1_000_000_000
 MAX_GRAPH_SAMPLE_PAGES = 2
 MAX_APHIS_PAGES = 100
@@ -101,8 +102,9 @@ class LocalApi:
         try:
             opener = urllib.request.build_opener(_NoRedirect())
             with opener.open(request, timeout=TIMEOUT_SECONDS) as response:
-                body = response.read(8 * 1024 * 1024 + 1)
-                if len(body) > 8 * 1024 * 1024:
+                maximum_bytes = (32 if route == "/api/v2/map/feed" else 8) * 1024 * 1024
+                body = response.read(maximum_bytes + 1)
+                if len(body) > maximum_bytes:
                     raise AcceptanceFailure("response_too_large")
                 if response.status != 200:
                     raise AcceptanceFailure("http_status_" + str(response.status))
@@ -239,6 +241,43 @@ def _check_sources(api: LocalApi, contract: dict) -> None:
                     raise AcceptanceFailure("source_classification_count_mismatch")
 
 
+def _check_map_feed(api: LocalApi, contract: dict) -> None:
+    payload, _ = api.get("/api/v2/map/feed", {
+        "release_id": contract["release_id"], "profile": contract["profile"], "format": "compact",
+    })
+    data, meta = _data(payload), _meta(payload)
+    if (not isinstance(data, dict) or data.get("format") != "compact-v1"
+            or meta.get("manifest_sha256") != contract["manifest_sha256"]
+            or meta.get("release_id") != contract["release_id"]):
+        raise AcceptanceFailure("map_feed_identity_mismatch")
+    features, dictionaries = data.get("features"), data.get("dictionaries")
+    if not isinstance(features, list) or len(features) > MAX_MAPPED_IDS or not isinstance(dictionaries, dict):
+        raise AcceptanceFailure("invalid_compact_map")
+    sources = dictionaries.get("source_ids")
+    if not isinstance(sources, list) or any(not isinstance(source, str) for source in sources):
+        raise AcceptanceFailure("invalid_compact_sources")
+    ids, counts = set(), {}
+    for feature in features:
+        if (not isinstance(feature, list) or len(feature) != 8
+                or not isinstance(feature[0], str) or feature[0] in ids
+                or any(isinstance(value, bool) or not isinstance(value, (int, float))
+                       or not math.isfinite(value) for value in feature[1:3])
+                or not -180 <= feature[1] <= 180 or not -90 <= feature[2] <= 90
+                or not isinstance(feature[3], int) or isinstance(feature[3], bool)
+                or not 0 <= feature[3] < len(sources)):
+            raise AcceptanceFailure("invalid_compact_point")
+        ids.add(feature[0])
+        source = sources[feature[3]]
+        counts[source] = counts.get(source, 0) + 1
+    expected_mapped = sum(value["mapped_count"] for value in contract["sources"].values())
+    expected_total = sum(value["total_count"] for value in contract["sources"].values())
+    if (len(ids) != expected_mapped or meta.get("feature_count") != expected_mapped
+            or meta.get("public_record_count") != expected_total
+            or meta.get("unmapped_count") != expected_total - expected_mapped
+            or any(counts.get(source, 0) != value["mapped_count"] for source, value in contract["sources"].items())):
+        raise AcceptanceFailure("map_feed_membership_mismatch")
+
+
 def _check_graph(api: LocalApi, contract: dict) -> None:
     for expected in contract.get("graph_preservation", []):
         release_id = expected["release_id"]
@@ -340,6 +379,7 @@ def run_acceptance(origin: str, contract: dict) -> dict:
     for retained in contract.get("retained_releases", []):
         _check_retained(api, retained, contract["profile"])
     _check_sources(api, contract)
+    _check_map_feed(api, contract)
     _check_graph(api, contract)
     _check_aphis(api, contract)
     return {"result": "passed", "source_count": len(contract["sources"]), "request_count": api.requests}

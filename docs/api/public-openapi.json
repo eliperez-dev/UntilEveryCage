@@ -819,7 +819,7 @@
       "get": {
         "operationId": "getPublicMapMatches",
         "summary": "Match public map pins to a search",
-        "description": "Returns every matching mapped facility ID using the location list predicates and the same current release and suppression gates. Requires a pinned release; accepts discovery filters including bbox or radius. Pagination is rejected. Names, coordinates, query text and raw evidence are not returned. More than 75000 matching mapped facilities returns 413; never a partial mask. Responses are no-store and carry manifest and suppression identity for validation against the displayed map feed.",
+        "description": "Returns every matching mapped facility ID using the location list predicates and the same current release and suppression gates. Requires a pinned release; accepts discovery filters including bbox or radius. Pagination is rejected. Names, coordinates, query text and raw evidence are not returned. More than 150000 matching mapped facilities returns 413; never a partial mask. Responses are no-store and carry manifest and suppression identity for validation against the displayed map feed.",
         "tags": [
           "Map"
         ],
@@ -971,7 +971,7 @@
               "facility_ids": {
                 "type": "array",
                 "uniqueItems": true,
-                "maxItems": 75000,
+                "maxItems": 150000,
                 "items": {
                   "type": "string",
                   "format": "uuid"
@@ -1018,7 +1018,7 @@
               "mapped_count": {
                 "type": "integer",
                 "minimum": 0,
-                "maximum": 75000
+                "maximum": 150000
               }
             }
           }
@@ -1161,7 +1161,7 @@
               "dataset_version": {"type": ["string", "null"]},
               "release_label": {"type": ["string", "null"]},
               "public_record_count": {"type": "integer", "minimum": 0},
-              "feature_count": {"type": "integer", "minimum": 0, "maximum": 75000},
+              "feature_count": {"type": "integer", "minimum": 0, "maximum": 150000},
               "unmapped_count": {"type": "integer", "minimum": 0}
             },
             "additionalProperties": false

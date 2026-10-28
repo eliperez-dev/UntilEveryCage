@@ -1,6 +1,8 @@
 """Synthetic checks for the standalone public release acceptance helper."""
 
 import importlib.util
+import json
+import re
 import unittest
 from pathlib import Path
 
@@ -101,13 +103,51 @@ class CountryReleaseAcceptanceTests(unittest.TestCase):
         acceptance._check_graph(api, contract)
         self.assertEqual(len(api.calls), 2)
 
+    def test_full_compact_map_checks_membership_not_only_source_queries(self):
+        feature = ["00000000-0000-0000-0000-000000000001", 1.0, 2.0, 0, 0, [0], 0, "XX"]
+        payload = {"data": {"format": "compact-v1", "features": [feature],
+                            "dictionaries": {"source_ids": ["synthetic"]}},
+                   "meta": {"release_id": "r1", "manifest_sha256": "a" * 64,
+                            "feature_count": 1, "public_record_count": 2, "unmapped_count": 1}}
+        api = FakeApi({("/api/v2/map/feed", None, None): payload})
+        contract = {"release_id": "r1", "profile": "official", "manifest_sha256": "a" * 64,
+                    "sources": {"synthetic": {"total_count": 2, "mapped_count": 1}}}
+        acceptance._check_map_feed(api, contract)
+        payload["data"]["features"].append(feature)
+        with self.assertRaisesRegex(acceptance.AcceptanceFailure, "invalid_compact_point"):
+            acceptance._check_map_feed(api, contract)
+
     def test_rejects_non_loopback_and_map_over_cap(self):
         with self.assertRaises(acceptance.AcceptanceFailure):
             acceptance.validate_origin("https://example.com")
         contract = {"release_id": "r1", "profile": "official", "manifest_sha256": "a" * 64,
-                    "sources": {"mx.locations": {"total_count": 80_000, "mapped_count": 75_001}}}
+                    "sources": {"mx.locations": {"total_count": 160_000, "mapped_count": 150_001}}}
         with self.assertRaises(acceptance.AcceptanceFailure):
             acceptance.validate_contract(contract)
+
+    def test_map_ceiling_matches_runtime_and_public_contracts(self):
+        root = Path(__file__).resolve().parents[2]
+        runtime = (root / "src/lib.rs").read_text(encoding="utf-8")
+        ceiling = re.search(r"PUBLIC_MAP_FEED_MAX_FEATURES: i64 = ([\d_]+)", runtime)
+        self.assertIsNotNone(ceiling)
+        self.assertEqual(int(ceiling.group(1).replace("_", "")), acceptance.MAX_MAPPED_IDS)
+        self.assertGreaterEqual(acceptance.MAX_MAPPED_IDS, 124_264)
+        contract = json.loads((root / "docs/api/v2-contract.json").read_text(encoding="utf-8"))
+        for route in ("GET /api/v2/map/feed", "GET /api/v2/map/matches"):
+            entries = next(value for value in contract.values() if isinstance(value, dict) and route in value)
+            self.assertEqual(entries[route]["max_features"], acceptance.MAX_MAPPED_IDS)
+
+    def test_historical_graph_anchors_preserve_existing_edge_gates(self):
+        root = Path(__file__).resolve().parents[2]
+        migration = (root / "pipeline/migrations/105_historical_graph_facility_anchors.sql").read_text(encoding="utf-8")
+        previous = (root / "pipeline/migrations/087_keyed_public_graph_connection_eligibility.sql").read_text(encoding="utf-8").strip()
+        self.assertIn("FROM uec.public_discovery_live_eligible_rows", migration)
+        self.assertIn("FROM uec.public_discovery_api_read_model history", migration)
+        self.assertIn("WHERE release.status='validated'", migration)
+        self.assertIn(previous.replace("uec.map_facilities_public_discovery_read_model",
+                                       "uec.graph_public_live_facility_anchors_current"), migration)
+        ctes = (root / "pipeline/sql/graph_public_edge_ctes.sql").read_text(encoding="utf-8")
+        self.assertIn("FROM uec.graph_public_live_facility_anchors_current p", ctes)
 
 
 if __name__ == "__main__":

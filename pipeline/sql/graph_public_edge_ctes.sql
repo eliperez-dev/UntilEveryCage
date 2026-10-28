@@ -1,6 +1,6 @@
 record_facility_candidates AS MATERIALIZED (
   SELECT DISTINCT p.source_record_id, p.facility_id
-  FROM uec.map_facilities_public_discovery_read_model p
+  FROM uec.graph_public_live_facility_anchors_current p
   WHERE p.release_id=$1
 ),
 ambiguous_record_facilities AS MATERIALIZED (

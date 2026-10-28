@@ -62,7 +62,7 @@ def _python_organization_label_select(release_id: str) -> tuple[str, dict[str, s
              "   AND btrim(assertion.assertion_value)<>''), "
              "release_facilities AS MATERIALIZED ("
              " SELECT source_record_id,(array_agg(DISTINCT facility_id ORDER BY facility_id))[1] AS facility_id "
-             " FROM uec.map_facilities_public_discovery_read_model "
+             " FROM uec.graph_public_live_facility_anchors_current "
              " WHERE release_id=%(release_id)s GROUP BY source_record_id "
              " HAVING count(DISTINCT facility_id)=1), "
              "direct_support AS ("

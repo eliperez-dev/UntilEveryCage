@@ -494,7 +494,7 @@ pub async fn entities(
         SELECT entity_id,entity_type,display_name,country_code FROM (
           SELECT p.facility_id AS entity_id,'facility'::text AS entity_type,
                  p.canonical_name AS display_name,p.country_code
-          FROM uec.map_facilities_public_discovery_read_model p WHERE p.release_id=$1
+          FROM uec.public_discovery_api_read_model p WHERE p.release_id=$1
           UNION
           SELECT labels.organization_id,'organization'::text,labels.display_name,NULL::text
           FROM (

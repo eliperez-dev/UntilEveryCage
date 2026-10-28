@@ -173,6 +173,7 @@ _PRIVATE_GRAPH_REQUIRED_READ_PRIVILEGES = {
     "public_discovery_read_models": {"SELECT"},
     "release_manifests": {"SELECT"},
     "public_release_history": {"SELECT"},
+    "graph_public_live_facility_anchors_current": {"SELECT"},
     "public_suppression_generation": {"SELECT"},
     # Typed evidence and organization labels are projected only after these
     # exact selected-release review, metadata-clearance, and restriction checks.
