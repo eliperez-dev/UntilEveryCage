@@ -627,8 +627,9 @@ even while a different branch animates. Retire them only when their matching
 parents replace them; do not discard them with an older worker snapshot.
 If only a new region arrives, retain the scene and keep tracking until its
 parent hierarchy arrives; remember the new identities to avoid repeated reads.
-An empty lookup also waits for the next native zoom level or zoomend before
-retrying, rather than querying each partially arrived tile scene.
+After an empty lookup, coalesce unrelated arrivals at the same native zoom
+rather than querying each partially arrived tile scene. A new parent inside
+the observed region retries immediately; it must not wait for another zoom level.
 Changed branches inside the held viewport fade in on the same clock,
 so the original viewport cannot remain a dense island inside a coarser map.
 A custom nonzero idle delay still waits for the camera to stop.

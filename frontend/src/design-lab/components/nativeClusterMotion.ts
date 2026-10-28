@@ -313,10 +313,10 @@ export class NativeClusterMotionController {
     // Tile placement can briefly drop old marks before supplying any parent.
     // That is not yet a merge scene and must not cancel the rest of the zoom.
     if (mergingDuringZoom && !adopted && [...after.keys()].every(key => before.has(key))) return;
-    // Partial tiles at the same native zoom can arrive in several frames.
-    // After an empty lookup, wait for the next hierarchy level or zoomend.
-    // New regions stay native and vanished originals stay on the overlay.
-    if (mergingDuringZoom && this.emptyLineageZoom === Math.floor(map.getZoom())) return;
+    // Coalesce unrelated arrivals at the same native zoom after an empty
+    // lookup. A new parent inside the observed scene is different: pair it
+    // immediately, even when partial tiles supplied it at the same zoom level.
+    if (mergingDuringZoom && this.emptyLineageZoom === Math.floor(map.getZoom()) && [...after.keys()].every(key => before.has(key))) return;
     const direction = map.getZoom() > this.zoom ? 'split' : 'merge';
     this.pending = true;
     this.report('pairing');
