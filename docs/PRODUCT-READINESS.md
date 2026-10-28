@@ -72,7 +72,7 @@ All items below remain required before replacing the original website.
 | France, broader Spain, Germany, Mexico | France and Spain private map checks passed; Germany first-pass geocoding retained; Mexico national capture and private database/API checks passed | Use the source inventory to prepare the new dated dataset. These private cohorts have not changed public dataset membership |
 | United Kingdom and New Zealand | UK FSA/FSS fresh capture, import and private API checks passed. NZ supplied MPI export has 1,638 programme records and 321 audited address points after 486 requests; real API checks passed | Include the verified cohorts in the final dated dataset. NZ export automation remains unverified; programme rows are not a premises census. Report jurisdiction and mapped coverage explicitly |
 | APHIS history | Reliability and on-demand historical recovery implemented | Six real endpoint cases passed locally: two eligible facilities return pre-2025 annual and inspection links, sampled PDFs open, and the original no-report case returns an empty page; sample history reaches 2014, not a complete archive audit |
-| New default dated dataset | Approved and verified locally: 124,264 records across 19 sources, 93,058 coordinate points; hosted dataset unchanged | Finish serving export, new Render database restore, runtime acceptance, green CI and cutover |
+| New default dated dataset | Approved; isolated Render restore and runtime checks passed: 124,264 records across 19 sources, 93,058 coordinate points; public dataset unchanged | Final-revision green CI, cutover and public-origin checks |
 | Final cutover | Not started | Maintainer frontend/data acceptance; verified monitoring, recovery and contribution operations; domain/canonical/redirect checks and rollback |
 
 Country implementation and UI features may run in independent lanes. Do not
@@ -131,10 +131,17 @@ Nineteen bounded connection API requests, all source-scoped list/detail checks,
 the complete 93,058-point map feed and conditional cache response passed locally.
 Real APHIS samples return annual and inspection links predating 2025, reaching
 2014 in the sampled history. These are bounded checks, not a full report audit.
-The serving export and cloud restore remain in progress. Backend revision
-`3065f961` contains the release eligibility and measured graph-query fixes;
-required CI is not yet confirmed green. The separate frontend story is not
-part of this backend deployment.
+The selected serving package is restored in a new isolated Render database.
+The read-only runtime passed 84 source/map/history requests, 19 graph requests
+and four real APHIS history cases. The APHIS lookup initially timed out;
+migration 107 replaces release-wide eligibility materialization with keyed
+probes, preserving all 2,048 current/historical reference rows and the existing
+publication gates. The local full-reference comparison fell from 29.2 seconds
+to 1.05 seconds; this is not a hosted-browser timing. Required CI passed on
+earlier backend checkpoints; the final repair revision still needs green CI.
+The public service and its existing databases are unchanged. Fresh first-pass
+geocoding continues separately in source staging for a later release. The
+separate frontend story is not part of this backend deployment.
 
 ## Roadmap
 

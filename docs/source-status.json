@@ -4,7 +4,7 @@
   "next_release_candidate": {
     "checked_date": "2026-10-27",
     "release_id": "release-2026-10-27-r2",
-    "status": "approved_local_release_verified_hosted_restore_pending",
+    "status": "isolated_render_database_runtime_verified_cutover_pending",
     "database": "uec_country_release_test_20261027",
     "replacement_sources": ["de.locations", "es.locations", "fr.georisques.icpe.animal", "mx.locations", "nz.locations", "fsa_approved_establishments", "fss_approved_establishments"],
     "retained_other_sources": 12,
@@ -12,7 +12,7 @@
     "candidate_named_records": 114919,
     "candidate_coordinate_points": 93058,
     "default_visible_members": 124264,
-    "visibility_scope": "isolated local release database only; hosted dataset unchanged",
+    "visibility_scope": "isolated local and new Render databases; public serving dataset unchanged",
     "counts_are_publication_totals": false,
     "france_scope_correction": {"points_kept_unmapped": 20, "original_evidence_retained": true, "existing_candidates_unchanged": true},
     "retained_current_graph_edges": 60263,
@@ -23,10 +23,11 @@
     "local_report_references": 1024,
     "local_map_feed_points_verified": 93058,
     "local_graph_api_checks": {"requests": 19, "two_page_cases": 9, "historical_release_included": true},
+    "isolated_render_acceptance": {"database": "uec_serving_country_20261027", "source_map_history_requests": 84, "graph_requests": 19, "aphis_history_cases": 4, "aphis_sample_earliest_year": 2014, "read_only_runtime_role_verified": true, "post_restore_migrations": ["107_bound_aphis_release_reference_lookup"], "all_2048_current_and_historical_reference_rows_preserved": true},
     "approval_basis": "Maintainer-authorized automated business-record, field-exposure, source-licence and location checks; factual review remains unreviewed",
     "hosted_dataset_changed": false,
     "evidence": ["data/reports/country-release-20261027-freeze.json", "data/staging/country-release-20261027/acceptance.json"],
-    "next_action": "Finish selected-column serving export, restore into a new Render database, verify runtime APIs and green CI, then cut over. Source, map, graph and historical-report local checks passed. Do not repeat unchanged German geocoding."
+    "next_action": "Finish final-revision CI, then cut over to the verified isolated Render database and check the public origin. Fresh first-pass geocoding runs separately in source staging for a later release; failed addresses are not retried."
   },
   "china_research": {
     "checked_date": "2026-10-27",

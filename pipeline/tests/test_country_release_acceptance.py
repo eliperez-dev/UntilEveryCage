@@ -175,6 +175,40 @@ class CountryReleaseAcceptanceTests(unittest.TestCase):
         self.assertIn("WHERE release.status='promoted';", sql)
         self.assertNotIn("public_discovery_api_read_model", sql)
 
+    def test_bounded_aphis_lookup_preserves_all_reference_gates(self):
+        root = Path(__file__).resolve().parents[2]
+        old = (root / "pipeline/migrations/086_materialize_public_evidence_reference_candidates.sql").read_text(encoding="utf-8")
+        new = (root / "pipeline/migrations/107_bound_aphis_release_reference_lookup.sql").read_text(encoding="utf-8")
+        old = old[old.index("CREATE OR REPLACE VIEW"):]
+        new = new[new.index("CREATE OR REPLACE VIEW"):]
+        old = old.replace("eligible_evidence_candidates AS MATERIALIZED (", "eligible_evidence_candidates AS (")
+        old = old.replace(
+            "JOIN uec.publication_review_release_current review\n"
+            "      ON review.source_record_id=evidence_record.source_record_id\n"
+            "     AND review.release_id=build.release_id",
+            "JOIN LATERAL (\n"
+            "        SELECT checked.* FROM uec.publication_review_release_current checked\n"
+            "        WHERE checked.source_record_id=evidence_record.source_record_id\n"
+            "          AND checked.release_id=build.release_id OFFSET 0\n"
+            "    ) review ON true",
+        )
+        start = old.index("), live_facility_anchors AS MATERIALIZED (")
+        stop = old.index("SELECT candidate.release_id", start)
+        old = old[:start] + ")\n" + old[stop:]
+        old = old.replace(
+            "JOIN live_facility_anchors live\n"
+            "  ON live.release_id=candidate.release_id\n"
+            " AND live.source_record_id=candidate.anchor_source_record_id\n"
+            " AND live.facility_id=candidate.anchor_facility_id;",
+            "WHERE EXISTS (\n"
+            "    SELECT live.source_record_id FROM uec.graph_public_live_facility_anchors_current live\n"
+            "    WHERE live.release_id=candidate.release_id\n"
+            "      AND live.source_record_id=candidate.anchor_source_record_id\n"
+            "      AND live.facility_id=candidate.anchor_facility_id OFFSET 0\n"
+            ");",
+        )
+        self.assertEqual(old.strip(), new.strip())
+
 
 if __name__ == "__main__":
     unittest.main()

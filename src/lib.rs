@@ -7837,6 +7837,11 @@ pub async fn get_v2_aphis_report_links_handler(
         .read_only(true).start().await else {
         return aphis_report_link_error(StatusCode::SERVICE_UNAVAILABLE, "database_transaction_unavailable", "APHIS references unavailable");
     };
+    // This bounded lookup expands release eligibility views. Avoid compiling
+    // their full plan on each report request, as the other public APIs do.
+    if transaction.batch_execute("SET LOCAL jit=off").await.is_err() {
+        return aphis_report_link_error(StatusCode::SERVICE_UNAVAILABLE, "database_transaction_unavailable", "APHIS references unavailable");
+    }
     let release = transaction.query_opt(
         "SELECT r.release_id,r.ruleset_version,history.provenance_source_id,stored.public_detail::text FROM uec.releases r JOIN uec.public_discovery_read_models model ON model.release_id=r.release_id JOIN uec.release_manifests manifest ON manifest.release_id=r.release_id AND manifest.manifest_sha256=model.manifest_sha256 JOIN uec.public_discovery_api_read_model history ON history.release_id=r.release_id AND history.facility_id=$2 JOIN uec.public_discovery_read_model_rows stored ON stored.release_id=history.release_id AND stored.facility_id=history.facility_id AND stored.observation_id=history.observation_id LEFT JOIN uec.public_release_history old ON old.release_id=r.release_id AND old.profile=r.profile WHERE r.test_only IS NOT TRUE AND r.profile=$1 AND ($3::text IS NULL OR r.release_id=$3) AND (r.status='promoted' OR ($3::text IS NOT NULL AND old.release_id IS NOT NULL AND r.status='validated')) ORDER BY r.created_at DESC,r.release_id DESC LIMIT 1",
         &[&profile, &facility_id, &params.release_id],
@@ -8066,6 +8071,9 @@ mod aphis_public_report_link_tests {
     fn current_release_evidence_is_checked_before_resolver_cache_lookup() {
         let source = include_str!("lib.rs");
         let handler = source.split("pub async fn get_v2_aphis_report_links_handler").nth(1).unwrap();
+        let bounded_plan = handler.find("SET LOCAL jit=off").unwrap();
+        let release_lookup = handler.find("let release = transaction.query_opt").unwrap();
+        assert!(bounded_plan < release_lookup);
         let live_gate = handler.find("graph_public_evidence_references_current").unwrap();
         let resolver_cache = handler.find("aphis_public_report_links(&certificate, kind").unwrap();
         assert!(live_gate < resolver_cache);
