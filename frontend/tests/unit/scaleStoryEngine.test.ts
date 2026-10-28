@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ActiveStoryClock, batchBounds, funnelParticles, gridParticles, seed, snakePosition, STORY_RATES } from '../../src/app/scale-story/engine';
+import { ActiveStoryClock, batchBounds, CHICKEN_LINE_RATE, funnelParticles, gridParticles, lineParticles, seed, snakePosition, STORY_RATES } from '../../src/app/scale-story/engine';
 import { FISH_2019, LAND_ANIMALS_2024, litresForIndividuals, oneSecondEachYears, poolsForIndividuals, populationDays, REFERENCE_POOL_LITRES } from '../../src/app/scale-story/comparisons';
 
 describe('active story time', () => {
@@ -22,6 +22,13 @@ describe('active story time', () => {
     const clock = new ActiveStoryClock(); clock.setRunning(true, 100); clock.advance(3100); clock.advance(3000);
     expect(clock.emitted(2779)).toBe(8337);
     clock.advance(4100); expect(clock.emitted(2779)).toBe(11116);
+  });
+  it('accounts for exactly 140 chickens and 120 people over 60 active seconds', () => {
+    const clock = new ActiveStoryClock(); clock.setRunning(true, 0);
+    for (let now = 0; now <= 60000; now += 17) clock.advance(now);
+    clock.advance(60000);
+    expect(clock.emitted(CHICKEN_LINE_RATE)).toBe(140);
+    expect(clock.emitted(2)).toBe(120);
   });
 });
 
@@ -100,6 +107,17 @@ describe('individual dot identity', () => {
     funnelParticles(.7, 2, 100, 500, (id, _x, _y, dead) => alive.set(id, dead));
     funnelParticles(1.1, 2, 100, 500, (id, _x, _y, dead) => after.set(id, dead));
     expect(alive.get(2)).toBe(false); expect(after.get(2)).toBe(true);
+  });
+  it('changes a chicken identity only when it crosses the labelled horizontal line', () => {
+    const id = 4, crossing = id / CHICKEN_LINE_RATE, height = 350;
+    const states = new Map<number, { y: number; dead: boolean }>();
+    lineParticles(crossing - .1, CHICKEN_LINE_RATE, 125, height, (particle, _x, y, dead) => states.set(particle, { y, dead }));
+    expect(states.get(id)?.dead).toBe(false); expect(states.get(id)!.y).toBeLessThan(height * .48);
+    lineParticles(crossing, CHICKEN_LINE_RATE, 125, height, (particle, _x, y, dead) => states.set(particle, { y, dead }));
+    expect(states.get(id)).toEqual({ y: height * .48, dead: true });
+    lineParticles(crossing + .2, CHICKEN_LINE_RATE, 125, height, (particle, _x, y, dead) => states.set(particle, { y, dead }));
+    expect(states.get(id)?.dead).toBe(true); expect(states.get(id)!.y).toBeGreaterThan(height * .48);
+    expect(lineParticles(1000000, CHICKEN_LINE_RATE, 125, height, () => {})).toBeLessThan(12);
   });
 });
 

@@ -5,6 +5,7 @@ export type StoryMode = 'funnel' | 'grid';
 export const GRID_BATCH_SECONDS = 0.25;
 export const FUNNEL_QUEUE_SECONDS = 1.2;
 export const FUNNEL_RED_SECONDS = 1;
+export const CHICKEN_LINE_RATE = 140 / 60;
 
 /** Integrate active time, not frames. Analytic rendering never replays missed events. */
 export class ActiveStoryClock {
@@ -49,6 +50,19 @@ export function snakePosition(index: number, columns: number) {
 }
 
 export type ParticleVisitor = (id: number, x: number, y: number, dead: boolean) => void;
+
+/** Separate line-crossing comparison; fractional rates retain individual identities. */
+export function lineParticles(seconds: number, rate: number, width: number, height: number, visit: ParticleVisitor) {
+  const first = Math.max(1, Math.floor((seconds - 2) * rate));
+  const last = Math.floor((seconds + 1.6) * rate);
+  let count = 0;
+  for (let id = first; id <= last; id++) {
+    const age = seconds - id / rate, y = height * .48 + age * height * .23;
+    if (y < -16 || y > height + 16) continue;
+    visit(id, width * (.5 + (seed(id, 41) - .5) * .38), y, age >= 0); count++;
+  }
+  return count;
+}
 
 /** A finite analytic age window. Every emitted identity in that window is visited. */
 export function funnelParticles(seconds: number, rate: number, width: number, height: number, visit: ParticleVisitor) {
