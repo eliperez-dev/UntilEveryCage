@@ -283,10 +283,10 @@ export class NativeClusterMotionController {
     // Worker/source readiness precedes native symbol placement. The first
     // post-zoom frame can still be empty or show the previous tile hierarchy.
     // Confirm a nonempty stable paint instead of treating that as no lineage.
-    this.placementStartedAt ??= performance.now();
+    if (!mergingDuringZoom) this.placementStartedAt ??= performance.now();
     const signature = [...after.keys()].sort().join('|');
     if (!after.size || !mergingDuringZoom && signature !== this.placementSignature) {
-      if (!mergingDuringZoom && performance.now() - this.placementStartedAt > NATIVE_PAINT_DEADLINE_MS) { this.cancel(false, 'source-timeout'); return; }
+      if (!mergingDuringZoom && performance.now() - this.placementStartedAt! > NATIVE_PAINT_DEADLINE_MS) { this.cancel(false, 'source-timeout'); return; }
       this.placementSignature = signature;
       map.triggerRepaint();
       return;

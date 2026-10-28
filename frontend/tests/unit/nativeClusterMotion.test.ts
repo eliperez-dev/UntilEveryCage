@@ -291,6 +291,29 @@ describe('native cluster transition identities and artwork', () => {
 });
 
 describe('newly exposed regions', () => {
+  it('starts the stable-placement deadline after camera movement, not during partial arrivals', async () => {
+    let now = 0, moving = true;
+    const clock = vi.spyOn(performance, 'now').mockImplementation(() => now);
+    try {
+      const map = { getZoom: () => 5.5, isZooming: () => moving, isSourceLoaded: () => true, getSource: () => ({}), triggerRepaint: vi.fn() };
+      const controller = new NativeClusterMotionController({ getMap: () => map as any, reducedMotion: () => false, enabled: () => true, duration: () => 210, limit: () => 1200 }) as any;
+      const original = { key: 'c:old', id: 1, coordinates: [-120, 35], properties: {} };
+      const arrival = { key: 'c:new', id: 2, coordinates: [-75, 40], properties: {} };
+      controller.before = new Map([[original.key, original]]);
+      controller.footprint = [-125, 30, -115, 42];
+      controller.capture = () => new Map([[arrival.key, arrival]]);
+      controller.draw = vi.fn(); controller.applyMask = vi.fn(); controller.mask = vi.fn();
+      controller.findPairs = vi.fn(async () => []);
+      controller.armed = true; controller.zoom = 6; controller.lastCameraZoom = 6;
+      const cancel = vi.spyOn(controller, 'cancel');
+      controller.onRender('before'); await Promise.resolve();
+      expect(controller.placementStartedAt).toBeUndefined();
+      now = 1600; moving = false;
+      controller.onRender('before');
+      expect(controller.placementStartedAt).toBe(1600);
+      expect(cancel).not.toHaveBeenCalled(); expect(controller.armed).toBe(true);
+    } finally { clock.mockRestore(); }
+  });
   it('keeps tracking when a new region arrives before any existing branch merges', async () => {
     let zoom = 5.2;
     const map = { getZoom: () => zoom, isZooming: () => true, getSource: () => ({}), triggerRepaint: vi.fn() };
