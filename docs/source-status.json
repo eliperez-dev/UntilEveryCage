@@ -4,23 +4,44 @@
   "next_release_candidate": {
     "checked_date": "2026-10-27",
     "release_id": "release-2026-10-27-r2",
-    "status": "private_candidate_assembled_not_published",
+    "status": "approved_local_release_verified_hosted_restore_pending",
     "database": "uec_country_release_test_20261027",
     "replacement_sources": ["de.locations", "es.locations", "fr.georisques.icpe.animal", "mx.locations", "nz.locations", "fsa_approved_establishments", "fss_approved_establishments"],
     "retained_other_sources": 12,
     "candidate_members": 124264,
     "candidate_named_records": 114919,
     "candidate_coordinate_points": 93058,
-    "default_visible_members": 0,
+    "default_visible_members": 124264,
+    "visibility_scope": "isolated local release database only; hosted dataset unchanged",
     "counts_are_publication_totals": false,
     "france_scope_correction": {"points_kept_unmapped": 20, "original_evidence_retained": true, "existing_candidates_unchanged": true},
     "retained_current_graph_edges": 60263,
     "retained_current_report_references": 1024,
     "historical_manifests_preserved": true,
-    "new_candidate_graph_projection_verified": false,
+    "new_candidate_graph_projection_verified": true,
+    "local_graph_edges": 162281,
+    "local_report_references": 1024,
+    "local_map_feed_points_verified": 93058,
+    "local_graph_api_checks": {"requests": 19, "two_page_cases": 9, "historical_release_included": true},
+    "approval_basis": "Maintainer-authorized automated business-record, field-exposure, source-licence and location checks; factual review remains unreviewed",
     "hosted_dataset_changed": false,
     "evidence": ["data/reports/country-release-20261027-freeze.json", "data/staging/country-release-20261027/acceptance.json"],
-    "next_action": "Complete source-scoped release checks and exact graph/report projection, then validate the serving package and API before Render cutover. Do not repeat unchanged German geocoding."
+    "next_action": "Finish selected-column serving export, restore into a new Render database, verify runtime APIs and green CI, then cut over. Source, map, graph and historical-report local checks passed. Do not repeat unchanged German geocoding."
+  },
+  "china_research": {
+    "checked_date": "2026-10-27",
+    "status": "research_only_no_acquisition",
+    "conclusion": "Selected facility classes appear mappable; nationwide bulk coverage is not verified.",
+    "priority_leads": [
+      {"title": "MEE pollution-discharge permits", "url": "https://permit.mee.gov.cn/", "usefulness": "Production-site addresses, industries and permit identifiers; animal-sector filtering needed", "remaining": "Verify export/API access, reuse terms and coordinate datum; outlet points are not necessarily facility points"},
+      {"title": "Hubei experimental-animal licences", "url": "https://kjt.hubei.gov.cn/sydw/portal/xkz/toListUi", "usefulness": "Licence, institution, facility address, permitted scope and validity fields", "remaining": "Public search schema verified; results, export and reuse terms not yet tested"}
+    ],
+    "deprioritized": [
+      {"title": "Beijing designated slaughterhouses", "url": "https://data.beijing.gov.cn/zyml/wnkfsj/f4dbf74751b4493383e3eab0291e6b8d.htm", "documented_records": 26, "updated": "2022-04-22", "reason": "Small, older dataset behind registration; not worth maintainer identity-registration effort for this release"},
+      {"title": "Wenzhou livestock enterprise data", "url": "https://data.wenzhou.gov.cn/jdop_front/detail/data.do?iid=17467", "documented_records": 587, "reason": "Documented fields provide administrative locality but not business names, street addresses or coordinates"}
+    ],
+    "national_lab_lookup": {"url": "http://www.lascn.net/Category_1377/Index.aspx", "status": "Linked by Hubei government, but current access and national coverage not verified"},
+    "next_action": "Investigate the larger permit and laboratory sources separately after country-release delivery; no Chinese source is included in this release."
   },
   "whole_dataset_graph": {
     "as_of": "2026-10-24",

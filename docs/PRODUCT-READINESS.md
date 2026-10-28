@@ -72,7 +72,7 @@ All items below remain required before replacing the original website.
 | France, broader Spain, Germany, Mexico | France and Spain private map checks passed; Germany first-pass geocoding retained; Mexico national capture and private database/API checks passed | Use the source inventory to prepare the new dated dataset. These private cohorts have not changed public dataset membership |
 | United Kingdom and New Zealand | UK FSA/FSS fresh capture, import and private API checks passed. NZ supplied MPI export has 1,638 programme records and 321 audited address points after 486 requests; real API checks passed | Include the verified cohorts in the final dated dataset. NZ export automation remains unverified; programme rows are not a premises census. Report jurisdiction and mapped coverage explicitly |
 | APHIS history | Reliability and on-demand historical recovery implemented | Six real endpoint cases passed locally: two eligible facilities return pre-2025 annual and inspection links, sampled PDFs open, and the original no-report case returns an empty page; sample history reaches 2014, not a complete archive audit |
-| New default dated dataset | Private candidate assembled: 124,264 records across 19 sources, 93,058 coordinate points | Complete source-scoped release checks, current restrictions, graph/report projection and serving-package/API acceptance before publication |
+| New default dated dataset | Approved and verified locally: 124,264 records across 19 sources, 93,058 coordinate points; hosted dataset unchanged | Finish serving export, new Render database restore, runtime acceptance, green CI and cutover |
 | Final cutover | Not started | Maintainer frontend/data acceptance; verified monitoring, recovery and contribution operations; domain/canonical/redirect checks and rollback |
 
 Country implementation and UI features may run in independent lanes. Do not
@@ -114,15 +114,27 @@ It is preparation evidence, not a frozen or promoted release.
 Country-release assembly completed on an isolated copy of the current
 release. The corrected private candidate `release-2026-10-27-r2` has 124,264
 members, 114,919 named records and 93,058 coordinate points across 19 sources.
-These are candidate counts, not approved public/map totals. Twenty French
+Maintainer-authorized source, field-exposure and location checks are complete;
+the release is promoted only in the isolated local database. Twenty French
 out-of-scope points remain searchable but unmapped; their source evidence is
 retained. Existing candidates and public releases were not rewritten.
 UK enrichment queried 714 addresses and retained 32 audited matches;
-682 unmatched attempts remain available for later work. The secondary account
-has 701 requests left. The seven source cohorts passed read-only handoff and
+682 unmatched attempts remain available for later work. Provider allowances
+must be checked for the current day, not inferred from that historical run.
+The seven source cohorts passed read-only handoff and
 taxonomy checks. Their input selection and retained raw
 artifact hashes are frozen locally; public dataset membership is unchanged.
-The copy retains the current 60,263 connections, 1,024 report references and V0.
+The new release projection has 162,281 connections and 1,024 report references.
+All original 60,263 October 18 connection IDs remain available in its rebuilt
+historical projection. V0 manifests, record counts and map counts are preserved.
+Nineteen bounded connection API requests, all source-scoped list/detail checks,
+the complete 93,058-point map feed and conditional cache response passed locally.
+Real APHIS samples return annual and inspection links predating 2025, reaching
+2014 in the sampled history. These are bounded checks, not a full report audit.
+The serving export and cloud restore remain in progress. Backend revision
+`3065f961` contains the release eligibility and measured graph-query fixes;
+required CI is not yet confirmed green. The separate frontend story is not
+part of this backend deployment.
 
 ## Roadmap
 
