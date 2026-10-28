@@ -291,6 +291,24 @@ describe('native cluster transition identities and artwork', () => {
 });
 
 describe('newly exposed regions', () => {
+  it('keeps tracking when a new region arrives before any existing branch merges', async () => {
+    const map = { getZoom: () => 5, isZooming: () => true, getSource: () => ({}), triggerRepaint: vi.fn() };
+    const controller = new NativeClusterMotionController({ getMap: () => map as any, reducedMotion: () => false, enabled: () => true, duration: () => 210, limit: () => 1200 }) as any;
+    const original = { key: 'c:old', id: 1, coordinates: [-120, 35], properties: {} };
+    const arrival = { key: 'c:new', id: 2, coordinates: [-75, 40], properties: {} };
+    controller.before = new Map([[original.key, original]]);
+    controller.footprint = [-125, 30, -115, 42];
+    controller.capture = () => new Map([[arrival.key, arrival]]);
+    controller.draw = vi.fn(); controller.applyMask = vi.fn(); controller.mask = vi.fn();
+    controller.findPairs = vi.fn(async () => []);
+    controller.armed = true; controller.zoom = 6; controller.lastCameraZoom = 6;
+    const cancel = vi.spyOn(controller, 'cancel');
+    controller.onRender('before'); await Promise.resolve();
+    expect(cancel).not.toHaveBeenCalled(); expect(controller.armed).toBe(true);
+    expect([...controller.before.keys()]).toEqual(['c:old', 'c:new']);
+    controller.onRender('before'); await Promise.resolve();
+    expect(controller.findPairs).toHaveBeenCalledTimes(1);
+  });
   it('never blanket-hides marks outside the original viewport', () => {
     const map = { getSource: () => ({}), setFeatureState: vi.fn(), removeFeatureState: vi.fn(), redraw: vi.fn(), on: vi.fn(), off: vi.fn(), triggerRepaint: vi.fn() };
     const controller = new NativeClusterMotionController({ getMap: () => map as any, reducedMotion: () => false, enabled: () => true, duration: () => 210, limit: () => 1200 }) as any;

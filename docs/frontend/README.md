@@ -619,6 +619,8 @@ positions. With the default zero idle delay, zoom-out merges advance through
 placed scenes while the camera moves, coalescing further changes until the
 current short cue finishes. New regions stay native while lineage is pending;
 never hide marks outside the held viewport without a painted replacement.
+If only a new region arrives, retain the original scene and keep tracking until
+its parent hierarchy arrives; remember the new identities to avoid repeated reads.
 Changed branches inside the held viewport fade in on the same clock,
 so the original viewport cannot remain a dense island inside a coarser map.
 A custom nonzero idle delay still waits for the camera to stop.

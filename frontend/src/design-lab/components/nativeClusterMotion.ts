@@ -313,6 +313,16 @@ export class NativeClusterMotionController {
       this.pending = false;
       const participantKeys = new Set(pairs.flatMap(pair => [pair.parent.key, pair.child.key]));
       const appearing = this.liveMerge ? [...after.values()].filter(node => !before.has(node.key) && !participantKeys.has(node.key) && this.heldRegionContains(node)).reverse() : [];
+      if (!pairs.length && !appearing.length && mergingDuringZoom) {
+        // A newly exposed tile can arrive before the original region changes
+        // hierarchy. Keep its native marks and keep tracking the gesture.
+        // Remember these identities so the same scene never repeats the lookup;
+        // retain vanished originals until their actual parents arrive.
+        const expanded = new Map([...before, ...after]);
+        if (expanded.size > this.markLimit()) { this.cancel(false, 'density-limit'); return; }
+        this.before = expanded; this.mask(new Set(expanded.keys()), true);
+        this.report('holding'); return;
+      }
       // A slow worker must never postpone input or make settled pins jump back.
       const visibleMarks = new Set([...after.keys(), ...pairs.flatMap(pair => [pair.parent.key, pair.child.key])]).size;
       if ((!pairs.length && !appearing.length) || visibleMarks > this.markLimit() || performance.now() - started > pairingBudget || !this.allowed()) { this.cancel(false, !pairs.length ? 'no-lineage' : visibleMarks > this.markLimit() ? 'density-limit' : 'pairing-timeout'); return; }
