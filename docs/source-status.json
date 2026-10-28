@@ -34,6 +34,19 @@
       "initial_requests_by_source": {"es.locations": 18253, "es.cat.feed-sandach": 4299, "fsa_approved_establishments": 1609, "fss_approved_establishments": 2, "nz.locations": 945},
       "non_requestable_records": {"de_missing_address": 24, "uk_withheld_or_missing_address": 87, "nz_multiple_locations": 143},
       "already_attempted_shared_address_records_excluded": 161,
+      "geoapify_remaining_spain_transfer_authorization": {
+        "approved": true,
+        "approval_reference": "call_4688f40e25da4b0abc572e4d80d39ce3",
+        "approved_date_utc": "2026-10-28",
+        "source_id": "es.locations",
+        "scope": "Remaining eligible, never-attempted national-Spain business addresses in future quota windows",
+        "fields": ["street_address", "verified_town", "available_postcode", "province", "country"],
+        "max_daily_requests": 3000,
+        "business_names_or_contacts": false,
+        "retry_failed_matches": false,
+        "results_local_only": true,
+        "deployment_authorized": false
+      },
       "latest_checkpoint": {
         "checked_date": "2026-10-28",
         "checked_at_utc": "2026-10-28T08:48:03Z",
@@ -57,7 +70,7 @@
         "locationiq_account_requests_in_current_window": {"primary": 5000, "secondary": 5000},
         "geoapify_requests_in_current_window": 3000,
         "next_quota_window_utc": "2026-10-29T00:00:00Z",
-        "remaining_execution_blocker": "Both LocationIQ account allowances and the Geoapify allowance are exhausted for the current UTC window. The two LocationIQ runs exited normally; all eligible UK, New Zealand and Catalonia addresses have a first attempt. National Spain still has 15,108 new distinct requests. Geoapify support now uses its existing Spanish address profile and source-bound town context, but fresh authorization for the remaining Spanish transfer was requested after tool review blocked a live-run check; no request was sent. Resume only within actual allowances and confirmed transfer scope. Deployment remains held.",
+        "remaining_execution_blocker": "Both LocationIQ account allowances and the Geoapify allowance are exhausted for the current UTC window. The two LocationIQ runs exited normally; all eligible UK, New Zealand and Catalonia addresses have a first attempt. National Spain still has 15,108 new distinct requests. Geoapify transfer authorization is now recorded separately in this first-pass gate; only renewed provider allowances block further requests. Resume unattempted addresses within actual allowances, without failure retries. Deployment remains held.",
         "hosted_dataset_changed": false
       },
       "live_progress_authority": "Existing source-key-linked request reservations, results and job events in uec_launch_sources_test_20261025; count across all providers and snapshots",
