@@ -1,7 +1,7 @@
 import NativeWorker from 'maplibre-gl/dist/maplibre-gl-worker.mjs';
 import { decodePublicMapTransport } from './publicMapSourceTransport';
 import { exportClusterIndex, restoreClusterIndex } from './clusterIndexCodec';
-import { matchNativeClusterLineage, type NativeLineageRequest } from './nativeClusterLineage';
+import { matchNativeClusterLineage, NATIVE_LINEAGE_PORT, validNativeLineageRequest, type NativeLineageRequest } from './nativeClusterLineage';
 import { clusterIndexKey, INDEX_CACHE_CHANNEL, INDEX_CACHE_FIELD, publicIndexIdentity, readClusterIndex, writeClusterIndex, indexCacheFailureReason, type IndexCacheDiagnostic, type IndexCacheFailureReason, type IndexCacheTimings } from './clusterIndexCache';
 
 type Index = unknown;
@@ -15,10 +15,15 @@ type Source = {
   _createGeoJSONIndex(data: unknown, parameters: Parameters): Index;
   loadAndProcessGeoJSON(parameters: Parameters, controller: AbortController): Promise<unknown>;
 };
-type WorkerPrototype = { _getWorkerSource(mapId: string, type: string, sourceId: string): Source };
+type WorkerPrototype = {
+  self?: { addEventListener(type: 'message', listener: (event: MessageEvent) => void): void };
+  workerSources?: Record<string, { geojson?: Record<string, Source> }>;
+  _getWorkerSource(mapId: string, type: string, sourceId: string): Source;
+};
 const prototype = (NativeWorker as unknown as { prototype: WorkerPrototype }).prototype;
 const originalGetSource = prototype._getWorkerSource;
 const installed = new WeakSet<object>();
+const lineagePorts = new WeakSet<object>();
 const empty = { type: 'FeatureCollection', features: [] };
 const counts = new Map<string, { builds: number; restores: number }>();
 const channel = typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel(INDEX_CACHE_CHANNEL);
@@ -42,6 +47,19 @@ if (typeof originalGetSource === 'function') {
     if (type !== 'geojson' || sourceId !== 'locations' || installed.has(source)
       || typeof source.loadAndProcessGeoJSON !== 'function' || typeof source._createGeoJSONIndex !== 'function') return source;
     installed.add(source);
+    if (this.self?.addEventListener && !lineagePorts.has(this)) {
+      lineagePorts.add(this);
+      this.self.addEventListener('message', event => {
+        const value = event.data, port = event.ports[0];
+        if (value?.command !== NATIVE_LINEAGE_PORT || !port) return;
+        try {
+          const index = (typeof value.mapId === 'string' || typeof value.mapId === 'number') && validNativeLineageRequest(value.request)
+            ? this.workerSources?.[String(value.mapId)]?.geojson?.locations?._geoJSONIndex : undefined;
+          port.postMessage(index ? matchNativeClusterLineage(index, value.request) : []);
+        } catch { /* An expired animation request must not interrupt tile work. */ }
+        finally { port.close(); }
+      });
+    }
     const originalChildren = source.getClusterChildren;
     source.getClusterChildren = function(parameters) {
       if (parameters.uecMotionLineage) return matchNativeClusterLineage(this._geoJSONIndex, parameters.uecMotionLineage);

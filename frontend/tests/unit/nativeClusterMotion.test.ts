@@ -100,6 +100,36 @@ describe('selective native visibility and stacking', () => {
     await Promise.resolve();
     expect(map.redraw).toHaveBeenCalledTimes(1);
   });
+  it('keeps the overlay until restored native pixels have actually repainted', async () => {
+    const order: string[] = [];
+    const map = { getSource: () => ({}), isSourceLoaded: () => true, on: vi.fn(), off: vi.fn(), removeFeatureState: vi.fn(), redraw: vi.fn(() => order.push('native paint')) };
+    const controller = new NativeClusterMotionController({ getMap: () => map as any, reducedMotion: () => false, enabled: () => true, duration: () => 210, limit: () => 1200 }) as any;
+    controller.hidden.set('c:1', 1);
+    controller.clear = vi.fn(() => order.push('clear overlay'));
+    controller.unmask(true);
+    expect(order).toEqual([]);
+    await Promise.resolve();
+    expect(order).toEqual(['native paint', 'clear overlay']);
+  });
+  it('completes handoffs requested by a render listener in the same paint', async () => {
+    const done = vi.fn();
+    let controller: any;
+    const map = { redraw: () => controller.repaint(done) };
+    controller = new NativeClusterMotionController({ getMap: () => map as any, reducedMotion: () => false, enabled: () => true, duration: () => 210, limit: () => 1200 });
+    controller.repaint();
+    await Promise.resolve();
+    expect(done).toHaveBeenCalledTimes(1);
+  });
+  it('repaints before dropping a held scene even when its hidden marks left the native query', async () => {
+    const order: string[] = [];
+    const map = { getSource: () => ({}), isSourceLoaded: () => true, on: vi.fn(), off: vi.fn(), redraw: () => order.push('native paint') };
+    const controller = new NativeClusterMotionController({ getMap: () => map as any, reducedMotion: () => false, enabled: () => true, duration: () => 210, limit: () => 1200 }) as any;
+    controller.heldDrawn = true; controller.clear = () => order.push('clear overlay');
+    controller.unmask(true);
+    expect(order).toEqual([]);
+    await Promise.resolve();
+    expect(order).toEqual(['native paint', 'clear overlay']);
+  });
   it('retains the original held scene through rapid camera retargets without rebuilding it', () => {
     let zoom = 6;
     const map = { getBounds: () => ({ getWest: () => -1, getEast: () => 1, getSouth: () => -1, getNorth: () => 1 }), getZoom: () => zoom, isZooming: () => true, getSource: () => undefined };
@@ -117,6 +147,17 @@ describe('selective native visibility and stacking', () => {
     const cancel = vi.spyOn(controller, 'cancel');
     controller.onRender();
     expect(cancel).toHaveBeenCalledWith(false, 'disabled'); expect(controller.armed).toBe(false);
+  });
+  it('does not disarm a merge on the tiny first eased camera step', () => {
+    const map = { getZoom: () => 5.995, isZooming: () => true, getSource: () => ({}) };
+    const controller = new NativeClusterMotionController({ getMap: () => map as any, reducedMotion: () => false, enabled: () => true, duration: () => 210, limit: () => 1000 }) as any;
+    controller.before = new Map([['c:1', { key: 'c:1', id: 1 }]]);
+    controller.capture = () => controller.before;
+    controller.draw = vi.fn(); controller.armed = true; controller.zoom = 6; controller.lastCameraZoom = 6;
+    const reveal = vi.spyOn(controller, 'revealSnapshot');
+    controller.onRender();
+    expect(controller.armed).toBe(true);
+    expect(reveal).not.toHaveBeenCalled();
   });
   it('continues the existing visible cue when another zoom starts during playback', () => {
     const controller = new NativeClusterMotionController({ getMap: () => ({ getZoom: () => 10, getBounds: () => ({ getWest: () => -1, getEast: () => 1, getSouth: () => -1, getNorth: () => 1 }) } as any), reducedMotion: () => false, enabled: () => true, duration: () => 210, limit: () => 1000 }) as any;

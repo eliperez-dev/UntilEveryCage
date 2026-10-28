@@ -180,15 +180,27 @@ for (const pitch of [0, 60]) test(`large zoom jumps at ${pitch} degrees reveal n
   await page.evaluate(() => new Promise<void>(resolve => { const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__; map.once('idle', () => resolve()); map.triggerRepaint(); }));
   await page.evaluate(async (hidden) => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__, source = map.getSource('locations');
-    const sample = { childRequests: 0, lineageRequests: 0, newRegionChecks: 0, missingNewRegion: 0, frameCosts: [] as number[], drawingCosts: [] as number[], duplicateNative: 0, missingExamples: [] as any[] };
+    const sample = { childRequests: 0, lineageRequests: 0, newRegionChecks: 0, maxMissingMs: 0, frameCosts: [] as number[], drawingCosts: [] as number[] };
+    const painted = new Map<string, number>(), missingSince = new Map<string, number>();
     (window as any).__largeJump = sample; (window as any).__monitorNewRegions = true;
     const actor = await source.actorPromise, send = actor.sendAsync.bind(actor);
     actor.sendAsync = (message: any, ...args: any[]) => {
       if (message.type === 'GCC') { if (message.data?.uecMotionLineage) sample.lineageRequests++; else sample.childRequests++; }
       return send(message, ...args);
     };
+    const post = actor.target.postMessage.bind(actor.target);
+    actor.target.postMessage = (message: any, ...args: any[]) => {
+      if (message.command === 'uec-native-lineage-v1') sample.lineageRequests++;
+      return post(message, ...args);
+    };
     const url = performance.getEntriesByType('resource').find(entry => entry.name.includes('/nativeClusterMotion.ts'))?.name;
     const { NativeClusterMotionController } = await import(url!);
+    const drawNode = NativeClusterMotionController.prototype.drawNode;
+    NativeClusterMotionController.prototype.drawNode = function (...args: any[]) {
+      const result = drawNode.apply(this, args);
+      if (args[5] > .05) painted.set(args[1].key, performance.now());
+      return result;
+    };
     const render = NativeClusterMotionController.prototype.onRender, draw = NativeClusterMotionController.prototype.draw;
     NativeClusterMotionController.prototype.onRender = function (...args: any[]) {
       const start = performance.now(), result = render.apply(this, args);
@@ -205,7 +217,11 @@ for (const pitch of [0, 60]) test(`large zoom jumps at ${pitch} degrees reveal n
       for (const feature of map.queryRenderedFeatures({ layers: ['clusters'] })) {
         if (feature.geometry.coordinates[0] < -100) continue;
         sample.newRegionChecks++;
-        if (map.getFeatureState({ source: 'locations', id: feature.id })[hidden]) { sample.missingNewRegion++; if (sample.missingExamples.length < 12) sample.missingExamples.push({ coordinates: feature.geometry.coordinates, id: feature.id, zoom: map.getZoom(), phase: document.querySelector('.native-cluster-motion')?.getAttribute('data-phase') }); }
+        const key = `c:${feature.properties.cluster_id}`, now = performance.now();
+        if (map.getFeatureState({ source: 'locations', id: feature.id })[hidden] && now - (painted.get(key) ?? -Infinity) > 50) {
+          if (!missingSince.has(key)) missingSince.set(key, now);
+          sample.maxMissingMs = Math.max(sample.maxMissingMs, now - missingSince.get(key)!);
+        } else missingSince.delete(key);
       }
     });
     map.easeTo({ zoom: 2, duration: 850 });
@@ -217,15 +233,113 @@ for (const pitch of [0, 60]) test(`large zoom jumps at ${pitch} degrees reveal n
   await writeFile(testInfo.outputPath('large-jump-coverage-and-cost.json'), JSON.stringify(sample));
   await testInfo.attach('large-jump-coverage-and-cost', { body: JSON.stringify(sample), contentType: 'application/json' });
   expect(sample.newRegionChecks).toBeGreaterThan(0);
-  expect(sample.missingNewRegion).toBe(0);
+  // Newly revealed branches share the moving merge/fade, rather than snapping
+  // ahead of the old viewport. They may await one bounded cue, never zoomend.
+  expect(sample.maxMissingMs).toBeLessThan(400);
   expect(sample.childRequests).toBe(0);
-  expect(sample.lineageRequests).toBe(2);
+  expect(sample.lineageRequests).toBeLessThanOrEqual(12);
   expect(sample.state).toBe('complete');
   expect(Math.max(...sample.frameCosts)).toBeLessThan(80);
   expect(Math.max(...sample.drawingCosts)).toBeLessThan(80);
   const sortedDraws = [...sample.drawingCosts].sort((a: number, b: number) => a - b);
   expect(sortedDraws[Math.floor(sortedDraws.length * .95)]).toBeLessThan(24);
   await page.screenshot({ path: testInfo.outputPath('large-zoom-complete.png') });
+});
+
+for (const population of [500, 1000]) test(`zoom-out retires the ${population}-pin dense cohort while the camera is still moving`, async ({ page }, testInfo) => {
+  await fixture(page, population);
+  const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+  await page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.jumpTo({ zoom: 10, pitch: 60 }));
+  await page.waitForFunction(population => { const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__; return map.isSourceLoaded('locations') && map.queryRenderedFeatures({ layers: ['v1-source-pins'] }).length >= population && !document.querySelector('.native-cluster-motion')?.hasAttribute('data-phase'); }, population);
+  await monitorMotion(page);
+  await page.evaluate(async () => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    const original = new Set(map.queryRenderedFeatures({ layers: ['v1-source-pins'] }).map((feature: any) => `p:${feature.properties.key}`));
+    if (original.size < 250) throw new Error('Dense native starting cohort was not ready');
+    const sample = { movingMerges: 0, lastOriginalPaint: 0, moveend: 0 };
+    (window as any).__movingMerge = sample;
+    const url = performance.getEntriesByType('resource').find(entry => entry.name.includes('/nativeClusterMotion.ts'))?.name;
+    const { NativeClusterMotionController } = await import(url!);
+    const draw = NativeClusterMotionController.prototype.drawNode, report = NativeClusterMotionController.prototype.report;
+    NativeClusterMotionController.prototype.drawNode = function (...args: any[]) {
+      if (original.has(args[1].key) && args[5] > .1) sample.lastOriginalPaint = performance.now();
+      return draw.apply(this, args);
+    };
+    NativeClusterMotionController.prototype.report = function (state: string) {
+      if (state === 'playing' && this.motion?.direction === 'merge' && map.isZooming()) sample.movingMerges++;
+      return report.call(this, state);
+    };
+    map.once('moveend', () => { sample.moveend = performance.now(); });
+    map.easeTo({ zoom: 3, duration: 1800, easing: (t: number) => t });
+  });
+  await page.waitForFunction(() => !(window as any).__UEC_LOCAL_PREVIEW_MAP__.isMoving() && !document.querySelector('.native-cluster-motion')?.hasAttribute('data-phase'));
+  const sample = await page.evaluate(() => ({ ...(window as any).__movingMerge, events: (window as any).__motionLifecycle }));
+  await writeFile(testInfo.outputPath('moving-merge-timing.json'), JSON.stringify(sample));
+  await testInfo.attach('moving-merge-timing', { body: JSON.stringify(sample), contentType: 'application/json' });
+  if (population === 500) expect(sample.movingMerges).toBeGreaterThan(0);
+  else if (!sample.movingMerges) {
+    // A software renderer may exhaust the existing animation budget at 1,000
+    // pins. Its explicit fallback must retire the snapshot during the zoom,
+    // without increasing the budget or leaving the old dense island on screen.
+    expect(sample.events.some((event: any) => ['pairing-timeout', 'density-limit'].includes(event.cancel))).toBe(true);
+  }
+  expect(sample.lastOriginalPaint).toBeLessThan(sample.moveend - 200);
+  expect(errors).toEqual([]);
+  expect(await page.evaluate(key => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    return map.queryRenderedFeatures({ layers: ['clusters', 'v1-source-pins'] }).some((feature: any) => map.getFeatureState({ source: 'locations', id: feature.id })[key]);
+  }, CLUSTER_MOTION_HIDDEN_STATE)).toBe(false);
+  await page.screenshot({ path: testInfo.outputPath('moving-merge-complete.png') });
+});
+
+test('native paint handoff never leaves both renderers empty at the final cluster', async ({ page }, testInfo) => {
+  await fixture(page, 500);
+  await page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.easeTo({ zoom: 10, duration: 350 }));
+  await page.waitForFunction(() => { const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__; return map.queryRenderedFeatures({ layers: ['v1-source-pins'] }).length >= 500 && !document.querySelector('.native-cluster-motion')?.hasAttribute('data-phase'); });
+  await page.evaluate(async () => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__, overlay = document.querySelector('.native-cluster-motion') as HTMLCanvasElement;
+    const sample = { frames: 0, empty: 0, nativeOnly: 0 };
+    (window as any).__handoffPixels = sample;
+    let probe: [number, number] | undefined;
+    const url = performance.getEntriesByType('resource').find(entry => entry.name.includes('/nativeClusterMotion.ts'))?.name;
+    const { NativeClusterMotionController } = await import(url!);
+    const draw = NativeClusterMotionController.prototype.drawNode, start = NativeClusterMotionController.prototype.onZoomStart;
+    // Exercise the same handoff with an explicit idle delay, isolating it from
+    // moving checkpoints. The pixel assertion covers the actual WebGL canvas.
+    NativeClusterMotionController.prototype.onZoomStart = function () { this.options.idleDelay = () => 50; return start.call(this); };
+    NativeClusterMotionController.prototype.drawNode = function (...args: any[]) {
+      const node = args[1];
+      if (Number(node.properties.representedCount) === 500 && args[5] > .8) probe = node.coordinates;
+      return draw.apply(this, args);
+    };
+    map.on('render', () => queueMicrotask(() => {
+      if (!probe) return;
+      const p = map.project(probe), native = map.getCanvas(), ratio = native.width / native.clientWidth;
+      const side = Math.round(32 * ratio), x = Math.round((p.x - 16) * ratio), y = Math.round((p.y - 16) * ratio);
+      if (x < 0 || y < 0 || x + side >= native.width || y + side >= native.height) return;
+      const pixels = new Uint8Array(side * side * 4), gl = map.painter.context.gl;
+      gl.readPixels(x, native.height - y - side, side, side, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+      let nativeMark = false;
+      for (let i = 0; i < pixels.length; i += 4) if (pixels[i]! > 100 && pixels[i]! - pixels[i + 2]! > 40) { nativeMark = true; break; }
+      const overlayRatio = overlay.width / overlay.clientWidth;
+      const overlayPixels = overlay.getContext('2d')!.getImageData(Math.round((p.x - 16) * overlayRatio), Math.round((p.y - 16) * overlayRatio), Math.round(32 * overlayRatio), Math.round(32 * overlayRatio)).data;
+      const overlayMark = overlayPixels.some((value, index) => index % 4 === 3 && value > 5);
+      sample.frames++;
+      if (!nativeMark && !overlayMark) sample.empty++;
+      if (nativeMark && !overlayMark) sample.nativeOnly++;
+    }));
+    map.easeTo({ zoom: 6, duration: 550 });
+  });
+  await page.waitForFunction(() => !(window as any).__UEC_LOCAL_PREVIEW_MAP__.isMoving() && !document.querySelector('.native-cluster-motion')?.hasAttribute('data-phase'));
+  await page.evaluate(async () => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    for (let frame = 0; frame < 3; frame++) await new Promise<void>(resolve => { map.once('render', () => resolve()); map.triggerRepaint(); });
+  });
+  await expect.poll(() => page.evaluate(() => (window as any).__handoffPixels.nativeOnly)).toBeGreaterThan(0);
+  const sample = await page.evaluate(() => (window as any).__handoffPixels);
+  await testInfo.attach('handoff-pixel-coverage', { body: JSON.stringify(sample), contentType: 'application/json' });
+  expect(sample.frames).toBeGreaterThan(2);
+  expect(sample.empty).toBe(0);
 });
 
 test('a zoom within one cluster generation never hides or redraws unchanged native clusters', async ({ page }, testInfo) => {
@@ -384,6 +498,7 @@ test('rapid zoom reversals retain the visible held scene and animate the final h
 
 test('reversing during visible playback completes the moving cue without settling pins abruptly', async ({ page }, testInfo) => {
   await fixture(page, 500);
+  await monitorMotion(page);
   await page.evaluate(async hiddenKey => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     const sample = { reversed: false, progress: [] as number[], beforeRetargetOffset: 0, remainingSettlePixels: 0, blank: 0, frames: 0, overlay: 0, nativeChecks: 0, earlyNativeExposure: 0 };
@@ -391,7 +506,7 @@ test('reversing during visible playback completes the moving cue without settlin
     const moduleUrl = performance.getEntriesByType('resource').find(entry => entry.name.includes('/nativeClusterMotion.ts'))?.name;
     const { NativeClusterMotionController } = await import(moduleUrl!);
     const draw = NativeClusterMotionController.prototype.draw, drawNode = NativeClusterMotionController.prototype.drawNode, clear = NativeClusterMotionController.prototype.clear;
-    NativeClusterMotionController.prototype.draw = function (...args: any[]) { sample.overlay = 0; return draw.apply(this, args); };
+    NativeClusterMotionController.prototype.draw = function (...args: any[]) { (window as any).__reversalController = this; sample.overlay = 0; return draw.apply(this, args); };
     NativeClusterMotionController.prototype.clear = function (...args: any[]) { sample.overlay = 0; return clear.apply(this, args); };
     let childKey: string | undefined;
     NativeClusterMotionController.prototype.drawNode = function (...args: any[]) {
@@ -426,7 +541,13 @@ test('reversing during visible playback completes the moving cue without settlin
   }, CLUSTER_MOTION_HIDDEN_STATE);
   await expect.poll(() => page.evaluate(() => (window as any).__playingReversal.reversed)).toBe(true);
   await expect.poll(() => page.evaluate(() => (window as any).__motionFrames.filter((frame: any) => frame.direction === 'merge').length)).toBeGreaterThan(10);
-  await page.waitForFunction(() => !(window as any).__UEC_LOCAL_PREVIEW_MAP__.isMoving() && !document.querySelector('.native-cluster-motion')?.hasAttribute('data-phase'));
+  await page.waitForFunction(() => !(window as any).__UEC_LOCAL_PREVIEW_MAP__.isMoving() && !document.querySelector('.native-cluster-motion')?.hasAttribute('data-phase'), undefined, { timeout: 5000 }).catch(async error => {
+    await writeFile(testInfo.outputPath('reversal-state.json'), JSON.stringify(await page.evaluate(() => {
+      const c = (window as any).__reversalController;
+      return { armed: c?.armed, queued: c?.queued, pending: c?.pending, motion: c?.motion?.direction, handoff: Boolean(c?.handoff), hidden: c?.hidden.size, scope: Boolean(c?.maskScope), before: c?.before?.size, present: c?.presentNodes.size, phase: c?.canvas?.getAttribute('data-phase'), events: (window as any).__motionLifecycle };
+    })));
+    throw error;
+  });
   const sample = await page.evaluate(() => (window as any).__playingReversal);
   await testInfo.attach('during-playback-retarget-continuity', { body: JSON.stringify(sample), contentType: 'application/json' });
   expect(sample.beforeRetargetOffset).toBeGreaterThan(1);
@@ -447,14 +568,13 @@ test('reversing during visible playback completes the moving cue without settlin
 test('a slow pairing worker skips decorative motion without blocking camera movement', async ({ page }) => {
   await fixture(page);
   await page.evaluate(async () => {
-    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__, source = map.getSource('locations');
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     const moduleUrl = performance.getEntriesByType('resource').find(entry => entry.name.includes('/nativeClusterMotion.ts'))?.name;
     const { NativeClusterMotionController } = await import(moduleUrl!);
-    const actor = await source.actorPromise;
-    const read = actor.sendAsync.bind(actor);
-    actor.sendAsync = async (message: any, ...args: any[]) => {
-      if (message.data?.uecMotionLineage) await new Promise(resolve => setTimeout(resolve, 800));
-      return read(message, ...args);
+    const read = NativeClusterMotionController.prototype.findPairs;
+    NativeClusterMotionController.prototype.findPairs = async function (...args: any[]) {
+      await new Promise(resolve => setTimeout(resolve, 800));
+      return read.apply(this, args);
     };
     map.easeTo({ zoom: 8, duration: 200 });
   });
@@ -620,6 +740,7 @@ test('native clusters split and merge with bounded visible frames and no source 
 test('cluster clicks animate on mobile and camera interruption clears every native mask', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const requests = await fixture(page);
+  await monitorMotion(page);
   const point = await page.evaluate(() => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     const features = map.queryRenderedFeatures({ layers: ['clusters'] });
@@ -637,7 +758,10 @@ test('cluster clicks animate on mobile and camera interruption clears every nati
   await page.waitForTimeout(230);
   await page.screenshot({ path: testInfo.outputPath('cluster-click-mobile.png') });
   await page.evaluate(() => { (window as any).__motionFrames.length = 0; (window as any).__UEC_LOCAL_PREVIEW_MAP__.easeTo({ zoom: 6, duration: 500 }); });
-  await page.waitForFunction(() => document.querySelector('.native-cluster-motion')?.getAttribute('data-direction') === 'merge');
+  await page.waitForFunction(() => document.querySelector('.native-cluster-motion')?.getAttribute('data-direction') === 'merge', undefined, { timeout: 5000 }).catch(async error => {
+    await writeFile(testInfo.outputPath('interruption-events.json'), JSON.stringify(await page.evaluate(() => (window as any).__motionLifecycle)));
+    throw error;
+  });
   await page.evaluate(() => { const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__; map.stop(); map.easeTo({ bearing: 60, duration: 150 }); });
   await expect(page.locator('.native-cluster-motion')).not.toHaveAttribute('data-direction');
   await page.waitForTimeout(300);

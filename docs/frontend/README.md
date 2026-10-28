@@ -614,29 +614,40 @@ renderer and holds only vanished originals on a bounded, geographically anchored
 canvas during a zoom gesture. Permanent feature-state paint expressions mask
 only changing identities; gestures do not rewrite layer paint or reload source
 tiles. Promote the existing point key to preserve full UUID feature identities.
-Once the final hierarchy is ready,
-children travel from their parent cluster to their new positions; merges reverse
-that movement. Keep native bottom-to-top stacking on the canvas and retain the
+When zoom-in settles, children travel from their parent cluster to their new
+positions. With the default zero idle delay, zoom-out merges advance through
+placed scenes while the camera moves, coalescing further changes until the
+current short cue finishes. Newly exposed branches fade in on the same clock,
+so the original viewport cannot remain a dense island inside a coarser map.
+A custom nonzero idle delay still waits for the camera to stop.
+Keep native bottom-to-top stacking on the canvas and retain the
 held scene through rapid zoom reversals. The overlay remains until replacement
 native paint is ready. Reuse existing pin/cluster artwork and read-only native
-child queries, without bounce or repeated restarts.
+hierarchy reads, without bounce or repeated restarts.
 Draw every visible wrapped world copy of a masked identity, and align parent and
 child longitudes across the short antimeridian path. Reproject held marks while
-worker pairing is pending. Newly exposed regions outside the original viewport
-remain native and visible during zoom-out. Resolve lineage once for the settled
-scene through a worker-only read of the existing index's parent links. Return
+worker pairing is pending. Resolve lineage once per merge scene or settled
+expansion through a worker-only read of the existing index's parent links,
+with at most one request in flight. Use a one-use worker message port so tile
+message queues cannot delay the animation reply; close it after completion or
+timeout. The existing native query channel remains a compatibility fallback. Return
 identity pairs only; do not recursively fetch descendants, warm a second cache,
-or issue hierarchy requests for intermediate zoom frames. Skipping several
+or issue hierarchy requests on every camera frame. Skipping several
 zoom levels uses the same lookup. Coalesce feature-state redraws in a microtask
 after MapLibre's input/render task returns, before browser composition; never
-call synchronous redraw from inside its task queue.
+call synchronous redraw from inside its task queue. Clear the canvas only after
+the restoring native redraw returns, including held scenes whose identities
+are temporarily absent from the native query. Source readiness alone is not
+confirmation that replacement pixels have painted.
 If a new zoom starts during a short playing cue, finish that cue without resetting
 its progress, then hold its destination identities for the next transition.
 The default is 210 ms and at most 1,200 animated marks in total. Debug
 controls tune duration from 0–400 ms (0 disables it), the mark cap from
 50–2,000, and camera idle delay from 0–500 ms (default 0). A bounded in-memory
 lineage lookup stays in the native worker and returns at most the selected
-number of identity pairs. Data, index and style changes cancel stale lookups.
+number of identity pairs. Settled lookups have a 100 ms budget; moving merges
+share the 500 ms native-paint deadline to tolerate busy placement frames.
+Neither wait blocks input. Data, index and style changes cancel stale lookups.
 Local pin artwork loads in parallel. Pan and
 bearing-only rotation remain native. Reduced motion, views beyond the selected
 mark limit, slow lookups and camera/style/data changes may skip or cancel a
