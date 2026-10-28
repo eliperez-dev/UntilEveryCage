@@ -108,7 +108,7 @@ test('clearing a nearby area retains the private camera and keeps persistence an
   await expect(page.locator('.area-summary')).toHaveCount(0);
 });
 
-test('individual PNG and optimized pins receive a static hover halo without source or index updates', async ({ page }) => {
+test('individual PNG and optimized pins receive shaped hover highlights without source or index updates', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await install(page);
   await page.goto(`./#/map?release_id=${release}&lat=${center.latitude}&lon=${center.longitude}&z=12`);
@@ -142,9 +142,20 @@ test('individual PNG and optimized pins receive a static hover halo without sour
     await page.mouse.move(pixel.x, pixel.y);
     const halo = page.locator('.pin-hover-halo');
     await expect(halo).toBeVisible();
-    const style = await halo.evaluate(element => { const css = getComputedStyle(element); return { animation: css.animationName, pointer: css.pointerEvents, radius: css.borderRadius, size: element.getBoundingClientRect().width }; });
-    expect(style).toMatchObject({ animation: 'none', pointer: 'none', radius: '50%' });
-    expect(style.size).toBeGreaterThanOrEqual(30);
+    const style = await halo.evaluate(element => {
+      const css = getComputedStyle(element), child = getComputedStyle(element.firstElementChild!), box = element.getBoundingClientRect();
+      return { animation: css.animationName, pointer: css.pointerEvents, glow: css.filter, radius: child.borderRadius,
+        mask: child.maskImage, mode: child.maskMode, kind: element.getAttribute('data-kind'), width: box.width, height: box.height };
+    });
+    expect(style).toMatchObject({ animation: 'none', pointer: 'none', kind: optimized ? 'dot' : 'pin' });
+    expect(style.glow).toContain('drop-shadow');
+    if (optimized) {
+      expect(style).toMatchObject({ radius: '50%', mask: 'none', width: 21, height: 21 });
+    } else {
+      expect(style.mask).toContain('/v1-pins/marker-icon-2x-grey.png'); expect(style.mode).toBe('alpha');
+      expect(style.width).toBeCloseTo(20, 1); expect(style.height).toBeCloseTo(32.8, 1);
+    }
+    await page.screenshot({ path: testInfo.outputPath(optimized ? 'dot-hover-highlight.png' : 'png-hover-highlight.png') });
     await page.mouse.move(1400, 850); await expect(halo).toHaveCount(0);
   }
   expect(await page.evaluate(() => (window as any).__haloSourceChanges)).toBe(0);

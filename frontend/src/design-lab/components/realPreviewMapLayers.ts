@@ -104,6 +104,7 @@ export function addRealPreviewMapLayers(
   if (map.getSource('locations')) return;
   map.addSource('locations', {
     type: 'geojson',
+    promoteId: 'key',
     data,
     cluster: settings.enabled,
     clusterRadius: settings.radius,

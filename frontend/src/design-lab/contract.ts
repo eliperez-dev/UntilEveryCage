@@ -69,6 +69,7 @@ export type LabAction =
   | { type: 'results' } | { type: 'close-workspace' } | { type: 'explore-map' };
 
 export type PinHoverLabel = Readonly<{ name: string; categoryKey: string }>;
+export type PinHoverResolver = (id: string, signal: AbortSignal) => PinHoverLabel | null | Promise<PinHoverLabel | null>;
 export type MapDisplaySettings = Readonly<{ clusterMode: 'auto' | 'on' | 'off'; pinScale: number; optimizedPins: boolean; coordinateRadius: number }>;
 export type MapDisplaySettingsRequest = Readonly<{ id: number; patch: Partial<MapDisplaySettings> }>;
 
@@ -76,7 +77,7 @@ export interface DirectionViewProps {
   state: LabState;
   records: readonly LabRecord[];
   mapRecords?: readonly LabRecord[];
-  resolvePinHover?(id: string, signal: AbortSignal): Promise<PinHoverLabel | null>;
+  resolvePinHover?: PinHoverResolver;
   mode?: 'synthetic' | 'real-preview' | 'candidate-preview' | 'public-release';
   publicReleaseId?: string | null;
   publicReleaseIdentity?: string | null;

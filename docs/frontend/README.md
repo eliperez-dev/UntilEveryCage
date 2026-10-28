@@ -46,6 +46,28 @@ API schemas own supported fields. They are not additional roadmaps.
   Use the same shared four-link header, theme control and More tools as the other pages;
   landing does not mark a navigation destination active.
   Its still-image motion has pause/resume and a static reduced-motion fallback.
+  `See the scale` scrolls to the integrated outreach story without replacing the
+  hash route or release context. Four conversational chapters appear in natural
+  scroll order: introduce one human glyph and one animal dot; compare worldwide
+  human all-cause mortality with a single U.S. chicken slaughter line; show the
+  land-animal funnel; then add the separately dated fish funnel. There is no
+  population tab required to discover either funnel. The chicken example uses
+  140 birds per minute, with grey human outcomes and red chicken outcomes at
+  labelled lines; it does not describe every plant's measured throughput.
+  Land-animal slaughter (2024), estimated finfish capture/slaughter (2019) and
+  the human mortality benchmark (January 2025) retain their distinct scopes and
+  dates. They are not a single contemporary total, release totals or counts
+  attributed to mapped facilities. Each human/chicken glyph and animal dot
+  represents one individual. Each visible animation uses active time: pause,
+  hidden tabs and offscreen sections do not accumulate animation time. Reduced
+  motion shows a static equivalent. Funnel remains the default, with an optional
+  snaking batch grid in each throughput chapter.
+  Sources, conversion assumptions and ranges are available in the collapsed
+  methodology. Population and conditional drip/pool comparisons illustrate
+  counts; the water analogy does not describe resource use.
+  This locally implemented story uses a private-validated statistics edition;
+  publication approval remains governed by the
+  [aggregate statistics specification](../statistics/aggregate-statistics-spec.md).
   Keep `Open the map` primary and `Find locations near me` secondary. Only that
   explicit nearby click requests device permission. A one-time in-memory command
   opens the map and searches within 50 miles; reloads and links never replay it.
@@ -53,6 +75,16 @@ API schemas own supported fields. They are not additional roadmaps.
   source counts from validated public aggregates, with activity links into map
   results. Distinguish unavailable totals from zero; do not add animal-death or
   other unsupported estimates to this section.
+  Check the manifest before requesting live aggregates. Publish records,
+  mapped locations and sources after their release/restriction identity check;
+  countries finish separately. Recheck identity after the country queries and
+  discard the summary on a mismatch. Do not reuse unchecked totals from storage.
+  One aggregate-only localStorage entry (at most 2 KiB, 24-hour lifetime) may
+  reuse complete checked totals after a fresh no-store manifest confirms the
+  same official profile, release, manifest hash and restriction generation.
+  Never display it offline or before validation. Identity changes, unavailable
+  releases, errors and invalid entries clear it; blocked storage falls back to
+  live aggregates. Cache hits skip the heavier facet/country queries.
   Countries mapped is the union of countries in source-reported, approximate and
   exact precision partitions. Each release/ruleset-bound country facet must sum
   to that precision's complete count; truncated, duplicate, invalid or failed
@@ -127,13 +159,16 @@ API schemas own supported fields. They are not additional roadmaps.
 
 - Individual pins show a compact, subtly rounded escaped-text name/category label on fine-pointer
   hover. Labels use the validated release-pinned public detail projection, with
-  debouncing, cancellation and a bounded short-lived in-memory cache. Release,
+  cancellation and a bounded short-lived in-memory cache. Verified loaded records
+  and cached names render synchronously; an unseen name starts its detail request
+  immediately, without a hover timer. Release,
   restrictions, filter and active-state changes invalidate labels; clusters and
   aggregate references never expose a facility tooltip. Hover does not move the
   camera or obstruct pin selection. The category uses muted text without a
   colored swatch; the pin already communicates category color.
-  A faint static halo marks the hovered facility for both PNG and optimized
-  pins. Do not pulse clusters or rebuild map data to show the hover cue.
+  PNG highlights follow the actual pin's alpha mask and rendered size, with a
+  stronger static white glow. Optimized dots use a centered ring. Do not pulse
+  clusters or rebuild map data to show the hover cue.
 - Search this area captures fixed bounds and draws a native geographic perimeter.
   Panning, rotation and style changes retain those bounds. There is no separate
   Searching this area indicator. With any box, radius or device-derived scope
@@ -574,18 +609,46 @@ baseline changes when the handoff commits. Source metadata alone does not
 establish tile readiness. Source errors and cancellation still end the wait
 immediately and follow the existing fallback.
 
-Native cluster animation holds a bounded, geographically anchored snapshot
-throughout a continuous zoom gesture. Once the final hierarchy is ready,
-children travel from their parent cluster to their new positions; merges reverse
-that movement. Native marks are masked before hierarchy changes and the overlay
-remains until their replacement paint is ready. Reuse existing pin/cluster
-artwork and read-only native child queries, without bounce or repeated restarts.
+Native cluster animation keeps unchanged identities visible in the native
+renderer and holds only vanished originals on a bounded, geographically anchored
+canvas during a zoom gesture. Permanent feature-state paint expressions mask
+only changing identities; gestures do not rewrite layer paint or reload source
+tiles. Promote the existing point key to preserve full UUID feature identities.
+When zoom-in settles, children travel from their parent cluster to their new
+positions. With the default zero idle delay, zoom-out merges advance through
+placed scenes while the camera moves, coalescing further changes until the
+current short cue finishes. Newly exposed branches fade in on the same clock,
+so the original viewport cannot remain a dense island inside a coarser map.
+A custom nonzero idle delay still waits for the camera to stop.
+Keep native bottom-to-top stacking on the canvas and retain the
+held scene through rapid zoom reversals. The overlay remains until replacement
+native paint is ready. Reuse existing pin/cluster artwork and read-only native
+hierarchy reads, without bounce or repeated restarts.
+Draw every visible wrapped world copy of a masked identity, and align parent and
+child longitudes across the short antimeridian path. Reproject held marks while
+worker pairing is pending. Resolve lineage once per merge scene or settled
+expansion through a worker-only read of the existing index's parent links,
+with at most one request in flight. Use a one-use worker message port so tile
+message queues cannot delay the animation reply; close it after completion or
+timeout. The existing native query channel remains a compatibility fallback. Return
+identity pairs only; do not recursively fetch descendants, warm a second cache,
+or issue hierarchy requests on every camera frame. Skipping several
+zoom levels uses the same lookup. Coalesce feature-state redraws in a microtask
+after MapLibre's input/render task returns, before browser composition; never
+call synchronous redraw from inside its task queue. Clear the canvas only after
+the restoring native redraw returns, including held scenes whose identities
+are temporarily absent from the native query. Source readiness alone is not
+confirmation that replacement pixels have painted.
+If a new zoom starts during a short playing cue, finish that cue without resetting
+its progress, then hold its destination identities for the next transition.
 The default is 210 ms and at most 1,200 animated marks in total. Debug
 controls tune duration from 0–400 ms (0 disables it), the mark cap from
 50–2,000, and camera idle delay from 0–500 ms (default 0). A bounded in-memory
-lineage cache warms native child queries while idle, retaining at most 512
-cluster entries and 4,096 child nodes. Data, index and style changes invalidate
-it; camera gestures reuse it. Local pin artwork loads in parallel. Pan and
+lineage lookup stays in the native worker and returns at most the selected
+number of identity pairs. Settled lookups have a 100 ms budget; moving merges
+share the 500 ms native-paint deadline to tolerate busy placement frames.
+Neither wait blocks input. Data, index and style changes cancel stale lookups.
+Local pin artwork loads in parallel. Pan and
 bearing-only rotation remain native. Reduced motion, views beyond the selected
 mark limit, slow lookups and camera/style/data changes may skip or cancel a
 transition; Debug exposes the current state or skip reason. Animation never changes source data or
