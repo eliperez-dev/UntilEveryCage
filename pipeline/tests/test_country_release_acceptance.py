@@ -149,6 +149,19 @@ class CountryReleaseAcceptanceTests(unittest.TestCase):
         ctes = (root / "pipeline/sql/graph_public_edge_ctes.sql").read_text(encoding="utf-8")
         self.assertIn("FROM uec.graph_public_live_facility_anchors_current p", ctes)
 
+    def test_projection_cursors_reuse_release_eligibility_keys(self):
+        from pipeline.common.graph_projection import (
+            STAGED_ANCHOR_RELATION, _staged_anchor_query, _python_endpoint_select,
+            _python_edge_select, _python_aphis_reference_select, _python_organization_label_select,
+        )
+        for selector in (_python_endpoint_select, _python_edge_select,
+                         _python_aphis_reference_select, _python_organization_label_select):
+            query, parameters = selector("synthetic-release")
+            staged = _staged_anchor_query(query)
+            self.assertIn(STAGED_ANCHOR_RELATION, staged)
+            self.assertNotIn("uec.graph_public_live_facility_anchors_current", staged)
+            self.assertEqual(parameters, {"release_id": "synthetic-release"})
+
 
 if __name__ == "__main__":
     unittest.main()

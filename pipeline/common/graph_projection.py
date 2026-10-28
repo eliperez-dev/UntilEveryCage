@@ -14,6 +14,7 @@ from pipeline.common.graph_persistence import _validate_private_graph_writer, re
 
 PROJECTION_VERSION = "graph-release-projection-v3"
 PROJECTION_PLANNER_GUARD = "SET LOCAL enable_nestloop=off"
+STAGED_ANCHOR_RELATION = "pg_temp.uec_selected_release_facility_anchors"
 _SQL_PATH = Path(__file__).resolve().parents[1] / "sql" / "graph_public_edge_ctes.sql"
 EDGE_CTES = _SQL_PATH.read_text(encoding="utf-8")
 # Evidence handoffs use compact field names while persisted facility aliases
@@ -29,6 +30,10 @@ _APHIS_EVIDENCE_LINK_IDENTIFIER_TYPE_SQL = (
 )
 _PUBLIC_GROUPS = frozenset({"source", "identity", "location", "contact", "temporal", "contradiction"})
 _PUBLIC_CONTRADICTIONS = frozenset({"conflicting_identifier", "conflicting_address", "temporal_conflict"})
+
+
+def _staged_anchor_query(query: str) -> str:
+    return query.replace("uec.graph_public_live_facility_anchors_current", STAGED_ANCHOR_RELATION)
 
 
 def _python_edge_select(release_id: str) -> tuple[str, dict[str, str]]:
@@ -436,6 +441,19 @@ def build_release_projection(database_url: str, release_id: str, *,
         endpoint_ids: dict[tuple[str, str, str, str, uuid.UUID], uuid.UUID] = {}
         try:
             with connection.transaction():
+                # Resolve live release eligibility once, before the graph join
+                # planner guard. Every cursor below uses the same key set.
+                connection.execute(
+                    "CREATE TEMP TABLE uec_selected_release_facility_anchors ON COMMIT DROP AS "
+                    "SELECT DISTINCT release_id,source_record_id,facility_id "
+                    "FROM uec.graph_public_live_facility_anchors_current WHERE release_id=%s",
+                    (release_id,),
+                )
+                connection.execute(
+                    "CREATE INDEX ON pg_temp.uec_selected_release_facility_anchors "
+                    "(source_record_id,facility_id)"
+                )
+                connection.execute("ANALYZE pg_temp.uec_selected_release_facility_anchors")
                 # The release/support CTEs have a known severe row-count
                 # underestimation under nested loops. Keep the measured hash
                 # join plan override transaction-local to this one build.
@@ -451,7 +469,7 @@ def build_release_projection(database_url: str, release_id: str, *,
                 organization_anchor_rows: list[tuple[Any, ...]] = []
                 endpoint_cursor = connection.cursor(name="uec_graph_projection_endpoints")
                 endpoint_query, endpoint_parameters = _python_endpoint_select(release_id)
-                endpoint_cursor.execute(endpoint_query, endpoint_parameters)
+                endpoint_cursor.execute(_staged_anchor_query(endpoint_query), endpoint_parameters)
                 while batch := endpoint_cursor.fetchmany(batch_size):
                     inserted_endpoints, inserted_anchors = _insert_endpoint_batch(
                         connection, projection_id, batch, endpoint_ids, organization_anchor_rows,
@@ -472,7 +490,7 @@ def build_release_projection(database_url: str, release_id: str, *,
                 connection.execute("ANALYZE pg_temp.uec_selected_organization_anchors")
                 label_cursor = connection.cursor(name="uec_graph_projection_organization_labels")
                 label_query, label_parameters = _python_organization_label_select(release_id)
-                label_cursor.execute(label_query, label_parameters)
+                label_cursor.execute(_staged_anchor_query(label_query), label_parameters)
                 while batch := label_cursor.fetchmany(batch_size):
                     organization_label_count += _insert_organization_label_batch(
                         connection, projection_id, batch, endpoint_ids,
@@ -480,7 +498,7 @@ def build_release_projection(database_url: str, release_id: str, *,
                 label_cursor.close()
                 evidence_cursor = connection.cursor(name="uec_graph_projection_aphis_references")
                 evidence_query, evidence_parameters = _python_aphis_reference_select(release_id)
-                evidence_cursor.execute(evidence_query, evidence_parameters)
+                evidence_cursor.execute(_staged_anchor_query(evidence_query), evidence_parameters)
                 while batch := evidence_cursor.fetchmany(batch_size):
                     evidence_reference_count += _insert_aphis_reference_batch(
                         connection, projection_id, batch, endpoint_ids,
@@ -488,7 +506,7 @@ def build_release_projection(database_url: str, release_id: str, *,
                 evidence_cursor.close()
                 cursor = connection.cursor(name="uec_graph_projection_source")
                 query, parameters = _python_edge_select(release_id)
-                cursor.execute(query, parameters)
+                cursor.execute(_staged_anchor_query(query), parameters)
                 while batch := cursor.fetchmany(batch_size):
                     count += _insert_batch(connection, projection_id, release_id, batch, endpoint_ids)
                 cursor.close()
