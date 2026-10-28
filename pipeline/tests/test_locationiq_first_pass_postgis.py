@@ -16,6 +16,14 @@ DATABASE_NAME = "uec_launch_sources_test_20261025"
 
 
 class LocationIqFirstPassMigrationContractTests(unittest.TestCase):
+    def test_unverified_source_axes_do_not_discard_independent_address_matches(self):
+        sql = (ROOT / "pipeline/migrations/109_first_pass_unverified_source_axes.sql").read_text(encoding="utf-8")
+        self.assertIn("capture_locationiq_first_pass_private_display", sql)
+        self.assertIn("CREATE TEMP TABLE uec_first_pass_109_replay", sql)
+        self.assertIn("result.status='accepted'", sql)
+        self.assertIn("EXECUTE replace(definition,old_guard,'')", sql)
+        self.assertNotRegex(sql, r"(?im)^\s*(INSERT INTO|UPDATE|DELETE FROM)\s+uec\.(?:geocode_results|geocode_request_reservations|geocode_job_events)\b")
+
     def test_migration_is_private_scoped_and_preserves_existing_profile_space(self):
         sql = MIGRATION.read_text(encoding="utf-8")
         for fragment in (

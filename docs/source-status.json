@@ -44,7 +44,7 @@
         "first_pass_source_keys_with_multiple_requests_across_history": 0,
         "active_owned_jobs": 0,
         "locationiq_account_requests_in_current_window": {"primary": 486, "secondary": 459},
-        "remaining_execution_blocker": "Execution review requires explicit UK and Spain (including Catalonia) address-transfer authorization for LocationIQ. Requested from maintainer; no UK/Spain LocationIQ requests sent. Geoapify current-window allowance is exhausted.",
+        "remaining_execution_blocker": "None for the authorized current LocationIQ runs. Maintainer approved UK and Spain (including Catalonia) address transfers in call_3abe427cd264472695756b3a16089947; both accounts are processing their remaining current-window allowances. Geoapify current-window allowance is exhausted. Deployment remains held until the full eligible first pass is complete.",
         "hosted_dataset_changed": false
       },
       "live_progress_authority": "Existing source-key-linked request reservations, results and job events in uec_launch_sources_test_20261025; count across all providers and snapshots",
