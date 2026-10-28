@@ -461,6 +461,13 @@ test('a stable facility stays native while neighboring clusters split and merge'
   await fixture(page, 500, true);
   await page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.easeTo({ zoom: 8, duration: 500 }));
   await page.waitForFunction(() => !(window as any).__UEC_LOCAL_PREVIEW_MAP__.isMoving() && !document.querySelector('.native-cluster-motion')?.hasAttribute('data-phase'));
+  // Moveend can precede the new tile's placement and normal pin-artwork setup.
+  // Establish the reference pin before measuring whether it stays visible.
+  await page.waitForFunction(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    return map.isSourceLoaded('locations') && map.getLayoutProperty('v1-source-pins', 'visibility') === 'visible'
+      && map.queryRenderedFeatures({ layers: ['v1-source-pins'] }).some((feature: any) => feature.properties.facility_id.endsWith('0000000001f4'));
+  });
   await page.evaluate(async () => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     const stable = map.queryRenderedFeatures({ layers: ['v1-source-pins'] }).find((feature: any) => feature.properties.facility_id.endsWith('0000000001f4'));
