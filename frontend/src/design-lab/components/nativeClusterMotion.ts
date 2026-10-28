@@ -89,6 +89,7 @@ export class NativeClusterMotionController {
   private footprint: [number, number, number, number] | undefined;
   private liveMerge = false;
   private motion: Motion | undefined;
+  private checkpointPending = false;
   private queued = false;
   private targetZoom = 0;
   private pending = false;
@@ -345,6 +346,7 @@ export class NativeClusterMotionController {
     this.direction = undefined; this.footprint = undefined; this.liveMerge = false;
     this.projected.clear(); this.frameScales.clear();
     this.motion = undefined;
+    this.checkpointPending = false;
     if (this.frame !== undefined) cancelAnimationFrame(this.frame);
     this.frame = undefined;
     if (clearImages) this.handoff?.finish();
@@ -585,13 +587,23 @@ export class NativeClusterMotionController {
     for (const { parent, child } of motion.pairs)
       this.drawNode(context, child, motion.direction === 'split' ? parent : child, motion.direction === 'split' ? child : parent, ease, motion.direction === 'split' ? ease : 1 - ease);
     for (const node of motion.appearing) this.drawNode(context, node, node, node, 1, ease);
+    this.heldDrawn = true;
     if (progress < 1) this.frame = requestAnimationFrame(() => this.draw());
     else {
+      if (this.checkpointPending) return;
       if (this.queued && this.before) {
-        this.queued = false; this.motion = undefined;
+        this.queued = false; this.checkpointPending = true;
         this.mask(new Set(this.before.keys()), true);
-        this.report('holding'); canvas.removeAttribute('data-direction'); canvas.setAttribute('data-phase', 'holding');
-        this.draw(); this.options.getMap()?.triggerRepaint(); return;
+        // This can run in an animation RAF, between native map paints. Keep
+        // the final merged pixels until the newly unmasked native scene has
+        // drawn; clearing here leaves a blank frame at every merge checkpoint.
+        this.repaint(() => {
+          if (!this.checkpointPending || this.motion !== motion) return;
+          this.checkpointPending = false; this.motion = undefined;
+          this.report('holding'); canvas.removeAttribute('data-direction'); canvas.setAttribute('data-phase', 'holding');
+          this.draw(); this.options.getMap()?.triggerRepaint();
+        });
+        return;
       }
       if (!this.handoff) this.unmask(true);
       // A settled camera can otherwise go idle after the first restore frame

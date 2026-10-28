@@ -178,6 +178,31 @@ describe('selective native visibility and stacking', () => {
     controller.onRender('before'); order.push('native paint'); controller.onRender('after');
     expect(order).toEqual(['prepare attributes', 'native paint', 'clear overlay']);
   });
+  it('keeps completed merge pixels between animation RAF and the replacement native paint', () => {
+    const order: string[] = [];
+    const map = { ...paintMap(vi.fn(() => order.push('prepare attributes'))), getCenter: () => ({ lng: 0 }) };
+    const controller = new NativeClusterMotionController({ getMap: () => map as any, reducedMotion: () => false, enabled: () => true, duration: () => 210, limit: () => 1200 }) as any;
+    let painted = false;
+    const context = { setTransform: vi.fn(), clearRect: () => { painted = false; } };
+    controller.canvas = { width: 320, height: 200, getContext: () => context, getBoundingClientRect: () => ({ width: 320, height: 200 }), removeAttribute: vi.fn(), setAttribute: vi.fn() };
+    const parent = { key: 'c:parent', id: 1, coordinates: [0, 0], properties: {}, layer: 'clusters' };
+    const destination = new Map([[parent.key, parent]]);
+    const motion = { direction: 'merge', parents: [parent], pairs: [], appearing: [], startedAt: performance.now() - 211 };
+    controller.before = destination; controller.present = new Set(destination.keys());
+    controller.motion = motion; controller.queued = true;
+    controller.drawNode = () => { painted = true; };
+    controller.mask = vi.fn();
+    controller.advanceRender = () => controller.draw();
+    controller.draw(); // RAF completes the cue while native pixels are still masked.
+    expect(painted).toBe(true); expect(controller.motion).toBe(motion);
+    controller.onRender('after'); // An old render must not release the checkpoint.
+    expect(painted).toBe(true);
+    controller.onRender('before');
+    expect(painted).toBe(true); expect(order).toEqual(['prepare attributes']);
+    order.push('native paint'); controller.onRender('after');
+    expect(controller.motion).toBeUndefined(); expect(painted).toBe(false);
+    expect(controller.canvas.setAttribute).toHaveBeenCalledWith('data-phase', 'holding');
+  });
   it('retains the original held scene through rapid camera retargets without rebuilding it', () => {
     let zoom = 6;
     const map = { getBounds: () => ({ getWest: () => -1, getEast: () => 1, getSouth: () => -1, getNorth: () => 1 }), getZoom: () => zoom, isZooming: () => true, getSource: () => undefined };

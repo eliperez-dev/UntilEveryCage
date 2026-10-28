@@ -643,6 +643,9 @@ Clear the canvas only after
 the restoring native paint returns, including held scenes whose identities
 are temporarily absent from the native query. Source readiness alone is not
 confirmation that replacement pixels have painted.
+This also applies to each in-flight zoom-out merge checkpoint: a cue can finish
+in a canvas RAF between native paints. Retain its final pixels until the next
+native paint has drawn the unmasked destination, then resume the held scene.
 Reuse projected positions between native camera paints; invalidate them on
 each native render, zoom start and cancellation so movement and terrain updates
 still reproject correctly.

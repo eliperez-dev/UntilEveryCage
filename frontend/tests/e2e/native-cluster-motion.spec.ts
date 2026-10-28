@@ -80,6 +80,38 @@ async function fixture(page: Page, focusedCount?: number, stableNeighbor = false
   return requests;
 }
 
+for (const pitch of [0, 60]) test(`zoom-out checkpoints retain actual painted pixels until native handoff at pitch ${pitch}`, async ({ page }, testInfo) => {
+  await fixture(page, undefined, false, 'spread');
+  await page.evaluate(pitch => (window as any).__UEC_LOCAL_PREVIEW_MAP__.jumpTo({ zoom: 5, pitch }), pitch);
+  await page.waitForFunction(() => { const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__; return !map.isMoving() && map.isSourceLoaded('locations'); });
+  await page.evaluate(async () => {
+    const url = performance.getEntriesByType('resource').find(entry => entry.name.includes('/nativeClusterMotion.ts'))?.name;
+    const { NativeClusterMotionController } = await import(url!);
+    const original = NativeClusterMotionController.prototype.draw;
+    const samples: { painted: boolean; moving: boolean }[] = []; (window as any).__checkpointPixels = samples;
+    NativeClusterMotionController.prototype.draw = function () {
+      const map = this.options.getMap(), motion = this.motion;
+      const finishing = motion?.direction === 'merge' && this.queued && motion.startedAt !== undefined && performance.now() - motion.startedAt >= this.options.duration();
+      const visibleParent = finishing && motion.parents.some((parent: any) => {
+        const point = map.project(parent.coordinates), canvas = map.getCanvas();
+        return point.x > 40 && point.y > 40 && point.x < canvas.clientWidth - 40 && point.y < canvas.clientHeight - 40;
+      });
+      original.call(this);
+      if (visibleParent) {
+        const canvas = this.canvas, pixels = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+        samples.push({ painted: pixels.some((value: number, index: number) => index % 4 === 3 && value > 0), moving: map.isZooming() });
+      }
+    };
+    (window as any).__UEC_LOCAL_PREVIEW_MAP__.easeTo({ zoom: 2, duration: 1600 });
+  });
+  await page.waitForFunction(() => !(window as any).__UEC_LOCAL_PREVIEW_MAP__.isMoving() && !document.querySelector('.native-cluster-motion')?.hasAttribute('data-phase'));
+  const samples = await page.evaluate(() => (window as any).__checkpointPixels as { painted: boolean; moving: boolean }[]);
+  await testInfo.attach('merge-checkpoint-pixels', { body: JSON.stringify(samples), contentType: 'application/json' });
+  expect(samples.length).toBeGreaterThan(0);
+  expect(samples.some(sample => sample.moving)).toBe(true);
+  expect(samples.every(sample => sample.painted)).toBe(true);
+});
+
 test('world-scale splits and merges draw every visible copy of masked cluster identities', async ({ page }, testInfo) => {
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   await page.setViewportSize({ width: 1910, height: 900 });
