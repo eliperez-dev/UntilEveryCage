@@ -101,6 +101,7 @@ export class NativeClusterMotionController {
   private lastCameraZoom = 0;
   private direction: number | undefined;
   private images = new Map<string, { canvas: HTMLCanvasElement; pixelRatio: number }>();
+  private pinSprites = new Map<string, { canvas: HTMLCanvasElement; left: number; top: number; width: number; height: number }>();
   private projected = new Map<string, { x: number; y: number }>();
   private frameCenter = 0;
   private frameWorldBounds: [number, number] | undefined;
@@ -149,6 +150,7 @@ export class NativeClusterMotionController {
   }
 
   onZoomStart(): void {
+    this.projected.clear(); this.frameScales.clear();
     this.handoff?.finish();
     if (this.motion && this.after && this.allowed()) {
       // Finish the short visible cue rather than snapping partially moved pins
@@ -181,6 +183,9 @@ export class NativeClusterMotionController {
   }
 
   onRender(): void {
+    // Native paint follows camera/terrain/layout updates. Animation-only RAFs
+    // between those paints reuse the same projected positions and icon sizes.
+    this.projected.clear(); this.frameScales.clear();
     if (this.repainting || !this.armed) return;
     if (!this.allowed()) { this.cancel(false, 'disabled'); return; }
     const map = this.options.getMap();
@@ -302,6 +307,7 @@ export class NativeClusterMotionController {
     clearTimeout(this.idleTimer); this.idleTimer = undefined; this.settledAt = undefined;
     this.placementStartedAt = undefined; this.placementSignature = undefined;
     this.direction = undefined; this.footprint = undefined; this.liveMerge = false;
+    this.projected.clear(); this.frameScales.clear();
     this.motion = undefined;
     if (this.frame !== undefined) cancelAnimationFrame(this.frame);
     this.frame = undefined;
@@ -310,7 +316,7 @@ export class NativeClusterMotionController {
     // interruption keeps the last frame until restored native paint is visible.
     this.unmask(retainCanvas);
     if (!retainCanvas) this.clear();
-    if (clearImages) this.images.clear();
+    if (clearImages) { this.images.clear(); this.pinSprites.clear(); }
     this.report(reason);
   }
 
@@ -466,25 +472,20 @@ export class NativeClusterMotionController {
       if (!pixel) { pixel = map.project(coordinates); this.projected.set(key, pixel); }
       return pixel;
     };
-    const cluster = node.key.startsWith('c:'), image = this.image(clusterMotionImage(node.properties));
+    const cluster = node.key.startsWith('c:'), imageKey = clusterMotionImage(node.properties), image = this.image(imageKey);
     if (!image) return;
     let nativeScale = this.frameScales.get(node.layer);
     if (nativeScale === undefined) { nativeScale = Number(map.getLayoutProperty(node.layer, 'icon-size')); this.frameScales.set(node.layer, nativeScale); }
     const scale = Number.isFinite(nativeScale) ? nativeScale : cluster ? 1 : 0.5;
     const width = image.canvas.width / image.pixelRatio * scale, height = image.canvas.height / image.pixelRatio * scale;
+    const pin = !cluster && node.layer !== 'approx-reference-points' ? this.pinSprite(imageKey, image) : undefined;
     for (const path of clusterMotionPaths(from.coordinates, to.coordinates, this.frameCenter, this.frameWorldBounds)) {
       const start = project(from, path.from), end = from.key === to.key ? start : project(to, path.to);
       const x = start.x + (end.x - start.x) * progress, y = start.y + (end.y - start.y) * progress;
       if (x < -width * 2 || x > this.frameWidth + width * 2 || y < -height * 2 || y > this.frameHeight + height * 2) continue;
       context.save(); context.globalAlpha = opacity;
-      if (!cluster && node.layer !== 'approx-reference-points') {
-        const shadow = this.image('v1-pin-shadow');
-        if (shadow) {
-          const shadowWidth = shadow.canvas.width / shadow.pixelRatio * scale * 2, shadowHeight = shadow.canvas.height / shadow.pixelRatio * scale * 2;
-          context.drawImage(shadow.canvas, x - shadowWidth / 2 + 17 * scale, y - shadowHeight, shadowWidth, shadowHeight);
-        }
-      }
-      context.drawImage(image.canvas, x - width / 2, y - (cluster ? height / 2 : height), width, height);
+      if (pin) context.drawImage(pin.canvas, x + pin.left * scale, y + pin.top * scale, pin.width * scale, pin.height * scale);
+      else context.drawImage(image.canvas, x - width / 2, y - (cluster ? height / 2 : height), width, height);
       const count = Number(node.properties.representedCount ?? node.properties.point_count ?? node.properties.weight ?? 1);
       if (cluster || count > 1) {
         context.fillStyle = '#172019'; context.font = `700 ${cluster ? 12 : 11}px "Open Sans", sans-serif`; context.textAlign = 'center'; context.textBaseline = 'middle';
@@ -492,6 +493,25 @@ export class NativeClusterMotionController {
       }
       context.restore();
     }
+  }
+
+  /** Cache only the fixed category artwork, never facility identities or counts.
+   * One image per pin also fades its shadow and icon as one visual unit.
+   */
+  private pinSprite(key: string, image: { canvas: HTMLCanvasElement; pixelRatio: number }) {
+    const cached = this.pinSprites.get(key); if (cached) return cached;
+    const shadow = this.image('v1-pin-shadow'); if (!shadow) return;
+    const width = image.canvas.width / image.pixelRatio, height = image.canvas.height / image.pixelRatio;
+    const sw = shadow.canvas.width / shadow.pixelRatio * 2, sh = shadow.canvas.height / shadow.pixelRatio * 2;
+    const left = Math.min(-width / 2, -sw / 2 + 17), top = -Math.max(height, sh);
+    const right = Math.max(width / 2, sw / 2 + 17), ratio = Math.max(image.pixelRatio, shadow.pixelRatio);
+    const canvas = document.createElement('canvas'); canvas.width = Math.ceil((right - left) * ratio); canvas.height = Math.ceil(-top * ratio);
+    const context = canvas.getContext('2d'); if (!context) return;
+    context.setTransform(ratio, 0, 0, ratio, -left * ratio, -top * ratio);
+    context.drawImage(shadow.canvas, -sw / 2 + 17, -sh, sw, sh);
+    context.drawImage(image.canvas, -width / 2, -height, width, height);
+    const sprite = { canvas, left, top, width: canvas.width / ratio, height: canvas.height / ratio };
+    this.pinSprites.set(key, sprite); return sprite;
   }
 
   private clear(): void { this.canvas?.getContext('2d')?.clearRect(0, 0, this.canvas.width, this.canvas.height); this.heldDrawn = false; this.canvas?.removeAttribute('data-direction'); this.canvas?.removeAttribute('data-phase'); }
@@ -508,7 +528,7 @@ export class NativeClusterMotionController {
       this.heldDrawn = false;
       return;
     }
-    this.projected.clear(); this.frameScales.clear(); this.frameCenter = this.options.getMap()?.getCenter().lng ?? 0;
+    this.frameCenter = this.options.getMap()?.getCenter().lng ?? 0;
     const rect = canvas.getBoundingClientRect(), context = resizeMotionCanvas(canvas, rect.width, rect.height, Math.min(2, window.devicePixelRatio || 1));
     if (!context) { this.cancel(); return; }
     this.frameWidth = rect.width; this.frameHeight = rect.height;

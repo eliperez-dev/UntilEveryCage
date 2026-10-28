@@ -642,6 +642,11 @@ native frame and its timestamp. Clear the canvas only after
 the restoring native paint returns, including held scenes whose identities
 are temporarily absent from the native query. Source readiness alone is not
 confirmation that replacement pixels have painted.
+Reuse projected positions between native camera paints; invalidate them on
+each native render, zoom start and cancellation so movement and terrain updates
+still reproject correctly.
+Cache each fixed pin-and-shadow sprite once, then fade and draw it as one
+image. Do not cache facility identities or counts in this artwork cache.
 If a new zoom starts during a short playing cue, finish that cue without resetting
 its progress, then hold its destination identities for the next transition.
 The default is 210 ms and at most 1,200 animated marks in total. Debug

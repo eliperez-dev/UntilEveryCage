@@ -9,6 +9,7 @@ export function repaintPlacedScene(map: MapLibreMap): void {
   const native = map as unknown as {
     style?: unknown;
     painter?: {
+      style?: unknown;
       options?: unknown;
       context: { setDirty(): void };
       setBaseState(): void;
@@ -16,7 +17,7 @@ export function repaintPlacedScene(map: MapLibreMap): void {
     };
   };
   const painter = native.painter;
-  if (native.style && painter?.options) {
+  if (native.style && painter?.style === native.style && painter.options) {
     painter.context.setDirty();
     painter.setBaseState();
     painter.render(native.style, painter.options);

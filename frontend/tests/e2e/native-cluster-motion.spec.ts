@@ -5,7 +5,7 @@ import { CLUSTER_MOTION_HIDDEN_STATE, clusterMotionOpacity } from '../../src/des
 
 test.use({ video: { mode: 'on', size: { width: 1280, height: 720 } }, viewport: { width: 1280, height: 720 } });
 
-async function fixture(page: Page, focusedCount?: number, stableNeighbor = false, worldwide: boolean | 'spread' = false) {
+async function fixture(page: Page, focusedCount?: number, stableNeighbor = false, worldwide: boolean | 'spread' = false, samplePixels = false) {
   const requests = { feeds: 0, manifests: 0 };
   const hubs = [[-122, 37], [-75, 40], [-47, -15], [12, 48], [38, 9], [80, 21], [120, 35], [136, -25], [-171, -13], [174, -37]];
   const features = Array.from({ length: 3200 }, (_, i) => ({
@@ -35,7 +35,7 @@ async function fixture(page: Page, focusedCount?: number, stableNeighbor = false
     provenance_source_url: 'https://example.test/source', provenance_retrieved_at: '2026-01-01T00:00:00Z', release_id: 'synthetic-release-2026-09', release_ruleset_version: 'rules-v1',
   }], meta: { profile: 'official', release_id: 'synthetic-release-2026-09', ruleset_version: 'rules-v1', coverage_note: 'Synthetic animation fixture.', total_count: 3200, next_cursor: null } } }));
   await page.route(url => url.pathname === '/api/v2/discovery/facets', route => route.fulfill({ json: { api_version: 'v2', data: { dimensions: {} }, meta: { profile: 'official', release_id: 'synthetic-release-2026-09', ruleset_version: 'rules-v1' } } }));
-  await page.addInitScript((profile) => {
+  await page.addInitScript((samplePixels) => {
     const native = CanvasRenderingContext2D.prototype.drawImage;
     const frames: { time: number; direction: string; x: number; y: number; image: string }[] = [];
     (window as any).__motionFrames = frames;
@@ -47,7 +47,7 @@ async function fixture(page: Page, focusedCount?: number, stableNeighbor = false
         if (direction) frames.push({ time: performance.now(), direction, x: Number(args[1]), y: Number(args[2]), image: (args[0] as HTMLCanvasElement).tagName });
       }
       const result = native.apply(this, args);
-      if (!profile && this.canvas.classList.contains('native-cluster-motion') && this.canvas.hasAttribute('data-direction') && performance.now() - lastPixel > 20) {
+      if (samplePixels && this.canvas.classList.contains('native-cluster-motion') && this.canvas.hasAttribute('data-direction') && performance.now() - lastPixel > 20) {
         const ratio = this.canvas.width / this.canvas.clientWidth;
         const x = Math.round((Number(args[1]) + Number(args[3]) / 2) * ratio), y = Math.round((Number(args[2]) + Number(args[4]) / 2) * ratio);
         if (x >= 0 && y >= 0 && x < this.canvas.width && y < this.canvas.height) {
@@ -56,7 +56,7 @@ async function fixture(page: Page, focusedCount?: number, stableNeighbor = false
       }
       return result;
     };
-  }, focusedCount !== undefined);
+  }, samplePixels);
   await page.goto(`./#/map?release_id=synthetic-release-2026-09&${worldwide === 'spread' ? 'lat=38&lon=-98&z=4' : 'lat=51.19&lon=4.93&z=6'}`);
   await page.waitForFunction(() => { const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__; return map?.getLayer('clusters') && map.isSourceLoaded('locations') && map.queryRenderedFeatures({ layers: ['clusters'] }).length; });
   return requests;
@@ -687,7 +687,9 @@ test('camera idle delay controls expansion timing and dense scenes remain bounde
 });
 
 test('native clusters split and merge with bounded visible frames and no source reload', async ({ page }, testInfo) => {
-  const requests = await fixture(page);
+  // Keep readback proof here. Timing tests must not force synchronous GPU
+  // readbacks, which change the canvas backend and measure the probe itself.
+  const requests = await fixture(page, undefined, false, false, true);
   // Complete normal pin-artwork setup before counting gesture-driven relayouts.
   // Cold interaction remains covered by the unprimed/reload cases below.
   await page.waitForFunction(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getLayoutProperty('v1-source-pins', 'visibility') === 'visible');
