@@ -162,6 +162,19 @@ class CountryReleaseAcceptanceTests(unittest.TestCase):
             self.assertNotIn("uec.graph_public_live_facility_anchors_current", staged)
             self.assertEqual(parameters, {"release_id": "synthetic-release"})
 
+    def test_shared_graph_keys_keep_current_map_current_only(self):
+        root = Path(__file__).resolve().parents[2]
+        sql = (root / "pipeline/migrations/106_shared_release_graph_eligibility.sql").read_text(encoding="utf-8")
+        self.assertIn("CREATE VIEW uec.public_discovery_release_eligible_rows", sql)
+        self.assertIn("release.status='validated' AND EXISTS", sql)
+        self.assertIn("history.profile=release.profile", sql)
+        self.assertIn("review.publication_eligible=true", sql)
+        self.assertIn("review.privacy_screening_status='passed'", sql)
+        self.assertIn("review.factual_review_status<>'rejected'", sql)
+        self.assertIn("uec.public_access_restricted", sql)
+        self.assertIn("WHERE release.status='promoted';", sql)
+        self.assertNotIn("public_discovery_api_read_model", sql)
+
 
 if __name__ == "__main__":
     unittest.main()

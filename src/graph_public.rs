@@ -58,14 +58,16 @@ FROM page_edges edge
 LEFT JOIN LATERAL (
     SELECT label.display_name
     FROM uec.graph_public_organization_labels_current label
-    WHERE label.release_id=edge.release_id
+    WHERE edge.from_entity_type='organization'
+      AND label.release_id=edge.release_id
       AND label.organization_id=edge.from_entity_id
     LIMIT 1 OFFSET 0
 ) from_label ON edge.from_entity_type='organization'
 LEFT JOIN LATERAL (
     SELECT label.display_name
     FROM uec.graph_public_organization_labels_current label
-    WHERE label.release_id=edge.release_id
+    WHERE edge.to_entity_type='organization'
+      AND label.release_id=edge.release_id
       AND label.organization_id=edge.to_entity_id
     LIMIT 1 OFFSET 0
 ) to_label ON edge.to_entity_type='organization'
@@ -733,6 +735,10 @@ mod tests {
         assert!(!GRAPH_CONNECTION_SELECT.contains("graph_public_projection_builds"));
         assert!(GRAPH_CONNECTION_SELECT.contains("FROM page_edges edge\nLEFT JOIN LATERAL"));
         assert!(GRAPH_CONNECTION_SELECT.contains("graph_public_organization_labels_current"));
+        // Put each type guard inside its lateral query. An outer JOIN condition
+        // alone still lets PostgreSQL scan all labels for facility endpoints.
+        assert!(GRAPH_CONNECTION_SELECT.contains("WHERE edge.from_entity_type='organization'"));
+        assert!(GRAPH_CONNECTION_SELECT.contains("WHERE edge.to_entity_type='organization'"));
         assert!(!GRAPH_CONNECTION_SELECT.contains("graph_connection_edges"));
         assert!(!GRAPH_CONNECTION_SELECT.contains("source_entity_identifiers"));
         assert!(GRAPH_CONNECTION_SELECT.contains("from_label.display_name,to_label.display_name"));
