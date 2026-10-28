@@ -3,6 +3,7 @@ import type { GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl';
 import { CATEGORY_PRIMARY_BY_SOURCE_KEY, CATEGORY_PIN_IMAGES } from '../../features/locations/categoryPresentation';
 import { readNativeClusterLineage } from '../../map/nativeClusterLineage';
 import { prepareMotionFeatureState } from '../../map/prepareMotionFeatureState';
+import { nativeClusterParents } from '../../map/nativeClusterMetadata';
 import { resizeMotionCanvas } from './mapSurfaceMotion';
 
 export const DEFAULT_CLUSTER_MOTION_MS = 210;
@@ -17,7 +18,7 @@ const LAYERS = ['clusters', 'v1-source-pins', 'approx-reference-pins', 'approx-r
 const MASK_LAYERS = [...LAYERS, 'v1-source-shadows', 'approx-reference-shadows', 'aggregate-count'];
 const MASK_PREPARE_LAYER = 'uec-cluster-motion-state';
 type Properties = Record<string, unknown>;
-type Node = { key: string; id?: string | number; coordinates: [number, number]; properties: Properties; layer: string };
+type Node = { key: string; id?: string | number; coordinates: [number, number]; properties: Properties; layer: string; ancestors?: string[] | undefined };
 type Pair = { parent: Node; child: Node };
 type Motion = { direction: 'split' | 'merge'; pairs: Pair[]; parents: Node[]; appearing: Node[]; startedAt?: number };
 type Options = { getMap: () => MapLibreMap | undefined; reducedMotion: () => boolean; enabled: () => boolean; duration: () => number; limit: () => number; idleDelay?: () => number; onState?: (state: ClusterMotionState) => void };
@@ -87,6 +88,7 @@ export class NativeClusterMotionController {
   private afterPaint: (() => void)[] = [];
   private heldDrawn = false;
   private footprint: [number, number, number, number] | undefined;
+  private heldAncestors = new Set<string>();
   private liveMerge = false;
   private motion: Motion | undefined;
   private checkpointPending = false;
@@ -237,6 +239,7 @@ export class NativeClusterMotionController {
     if (this.handoff) return;
     const after = this.capture(), before = this.before;
     if (!after || !before) { this.cancel(false, 'density-limit'); return; }
+    this.refreshHeldAncestors();
     // A zoom-out reveals fresh branches while an earlier cue/worker read is
     // still running. Adopt their first native scene immediately, rather than
     // forgetting it until the next checkpoint. Their subsequent parents then
@@ -244,7 +247,10 @@ export class NativeClusterMotionController {
     const participants = new Set([...(this.motion?.pairs.flatMap(({ parent, child }) => [parent.key, child.key]) ?? []), ...(this.motion?.appearing?.map(node => node.key) ?? [])]);
     let adopted = false;
     for (const node of after.values()) {
-      if (!before.has(node.key) && !participants.has(node.key) && !this.heldRegionContains(node)) { before.set(node.key, node); adopted = true; }
+      if (!before.has(node.key) && !participants.has(node.key) && !this.relatedToHeld(node)) {
+        before.set(node.key, node); adopted = true;
+        for (const ancestor of node.ancestors ?? []) this.heldAncestors.add(ancestor);
+      }
     }
     if (before.size > this.markLimit()) { this.cancel(false, 'density-limit'); return; }
     this.present = new Set(after.keys());
@@ -333,7 +339,7 @@ export class NativeClusterMotionController {
       if (generation !== this.generation) return;
       this.pending = false;
       const participantKeys = new Set(pairs.flatMap(pair => [pair.parent.key, pair.child.key]));
-      const appearing = this.liveMerge ? [...after.values()].filter(node => !before.has(node.key) && !participantKeys.has(node.key) && this.heldRegionContains(node)).reverse() : [];
+      const appearing = this.liveMerge ? [...after.values()].filter(node => !before.has(node.key) && !participantKeys.has(node.key) && this.relatedToHeld(node)).reverse() : [];
       if (!pairs.length && !appearing.length && mergingDuringZoom) {
         // A newly exposed tile can arrive before the original region changes
         // hierarchy. Keep its native marks and keep tracking the gesture.
@@ -382,6 +388,7 @@ export class NativeClusterMotionController {
     clearTimeout(this.idleTimer); this.idleTimer = undefined; this.settledAt = undefined;
     this.placementStartedAt = undefined; this.placementSignature = undefined;
     this.direction = undefined; this.footprint = undefined; this.liveMerge = false;
+    this.heldAncestors.clear();
     this.projected.clear(); this.frameScales.clear();
     this.motion = undefined;
     this.checkpointPending = false;
@@ -438,7 +445,7 @@ export class NativeClusterMotionController {
       if (!key || feature.geometry.type !== 'Point' || nodes.has(key)) continue;
       const id = feature.id ?? feature.properties.cluster_id ?? feature.properties.key ?? feature.properties.id ?? feature.properties.facility_id;
       if (typeof id !== 'string' && typeof id !== 'number') continue;
-      nodes.set(key, { key, id, coordinates: feature.geometry.coordinates as [number, number], properties: feature.properties, layer: feature.layer.id });
+      nodes.set(key, { key, id, coordinates: feature.geometry.coordinates as [number, number], properties: feature.properties, layer: feature.layer.id, ancestors: nativeClusterParents(feature.properties) });
       if (nodes.size > this.markLimit()) return;
     }
     return nodes;
@@ -463,8 +470,21 @@ export class NativeClusterMotionController {
     return lon >= west && lon <= east && node.coordinates[1] >= south && node.coordinates[1] <= north;
   }
 
+  private refreshHeldAncestors(): void {
+    this.heldAncestors.clear();
+    for (const node of this.before?.values() ?? []) for (const ancestor of node.ancestors ?? []) this.heldAncestors.add(ancestor);
+  }
+
+  private relatedToHeld(node: Node): boolean {
+    // An empty chain is a known native root, not missing metadata. Only the
+    // compatibility fallback uses the older geographic footprint heuristic.
+    return node.ancestors === undefined ? this.heldRegionContains(node)
+      : this.heldAncestors.has(node.key) || node.ancestors.some(key => this.before?.has(key));
+  }
+
   private mask(keys: ReadonlySet<string>, retain: boolean): void {
     this.handoff?.finish();
+    this.refreshHeldAncestors();
     this.maskScope = { keys, retain }; this.applyMask();
   }
 
@@ -482,7 +502,7 @@ export class NativeClusterMotionController {
     const playing = this.queued ? new Set([...(this.motion?.pairs.flatMap(({ parent, child }) => [parent.key, child.key]) ?? []), ...(this.motion?.appearing.map(node => node.key) ?? [])]) : undefined;
     for (const node of this.presentNodes.values()) {
       if (node.id !== undefined && (playing?.has(node.key) || (scope.retain
-        ? !scope.keys.has(node.key) && this.heldRegionContains(node)
+        ? !scope.keys.has(node.key) && this.relatedToHeld(node)
         : scope.keys.has(node.key)))) next.set(node.key, node.id);
     }
     let changed = false;

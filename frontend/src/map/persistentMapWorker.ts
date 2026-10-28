@@ -2,6 +2,7 @@ import NativeWorker from 'maplibre-gl/dist/maplibre-gl-worker.mjs';
 import { decodePublicMapTransport } from './publicMapSourceTransport';
 import { exportClusterIndex, restoreClusterIndex } from './clusterIndexCodec';
 import { matchNativeClusterLineage, NATIVE_LINEAGE_PORT, validNativeLineageRequest, type NativeLineageRequest } from './nativeClusterLineage';
+import { installNativeClusterMetadata } from './nativeClusterMetadata';
 import { clusterIndexKey, INDEX_CACHE_CHANNEL, INDEX_CACHE_FIELD, publicIndexIdentity, readClusterIndex, writeClusterIndex, indexCacheFailureReason, type IndexCacheDiagnostic, type IndexCacheFailureReason, type IndexCacheTimings } from './clusterIndexCache';
 
 type Index = unknown;
@@ -72,9 +73,9 @@ if (typeof originalGetSource === 'function') {
       if (restorations.has(parameters)) {
         const restored = restorations.get(parameters)!;
         restorations.delete(parameters);
-        return restored;
+        return installNativeClusterMetadata(restored);
       }
-      return originalFactory.call(this, data, parameters);
+      return installNativeClusterMetadata(originalFactory.call(this, data, parameters));
     };
     let publicData: Parameters['data'];
     source.loadAndProcessGeoJSON = async function(parameters, controller) {

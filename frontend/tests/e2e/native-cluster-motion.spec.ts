@@ -3,6 +3,7 @@ import { writeFile } from 'node:fs/promises';
 import releaseManifest from '../fixtures/release-map/manifest.json' with { type: 'json' };
 import { CLUSTER_MOTION_HIDDEN_STATE, clusterMotionOpacity } from '../../src/design-lab/components/nativeClusterMotion';
 import { maxUnpaintedBranchMs } from '../helpers/clusterVisualCoverage';
+import { NATIVE_CLUSTER_PARENTS } from '../../src/map/nativeClusterMetadata';
 
 test.use({ video: { mode: 'on', size: { width: 1280, height: 720 } }, viewport: { width: 1280, height: 720 } });
 // Includes Vite module loading, worker startup and several recorded WebGL
@@ -280,9 +281,9 @@ for (const pitch of [0, 60]) test(`large zoom jumps at ${pitch} degrees reveal n
       for (const feature of map.queryRenderedFeatures({ layers: ['clusters', 'v1-source-pins'] })) {
         const cluster = typeof feature.properties.cluster_id === 'number';
         const key = cluster ? `c:${feature.properties.cluster_id}` : `p:${feature.properties.key ?? feature.properties.id ?? feature.properties.facility_id}`;
+        if (cluster && feature.geometry.coordinates[0] >= -100) sample.newRegionChecks++;
         if (!map.getFeatureState({ source: 'locations', id: feature.id })[hidden]) { frame.visible.push(key); continue; }
         if (!cluster || feature.geometry.coordinates[0] < -100) continue;
-        sample.newRegionChecks++;
         frame.hidden.push(key);
       }
       sample.frames.push(frame);
@@ -313,6 +314,10 @@ for (const pitch of [0, 60]) test(`large zoom jumps at ${pitch} degrees reveal n
 
 for (const pitch of [0, 60]) test(`newly revealed regions join subsequent animated merges at pitch ${pitch}`, async ({ page }, testInfo) => {
   await fixture(page, undefined, false, 'spread');
+  await expect.poll(() => page.evaluate(field => {
+    const features = (window as any).__UEC_LOCAL_PREVIEW_MAP__.queryRenderedFeatures({ layers: ['clusters'] });
+    return features.length > 0 && features.every((feature: any) => typeof feature.properties[field] === 'string');
+  }, NATIVE_CLUSTER_PARENTS)).toBe(true);
   await page.evaluate(pitch => (window as any).__UEC_LOCAL_PREVIEW_MAP__.jumpTo({ center: [-119, 35], zoom: 8, pitch }), pitch);
   await page.waitForFunction(() => { const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__; return !map.isMoving() && map.isSourceLoaded('locations') && !document.querySelector('.native-cluster-motion')?.hasAttribute('data-phase'); });
   await page.evaluate(async () => {
