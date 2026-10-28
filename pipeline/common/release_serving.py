@@ -126,10 +126,16 @@ LEGACY_SERVING_SCHEMA_OMISSIONS = (
     "TRIGGER uec.geocode_results.aaa_aphis_mailing_locality_geoapify_display: private acquisition preview callback",
     "TRIGGER uec.geocode_results.geocode_results_geoapify_preview_display: private geocoder preview callback",
 )
-SERVING_SCHEMA_OMISSIONS = LEGACY_SERVING_SCHEMA_OMISSIONS + (
+PRE_COUNTRY_SERVING_SCHEMA_OMISSIONS = LEGACY_SERVING_SCHEMA_OMISSIONS + (
     "TRIGGER uec.geocode_results.geocode_results_locationiq_private_display: private DE acquisition preview callback (migration 098)",
     "TRIGGER uec.geocode_results.geocode_results_new_zealand_locationiq_private_display: private NZ acquisition preview callback (migration 102)",
     "TRIGGER uec.geocode_results.geocode_results_uk_locationiq_private_display: private UK acquisition preview callback (migration 104)",
+)
+SERVING_SCHEMA_OMISSIONS = PRE_COUNTRY_SERVING_SCHEMA_OMISSIONS + (
+    "TRIGGER uec.geocode_results.geocode_results_spain_geoapify_private_display: private ES acquisition preview callback (migration 090)",
+    "TRIGGER uec.geocode_results.geocode_results_spain_verified_municipality_display: private ES municipality preview callback (migration 094)",
+    "TRIGGER uec.geocode_results.geocode_results_germany_geoapify_private_display: private DE acquisition preview callback (migration 095)",
+    "TRIGGER uec.geocode_results.geocode_results_locationiq_retained_private_display: private retained-response preview callback (migration 100)",
 )
 # Handler-facing relations only.  The support tables in the export are read by
 # security-definer views, never directly by the network role.
@@ -164,7 +170,7 @@ def package_manifest(*, release_ids: list[str], migration_inventory_sha256: str,
         omissions = tuple(schema_omissions)
     else:
         raise ValueError("serving schema omissions are unsupported")
-    if omissions not in (LEGACY_SERVING_SCHEMA_OMISSIONS, SERVING_SCHEMA_OMISSIONS):
+    if omissions not in (LEGACY_SERVING_SCHEMA_OMISSIONS, PRE_COUNTRY_SERVING_SCHEMA_OMISSIONS, SERVING_SCHEMA_OMISSIONS):
         raise ValueError("serving schema omissions are unsupported")
     value = {"schema_version": "uec-serving-package-v8", "package_state": "selected_public_serving_derivative", "release_ids": sorted(release_ids), "migration_inventory_sha256": migration_inventory_sha256, "data_relation_allowlist": [{"relation": s.relation, "columns": list(s.columns)} for s in specs], "data_relation_exclusions": list(FORBIDDEN_DATA_RELATIONS), "redaction_notice": "Source/artifact/observation stand-ins retain only join and provenance metadata and are explicitly marked redacted; raw source, acquisition, geocoder, private graph edges and evidence payloads are absent. The graph is a selected-release normalized opaque-endpoint projection with canonical support references held outside the API grant; APHIS references use a separately scoped metadata-only clearance and never include report contents or native identifiers.", "table_counts": dict(sorted((table_counts or {}).items())), "payload_files": sorted(payload_files or [], key=lambda item: item["name"]), "serving_schema_derivative": {"artifacts_sha256": schema_artifacts, "post_data_omissions": list(omissions)}}
     value["package_sha256"] = canonical_sha256(value)

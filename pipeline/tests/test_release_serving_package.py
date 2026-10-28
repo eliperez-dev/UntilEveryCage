@@ -164,9 +164,10 @@ class ReleaseServingPackageTests(unittest.TestCase):
                          list(serving.SERVING_SCHEMA_OMISSIONS))
         self.assertNotIn("password", str(manifest).casefold())
 
-    def test_only_legacy_two_or_current_five_private_callbacks_may_be_omitted(self):
+    def test_only_reviewed_two_five_or_nine_private_callbacks_may_be_omitted(self):
         common = {"release_ids": ["v0-public"], "migration_inventory_sha256": "a" * 64}
         for omissions in (serving.LEGACY_SERVING_SCHEMA_OMISSIONS,
+                          serving.PRE_COUNTRY_SERVING_SCHEMA_OMISSIONS,
                           serving.SERVING_SCHEMA_OMISSIONS):
             with self.subTest(count=len(omissions)):
                 manifest = serving.package_manifest(**common, schema_omissions=list(omissions))
@@ -175,6 +176,18 @@ class ReleaseServingPackageTests(unittest.TestCase):
                     schema_omissions=manifest["serving_schema_derivative"]["post_data_omissions"],
                 )
                 self.assertEqual(manifest["package_sha256"], reconstructed["package_sha256"])
+        self.assertEqual(len(serving.SERVING_SCHEMA_OMISSIONS), 9)
+        migration_root = Path(__file__).parents[1] / "migrations"
+        for filename, trigger in (
+            ("090_spain_private_geocoding_profile.sql", "geocode_results_spain_geoapify_private_display"),
+            ("094_spain_verified_municipality_geocoding.sql", "geocode_results_spain_verified_municipality_display"),
+            ("095_germany_geocoding_context.sql", "geocode_results_germany_geoapify_private_display"),
+            ("100_germany_retained_geocode_reconciliation.sql", "geocode_results_locationiq_retained_private_display"),
+        ):
+            migration = (migration_root / filename).read_text(encoding="utf-8")
+            self.assertIn("CREATE TRIGGER " + trigger, migration)
+            self.assertIn("AFTER INSERT ON uec.geocode_results", migration)
+            self.assertTrue(any("." + trigger + ":" in item for item in serving.SERVING_SCHEMA_OMISSIONS))
         with self.assertRaisesRegex(ValueError, "schema omissions"):
             serving.package_manifest(
                 **common,
