@@ -10,6 +10,7 @@ export const DEFAULT_CLUSTER_MOTION_LIMIT = 1200;
 export const MAX_CLUSTER_MOTION_LIMIT = 2000;
 export const DEFAULT_CLUSTER_IDLE_MS = 0;
 const NATIVE_PAINT_DEADLINE_MS = 500;
+const SOURCE_READY_DEADLINE_MS = 2000;
 export const CLUSTER_MOTION_HIDDEN_STATE = '__uecClusterMotionHidden';
 export type ClusterMotionState = 'idle' | 'holding' | 'settling' | 'pairing' | 'playing' | 'complete' | 'unchanged' | 'density-limit' | 'missing-artwork' | 'source-timeout' | 'pairing-timeout' | 'no-lineage' | 'interrupted' | 'data-change' | 'disabled';
 const LAYERS = ['clusters', 'v1-source-pins', 'approx-reference-pins', 'approx-reference-points'] as const;
@@ -241,7 +242,7 @@ export class NativeClusterMotionController {
           // Firefox). Use its ready hierarchy rather than aborting a valid cue.
           if (this.options.getMap()?.isSourceLoaded('locations')) this.onRender(false);
           else this.cancel(false, 'source-timeout');
-        }, NATIVE_PAINT_DEADLINE_MS);
+        }, SOURCE_READY_DEADLINE_MS);
       }
       return;
     }

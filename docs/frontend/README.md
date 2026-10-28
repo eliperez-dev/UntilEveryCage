@@ -661,7 +661,8 @@ controls tune duration from 0–400 ms (0 disables it), the mark cap from
 lineage lookup stays in the native worker and returns at most the selected
 number of identity pairs. Both directions share the 500 ms native-paint
 deadline so a busy browser frame does not incorrectly classify a fast reply
-as a stalled worker.
+as a stalled worker. Allow up to two seconds for source tile readiness after
+rapid zoom reversals, retaining the visible scene while input stays live.
 Neither wait blocks input. Data, index and style changes cancel stale lookups.
 Local pin artwork loads in parallel. Pan and
 bearing-only rotation remain native. Reduced motion, views beyond the selected

@@ -191,6 +191,23 @@ describe('selective native visibility and stacking', () => {
     expect(controller.armed).toBe(true);
     expect(reveal).not.toHaveBeenCalled();
   });
+  it('retains the scene while source tiles settle and bounds that wait independently of pairing', () => {
+    vi.useFakeTimers();
+    try {
+      const map = { getZoom: () => 8, isZooming: () => false, isSourceLoaded: () => false, getSource: () => ({}) };
+      const controller = new NativeClusterMotionController({ getMap: () => map as any, reducedMotion: () => false, enabled: () => true, duration: () => 210, limit: () => 1200 }) as any;
+      controller.before = new Map([['c:1', { key: 'c:1', id: 1 }]]);
+      controller.capture = () => controller.before;
+      controller.applyMask = vi.fn(); controller.draw = vi.fn();
+      controller.armed = true; controller.zoom = 6; controller.lastCameraZoom = 8;
+      const cancel = vi.spyOn(controller, 'cancel');
+      controller.onRender();
+      vi.advanceTimersByTime(1500);
+      expect(controller.armed).toBe(true); expect(cancel).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(500);
+      expect(cancel).toHaveBeenCalledWith(false, 'source-timeout');
+    } finally { vi.useRealTimers(); }
+  });
   it('continues the existing visible cue when another zoom starts during playback', () => {
     const controller = new NativeClusterMotionController({ getMap: () => ({ getZoom: () => 10, getBounds: () => ({ getWest: () => -1, getEast: () => 1, getSouth: () => -1, getNorth: () => 1 }) } as any), reducedMotion: () => false, enabled: () => true, duration: () => 210, limit: () => 1000 }) as any;
     const motion = { direction: 'split', pairs: [], parents: [], startedAt: 123 };
