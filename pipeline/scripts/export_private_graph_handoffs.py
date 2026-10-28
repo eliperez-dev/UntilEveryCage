@@ -14,7 +14,7 @@ import tempfile
 from collections import Counter
 from pathlib import Path
 from typing import Any, Iterable
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlsplit
 
 import psycopg
 
@@ -159,71 +159,76 @@ def _write_source(rows: Iterable[tuple[Any, ...]], output_root: Path, *, scope: 
         counts = Counter()
         locations = Counter()
 
-    for source_id, key, raw_fields, source_values, artifact_sha, artifact_retrieved_at, observed_at in rows:
-        artifact_sha = str(artifact_sha).strip() if artifact_sha else ""
-        if not artifact_sha:
-            raise ValueError(f"source artifact SHA is missing for {source_id}")
-        if source_id != current_source or artifact_sha != current_artifact_sha:
-            close_source()
-            current_source = str(source_id)
-            current_artifact_sha = artifact_sha
-            current_retrieved_at = artifact_retrieved_at.isoformat() if hasattr(artifact_retrieved_at, "isoformat") else str(artifact_retrieved_at or "unknown")
-            current_url = source_urls.get(current_source, "unknown")
-            source_root = output_root / current_source / artifact_sha / "graph-candidates"
-            source_root.mkdir(parents=True, exist_ok=True)
-            path = source_root / "graph-candidates.jsonl"
-            handle = path.open("w", encoding="utf-8", newline="\n")
-            source_row = 0
-        source_row += 1
-        if not isinstance(raw_fields, dict) or not isinstance(raw_fields.get("normalized"), dict):
-            counts["skipped_rows"] += 1
-            counts["skipped:normalized_missing"] += 1
-            continue
-        normalized = raw_fields["normalized"]
-        if not source_identifier(str(source_id), normalized):
-            counts["skipped_rows"] += 1
-            counts["skipped:typed_identifier_missing"] += 1
-            continue
-        source_record = _source_row({
-            "source_id": str(source_id), "source_record_key": str(key),
-            "source_values": source_values if isinstance(source_values, dict) else {}, "normalized": normalized,
-        }, source_row)
-        if current_country is None:
-            country = normalized.get("country_code")
-            current_country = country if isinstance(country, str) and country else COUNTRY_BY_SOURCE.get(str(source_id), "unknown")
-        effective_time = observed_at.isoformat() if hasattr(observed_at, "isoformat") else str(observed_at or "unknown-observation-date")
-        if source_id in {"it.853-2004", "it.1069-2009"}:
-            typed_id = source_identifier(str(source_id), normalized)
-            raw_source_values = source_record["source_values"]
-            business_ids = organization_identifiers(str(source_id), normalized, raw_source_values)
-            candidate = build_identifier_graph_candidate(
-                source_id=str(source_id), source_record_key=str(key), source_values=raw_source_values,
-                facility_identifier=(typed_id["identifier_type"], typed_id["value"]) if typed_id else None,
-                organization_identifier=None,
-                organization_identifiers=[(item["identifier_type"], item["value"]) for item in business_ids],
-                observed_at=effective_time, source_row=source_row,
-                artifact_sha256=str(artifact_sha).strip() if artifact_sha else None,
-                signal_bundle=([{"kind": "source_identifier_cooccurrence", "identifier_types": [item["identifier_type"] for item in business_ids], "connection_type": "exact"}] if business_ids else None),
-                normalized_values=normalized, name_assertions=name_assertions(str(source_id), normalized, raw_source_values),
-                location_role=location_role(str(source_id), normalized, raw_source_values),
-                operator_asserted=operator_asserted(str(source_id), raw_source_values),
-            )
-        else:
-            candidate = build_graph_candidate(
-                source_record,
-                artifact_sha256=str(artifact_sha).strip() if artifact_sha else None,
-                observed_at=effective_time,
-            )
-        validate_graph_candidate(candidate)
-        payload = canonical_json_bytes(candidate)
-        handle.write(payload.decode("utf-8"))
-        digest.update(payload)
-        counts["candidate_rows"] += 1
-        counts["facility_identifier_candidates"] += 1
-        counts["organization_identifier_candidates"] += len(candidate.get("organizations", []))
-        counts["name_assertion_candidates"] += len(candidate.get("name_assertions", []))
-        locations[candidate.get("location_role", "unknown")] += 1
-    close_source()
+    try:
+        for source_id, key, raw_fields, source_values, artifact_sha, artifact_retrieved_at, observed_at in rows:
+            artifact_sha = str(artifact_sha).strip() if artifact_sha else ""
+            if not artifact_sha:
+                raise ValueError(f"source artifact SHA is missing for {source_id}")
+            if source_id != current_source or artifact_sha != current_artifact_sha:
+                close_source()
+                current_source = str(source_id)
+                current_artifact_sha = artifact_sha
+                current_retrieved_at = artifact_retrieved_at.isoformat() if hasattr(artifact_retrieved_at, "isoformat") else str(artifact_retrieved_at or "unknown")
+                current_url = source_urls.get(current_source, "unknown")
+                source_root = output_root / current_source / artifact_sha / "graph-candidates"
+                source_root.mkdir(parents=True, exist_ok=True)
+                path = source_root / "graph-candidates.jsonl"
+                handle = path.open("w", encoding="utf-8", newline="\n")
+                source_row = 0
+            source_row += 1
+            if not isinstance(raw_fields, dict) or not isinstance(raw_fields.get("normalized"), dict):
+                counts["skipped_rows"] += 1
+                counts["skipped:normalized_missing"] += 1
+                continue
+            normalized = raw_fields["normalized"]
+            if not source_identifier(str(source_id), normalized):
+                counts["skipped_rows"] += 1
+                counts["skipped:typed_identifier_missing"] += 1
+                continue
+            source_record = _source_row({
+                "source_id": str(source_id), "source_record_key": str(key),
+                "source_values": source_values if isinstance(source_values, dict) else {}, "normalized": normalized,
+            }, source_row)
+            if current_country is None:
+                country = normalized.get("country_code")
+                current_country = country if isinstance(country, str) and country else COUNTRY_BY_SOURCE.get(str(source_id), "unknown")
+            effective_time = observed_at.isoformat() if hasattr(observed_at, "isoformat") else str(observed_at or "unknown-observation-date")
+            if source_id in {"it.853-2004", "it.1069-2009"}:
+                typed_id = source_identifier(str(source_id), normalized)
+                raw_source_values = source_record["source_values"]
+                business_ids = organization_identifiers(str(source_id), normalized, raw_source_values)
+                candidate = build_identifier_graph_candidate(
+                    source_id=str(source_id), source_record_key=str(key), source_values=raw_source_values,
+                    facility_identifier=(typed_id["identifier_type"], typed_id["value"]) if typed_id else None,
+                    organization_identifier=None,
+                    organization_identifiers=[(item["identifier_type"], item["value"]) for item in business_ids],
+                    observed_at=effective_time, source_row=source_row,
+                    artifact_sha256=str(artifact_sha).strip() if artifact_sha else None,
+                    signal_bundle=([{"kind": "source_identifier_cooccurrence", "identifier_types": [item["identifier_type"] for item in business_ids], "connection_type": "exact"}] if business_ids else None),
+                    normalized_values=normalized, name_assertions=name_assertions(str(source_id), normalized, raw_source_values),
+                    location_role=location_role(str(source_id), normalized, raw_source_values),
+                    operator_asserted=operator_asserted(str(source_id), raw_source_values),
+                )
+            else:
+                candidate = build_graph_candidate(
+                    source_record,
+                    artifact_sha256=str(artifact_sha).strip() if artifact_sha else None,
+                    observed_at=effective_time,
+                )
+            validate_graph_candidate(candidate)
+            payload = canonical_json_bytes(candidate)
+            handle.write(payload.decode("utf-8"))
+            digest.update(payload)
+            counts["candidate_rows"] += 1
+            counts["facility_identifier_candidates"] += 1
+            counts["organization_identifier_candidates"] += len(candidate.get("organizations", []))
+            counts["name_assertion_candidates"] += len(candidate.get("name_assertions", []))
+            locations[candidate.get("location_role", "unknown")] += 1
+        close_source()
+    except Exception:
+        if handle is not None:
+            handle.close()
+        raise
     return summary
 
 
@@ -336,6 +341,8 @@ class CandidateExportError(ValueError):
 
 _CANDIDATE_DATABASE = "uec_country_release_test_20261027"
 _CANDIDATE_RELEASE = "release-2026-10-27-r2"
+_CANDIDATE_FREEZE_RELEASE = "v0-candidate-country-2026-10-27"
+_CANDIDATE_FREEZE_BINDING = "release-2026-10-27"
 
 _CANDIDATE_MEMBER_SQL = """
 SELECT member.release_id, member.facility_id::text, member.observation_id::text,
@@ -388,6 +395,22 @@ ORDER BY member.release_id, member.facility_id, member.observation_id,
          observation.source_record_id, record.source_id, record.artifact_id
 """
 
+_CANDIDATE_EXPORT_SQL = """
+SELECT record.source_id, record.source_record_key, record.raw_fields,
+       CASE WHEN jsonb_typeof(record.raw_fields->'source_values') = 'object'
+            THEN record.raw_fields->'source_values' ELSE '{}'::jsonb END AS source_values,
+       artifact.sha256, artifact.retrieved_at, observation.observed_at,
+       restricted.source_record_id IS NOT NULL AS is_restricted
+FROM uec.release_members member
+JOIN uec.observations observation ON observation.observation_id=member.observation_id
+JOIN uec.source_records record ON record.source_record_id=observation.source_record_id
+JOIN uec.raw_artifacts artifact ON artifact.artifact_id=record.artifact_id
+LEFT JOIN uec.public_access_restricted restricted ON restricted.source_record_id=record.source_record_id
+WHERE member.release_id=%s
+ORDER BY record.source_id, artifact.sha256, record.source_record_key,
+         observation.observed_at, observation.observation_id
+"""
+
 
 def _candidate_paths(freeze_path: Path, review_path: Path, output_root: Path) -> tuple[dict[str, Any], dict[str, Any], Path]:
     reports_root = (Path.cwd() / "data" / "reports").resolve()
@@ -416,7 +439,8 @@ def _candidate_paths(freeze_path: Path, review_path: Path, output_root: Path) ->
                    for value in expected_hashes)
             or not isinstance(freeze.get("inventory_sha256"), str)
             or len(freeze["inventory_sha256"]) != 64
-            or review.get("freeze_sha256") != canonical_sha256(freeze)
+            or freeze.get("release_id") != _CANDIDATE_FREEZE_RELEASE
+            or review.get("freeze_sha256") != canonical_sha256({**freeze, "release_id": _CANDIDATE_FREEZE_BINDING})
             or review.get("inventory_sha256") != freeze.get("inventory_sha256")):
         raise CandidateExportError("candidate_control_hash_mismatch")
     output = output_root.resolve(strict=False)
@@ -432,17 +456,69 @@ def _candidate_paths(freeze_path: Path, review_path: Path, output_root: Path) ->
 def _validate_candidate_database_url(database_url: str, expected_database: str) -> None:
     try:
         parsed = urlsplit(database_url)
+        routing = {key.lower() for key, _ in parse_qsl(parsed.query, keep_blank_values=True)}
     except ValueError:
         raise CandidateExportError("candidate_database_mismatch") from None
     if (parsed.scheme not in {"postgres", "postgresql"}
             or parsed.hostname not in {"127.0.0.1", "localhost", "::1"}
             or parsed.path.lstrip("/") != expected_database
+            or routing.intersection({"host", "hostaddr", "service", "servicefile"})
             or expected_database != _CANDIDATE_DATABASE):
         raise CandidateExportError("candidate_database_mismatch")
 
 
 def _member_payload(values: list[Any]) -> bytes:
     return (json.dumps(values, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+
+
+def _verify_candidate_export(output_root: Path, expected_groups: dict[tuple[str, str], int]) -> int:
+    actual_groups: dict[tuple[str, str], int] = {}
+    total_rows = 0
+    manifests = sorted(output_root.rglob("manifest.json"))
+    if len(manifests) != len(expected_groups):
+        raise CandidateExportError("candidate_export_manifest_scope_mismatch")
+    for manifest_path in manifests:
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            raise CandidateExportError("candidate_export_manifest_invalid") from None
+        source_id = manifest.get("source_id")
+        artifact_sha = manifest.get("source_artifact_sha256")
+        if (not isinstance(source_id, str) or not isinstance(artifact_sha, str)
+                or len(artifact_sha) != 64 or manifest_path.parent.name != "graph-candidates"
+                or manifest_path.parent.parent.name != artifact_sha
+                or manifest_path.parent.parent.parent.name != source_id):
+            raise CandidateExportError("candidate_export_manifest_invalid")
+        group = (source_id, artifact_sha)
+        if group not in expected_groups or group in actual_groups:
+            raise CandidateExportError("candidate_export_manifest_scope_mismatch")
+        records_path = manifest_path.parent / "graph-candidates.jsonl"
+        digest = hashlib.sha256()
+        row_count = 0
+        try:
+            with records_path.open("rb") as stream:
+                for payload in stream:
+                    if not payload.endswith(b"\n"):
+                        raise CandidateExportError("candidate_export_record_invalid")
+                    candidate = json.loads(payload.decode("utf-8"))
+                    validate_graph_candidate(candidate)
+                    if (candidate.get("source_id") != source_id
+                            or not isinstance(candidate.get("source_record_key"), str)):
+                        raise CandidateExportError("candidate_export_record_invalid")
+                    digest.update(payload)
+                    row_count += 1
+        except CandidateExportError:
+            raise
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            raise CandidateExportError("candidate_export_record_invalid") from None
+        if (row_count != expected_groups[group] or row_count != manifest.get("candidate_count")
+                or digest.hexdigest() != manifest.get("records_sha256")):
+            raise CandidateExportError("candidate_export_digest_or_count_mismatch")
+        actual_groups[group] = row_count
+        total_rows += row_count
+    if actual_groups != expected_groups:
+        raise CandidateExportError("candidate_export_manifest_scope_mismatch")
+    return total_rows
 
 
 def export_frozen_candidate(database_url: str, *, expected_database: str, release_id: str,
@@ -462,6 +538,12 @@ def export_frozen_candidate(database_url: str, *, expected_database: str, releas
             or len(set(selected_ids)) != len(selected_ids)):
         raise CandidateExportError("candidate_freeze_scope_invalid")
     frozen_sources = sorted(selected_ids)
+    frozen_artifacts = {
+        item["source_id"]: item.get("source_artifact_sha256")
+        for item in selected
+    }
+    if any(not isinstance(value, str) or len(value) != 64 for value in frozen_artifacts.values()):
+        raise CandidateExportError("candidate_freeze_scope_invalid")
 
     connection = psycopg.connect(database_url)
     try:
@@ -497,31 +579,46 @@ def export_frozen_candidate(database_url: str, *, expected_database: str, releas
         member_digest = hashlib.sha256()
         seen_members = 0
         restricted_count = 0
-        exported_member_count = 0
         member_sources: set[str] = set()
         source_urls = _source_urls()
-        cursor = connection.cursor(name="uec_frozen_candidate_graph_export")
-        cursor.execute(_CANDIDATE_MEMBER_SQL, (release_id,))
+        member_cursor = connection.cursor(name="uec_frozen_candidate_membership_verify")
+        member_cursor.execute(_CANDIDATE_MEMBER_SQL, (release_id,))
+        for row in member_cursor:
+            (row_release, facility_id, observation_id, source_record_id, source_id,
+             artifact_id, artifact_sha, taxonomy, _source_record_key, _raw_fields, _source_values,
+             _retrieved_at, _observed_at, is_restricted) = row
+            if taxonomy is None:
+                raise CandidateExportError("candidate_taxonomy_missing")
+            member_digest.update(_member_payload([
+                row_release, facility_id, observation_id, source_record_id, source_id,
+                artifact_id, artifact_sha, taxonomy,
+            ]))
+            seen_members += 1
+            member_sources.add(source_id)
+            if source_id in frozen_artifacts and artifact_sha != frozen_artifacts[source_id]:
+                raise CandidateExportError("candidate_frozen_artifact_mismatch")
+            if is_restricted:
+                restricted_count += 1
+        if (seen_members != member_count or member_digest.hexdigest() != review.get("member_sha256")):
+            raise CandidateExportError("candidate_member_hash_mismatch")
+        if sorted(member_sources) != summary_sources or not set(frozen_sources).issubset(member_sources):
+            raise CandidateExportError("candidate_member_source_scope_mismatch")
+
+        export_cursor = connection.cursor(name="uec_frozen_candidate_graph_export")
+        export_cursor.execute(_CANDIDATE_EXPORT_SQL, (release_id,))
+        expected_groups: Counter[tuple[str, str]] = Counter()
+        exported_member_count = 0
 
         def export_rows():
-            nonlocal seen_members, restricted_count, exported_member_count
-            for row in cursor:
-                (row_release, facility_id, observation_id, source_record_id, source_id,
-                 artifact_id, artifact_sha, taxonomy, source_record_key, raw_fields, source_values,
-                 retrieved_at, observed_at, is_restricted) = row
-                if taxonomy is None:
-                    raise CandidateExportError("candidate_taxonomy_missing")
-                member_digest.update(_member_payload([
-                    row_release, facility_id, observation_id, source_record_id, source_id,
-                    artifact_id, artifact_sha, taxonomy,
-                ]))
-                seen_members += 1
-                member_sources.add(source_id)
+            nonlocal exported_member_count
+            for row in export_cursor:
+                (source_id, source_record_key, raw_fields, source_values,
+                 artifact_sha, retrieved_at, observed_at, is_restricted) = row
                 if is_restricted:
-                    restricted_count += 1
                     continue
                 if not isinstance(raw_fields, dict) or "normalized" not in raw_fields:
                     raise CandidateExportError("candidate_normalized_payload_missing")
+                expected_groups[(source_id, artifact_sha)] += 1
                 exported_member_count += 1
                 yield (source_id, source_record_key, raw_fields, source_values,
                        artifact_sha, retrieved_at, observed_at)
@@ -530,12 +627,11 @@ def export_frozen_candidate(database_url: str, *, expected_database: str, releas
             temporary_root = Path(temporary)
             result = _write_source(export_rows(), temporary_root / "released", scope="frozen-candidate-membership",
                                   source_urls=source_urls)
-            if (seen_members != member_count or member_digest.hexdigest() != review.get("member_sha256")):
-                raise CandidateExportError("candidate_member_hash_mismatch")
-            if sorted(member_sources) != summary_sources:
-                raise CandidateExportError("candidate_member_source_scope_mismatch")
             if result["total_candidates"] != exported_member_count:
                 raise CandidateExportError("candidate_export_incomplete")
+            verified_rows = _verify_candidate_export(temporary_root / "released", expected_groups)
+            if verified_rows != exported_member_count:
+                raise CandidateExportError("candidate_export_digest_or_count_mismatch")
             manifest = {
                 "schema_version": "private-frozen-candidate-graph-export-v1",
                 "database": expected_database, "release_id": release_id,
