@@ -18,6 +18,7 @@ FACILITY_IDENTIFIERS: dict[str, tuple[str, str]] = {
     "br.sif.registered": ("sif_establishment_id", "br.sif.registered"),
     "ca.ontario.meat-plants": ("ontario_plant_number", "ca.ontario.meat-plants"),
     "dk.smiley": ("find_smiley_establishment_id", "dk.smiley"),
+    "de.locations": ("bltu_approval_number", "de.locations"),
     "es.cat.feed-sandach": ("catalonia_sandach_registration", "es.cat.feed-sandach"),
     "es.locations": ("rgseaa_registration_number", "es.locations"),
     "fsa_approved_establishments": ("fsa_establishment_id", "fsa_approved_establishments"),
@@ -25,6 +26,8 @@ FACILITY_IDENTIFIERS: dict[str, tuple[str, str]] = {
     "it.1069-2009": ("it_1069_recognition_number", "it.1069-2009"),
     "it.853-2004": ("it_853_recognition_number", "it.853-2004"),
     "nl.nvwa.approved-food": ("nvwa_approval_number", "nl.nvwa.approved-food"),
+    "mx.locations": ("denue_establishment_id", "mx.locations"),
+    "nz.locations": ("mpi_risk_measure_id", "nz.locations"),
     "us.aphis": ("aphis_establishment_id", "us.aphis"),
     "us.fsis": ("fsis_establishment_number", "us.fsis"),
     "fr.dgal.section-i": ("dgal_section_i_approval", "fr.dgal.section-i"),
@@ -41,9 +44,15 @@ NAME_FIELDS: dict[str, tuple[tuple[str, str], ...]] = {
     "au.npi.facilities": (("registered_business_name", "legal"), ("facility_name", "business"), ("facility_display_name", "business")),
     "ca.ontario.meat-plants": (("operator_name", "operator"), ("trading_name", "trading"), ("facility_display_name", "business")),
     "dk.smiley": (("trading_name", "trading"), ("facility_display_name", "business")),
+    "de.locations": (("trading_name", "trading"), ("facility_display_name", "business")),
+    "es.locations": (("facility_display_name", "business"),),
     "fsa_approved_establishments": (("trading_name", "trading"), ("facility_display_name", "business")),
     "fss_approved_establishments": (("trading_name", "trading"), ("facility_display_name", "business")),
     "nl.nvwa.approved-food": (("trading_name", "trading"), ("facility_display_name", "business")),
+    "mx.locations": (("name", "business"), ("facility_display_name", "business")),
+    # MPI rows identify programmes, not necessarily unique premises. Their
+    # business labels support name matching, never an operating-site claim.
+    "nz.locations": (("name", "business"), ("trading_name", "trading"), ("facility_display_name", "business")),
     "us.aphis": (("canonical_name", "business"), ("facility_display_name", "business")),
     "it.1069-2009": (("name", "business"), ("trading_name", "trading"), ("facility_display_name", "business")),
     "it.853-2004": (("name", "business"), ("trading_name", "trading"), ("facility_display_name", "business")),
@@ -52,7 +61,7 @@ NAME_FIELDS: dict[str, tuple[tuple[str, str], ...]] = {
     "us.fsis": (("canonical_name", "business"), ("facility_display_name", "business")),
     "fr.dgal.section-i": (("name", "business"), ("trading_name", "trading"), ("facility_display_name", "business")),
     "fr.dgal.section-ii": (("name", "business"), ("trading_name", "trading"), ("facility_display_name", "business")),
-    "fr.georisques.icpe.animal": (("trading_name", "business"), ("facility_name", "business")),
+    "fr.georisques.icpe.animal": (("trading_name", "business"), ("facility_name", "business"), ("facility_display_name", "business")),
     "gb.scot.marine.aquaculture": (("facility_name", "business"),),
 }
 
