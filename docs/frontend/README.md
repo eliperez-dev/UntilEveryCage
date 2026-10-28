@@ -620,6 +620,10 @@ that movement. Keep native bottom-to-top stacking on the canvas and retain the
 held scene through rapid zoom reversals. The overlay remains until replacement
 native paint is ready. Reuse existing pin/cluster artwork and read-only native
 child queries, without bounce or repeated restarts.
+Draw every visible wrapped world copy of a masked identity, and align parent and
+child longitudes across the short antimeridian path. Reproject held marks while
+worker pairing is pending. The hierarchy walk scales with the visible scene,
+within a 2,048-query bound; an incomplete walk never plays a regional subset.
 If a new zoom starts during a short playing cue, finish that cue without resetting
 its progress, then hold its destination identities for the next transition.
 The default is 210 ms and at most 1,200 animated marks in total. Debug

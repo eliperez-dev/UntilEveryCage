@@ -5,11 +5,13 @@ import { CLUSTER_MOTION_HIDDEN_STATE, clusterMotionOpacity } from '../../src/des
 
 test.use({ video: { mode: 'on', size: { width: 1280, height: 720 } }, viewport: { width: 1280, height: 720 } });
 
-async function fixture(page: Page, focusedCount?: number, stableNeighbor = false) {
+async function fixture(page: Page, focusedCount?: number, stableNeighbor = false, worldwide = false) {
   const requests = { feeds: 0, manifests: 0 };
+  const hubs = [[-122, 37], [-75, 40], [-47, -15], [12, 48], [38, 9], [80, 21], [120, 35], [136, -25], [-171, -13], [174, -37]];
   const features = Array.from({ length: 3200 }, (_, i) => ({
     type: 'Feature', id: `123e4567-e89b-42d3-a456-${i.toString(16).padStart(12, '0')}`,
-    geometry: { type: 'Point', coordinates: focusedCount === undefined ? [4.45 + i % 80 * .012, 50.95 + Math.floor(i / 80) * .012]
+    geometry: { type: 'Point', coordinates: worldwide ? [hubs[i % hubs.length]![0]! + (i % 17) * .03, hubs[i % hubs.length]![1]! + (i % 13) * .03]
+      : focusedCount === undefined ? [4.45 + i % 80 * .012, 50.95 + Math.floor(i / 80) * .012]
       : i < focusedCount ? [4.87 + i % 32 * .004, 51.13 + Math.floor(i / 32) * .004]
         : stableNeighbor && i === focusedCount ? [4.5, 51.19] : [100 + i % 80 * .012, 30 + Math.floor(i / 80) * .012] },
     properties: { facility_id: `123e4567-e89b-42d3-a456-${i.toString(16).padStart(12, '0')}`, source_id: 'fixture.source', category_key: 'slaughter', category_keys: ['slaughter'], precision: 'source_reported', weight: 1 },
@@ -59,6 +61,52 @@ async function fixture(page: Page, focusedCount?: number, stableNeighbor = false
   await page.waitForFunction(() => { const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__; return map?.getLayer('clusters') && map.isSourceLoaded('locations') && map.queryRenderedFeatures({ layers: ['clusters'] }).length; });
   return requests;
 }
+
+test('world-scale splits and merges draw every visible copy of masked cluster identities', async ({ page }, testInfo) => {
+  const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+  await page.setViewportSize({ width: 1910, height: 900 });
+  await fixture(page, undefined, false, true);
+  await page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.jumpTo({ center: [0, 0], zoom: .8, pitch: 0, bearing: 0 }));
+  await page.waitForFunction(() => { const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__; return !map.isMoving() && map.isSourceLoaded('locations'); });
+  await page.evaluate(() => new Promise<void>(resolve => { const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__; map.once('idle', () => resolve()); map.triggerRepaint(); }));
+  await page.evaluate(async () => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    const url = performance.getEntriesByType('resource').find(entry => entry.name.includes('/nativeClusterMotion.ts'))?.name;
+    const { NativeClusterMotionController } = await import(url!);
+    const original = NativeClusterMotionController.prototype.drawNode;
+    const samples: any[] = []; (window as any).__wrappedMotion = samples;
+    NativeClusterMotionController.prototype.drawNode = function (context: CanvasRenderingContext2D, node: any, from: any, to: any, progress: number, opacity: number) {
+      const centers: number[] = [], draw = context.drawImage.bind(context);
+      context.drawImage = (...args: any[]) => { centers.push(args[1] + args[3] / 2); return draw(...args as [any, number, number, number, number]); };
+      try { return original.call(this, context, node, from, to, progress, opacity); }
+      finally {
+        context.drawImage = draw;
+        if (node.key.startsWith('c:') && opacity > .1 && from.key === to.key) {
+          const projected: number[] = [];
+          for (let wrap = -2; wrap <= 2; wrap++) {
+            const p = map.project([from.coordinates[0] + 360 * wrap, from.coordinates[1]]);
+            if (p.x > 40 && p.x < map.getCanvas().clientWidth - 40 && p.y > 40 && p.y < map.getCanvas().clientHeight - 40) projected.push(p.x);
+          }
+          if (projected.length > 1 && samples.length < 300) samples.push({ expected: projected, drawn: centers });
+        }
+      }
+    };
+    map.easeTo({ zoom: 1.6, duration: 650 });
+  });
+  await page.waitForFunction(() => !(window as any).__UEC_LOCAL_PREVIEW_MAP__.isMoving() && !document.querySelector('.native-cluster-motion')?.hasAttribute('data-phase'));
+  const samples = await page.evaluate(() => (window as any).__wrappedMotion);
+  await testInfo.attach('world-copy-coverage', { body: JSON.stringify(samples), contentType: 'application/json' });
+  expect(samples.length).toBeGreaterThan(0);
+  expect(samples.every((sample: any) => sample.expected.every((x: number) => sample.drawn.some((actual: number) => Math.abs(actual - x) < 1)))).toBe(true);
+  await page.evaluate(() => { (window as any).__wrappedMotion.length = 0; (window as any).__UEC_LOCAL_PREVIEW_MAP__.easeTo({ zoom: .8, duration: 650 }); });
+  await page.waitForFunction(() => !(window as any).__UEC_LOCAL_PREVIEW_MAP__.isMoving() && !document.querySelector('.native-cluster-motion')?.hasAttribute('data-phase'));
+  const merges = await page.evaluate(() => (window as any).__wrappedMotion);
+  await testInfo.attach('world-copy-merge-coverage', { body: JSON.stringify(merges), contentType: 'application/json' });
+  expect(merges.length).toBeGreaterThan(0);
+  expect(merges.every((sample: any) => sample.expected.every((x: number) => sample.drawn.some((actual: number) => Math.abs(actual - x) < 1)))).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('world-copy-map.png') });
+  expect(errors).toEqual([]);
+});
 
 async function monitorMotion(page: Page) {
   await page.evaluate(async () => {

@@ -1,6 +1,29 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createExpression } from '@maplibre/maplibre-gl-style-spec';
-import { CLUSTER_MOTION_HIDDEN_STATE, clusterMotionImage, clusterMotionKey, clusterMotionOpacity, clusterMotionPaintOrder, NativeClusterMotionController } from '../../src/design-lab/components/nativeClusterMotion';
+import { CLUSTER_MOTION_HIDDEN_STATE, clusterMotionImage, clusterMotionKey, clusterMotionOpacity, clusterMotionPaintOrder, clusterMotionPaths, NativeClusterMotionController } from '../../src/design-lab/components/nativeClusterMotion';
+
+describe('wrapped transition geometry', () => {
+  it('draws every visible world copy when one native identity is masked', () => {
+    const paths = clusterMotionPaths([170, 10], [172, 11], 0, [-300, 300]);
+    expect(paths).toEqual([
+      { from: [-190, 10], to: [-188, 11] },
+      { from: [170, 10], to: [172, 11] },
+    ]);
+  });
+  it('crosses the antimeridian by the short path instead of tearing across the map', () => {
+    const paths = clusterMotionPaths([179, 0], [-179, 1], 0, [-300, 300]);
+    expect(paths).toEqual([
+      { from: [-181, 0], to: [-179, 1] },
+      { from: [179, 0], to: [181, 1] },
+    ]);
+    expect(paths.every(path => Math.abs(path.to[0] - path.from[0]) === 2)).toBe(true);
+  });
+  it('does not repeat marks when world copies are disabled', () => {
+    expect(clusterMotionPaths([170, 0], [-179, 1], 360)).toEqual([
+      { from: [530, 0], to: [541, 1] },
+    ]);
+  });
+});
 
 describe('selective native visibility and stacking', () => {
   function opacity(original: unknown, hidden: boolean, properties: Record<string, unknown>) {
@@ -154,6 +177,21 @@ describe('bounded native hierarchy reuse', () => {
     expect(source.getClusterChildren).toHaveBeenCalledTimes(1);
     await controller.getChildren(node(1));
     expect(source.getClusterChildren).toHaveBeenCalledTimes(1);
+  });
+  it('pairs the whole visible scene instead of stopping after the first 80 branches', async () => {
+    const { controller } = fixture();
+    const parents = new Map(Array.from({ length: 100 }, (_, i) => [node(i).key, node(i)]));
+    const targets = new Map(Array.from({ length: 100 }, (_, i) => [`p:synthetic-${i}`, { key: `p:synthetic-${i}` }]));
+    expect(await controller.findPairs(parents, targets)).toHaveLength(100);
+  });
+  it('does not play a partial regional transition when the remaining lineage exceeds its budget', async () => {
+    const { controller, source } = fixture();
+    source.getClusterChildren.mockImplementation(async id => id === 1 ? [point(1)] : [{
+      type: 'Feature', geometry: { type: 'Point', coordinates: [0, 0] }, properties: { cluster_id: id + 1 },
+    }] as any);
+    const parents = new Map([[node(1).key, node(1)], [node(2).key, node(2)]]);
+    const targets = new Map([['p:synthetic-1', { key: 'p:synthetic-1' }]]);
+    expect(await controller.findPairs(parents, targets)).toEqual([]);
   });
   it('ignores late lineage from an invalidated data generation', async () => {
     const { controller, source } = fixture();

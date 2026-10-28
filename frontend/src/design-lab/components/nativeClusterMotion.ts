@@ -42,6 +42,23 @@ export function clusterMotionOpacity(original: unknown): unknown[] {
   return ['*', original ?? 1, ['case', ['boolean', ['feature-state', CLUSTER_MOTION_HIDDEN_STATE], false], 0, 1]];
 }
 
+/** Native feature state masks all wrapped copies, so the bridge must draw them all. */
+export function clusterMotionPaths(from: [number, number], to: [number, number], center: number, bounds?: [number, number]): { from: [number, number]; to: [number, number] }[] {
+  const start = from[0] + Math.round((center - from[0]) / 360) * 360;
+  // Pick the child's copy relative to its parent, never independently relative
+  // to the camera: a branch across the date line must not travel 358 degrees.
+  const end = to[0] + Math.round((start - to[0]) / 360) * 360;
+  let first = 0, last = 0;
+  if (bounds && bounds.every(Number.isFinite)) {
+    const padding = Math.max(.5, (bounds[1] - bounds[0]) * .025);
+    first = Math.max(-32, Math.ceil((bounds[0] - padding - Math.max(start, end)) / 360));
+    last = Math.min(32, Math.floor((bounds[1] + padding - Math.min(start, end)) / 360));
+  }
+  const paths: { from: [number, number]; to: [number, number] }[] = [];
+  for (let copy = first; copy <= last; copy++) paths.push({ from: [start + copy * 360, from[1]], to: [end + copy * 360, to[1]] });
+  return paths;
+}
+
 export function clusterMotionPaintOrder(pairs: Pair[], before: ReadonlyMap<string, Node>, after: ReadonlyMap<string, Node>, direction: 'split' | 'merge'): { parents: Node[]; pairs: Pair[] } {
   const parentOrder = new Map([...(direction === 'split' ? before : after).keys()].map((key, index) => [key, index]));
   const childOrder = new Map([...(direction === 'split' ? after : before).keys()].map((key, index) => [key, index]));
@@ -87,6 +104,9 @@ export class NativeClusterMotionController {
   private images = new Map<string, { canvas: HTMLCanvasElement; pixelRatio: number }>();
   private projected = new Map<string, { x: number; y: number }>();
   private frameCenter = 0;
+  private frameWorldBounds: [number, number] | undefined;
+  private frameWidth = 0;
+  private frameHeight = 0;
   private frameScales = new Map<string, number>();
   private handoff: { map: MapLibreMap; listener: () => void; finish: () => void } | undefined;
 
@@ -171,7 +191,7 @@ export class NativeClusterMotionController {
       this.direction = Math.sign(delta);
     }
     this.lastCameraZoom = map.getZoom();
-    if (this.pending || this.handoff) return;
+    if (this.handoff) return;
     const after = this.capture(), before = this.before;
     if (!after || !before) { this.cancel(false, 'density-limit'); return; }
     this.present = new Set(after.keys());
@@ -180,6 +200,9 @@ export class NativeClusterMotionController {
     // Render events run before the browser composites the two canvases. Only
     // originals no longer drawn natively need a geographic hold on the overlay.
     this.draw();
+    // Pairing may await the worker while another camera frame arrives. Keep
+    // the held marks attached to that frame instead of freezing the overlay.
+    if (this.pending) return;
     if (this.motion) {
       if (!map.isZooming()) this.settledAt ??= performance.now();
       return;
@@ -391,12 +414,13 @@ export class NativeClusterMotionController {
     const limit = this.markLimit();
     const generation = this.generation;
     let queries = 0;
+    const queryLimit = Math.max(80, Math.min(2048, parents.size + targets.size * 2));
     const queue = [...parents.values()].filter(parent => parent.key.startsWith('c:') && !targets.has(parent.key))
       .map(parent => ({ parent, node: parent, depth: 0 }));
-    while (queue.length && queries < 80) {
+    while (queue.length && queries < queryLimit) {
       // Batch independent native reads. A long serial child walk otherwise
       // misses the brief transition window while normal tiles are loading.
-      const batch = queue.splice(0, Math.min(16, 80 - queries)); queries += batch.length;
+      const batch = queue.splice(0, Math.min(16, queryLimit - queries)); queries += batch.length;
       const results = await Promise.all(batch.map(item => this.getChildren(item.node)));
       if (generation !== this.generation) return [];
       for (const [index, children] of results.entries()) {
@@ -405,15 +429,16 @@ export class NativeClusterMotionController {
           const target = targets.get(child.key);
           if (target) {
             const added = Number(!participants.has(item.parent.key)) + Number(!participants.has(target.key));
-            if (participants.size + added > limit) return pairs;
+            if (participants.size + added > limit) return [];
             participants.add(item.parent.key); participants.add(target.key);
             pairs.push({ parent: item.parent, child: target });
-          } else if (child.key.startsWith('c:') && item.depth < 4) queue.push({ parent: item.parent, node: child, depth: item.depth + 1 });
-          if (participants.size >= limit) return pairs;
+          } else if (child.key.startsWith('c:')) queue.push({ parent: item.parent, node: child, depth: item.depth + 1 });
         }
       }
     }
-    return pairs;
+    // Never animate only the first nearby branches while the rest snap. If a
+    // complete bounded walk is unavailable, leave the native scene intact.
+    return queue.length ? [] : pairs;
   }
 
   private mask(keys: ReadonlySet<string>, retain: boolean): void {
@@ -487,34 +512,38 @@ export class NativeClusterMotionController {
 
   private drawNode(context: CanvasRenderingContext2D, node: Node, from: Node, to: Node, progress: number, opacity: number): void {
     const map = this.options.getMap(); if (!map || opacity <= 0) return;
-    const project = (value: Node) => {
-      let pixel = this.projected.get(value.key);
-      if (!pixel) { const coordinates = value.coordinates; pixel = map.project([coordinates[0] + Math.round((this.frameCenter - coordinates[0]) / 360) * 360, coordinates[1]]); this.projected.set(value.key, pixel); }
+    const project = (value: Node, coordinates: [number, number]) => {
+      const key = `${value.key}@${coordinates[0]}`;
+      let pixel = this.projected.get(key);
+      if (!pixel) { pixel = map.project(coordinates); this.projected.set(key, pixel); }
       return pixel;
     };
-    const start = project(from), end = from.key === to.key ? start : project(to);
-    const x = start.x + (end.x - start.x) * progress, y = start.y + (end.y - start.y) * progress;
     const cluster = node.key.startsWith('c:'), image = this.image(clusterMotionImage(node.properties));
     if (!image) return;
     let nativeScale = this.frameScales.get(node.layer);
     if (nativeScale === undefined) { nativeScale = Number(map.getLayoutProperty(node.layer, 'icon-size')); this.frameScales.set(node.layer, nativeScale); }
     const scale = Number.isFinite(nativeScale) ? nativeScale : cluster ? 1 : 0.5;
     const width = image.canvas.width / image.pixelRatio * scale, height = image.canvas.height / image.pixelRatio * scale;
-    context.save(); context.globalAlpha = opacity;
-    if (!cluster && node.layer !== 'approx-reference-points') {
-      const shadow = this.image('v1-pin-shadow');
-      if (shadow) {
-        const shadowWidth = shadow.canvas.width / shadow.pixelRatio * scale * 2, shadowHeight = shadow.canvas.height / shadow.pixelRatio * scale * 2;
-        context.drawImage(shadow.canvas, x - shadowWidth / 2 + 17 * scale, y - shadowHeight, shadowWidth, shadowHeight);
+    for (const path of clusterMotionPaths(from.coordinates, to.coordinates, this.frameCenter, this.frameWorldBounds)) {
+      const start = project(from, path.from), end = from.key === to.key ? start : project(to, path.to);
+      const x = start.x + (end.x - start.x) * progress, y = start.y + (end.y - start.y) * progress;
+      if (x < -width * 2 || x > this.frameWidth + width * 2 || y < -height * 2 || y > this.frameHeight + height * 2) continue;
+      context.save(); context.globalAlpha = opacity;
+      if (!cluster && node.layer !== 'approx-reference-points') {
+        const shadow = this.image('v1-pin-shadow');
+        if (shadow) {
+          const shadowWidth = shadow.canvas.width / shadow.pixelRatio * scale * 2, shadowHeight = shadow.canvas.height / shadow.pixelRatio * scale * 2;
+          context.drawImage(shadow.canvas, x - shadowWidth / 2 + 17 * scale, y - shadowHeight, shadowWidth, shadowHeight);
+        }
       }
+      context.drawImage(image.canvas, x - width / 2, y - (cluster ? height / 2 : height), width, height);
+      const count = Number(node.properties.representedCount ?? node.properties.point_count ?? node.properties.weight ?? 1);
+      if (cluster || count > 1) {
+        context.fillStyle = '#172019'; context.font = `700 ${cluster ? 12 : 11}px "Open Sans", sans-serif`; context.textAlign = 'center'; context.textBaseline = 'middle';
+        context.fillText(String(count), x, y);
+      }
+      context.restore();
     }
-    context.drawImage(image.canvas, x - width / 2, y - (cluster ? height / 2 : height), width, height);
-    const count = Number(node.properties.representedCount ?? node.properties.point_count ?? node.properties.weight ?? 1);
-    if (cluster || count > 1) {
-      context.fillStyle = '#172019'; context.font = `700 ${cluster ? 12 : 11}px "Open Sans", sans-serif`; context.textAlign = 'center'; context.textBaseline = 'middle';
-      context.fillText(String(count), x, y);
-    }
-    context.restore();
   }
 
   private clear(): void { this.canvas?.getContext('2d')?.clearRect(0, 0, this.canvas.width, this.canvas.height); this.heldDrawn = false; this.canvas?.removeAttribute('data-direction'); this.canvas?.removeAttribute('data-phase'); }
@@ -534,6 +563,10 @@ export class NativeClusterMotionController {
     this.projected.clear(); this.frameScales.clear(); this.frameCenter = this.options.getMap()?.getCenter().lng ?? 0;
     const rect = canvas.getBoundingClientRect(), context = resizeMotionCanvas(canvas, rect.width, rect.height, Math.min(2, window.devicePixelRatio || 1));
     if (!context) { this.cancel(); return; }
+    this.frameWidth = rect.width; this.frameHeight = rect.height;
+    const map = this.options.getMap();
+    const bounds = map?.getRenderWorldCopies?.() && map.getProjection?.()?.type !== 'globe' ? map.getBounds() : undefined;
+    this.frameWorldBounds = bounds ? [bounds.getWest(), bounds.getEast()] : undefined;
     context.clearRect(0, 0, rect.width, rect.height);
     if (!motion) {
       // Native queries return topmost first; canvas paint order is the reverse.
