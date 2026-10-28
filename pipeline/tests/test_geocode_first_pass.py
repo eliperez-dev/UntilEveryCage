@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 import unittest
 
-from pipeline.geocoding.first_pass import structured_query, normalize_query
+from pipeline.geocoding.first_pass import structured_query, normalize_query, provider_query, partition_groups
 
 
 class FirstPassInputTests(unittest.TestCase):
@@ -36,6 +36,28 @@ class FirstPassInputTests(unittest.TestCase):
                         "wrong_source_test_database", "provider_interval=1.05", "first_pass_only"):
             self.assertIn(snippet,text)
         self.assertEqual(normalize_query("  One  ROAD, Town  "),"one road, town")
+
+    def test_geoapify_uses_full_source_address_and_verified_town_not_json(self):
+        location={"address":"Unit 2, Calle Ejemplo 4", "region":"Madrid", "country_code":"ES"}
+        group={"source":"es.locations", "query":structured_query("es.locations",location,municipality="Example Town")}
+        self.assertEqual(provider_query(group,"locationiq"),group["query"])
+        self.assertEqual(provider_query(group,"geoapify"),
+                         "Unit 2, Calle Ejemplo 4, Example Town, Madrid, Spain")
+        for provider, source in (("other","es.locations"),("geoapify","nz.locations"),
+                                 ("geoapify","es.cat.feed-sandach")):
+            with self.subTest(provider=provider,source=source), self.assertRaises(ValueError):
+                provider_query({**group,"source":source},provider)
+
+    def test_three_provider_lanes_cover_queue_once_with_stable_identities(self):
+        groups=[{"source":"es.locations","query":f"synthetic-query-{index}"} for index in range(300)]
+        lanes=[partition_groups(groups,index,3) for index in range(3)]
+        identities=[{g["query"] for g in lane} for lane in lanes]
+        self.assertEqual(set.union(*identities),{g["query"] for g in groups})
+        for index in range(3):
+            self.assertGreater(len(lanes[index]),0)
+            self.assertEqual(partition_groups(list(reversed(groups)),index,3),list(reversed(lanes[index])))
+            for other in range(index):
+                self.assertFalse(identities[index]&identities[other])
 
 
 if __name__=="__main__":

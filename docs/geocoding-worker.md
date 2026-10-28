@@ -192,6 +192,16 @@ it does not retry failed matches. A finite account allowance is not completion
 of the country sprint. Resume the unattempted queue with available authorized
 allowances; do not publish an intermediate snapshot instead.
 
+`--provider geoapify --sources es.locations` uses the existing Spanish address
+profile and its separate 3,000-request UTC-day ledger. It includes the retained
+AESAN town in the plaintext provider query, without changing either adapter's
+acceptance rules. A command without `--run` remains read-only. Confirm the
+source/provider transfer authorization before running it.
+For three simultaneous lanes, use `--partitions 3` with distinct indices:
+Geoapify 0, LocationIQ primary 1, LocationIQ secondary 2. Partitioning uses the
+same source/structured-query identity before provider formatting, so the lanes
+do not submit the same address. Exhausted daily budgets do not reset on restart.
+
 Structured source-address queries preserve commas and do not require a house
 number merely to request a lookup. Exact-point acceptance separately requires
 matching address components and supplied context. NZ still requires exactly

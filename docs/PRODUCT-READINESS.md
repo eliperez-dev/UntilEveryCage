@@ -2,7 +2,7 @@
 
 **Canonical authority:** this document is the sole product-level readiness and overall V2 roadmap authority.
 
-**Owner:** project maintainer. **Updated:** 2026-10-27, Pacific.
+**Owner:** project maintainer. **Updated:** 2026-10-28, Pacific.
 This is the only product roadmap. Source readiness belongs in
 [source-status.json](source-status.json); current frontend instructions belong
 in [frontend/README.md](frontend/README.md). [ETHICS.md](ETHICS.md) governs data work.
@@ -72,7 +72,7 @@ All items below remain required before replacing the original website.
 | France, broader Spain, Germany, Mexico | France and Spain private map checks passed; Germany first-pass geocoding retained; Mexico national capture and private database/API checks passed | Use the source inventory to prepare the new dated dataset. These private cohorts have not changed public dataset membership |
 | United Kingdom and New Zealand | Eligible first-pass address queues completed locally; UK retained responses also supply explicitly approximate postcode references without new requests. Final assembly is pending | Include the updated cohorts in the final dated dataset. NZ export automation remains unverified; programme rows are not a premises census. The source inventory owns current enrichment counts |
 | APHIS history | Reliability and on-demand historical recovery implemented | Six real endpoint cases passed locally: two eligible facilities return pre-2025 annual and inspection links, sampled PDFs open, and the original no-report case returns an empty page; sample history reaches 2014, not a complete archive audit |
-| New default dated dataset | Approved; isolated Render restore and runtime checks passed: 124,264 records across 19 sources, 93,058 coordinate points; public dataset unchanged | Final-revision green CI, cutover and public-origin checks |
+| New default dated dataset | Earlier prepared snapshot is held; its isolated Render checks passed, but the country first pass is still incomplete. Public dataset unchanged | Finish every eligible first-pass address, reassemble with the new outcomes, then pass affected release checks, final-revision CI, cutover and public-origin checks |
 | Final cutover | Not started | Maintainer frontend/data acceptance; verified monitoring, recovery and contribution operations; domain/canonical/redirect checks and rollback |
 
 Country implementation and UI features may run in independent lanes. Do not

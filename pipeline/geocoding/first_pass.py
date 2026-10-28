@@ -65,6 +65,15 @@ def normalize_query(query: str) -> str:
     return " ".join(query.lower().split())
 
 
+def partition_groups(groups, partition, partitions):
+    """Partition source identities before converting a query for its provider."""
+    import hashlib
+    if partitions not in (1, 2, 3, 4) or not 0 <= partition < partitions:
+        raise ValueError("invalid_first_pass_partition")
+    return [group for group in groups if int(hashlib.sha256(
+        (group["source"]+group["query"]).encode()).hexdigest(),16)%partitions == partition]
+
+
 def structured_query(source: str, location: dict, *, municipality: str = "") -> str | None:
     """Use source location fields, not establishment/contact names or guessed towns."""
     country = {SOURCES[0]: "GB", SOURCES[1]: "GB", SOURCES[2]: "NZ",
@@ -197,11 +206,25 @@ def plan(connection, sources=SOURCES):
     return list(groups.values()), counts
 
 
-def stage(connection, group):
+def provider_query(group, provider):
+    """Keep LocationIQ's structured input or use the existing Spanish Geoapify profile."""
+    if provider == "locationiq":
+        return group["query"]
+    if provider != "geoapify" or group["source"] != "es.locations":
+        raise ValueError("first_pass_provider_source_not_supported")
+    parsed = LocationIqAdapter._parse_first_pass_query(group["query"], "es")
+    if parsed is None:
+        raise ValueError("invalid_first_pass_source_query")
+    # The town is from retained, source-bound AESAN evidence, not guessed.
+    return parsed[-1]
+
+
+def stage(connection, group, provider="locationiq"):
     source, query = group["source"], group["query"]
-    profile = profile_for_source(source, provider_id="locationiq")
-    if not profile or profile.get("query_kind") != "source_address_first_pass":
+    profile = profile_for_source(source, provider_id=provider)
+    if not profile or (provider == "locationiq" and profile.get("query_kind") != "source_address_first_pass"):
         raise ValueError("source_first_pass_profile_unavailable")
+    query = provider_query(group, provider)
     # One coordinator stages; short advisory lock prevents overlapping staging
     # runs from creating different jobs for the same physical address.
     connection.execute("SELECT pg_advisory_xact_lock(hashtext('country-first-pass-staging'))")
@@ -231,49 +254,63 @@ def stage(connection, group):
         return None
     record = usable[0][3]
     job = connection.execute("""INSERT INTO uec.geocode_jobs(source_record_id,provider_id,query)
-        VALUES(%s,'locationiq',%s) ON CONFLICT(source_record_id,provider_id,query) DO NOTHING RETURNING job_id""",
-        (record, query)).fetchone()
+        VALUES(%s,%s,%s) ON CONFLICT(source_record_id,provider_id,query) DO NOTHING RETURNING job_id""",
+        (record, provider, query)).fetchone()
     if not job:
-        job = connection.execute("SELECT job_id FROM uec.geocode_jobs WHERE source_record_id=%s AND provider_id='locationiq' AND query=%s", (record, query)).fetchone()
+        job = connection.execute("SELECT job_id FROM uec.geocode_jobs WHERE source_record_id=%s AND provider_id=%s AND query=%s", (record, provider, query)).fetchone()
     job = job[0]
     if connection.execute("SELECT 1 FROM uec.geocode_request_reservations WHERE job_id=%s", (job,)).fetchone():
+        return None
+    current = connection.execute("""SELECT event_type,attempt_number FROM uec.geocode_job_events
+        WHERE job_id=%s ORDER BY occurred_at DESC,event_id DESC LIMIT 1""", (job,)).fetchone()
+    if current is not None and current != ("queued",1):
         return None
     for candidate, snapshot, key, _ in usable:
         connection.execute("""INSERT INTO real_preview.geocode_targets(job_id,candidate_id,snapshot_sha256,source_id,source_record_key)
             VALUES(%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING""", (job,candidate,snapshot,source,key))
     connection.execute("""INSERT INTO uec.geocode_job_events(job_id,event_type,attempt_number,retryable,details)
-        SELECT %s,'queued',1,false,%s::jsonb WHERE NOT EXISTS(SELECT 1 FROM uec.geocode_job_events WHERE job_id=%s)""",
-        (job,json.dumps({"processing_mode":"private_locationiq_source_profile", "profile_id":profile["profile_id"],
+        SELECT %s,'queued',1,false,%s::jsonb WHERE NOT EXISTS(SELECT 1 FROM uec.geocode_job_events
+            WHERE job_id=%s AND event_type='queued' AND details->>'first_pass_only'='true')""",
+        (job,json.dumps({"processing_mode":f"private_{provider}_source_profile", "profile_id":profile["profile_id"],
             "first_pass_only":True, "no_provider_retries":True}),job))
     return job, profile["profile_id"]
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--sources", nargs="+", choices=SOURCES, default=list(SOURCES))
+    parser.add_argument("--sources", nargs="+", choices=SOURCES)
     parser.add_argument("--run", action="store_true")
-    parser.add_argument("--account", choices=("primary", "secondary"), default="primary")
+    parser.add_argument("--provider", choices=("locationiq", "geoapify"), default="locationiq")
+    parser.add_argument("--account", choices=("primary", "secondary"))
     parser.add_argument("--partition", type=int, choices=(0,1,2,3), default=0)
-    parser.add_argument("--partitions", type=int, choices=(1,2,4), default=1)
+    parser.add_argument("--partitions", type=int, choices=(1,2,3,4), default=1)
     parser.add_argument("--limit", type=int, default=5000)
     args = parser.parse_args()
     if not 1 <= args.limit <= 5000 or args.partition >= args.partitions:
         raise ValueError("invalid_first_pass_limits")
+    args.sources = args.sources or (["es.locations"] if args.provider == "geoapify" else list(SOURCES))
+    if args.provider == "geoapify" and (args.account is not None or args.sources != ["es.locations"]):
+        raise ValueError("geoapify_first_pass_requires_spain_and_no_named_account")
+    args.account = (args.account or "primary") if args.provider == "locationiq" else None
+    daily_budget = 5000 if args.provider == "locationiq" else 3000
     url = os.environ["UEC_DATABASE_URL"]
     with psycopg.connect(url) as connection:
         connection.execute("SET TRANSACTION READ ONLY")
         connection.execute("SET LOCAL statement_timeout='90s'")
         groups, counts = plan(connection, args.sources)
-        usage = connection.execute("""SELECT reserved_requests FROM uec.geocode_account_budgets
-            WHERE provider_id='locationiq' AND account_id=%s AND budget_date=(now() AT TIME ZONE 'UTC')::date""", (args.account,)).fetchone()
+        if args.provider == "locationiq":
+            usage = connection.execute("""SELECT reserved_requests FROM uec.geocode_account_budgets
+                WHERE provider_id='locationiq' AND account_id=%s AND budget_date=(now() AT TIME ZONE 'UTC')::date""", (args.account,)).fetchone()
+        else:
+            usage = connection.execute("""SELECT reserved_requests FROM uec.geocode_provider_budgets
+                WHERE provider_id='geoapify' AND budget_date=(now() AT TIME ZONE 'UTC')::date""").fetchone()
     summary = {source: {kind:value for (item,kind),value in counts.items() if item==source} for source in args.sources}
-    remaining = max(0,5000-(usage[0] if usage else 0))
+    remaining = max(0,daily_budget-(usage[0] if usage else 0))
     # Stable hash partitions remain disjoint even as other workers finish jobs.
-    import hashlib
-    groups = [group for group in groups if int(hashlib.sha256((group["source"]+group["query"]).encode()).hexdigest(),16)%args.partitions == args.partition]
+    groups = partition_groups(groups,args.partition,args.partitions)
     groups.sort(key=lambda g:(SOURCES.index(g["source"]),g["query"]))
     groups = groups[:min(args.limit,remaining)]
-    print(json.dumps({"stage":"first_pass_plan","sources":summary,"account":args.account,"selected_requests":len(groups),"remaining_account_ledger":remaining,"provider_calls":0}),flush=True)
+    print(json.dumps({"stage":"first_pass_plan","sources":summary,"provider":args.provider,"account":args.account,"selected_requests":len(groups),"remaining_account_ledger":remaining,"provider_calls":0}),flush=True)
     if not args.run or not groups:
         return
     spec=importlib.util.spec_from_file_location("first_pass_worker",ROOT/"pipeline/scripts/stages/geocode-worker.py")
@@ -283,12 +320,15 @@ def main():
     class Observed:
         def __init__(self,adapter):self.adapter=adapter
         def geocode(self,query):
-            outcome=self.adapter.geocode(query);observed["acceptance"]=outcome.acceptance;return outcome
+            outcome=self.adapter.geocode(query)
+            observed["acceptance"]=outcome.acceptance
+            observed["error"]=outcome.response.get("error") if isinstance(outcome.response,dict) else None
+            return outcome
     worker.get_adapter=lambda *a,**kw:Observed(original_adapter(*a,**kw))
     processed=accepted=0
     for group in groups:
         with psycopg.connect(url) as connection:
-            staged=stage(connection,group)
+            staged=stage(connection,group,args.provider)
         if not staged:
             continue
         job,profile=staged
@@ -297,18 +337,19 @@ def main():
             # Queue event 1 is not a request. Claim 2 is the first request;
             # max_attempts=2 forbids a subsequent claim, and retries=1 means
             # exactly one provider invocation within that claim.
-            count=worker.run(url,"locationiq",1,0,1,daily_budget=5000,max_attempts=2,
+            count=worker.run(url,args.provider,1,0,1,daily_budget=daily_budget,max_attempts=2,
                 provider_interval=1.05,private_source_profile_id=profile,job_ids=(job,),
-                provider_account=args.account,worker_id=f"country-first-pass-locationiq-{args.account}")
+                provider_account=args.account,worker_id=f"country-first-pass-{args.provider}-{args.account or 'default'}")
         if not count:
             break
         processed+=count
-        accepted+=int(observed.get("acceptance")=="address_components_match")
+        accepted+=int(observed.get("acceptance") in {"address_components_match","high_confidence_address_match"})
         if processed%100==0:
-            print(json.dumps({"stage":"first_pass_progress","account":args.account,"processed":processed,"accepted":accepted}),flush=True)
-        if observed.get("acceptance") in {"authentication_rejected","provider_rate_limited"}:
+            print(json.dumps({"stage":"first_pass_progress","provider":args.provider,"account":args.account,"processed":processed,"accepted":accepted}),flush=True)
+        if (observed.get("acceptance") in {"authentication_rejected","provider_rate_limited"}
+                or observed.get("error") in {"authentication_rejected","provider_rate_limited"}):
             break
-    print(json.dumps({"stage":"first_pass_finished","account":args.account,"processed":processed,"accepted":accepted,"local_only":True,"deployed":False}),flush=True)
+    print(json.dumps({"stage":"first_pass_finished","provider":args.provider,"account":args.account,"processed":processed,"accepted":accepted,"local_only":True,"deployed":False}),flush=True)
 
 
 if __name__ == "__main__":
