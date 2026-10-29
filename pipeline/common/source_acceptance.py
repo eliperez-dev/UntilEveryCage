@@ -17,6 +17,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections import Counter
 from typing import Any
 
 import psycopg
@@ -30,6 +31,42 @@ SOURCES = {SOURCE_ID: ("Livestock", "eea-acceptance.json"),
            "no.fiskeridir.aquaculture": ("animal", "norway-acceptance.json")}
 ROOT = Path(__file__).resolve().parents[2]
 DATABASE = "uec_launch_sources_test_20261025"
+
+
+def verify_map_features(rows: list, features: list, source_id: str) -> None:
+    """Check native IDs and complete weighted coverage of provider references."""
+    native = {r[0]: r for r in rows if r[8] is None or r[9] == "numeric_source_coordinate"}
+    references = Counter()
+    for row in rows:
+        if row[0] in native:
+            continue
+        geometry_source = row[8]
+        kind = ("provider_address_point_private" if geometry_source.startswith((
+                    "Geoapify; high rank confidence heuristic and normalized source-address",
+                    "Geoapify; rank confidence >= 0.90 heuristic and normalized source-address"))
+                else "provider_locality_approximate" if geometry_source.startswith("Geoapify;")
+                else "city_reference")
+        references[(kind, round(row[3], 7), round(row[4], 7))] += 1
+    seen_native, seen_references = set(), set()
+    for feature in features:
+        if feature["source_id"] != source_id:
+            raise ValueError("Spatial-source served another source")
+        if feature["kind"] == "source_coordinate":
+            key = feature["key"]
+            row = native.get(key)
+            if (row is None or key in seen_native or feature["weight"] != 1
+                    or feature["category_key"] != row[6]
+                    or abs(feature["latitude"] - row[3]) > 1e-7
+                    or abs(feature["longitude"] - row[4]) > 1e-7):
+                raise ValueError("Spatial-source native geometry, category or identity changed")
+            seen_native.add(key)
+        else:
+            bucket = (feature["kind"], round(feature["latitude"], 7), round(feature["longitude"], 7))
+            if bucket in seen_references or references.get(bucket) != feature["weight"]:
+                raise ValueError("Spatial-source reference geometry or represented count changed")
+            seen_references.add(bucket)
+    if seen_native != set(native) or seen_references != set(references):
+        raise ValueError("Spatial-source complete map coverage differs from the database")
 
 
 def validate_target(url: str) -> None:
@@ -93,13 +130,16 @@ def check(ledger_path: Path, database_url: str, *, executable: Path | None = Non
                               (ledger["run_id"], source_id)).fetchone()
         if not snapshot:
             raise ValueError("Spatial-source imported run is absent from the assigned database")
-        rows = db.execute("""SELECT candidate_id::text,source_group_key,country_code,latitude,longitude,display_name,category
+        rows = db.execute("""SELECT candidate_id::text,source_group_key,country_code,
+                COALESCE(display_latitude,latitude),COALESCE(display_longitude,longitude),display_name,category,
+                (latitude IS NOT NULL AND longitude IS NOT NULL),display_geometry_source,location_class
             FROM real_preview.candidates WHERE source_id=%s AND snapshot_sha256=%s""", (source_id, snapshot[0])).fetchall()
         if len(rows) != expected_count or len({r[1] for r in rows}) != expected_count:
             raise ValueError("Spatial-source candidate counts or identities do not reconcile")
         expected = {r[0]: r for r in rows if r[3] is not None and r[4] is not None}
         categories = {"slaughter", "processing_and_preparation", "other_regulated_premises"} if source_id == "pl.giw.approved-food" else {"animal_keeping_and_production"}
-        if len(expected) != imported["map_visible_count"] or any(not r[5] or r[6] not in categories for r in rows):
+        source_point_count = sum(bool(r[7]) for r in rows)
+        if source_point_count != imported["map_visible_count"] or any(not r[5] or r[6] not in categories for r in rows):
             raise ValueError("Spatial-source names, categories or map counts do not reconcile")
         samples = {}
         for row in rows:
@@ -107,6 +147,7 @@ def check(ledger_path: Path, database_url: str, *, executable: Path | None = Non
         country_count = len(samples)
         detail_ids = list(samples.values())
         detail_ids.extend(r[0] for r in sorted(rows)[:10] if r[0] not in detail_ids)
+        detail_ids.extend(key for key in sorted(expected)[:5] if key not in detail_ids)
         public = db.execute("SELECT count(*) FROM uec.release_members m JOIN uec.observations o USING(observation_id) JOIN uec.source_records s USING(source_record_id) WHERE s.source_id=%s", (source_id,)).fetchone()[0]
         if public:
             raise ValueError("Spatial-source candidates unexpectedly entered a public release")
@@ -168,13 +209,7 @@ def check(ledger_path: Path, database_url: str, *, executable: Path | None = Non
             raise ValueError("Spatial-source private source search failed")
         feed = request("/dev/real-preview/map/feed?" + source_query)
         features = feed.get("data", [])
-        if len(features) != len(expected) or {f["key"] for f in features} != set(expected):
-            raise ValueError("Spatial-source complete map-feed membership differs from the database")
-        for f in features:
-            row = expected[f["key"]]
-            if (f["source_id"] != source_id or f["weight"] != 1 or f["category_key"] != row[6]
-                    or abs(f["latitude"] - row[3]) > 1e-7 or abs(f["longitude"] - row[4]) > 1e-7):
-                raise ValueError("Spatial-source served map geometry, category or weight changed")
+        verify_map_features(list(expected.values()), features, source_id)
         for candidate in detail_ids:
             detail = request("/dev/real-preview/locations/" + candidate)["data"]
             if detail.get("source_id") != source_id or detail.get("project_approval") is not False:
@@ -183,7 +218,11 @@ def check(ledger_path: Path, database_url: str, *, executable: Path | None = Non
         if before != after:
             raise ValueError("V0 baseline changed during Spatial-source acceptance")
         receipt = {"source_id": source_id, "run_id": ledger["run_id"], "status": "verified_private_import_geocoding_pending" if source_id == "pl.giw.approved-food" and not features else "verified_private_e2e",
-                   "candidate_observations": len(rows), "mapped_candidates": len(features), "country_count": country_count,
+                   "candidate_observations": len(rows), "mapped_candidates": len(expected),
+                   "map_features": len(features), "represented_map_records": sum(f["weight"] for f in features),
+                   "country_count": country_count,
+                   "source_coordinate_candidates": source_point_count,
+                   "enriched_coordinate_candidates": sum(not bool(r[7]) for r in expected.values()),
                    "detail_country_samples": country_count, "detail_samples": len(detail_ids), "full_map_membership_checked": True,
                    "list_and_search_passed": True, "private_auth_passed": True, "idempotent_replay": True,
                    **({"queued_geocode_targets": queued_geocode_targets} if queued_geocode_targets is not None else {}),
@@ -196,6 +235,9 @@ def check(ledger_path: Path, database_url: str, *, executable: Path | None = Non
         except subprocess.TimeoutExpired:
             server.kill()
             server.wait(timeout=5)
+    if source_id == "pl.giw.approved-food" and receipt["enriched_coordinate_candidates"]:
+        # Preserve the original import-only checkpoint after async geocoding.
+        receipt_name = "poland-enrichment-acceptance.json"
     atomic_json(ledger_path.parent / receipt_name, receipt)
     return receipt
 

@@ -138,6 +138,15 @@ The 3,000-request allowance is shared across Geoapify profiles and the UTC
 provider-day ledger. `--daily-budget` does not reset or replenish reservations;
 the database's existing remaining balance is authoritative.
 
+Geoapify's free plan permits five requests/second, checked against its pricing
+page on 2026-10-28. An explicitly scoped batch may use a shared 0.25-second
+minimum interval (at most four requests/second) with two workers to overlap
+network latency. The global reservation ledger still enforces the same
+3,000-request daily allowance. This does not change LocationIQ's separate
+account quotas or its 1.05-second interval. Poland uses the explicit
+`geoapify-pl-giw-approved-food` profile; start with its authorized pilot, retain
+rejected address diagnostics, then expand only to unattempted unique queries.
+
 `GEOAPIFY_API_KEY` must be loaded from the operator's private environment.
 The profile filter does not override source withholding, active restrictions,
 or publication review. FSA X/Y values with undocumented CRS remain raw
@@ -207,6 +216,15 @@ number merely to request a lookup. Exact-point acceptance separately requires
 matching address components and supplied context. NZ still requires exactly
 one physical location. Spanish municipality context comes only from retained,
 source-key-bound AESAN lookup evidence. Raw responses and queries remain private.
+
+For Spanish addresses containing one explicit typed street/house and a retained
+municipality, LocationIQ uses its documented `/search/structured` endpoint with
+separate street, city, province, postcode and country fields. Other addresses
+keep free-form search. This is one request, not a fallback sequence; exact-point
+acceptance still checks the original source address and context. The 2026-10-29
+pilot returned two address matches from 24 new structured queries, versus zero
+from the preceding 24 free-form queries. These are different samples, not a
+controlled same-address comparison. Results and per-account usage remain local.
 
 UK postcode references can also be derived offline after migration 110:
 `python -m pipeline.geocoding.postcode_reference --limit 5000`. This accepts only

@@ -271,12 +271,33 @@ class LocationIqAdapter:
                            "nz" if is_nz else "gb" if is_gb else "de")
         language = "es" if is_first_pass and self.country_code == "es" else (
             "en" if (is_nz or is_gb or is_first_pass) else "de")
-        params = urllib.parse.urlencode({
+        request_params = {
             "key": self.api_key, "q": query, "format": "json", "countrycodes": request_country,
             "addressdetails": 1, "normalizeaddress": 0 if is_first_pass and self.country_code == "es" else 1, "normalizecity": 1,
             "statecode": 1, "limit": 2,
-        })
-        request = urllib.request.Request(self.endpoint + "?" + params,
+        }
+        endpoint = self.endpoint
+        # Keep explicit Spanish street/house and municipality in separate fields.
+        # Free-form search can silently fall back to a town when parsing an
+        # industrial address. This makes one request, with unchanged acceptance
+        # checks and no fallback/retry that would spend another credit.
+        numbered_spanish_roads = ({(road, house) for road, house in
+                                  spanish_addresses.address_parts(source_address)
+                                  if road.partition(" ")[0] in
+                                  {"street", "avenue", "road", "path", "promenade", "square"}}
+                                 if is_first_pass and self.country_code == "es" else set())
+        if (is_first_pass and self.country_code == "es" and locality
+                and len(numbered_spanish_roads) == 1):
+            endpoint += "/structured"
+            del request_params["q"]
+            request_params.update(street=spanish_addresses.provider_address(source_address),
+                                  city=locality, country="Spain")
+            if postcode:
+                request_params["postalcode"] = postcode
+            if region:
+                request_params["state"] = region
+        params = urllib.parse.urlencode(request_params)
+        request = urllib.request.Request(endpoint + "?" + params,
                                          headers={"User-Agent": "UntilEveryCage/2 geocoding-worker", "Accept-Language": language})
         try:
             if self.opener is urllib.request.urlopen:

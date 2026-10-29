@@ -124,9 +124,10 @@ class PolandGiwTests(unittest.TestCase):
 
     def test_poland_geocoder_checks_country_bounds_and_address_without_network(self):
         from pipeline.geocoding.geoapify import GeoapifyAdapter
-        def outcome(*,country="pl",coords=(20,52),address="Example Street 12",confidence=.99):
+        def outcome(*,country="pl",coords=(20,52),address="Example Street 12",confidence=.99,city="Exampletown",postcode="00-001"):
             payload={"features":[{"type":"Feature","geometry":{"type":"Point","coordinates":list(coords)},
                 "properties":{"country_code":country,"result_type":"building","address_line1":address,
+                              "city":city,"postcode":postcode,
                               "rank":{"confidence":confidence}}}]}
             def opener(request,timeout):
                 args=parse_qs(urlsplit(request.full_url).query)
@@ -135,11 +136,18 @@ class PolandGiwTests(unittest.TestCase):
                 return io.BytesIO(json.dumps(payload).encode())
             return GeoapifyAdapter(api_key="synthetic",opener=opener,country_code="pl",private_source_profile=True).geocode("Example Street 12, Exampletown, 00-001, Poland")
         self.assertEqual(outcome().status,"accepted")
+        self.assertEqual(outcome(city="Other town").status,"accepted")
+        self.assertEqual(outcome(postcode="99-999").status,"accepted")
+        self.assertEqual(outcome(city="Other town",postcode="99-999").status,"review_required")
         for parameters in ({"country":"de"},{"coords":(0,0)},{"address":"Other Street 12"},{"confidence":.5}):
             with self.subTest(parameters=parameters):
                 result=outcome(**parameters)
                 self.assertNotEqual(result.status,"accepted")
                 self.assertIsNone(result.latitude)
+                if parameters != {"coords":(0,0)}:
+                    self.assertEqual(result.response["diagnostic_projection"],"private_pl_rejected_candidate_properties")
+                    self.assertEqual(len(result.response["features"]),1)
+                    self.assertNotIn("name",result.response["features"][0]["properties"])
 
     def test_full_section_fetch_rechecks_and_preserves_response_hashes(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -257,6 +265,31 @@ class PolandGiwTests(unittest.TestCase):
             self.assertEqual(row["source_values"]["address"],"Example Street 12\n00-001 Exampletown")
             self.assertIsNone(row["normalized"]["coordinates"])
             self.assertEqual(a["release_state"],"not-created")
+
+    def test_map_acceptance_checks_grouped_provider_records_without_losing_native_ids(self):
+        from pipeline.common.source_acceptance import verify_map_features
+        native = ("native", "key", "PL", 52.0, 20.0, "Synthetic", "slaughter", True, None, "numeric_source_coordinate")
+        disclosure = "Geoapify; rank confidence >= 0.90 heuristic and normalized source-address line match"
+        first = ("first", "key2", "PL", 52.1, 20.1, "Synthetic", "slaughter", False, disclosure, "city_postal")
+        second = ("second", "key3", "PL", 52.1, 20.1, "Synthetic", "processing_and_preparation", False, disclosure, "city_postal")
+        features = [
+            {"key": "native", "kind": "source_coordinate", "source_id": SOURCE_ID,
+             "latitude": 52.0, "longitude": 20.0, "weight": 1, "category_key": "slaughter"},
+            {"key": "opaque-reference", "kind": "provider_address_point_private", "source_id": SOURCE_ID,
+             "latitude": 52.1, "longitude": 20.1, "weight": 2, "category_key": "unclassified"},
+        ]
+        verify_map_features([native, first, second], features, SOURCE_ID)
+        for changed in (
+            [features[0]],
+            [features[0], {**features[1], "weight": 1}],
+            [features[0], {**features[1], "latitude": 53.0}],
+            [features[0], features[1], features[1]],
+            [{**features[0], "category_key": "unclassified"}, features[1]],
+            [{**features[0], "key": "another-record"}, features[1]],
+            [features[0], {**features[1], "source_id": "another.source"}],
+        ):
+            with self.assertRaises(ValueError):
+                verify_map_features([native, first, second], changed, SOURCE_ID)
 
     def test_missing_identifier_is_quarantined_not_assigned_an_identity(self):
         with tempfile.TemporaryDirectory() as tmp:

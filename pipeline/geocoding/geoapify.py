@@ -68,9 +68,9 @@ class GeoapifyAdapter:
             "geoapify_forward", retryable, {"error": reason},
         )
 
-    def _private_es_diagnostics(self, features: list) -> dict:
-        """Return a bounded, redacted provider projection for Spain review only."""
-        if not (self.private_source_profile and self.country_code == "es"):
+    def _private_match_diagnostics(self, features: list) -> dict:
+        """Retain bounded address evidence for private Spain/Poland matching review."""
+        if not (self.private_source_profile and self.country_code in {"es", "pl"}):
             return {"result_count": len(features), "viable_result_count": 0}
         allowed = {"country_code", "result_type", "address_line1", "street", "housenumber",
                    "city", "county", "state_code", "state", "postcode"}
@@ -94,7 +94,7 @@ class GeoapifyAdapter:
                     and -180 <= coords[0] <= 180 and -90 <= coords[1] <= 90):
                 item["geometry"] = {"type": "Point", "coordinates": coords}
             retained.append(item)
-        return {"diagnostic_projection": "private_es_rejected_candidate_properties",
+        return {"diagnostic_projection": f"private_{self.country_code}_rejected_candidate_properties",
                 "result_count": len(features), "features": retained}
 
     def geocode(self, query: str) -> GeocodeOutcome:
@@ -134,7 +134,7 @@ class GeoapifyAdapter:
             return GeocodeOutcome(
                 "unresolved", "unresolved", None, None, None, None,
                 "geoapify_forward", False,
-                self._private_es_diagnostics(features) if self.private_source_profile and self.country_code == "es" else payload,
+                self._private_match_diagnostics(features) if self.private_source_profile and self.country_code in {"es", "pl"} else payload,
             )
         # Ignore weak/incompatible alternatives, but require exactly one
         # independently viable match. A second returned feature alone is not
@@ -177,6 +177,7 @@ class GeoapifyAdapter:
                 normalized_address = self._normalize(f"{candidate_house} {candidate_street}")
             if (not self.locality_only and candidate_type in {"building", "amenity"}
                     and parts and normalized_address == parts[0]
+                    and (self.country_code != "pl" or self._poland_context_matches(candidate_props, parts))
                     and (self.country_code != "de" or self._germany_context_matches(candidate_props, parts))):
                 viable.append((candidate, "high_confidence_address_match"))
             elif candidate_type == "city" and self.allow_locality_match:
@@ -219,8 +220,8 @@ class GeoapifyAdapter:
                 return GeocodeOutcome(
                     "review_required", "ambiguous_multiple_viable_results" if len(viable) > 1 else "address_or_locality_match_not_supported",
                     None, None, None, None, "geoapify_forward", False,
-                    (self._private_es_diagnostics(features) | {"viable_result_count": len(viable)}
-                     if self.private_source_profile and self.country_code == "es"
+                    (self._private_match_diagnostics(features) | {"viable_result_count": len(viable)}
+                     if self.private_source_profile and self.country_code in {"es", "pl"}
                      else {"result_count": len(features), "viable_result_count": len(viable)}),
                 )
             feature, accepted_match = viable[0]
@@ -286,6 +287,7 @@ class GeoapifyAdapter:
             and confidence >= self.minimum_rank_confidence
             and query_parts
             and normalized_address == query_parts[0]
+            and (self.country_code != "pl" or self._poland_context_matches(properties, query_parts))
             and (self.country_code != "de" or self._germany_context_matches(properties, query_parts))
         ):
             return GeocodeOutcome(
@@ -324,6 +326,19 @@ class GeoapifyAdapter:
             None, precision, "geoapify_forward", False,
             {"error": "address_or_locality_match_not_supported"},
         )
+
+    @staticmethod
+    def _poland_context_matches(properties: dict, query_parts: list[str]) -> bool:
+        """An address line must also agree with supplied postcode or locality."""
+        postcode_index = next((i for i, part in enumerate(query_parts)
+                               if re.fullmatch(r"\d{2} \d{3}", part)), None)
+        postcode = query_parts[postcode_index] if postcode_index is not None else ""
+        locality = (query_parts[postcode_index - 1] if postcode_index is not None and postcode_index > 1
+                    else query_parts[-2] if postcode_index is None and len(query_parts) >= 3 else "")
+        normalize = GeoapifyAdapter._normalize
+        return bool((postcode and postcode == normalize(str(properties.get("postcode") or "")))
+                    or (locality and locality in {normalize(str(properties.get(key) or ""))
+                                                  for key in ("city", "town", "village", "suburb", "municipality")}))
 
     @staticmethod
     def _germany_context_matches(properties: dict, query_parts: list[str]) -> bool:

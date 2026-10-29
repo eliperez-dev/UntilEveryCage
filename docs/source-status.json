@@ -60,7 +60,7 @@
         "results_local_only": true,
         "deployment_authorized": false
       },
-      "latest_checkpoint": {
+      "previous_checkpoint_20261028": {
         "checked_date": "2026-10-28",
         "checked_at_utc": "2026-10-28T15:55:00Z",
         "remaining_distinct_requests": 14960,
@@ -91,9 +91,29 @@
         "remaining_execution_blocker": "Both LocationIQ account allowances and the Geoapify allowance remain exhausted for the current UTC window, rechecked 2026-10-28. All eligible UK, New Zealand and Catalonia addresses have a first attempt; national Spain has 14,960 unattempted distinct requests after corrected-query address grouping. Spanish expansion is additionally held for a corrected-query real-data pilot following the low-yield audit. Do not blindly resume the old batch or retry failures. Deployment remains held.",
         "hosted_dataset_changed": false
       },
+      "latest_checkpoint": {
+        "checked_at_utc": "2026-10-29T16:26:11Z",
+        "status": "locationiq_spain_expansion_running_local_only",
+        "source_id": "es.locations",
+        "unattempted_unique_addresses_before_pilots": 14960,
+        "freeform_corrected_pilot": {"requests": 24, "accepted_address_results": 0},
+        "structured_corrected_pilot": {"requests": 24, "accepted_address_results": 2, "display_evidence_records": 2},
+        "structured_request_reference": "https://docs.locationiq.com/reference/search-structured",
+        "expansion": {"planned_primary": 4952, "planned_secondary": 5000, "workers": 4, "minimum_account_interval_seconds": 1.05, "clean_numbered_roads_first": true},
+        "account_ledger_requests_at_checkpoint": {"primary": 248, "secondary": 199},
+        "account_daily_limits": {"primary": 5000, "secondary": 5000},
+        "allowance_basis": "Existing per-account ledgers and maintainer-configured 5,000/day accounts; dashboard balances are not independently readable with these tokens",
+        "retries": 0,
+        "auth_or_quota_error_stops_affected_account": true,
+        "completion_evidence_path": "data/staging/spain-geocoding-20261029/expansion-summary.json",
+        "completion_evidence_written_only_when_finished": true,
+        "matching_rules_unchanged": true,
+        "baseline": "verified_before_expansion",
+        "deployment_authorized": false
+      },
       "spanish_matching_correction": {
         "checked_date_utc": "2026-10-28",
-        "status": "offline_recovery_saved_external_pilot_pending",
+        "status": "offline_recovery_saved_structured_pilot_verified_expansion_running",
         "maintainer_authorization": "Correct Spanish matching and queries; replay retained responses first and check real evidence before resuming external calls",
         "ruleset": "spanish-address-format-v2",
         "implementation": ["pipeline/geocoding/spanish_addresses.py", "pipeline/geocoding/spanish_retained_reconciliation.py", "pipeline/migrations/111_spanish_retained_address_replay.sql"],
@@ -113,21 +133,21 @@
         "sample_is_independent_property_verification": false,
         "remaining_response_limits": {"requests_with_candidates_but_no_numbered_road": 4643, "requests_with_no_results": 722, "queries_missing_locality": 105},
         "response_projection_note": "Previous normalized LocationIQ responses roll administrative levels into state/county. Missing standalone province fields do not prove evidence was discarded. Future Spanish calls request raw address details and preserve province/state_district fields when returned.",
-        "next_action": "When credits renew, evaluate a small corrected-query pilot, including previously weak queries, before expanding. Source queries remain unchanged; only a unique explicit numbered road can have unit/estate clutter removed from provider text. Confirm actual address-match yield rather than request-completion counts. Do not treat street-only results as facility points. Keep all results local and deployment held."
+        "next_action": "Continue the two-account LocationIQ expansion after the 2026-10-29 structured-query pilot. Prioritize one explicit numbered road, keep original queries and strict acceptance checks, do not retry failures, and use the existing per-account quotas. Record the final accepted/display results and remaining first-pass count when the running batch finishes. Keep all results local and deployment held."
       },
       "live_progress_authority": "Existing source-key-linked request reservations, results and job events in uec_launch_sources_test_20261025; count across all providers and snapshots",
       "previous_snapshot_requires_reassembly": true
     },
-    "next_action": "Validate corrected Spanish provider queries on a small real-data pilot before resuming expansion; then finish the complete eligible country first pass within authorized account allowances. Keep results local and preserve failed outcomes. Assemble and test an updated dataset only after that gate completes. Do not cut over the earlier 93,058-point snapshot."
+    "next_action": "Monitor the running Spanish first-pass expansion on both LocationIQ accounts and finish the 136 remaining unique Polish addresses using authorized available credits. Complete shared-address reconciliation, cross-source overlap review and Polish reuse review. Then assemble the expanded release including EEA, Norway and Poland, rebuild graph/report projections, and test the full package. Keep results local and do not cut over the earlier 93,058-point snapshot."
   },
   "next_source_research": {
     "checked_date_utc": "2026-10-28",
-    "status": "eea_and_norway_private_e2e_verified_poland_imported_geocoding_pending_no_publication",
+    "status": "three_sources_private_e2e_verified_poland_first_pass_incomplete_no_publication",
     "scope": "Rank additional government sources by relevant coverage, native coordinates or usable addresses, repeatable acquisition, reuse terms and integration effort",
     "private_sample_manifest": "data/staging/source-shortlist-20261028/manifest.json",
     "private_artifact_bytes": 2213055,
-    "external_geocoding_requests": 0,
-    "database_imports": 2,
+    "external_geocoding_requests": 3000,
+    "database_imports": 3,
     "maintainer_target": "Integrate all three ranked sources end to end before the next public data release, or at latest before final website deployment; start with EEA",
     "recommendation": "Implement the EEA livestock-only spatial lane first, use the existing Norway aquaculture pipeline as a low-effort companion, and keep Poland GIW as the next address-geocoded food-establishment source. Measure cross-source overlap before promising 100,000 mapped locations.",
     "ranked_sources": [
@@ -177,8 +197,8 @@
         "sample": {"html_approval_rows": 60, "rows_with_names": 60, "rows_with_addresses": 60, "rows_with_activity_codes": 60, "rows_with_species": 58},
         "automation": "Implemented shared refresh/import: all 258 published pages across Sections 0-XVI, source-selected 20/25-entry pagination, required poprzedniaSekcja parameter and first-page/count rechecks. Five missing numbered entries are recorded as source omissions, not invented records. XLS exports are not used.",
         "identity": "Preserve WNI veterinary identifiers as strings, retaining leading zeros. Deduplicate establishments across sections and keep activity/species observations separately.",
-        "integration_effort": "implemented: 6,487 accepted observations grouped into 3,251 named source approvals; private import, API and release-input checks; no mapped Polish GIW locations yet",
-        "remaining": ["Authorize and validate a 24-address Polish geocoding pilot when provider credits are available, then process eligible addresses", "Resolve seven WNI groups with conflicting addresses before automatic geocoding", "Confirm public reuse scope for the linked register and assemble the next dated release"],
+        "integration_effort": "implemented: 6,487 accepted observations grouped into 3,251 named source approvals; 3,000 unique address requests, 929 mapped candidates verified through the private Rust API, 14 detail samples and release-input preflight; original import-only evidence retained",
+        "remaining": ["Attempt 136 remaining unique eligible addresses; do not retry failures", "Reconcile shared-query targets without buying duplicate requests", "Keep seven conflicting-address groups out of automatic geocoding", "Confirm public reuse scope for the linked register and assemble the next dated release"],
         "full_unique_facility_count": 3251,
         "count_basis": "Unique source-local approval identifiers, not globally deduplicated physical sites; 6,489 observations returned, two exact duplicate observations quarantined"
       }
@@ -1143,12 +1163,12 @@
       "source_id":"pl.giw.approved-food","metadata":"verified","acquisition":"verified","runtime_health":"healthy",
       "runtime_health_scope":"Latest measured successful live register-page acquisition with explicit same-day partial-page recovery, private import, replay and local API checks on 2026-10-28 only; geocoding is not complete and no recurring freshness SLA is established.",
       "runtime_health_evidence":"data/staging/poland-integration-20261028/runs/refresh-0e991bfc9f560aad/poland-acceptance.json",
-      "private_e2e":"private_import_api_verified_geocoding_pending","e2e_verified":false,"publication_eligibility":"blocked",
+      "private_e2e":"private_import_enriched_map_and_api_verified_first_pass_incomplete","e2e_verified":true,"publication_eligibility":"blocked",
       "metadata_details":{"publisher":"Główny Inspektorat Weterynarii (GIW)","publisher_url":"https://www.wetgiw.gov.pl/","country_code":"PL","jurisdiction_scope":"Poland; approved animal-origin food establishments, Sections 0-XVI","coverage":"Source approval identifiers grouped across sections; activity and species observations preserved separately. Registered-food and animal-by-product registers are not included.","license_reference":"https://bip.wetgiw.gov.pl/743---ponowne-wykorzystanie-informacji","notes":"GIW source attribution, known source/retrieval dates and transformation notice retained. Private integration authorized. The published general reuse policy names www/old subdomains; the linked register's public redistribution scope remains for release review. No source coordinates are supplied."},
       "latest_private_capture":{"run_id":"refresh-0e991bfc9f560aad","retrieved_at_utc":"2026-10-28T20:02:52Z","acquisition_method":"live_register_pages_with_explicit_same_day_partial_recovery","sections":17,"published_pages":258,"source_numbered_entries":5388,"source_omitted_ordinals":5,"input_rows":6489,"normalized_observations":6487,"quarantined_rows":2,"quarantine_reasons":{"duplicate_approval_observation":2},"source_qualified_candidates":3251,"named_candidates":3251,"mapped_candidates":0,"candidate_categories":{"slaughter":657,"processing_and_preparation":1519,"other_regulated_premises":1075},"groups_with_postcode":3250,"groups_with_town":3245,"address_conflict_groups":7,"geocoding_requests":0,"private_database":"uec_launch_sources_test_20261025","public_rows":0,"receipt_manifest":"data/staging/poland-integration-20261028/runs/refresh-0e991bfc9f560aad/manifest.json","preview_ledger":"data/staging/poland-integration-20261028/runs/refresh-0e991bfc9f560aad/source-preview-ledger.json","acceptance":"data/staging/poland-integration-20261028/runs/refresh-0e991bfc9f560aad/poland-acceptance.json","release_input_check":"data/staging/poland-integration-20261028/runs/refresh-0e991bfc9f560aad/release-input-check.json"},
       "evidence":["docs/country-recon-pl.md","docs/countries/pl/source-crosswalk.json","pipeline/sources/poland/adapter.py","pipeline/sources/poland/acquire.py","pipeline/sources/poland/refresh.py","pipeline/sources/poland/validation.py","pipeline/sources/poland/terms-review.json","pipeline/tests/test_poland_giw.py","pipeline/migrations/112_poland_private_geocoding_profile.sql","pipeline/common/source_acceptance.py","pipeline/source_registry.json"],
-      "geocoding_queue":{"eligible_queued_addresses":3244,"conflicting_address_groups_excluded":7,"attempted":0,"provider":"geoapify","profile_id":"geoapify-pl-giw-approved-food","external_transfer_approval":"requested_pending","quota_state":"All three existing account allowances exhausted on 2026-10-28; no Polish requests made"},
-      "next_action":"Run the Polish-address geocoding pilot after transfer approval and quota availability, then the eligible first pass. Seven conflicting-address groups remain excluded from automatic geocoding. Preserve original names, addresses, source activity/species and native identifier variants. Public reuse review and release assembly remain; no Polish GIW map points or public release have been created."
+      "geocoding_queue":{"checked_date_utc":"2026-10-29","eligible_queued_records":3244,"unique_address_queries":3136,"shared_query_record_surplus":108,"conflicting_address_groups_excluded":7,"attempted_unique_addresses":3000,"remaining_unique_unattempted_addresses":136,"accepted_results":940,"accepted_address_results":930,"accepted_locality_results":10,"mapped_candidates":929,"mapped_address_candidates":920,"mapped_locality_candidates":9,"accepted_results_without_display_evidence":11,"review_required_results":2057,"unresolved_results":3,"provider":"geoapify","profile_id":"geoapify-pl-giw-approved-food","external_transfer_approval":"call_00c83ada27864cfc8897c9037f04572e","approval_scope":"Up to 24 Polish GIW business-address queries, then eligible expansion if reliable and credits available; Geoapify or LocationIQ; addresses/postcodes/towns/country only, no names or contacts; local results only","quota_state":"Geoapify used 3000/3000 for UTC 2026-10-29; LocationIQ has no Polish profile implemented yet","failure_retries":0,"display_guard_note":"Eleven Python-accepted results did not pass the independent SQL display checks; no point was forced into the map","enriched_api_acceptance":"data/staging/poland-integration-20261028/runs/refresh-0e991bfc9f560aad/poland-enrichment-acceptance.json","api_map_features":923,"api_represented_records":929,"detail_samples":14,"baseline":"verified_unchanged","public_source_rows":0},
+      "next_action":"Finish the 136 eligible unique unattempted addresses using an authorized available provider, reconcile shared-query targets without duplicate requests, and inspect the eleven display-check differences offline. Seven conflicting-address groups remain excluded. Preserve names, addresses, native activities/species and identifiers. Public reuse review, expanded release assembly and final projections remain; all new Polish results are local."
     },
     {"source_id":"pl.giw.registered-food","metadata":"verified","acquisition":"not_run","runtime_health":"not_run","publication_eligibility":"blocked","evidence":["docs/country-recon-pl.md","docs/countries/pl/source-crosswalk.json","pipeline/source_registry.json"],"next_action":"Capture one registered-list family at a time; preserve list-specific identifiers and keep registration separate from 853/2004 approval."},
     {"source_id":"pl.giw.abp","metadata":"verified","acquisition":"not_run","runtime_health":"not_run","publication_eligibility":"blocked","evidence":["docs/country-recon-pl.md","docs/countries/pl/source-crosswalk.json","pipeline/source_registry.json"],"next_action":"Verify the current ABP list route/schema and preserve Regulation 1069/2009 scope outside food-facility totals."},

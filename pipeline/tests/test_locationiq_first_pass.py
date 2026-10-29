@@ -78,9 +78,34 @@ class LocationIqFirstPassTests(unittest.TestCase):
         self.assertEqual((outcome.status, outcome.precision), ("accepted", "locationiq_address_point"))
         self.assertEqual((outcome.latitude, outcome.longitude), (40.4168, -3.7038))
         params = urllib.parse.parse_qs(urllib.parse.urlsplit(seen["request"].full_url).query)
-        self.assertEqual(params["q"], ["calle example 4, Madrid, 28001, Comunidad de Madrid, Spain"])
+        self.assertTrue(urllib.parse.urlsplit(seen["request"].full_url).path.endswith("/search/structured"))
+        self.assertNotIn("q", params)
+        self.assertEqual(params["street"], ["calle example 4"])
+        self.assertEqual(params["city"], ["Madrid"])
+        self.assertEqual(params["postalcode"], ["28001"])
+        self.assertEqual(params["state"], ["Comunidad de Madrid"])
+        self.assertEqual(params["country"], ["Spain"])
         self.assertEqual(params["countrycodes"], ["es"])
         self.assertEqual(params["limit"], ["2"])
+
+    def test_structured_spanish_query_keeps_canonical_street_and_omits_missing_context(self):
+        adapter, seen = self.make([candidate()])
+        adapter.geocode(query("calle example 4", postcode=None, region=None))
+        params = urllib.parse.parse_qs(urllib.parse.urlsplit(seen["request"].full_url).query)
+        self.assertEqual(params["street"], ["calle example 4"])
+        self.assertNotIn("q", params)
+        self.assertNotIn("state", params)
+        self.assertNotIn("postalcode", params)
+
+    def test_ambiguous_or_unnumbered_spanish_streets_keep_one_freeform_request(self):
+        for address in ("Calle Example", "Calle Example 4, Calle Other 7"):
+            adapter, seen = self.make([candidate()])
+            adapter.geocode(query(address))
+            parsed = urllib.parse.urlsplit(seen["request"].full_url)
+            params = urllib.parse.parse_qs(parsed.query)
+            self.assertTrue(parsed.path.endswith("/search"))
+            self.assertIn("q", params)
+            self.assertNotIn("street", params)
 
     def test_county_region_is_retained_and_can_match_and_house_nodes_are_address_results(self):
         county_candidate = candidate(address={**candidate()["address"],
