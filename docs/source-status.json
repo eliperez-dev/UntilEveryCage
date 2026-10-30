@@ -221,10 +221,31 @@
           "documentation": "https://www.cartociudad.es/web/portal/directorio-de-servicios/geoprocesamiento",
           "terms": "https://www.cartociudad.es/web/portal/faq",
           "licence": "CC BY 4.0 with CartoCiudad attribution",
-          "real_address_queries": 0,
-          "status": "Research only; 24-address transfer authorization requested, no real-address pilot run"
+          "implementation": "pipeline/geocoding/cartociudad_pilot.py",
+          "transfer_authorization": "call_26bf4fd668804cf098d32101b94c6868: maintainer authorized up to 24 Spanish facility addresses with verified town, available postcode and province; no business names or contacts; local pilot only",
+          "unique_facility_addresses_queried": 24,
+          "real_address_queries": 72,
+          "query_count_basis": "Three bounded format comparisons on the same 24 addresses, with no additional facilities selected",
+          "selection": "Uniform random sample of never-reserved groups with verified town, seed 20261030",
+          "eligible_verified_town_groups_at_selection": 13259,
+          "full_context_format": {"requests": 24, "matched": 0, "nonempty_responses": 4},
+          "address_and_town_format": {"requests": 24, "matched": 2, "nonempty_responses": 7},
+          "geographic_filter_format": {"requests": 24, "matched": 1, "nonempty_responses": 2},
+          "unique_matched_addresses_across_formats": 2,
+          "postcode_supplied_in_sample": 0,
+          "source_input_diagnostics": {"without_parsed_street_number_pair": 9, "explicit_no_number_markers": 4, "industrial_estate_unit_or_plot_terms": 6, "road_distance_markers": 2, "encoding_damage_markers": 0},
+          "input_diagnostic_counts_overlap": true,
+          "acceptance": "Require a unique numbered portal matching source street, house number, verified town, province, any supplied postcode, Spain country code and finite in-bounds coordinates. Candidate rank alone is not acceptance.",
+          "points_imported": 0,
+          "database_writes": 0,
+          "commercial_provider_credits_used": 0,
+          "focused_tests_passed": 16,
+          "baseline": "verified_unchanged_before_read_only_selection",
+          "evidence": ["data/staging/spain-cartociudad-pilot-20261030", "data/staging/spain-cartociudad-pilot-20261030-address-town", "data/staging/spain-cartociudad-pilot-20261030-filters"],
+          "queue_accounting": "Private attempt checkpoints retain these 24 physical-address attempts. They are not yet registered in the durable provider queue, so the existing 13,451 never-reserved queue count still includes them. Reconcile these checkpoints before another first pass; do not query them again automatically.",
+          "status": "Pilot complete; two of 24 addresses matched. No provider registration, import, publication or bulk expansion. Keep successes and failed diagnostics local."
         },
-        "next_action": "Keep commercial bulk requests paused: all 20 review-required random-pilot responses also failed source address/context matching independently of confidence. Town recovery is complete across all 95 missing province/sector groups. Evaluate CartoCiudad through a bounded pilot after authorization, then choose the next Spanish first-pass route. The two locally rejected pilot jobs still need real provider attempts. Recover four unreserved interrupted claims without counting them as paid attempts."
+        "next_action": "Keep bulk requests paused: the commercial random pilot matched one of 22 outbound attempts, and the CartoCiudad same-address format comparison matched only two of 24 unique addresses. Shorter address/town queries helped, but geographic filters added no unique matches. Improve source-address parsing and investigate a structured government-address lookup before more bulk traffic; do not assume every failure is an unusable source address. Reconcile the 24 CartoCiudad private checkpoints into future attempt accounting. The two locally rejected commercial pilot jobs still need real provider attempts. Recover four unreserved interrupted claims without counting them as paid attempts."
       },
       "uk_catalonia_retained_audit_20261030": {
         "implementation": "pipeline.geocoding.retained_failure_audit",
@@ -245,7 +266,7 @@
       "live_progress_authority": "Existing source-key-linked request reservations, results and job events in uec_launch_sources_test_20261025; count across all providers and snapshots",
       "previous_snapshot_requires_reassembly": true
     },
-    "next_action": "Poland's 3,136 unique eligible addresses have received a first attempt; shared-query target reconciliation remains. Spanish town recovery added 387 approximate IGN points with zero geocoding requests. There are 13,451 never-reserved Spanish address groups plus two locally rejected jobs still needing a real provider attempt; 192 never-reserved groups lack verified town evidence. Commercial bulk stays paused after the low-yield pilot; CartoCiudad is under review as an alternative. UK raw X/Y still lack confirmed CRS/precision; the FHRS reference found 20 unmapped exact matches but no import is implemented. Complete the Spanish first pass through a justified route, overlap/reuse review, expanded release assembly, graph/report projections and package testing. Keep results local; do not cut over the older 93,058-point snapshot."
+    "next_action": "Poland's 3,136 unique eligible addresses have received a first attempt; shared-query target reconciliation remains. Spanish town recovery added 387 approximate IGN points without geocoding requests. The commercial queue still plans 13,451 never-reserved groups, including the 24 addresses subsequently tried through CartoCiudad; reconcile those private checkpoints before further first-pass work. Two locally rejected jobs still need real provider attempts, and 192 never-reserved groups lack verified town evidence. Bulk stays paused: CartoCiudad matched two of 24 addresses across three formats and has not been integrated. UK raw X/Y still lack confirmed CRS/precision; the FHRS reference found 20 unmapped exact matches but no import is implemented. Complete the Spanish first pass through a justified route, overlap/reuse review, expanded release assembly, graph/report projections and package testing. Keep results local; do not cut over the older 93,058-point snapshot."
   },
   "next_source_research": {
     "checked_date_utc": "2026-10-28",
