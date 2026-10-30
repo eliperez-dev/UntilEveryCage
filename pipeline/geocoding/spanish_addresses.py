@@ -6,7 +6,7 @@ import unicodedata
 
 from pipeline.sources.spain_rgseaa.location_enrichment import official_province_key
 
-RULESET = "spanish-address-format-v2"
+RULESET = "spanish-address-format-v3"
 HOUSE = r"[0-9]+(?:[ -]?[a-z])?(?:\s*[-/]\s*[0-9]+[a-z]?)?"
 UNIT = r"(?:nave|nau|local|piso|planta|puerta|baixos|bajo|bajos|edificio|edifici|bloque)"
 
@@ -47,12 +47,15 @@ def text(value: object) -> str:
 
 def road_key(value: object) -> str:
     normalized = text(value)
-    return re.sub(r"^(calle|carrer|cl|c) ", "street ",
+    typed = re.sub(r"^(calle|carrer|cl|c) ", "street ",
         re.sub(r"^(avenida|avinguda|avda|av) ", "avenue ",
         re.sub(r"^(carretera|ctra) ", "road ",
         re.sub(r"^(camino|cami) ", "path ",
         re.sub(r"^(paseo|passeig|pg) ", "promenade ",
         re.sub(r"^(plaza|placa|pl) ", "square ", normalized))))))
+    # Normalize only the linking preposition immediately after a typed road.
+    # Preserve articles, words inside the name, initials and road-type conflicts.
+    return re.sub(r"^(street|avenue|road|path|promenade|square) de ", r"\1 ", typed)
 
 
 def house_key(value: object) -> str:
@@ -109,6 +112,52 @@ def provider_address(source: str) -> str:
     road, house = next(iter(numbered))
     prefix, _, name = road.partition(" ")
     return f"{road_types[prefix]} {name} {house}"
+
+
+def input_kind(source: object) -> str:
+    """Classify request structure for diagnostics, never publication eligibility."""
+    if not isinstance(source, str) or not source.strip():
+        return "empty"
+    folded = text(source)
+    if re.search(r"\b(?:s\s*[/.-]\s*n|sin\s+n[uú]mero)\b", source, re.I):
+        return "explicit_no_number"
+    if re.search(r"\b(?:km|kilometro|kilometros)\b", folded):
+        return "road_distance"
+    if re.search(r"\b(?:poligono|poligon|industrial|parcela|pgno)\b", folded):
+        return "estate_or_plot"
+    if re.search(rf"\b{UNIT}\b", folded):
+        return "building_unit"
+    pairs = address_parts(source)
+    if len(pairs) > 1:
+        return "multiple_numbered_fragments"
+    if len(pairs) == 1:
+        road, house = next(iter(pairs))
+        explicit_type = re.match(r"^(?:calle|carrer|avenida|avinguda|carretera|camino|cami|paseo|passeig|plaza|placa|c|cl|avda|av|ctra) ", folded)
+        if (explicit_type and road.partition(" ")[0] in {"street", "avenue", "road", "path", "promenade", "square"}
+                and re.fullmatch(r"[0-9]+[a-z]?", house) and int(re.match(r"[0-9]+", house)[0]) > 0):
+            return "simple_numbered_road"
+        return "other_numbered_address"
+    return "unparsed_or_unnumbered"
+
+
+def structured_components(source: object) -> tuple[str, str] | None:
+    """Use one explicit typed road; do not turn plots or kilometres into houses."""
+    if input_kind(source) in {"empty", "explicit_no_number", "road_distance"}:
+        return None
+    types = {"street": "calle", "avenue": "avenida", "road": "carretera",
+             "path": "camino", "promenade": "paseo", "square": "plaza"}
+    pairs = {(road, house) for road, house in address_parts(source)
+             if road.partition(" ")[0] in types}
+    if len(pairs) != 1:
+        return None
+    road, house = next(iter(pairs))
+    prefix, _, name = road.partition(" ")
+    if int(re.match(r"[0-9]+", house)[0]) == 0:
+        return None
+    # PG can mean either poligono or passeig; require the full road type here.
+    if prefix == "promenade" and re.search(r"(?:^|[,;])\s*pg\.?\s", source, re.I):
+        return None
+    return f"{types[prefix]} {name}", house
 
 
 def locality_key(value: object) -> str:

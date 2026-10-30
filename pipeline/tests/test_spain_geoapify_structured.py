@@ -24,24 +24,68 @@ def feature():
                 "result_type": "building", "address_line1": "4 Calle Example", "rank": {"confidence": .96}}}
 
 
-def evaluate(features, source_query):
+def evaluate(features, source_query, **options):
     seen = {}
     def opener(request, **_):
         seen["params"] = parse_qs(urlsplit(request.full_url).query)
         return Response({"type": "FeatureCollection", "features": features})
     adapter = GeoapifyAdapter(api_key="synthetic-test-key", country_code="es",
-        private_source_profile=True, allow_locality_match=False, opener=opener)
+        private_source_profile=True, allow_locality_match=False, opener=opener, **options)
     return adapter.geocode(source_query), seen
 
 
 class SpanishStructuredGeoapifyTests(unittest.TestCase):
+    def test_provider_structured_input_uses_components_without_text(self):
+        outcome, seen = evaluate([feature()], query("Calle de Example 4"), spanish_structured_search=True)
+        self.assertEqual(outcome.status, "accepted")
+        self.assertNotIn("text", seen["params"])
+        self.assertNotIn("state", seen["params"])
+        for key, expected in (("street", "calle example"), ("housenumber", "4"),
+                              ("city", "Madrid"), ("postcode", "28001"), ("country", "Spain")):
+            self.assertEqual(seen["params"][key], [expected])
+        self.assertEqual(outcome.response["_uec_request_input_mode"], "geoapify_structured_address_v2")
+        changed = feature(); changed["properties"]["housenumber"] = "5"
+        self.assertNotEqual(evaluate([changed], query("Calle Example 4"),
+            spanish_structured_search=True)[0].status, "accepted")
+        changed = feature(); changed["properties"]["state"] = "Catalonia"
+        self.assertNotEqual(evaluate([changed], query("Calle Example 4"),
+            spanish_structured_search=True)[0].status, "accepted")
+
+    def test_structured_provider_mode_rejects_unparseable_addresses_before_request(self):
+        outcome, seen = evaluate([feature()], query("Example Industrial Estate"), spanish_structured_search=True)
+        self.assertEqual(outcome.response["error"], "structured_numbered_street_required")
+        self.assertEqual(seen, {})
+
+    def test_rejected_diagnostics_retain_component_scores_without_contact_fields(self):
+        item = feature()
+        item["properties"]["rank"] = {"confidence": .6, "confidence_city_level": 1,
+            "confidence_street_level": 1, "confidence_building_level": .2,
+            "match_type": "match_by_street", "unrelated": "omit"}
+        item["properties"]["contact"] = "omit"
+        outcome, _ = evaluate([item], query("Calle Example 4"))
+        retained = outcome.response["features"][0]["properties"]
+        self.assertEqual(retained["rank_confidence_building_level"], .2)
+        self.assertEqual(retained["rank_match_type"], "match_by_street")
+        self.assertNotIn("contact", retained)
+        self.assertNotIn("unrelated", retained)
+
     def test_formats_provider_text_but_matches_original_components(self):
         raw_query = query("Industrial Estate, C/ Example, 4, Nave 2")
-        outcome, seen = evaluate([feature()], raw_query)
+        outcome, seen = evaluate([feature()], raw_query, spanish_structured_search=False)
         self.assertEqual(outcome.status, "accepted")
         self.assertEqual(outcome.precision, "geoapify_address_point")
         self.assertEqual(seen["params"]["text"], ["calle example 4, Madrid, 28001, Comunidad de Madrid, Spain"])
         self.assertEqual(json.loads(raw_query)["address"], "Industrial Estate, C/ Example, 4, Nave 2")
+
+    def test_default_spain_mode_selects_structured_or_state_free_text_automatically(self):
+        outcome, seen = evaluate([feature()], query("Calle Example 4"))
+        self.assertEqual(outcome.status, "accepted")
+        self.assertNotIn("text", seen["params"])
+        self.assertNotIn("state", seen["params"])
+        outcome, seen = evaluate([], query("Example Industrial Estate"))
+        self.assertIn("text", seen["params"])
+        self.assertNotIn("Comunidad de Madrid", seen["params"]["text"][0])
+        self.assertEqual(outcome.response["_uec_request_input_mode"], "geoapify_spanish_address_town_v1")
 
     def test_context_number_type_coordinates_and_ambiguity_are_required(self):
         changes = ({"housenumber": "5"}, {"street": "Calle Other"}, {"city": "Sevilla"},

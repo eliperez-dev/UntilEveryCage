@@ -104,6 +104,33 @@ class CartociudadPilotTests(unittest.TestCase):
             report = pilot.run(cases, output, approved_root=directory, opener=forbidden, sleep=lambda _: None)
             self.assertEqual(report["outcomes"], {"interrupted_request_not_retried": 1})
 
+    def test_retained_reader_checks_plan_and_preserves_real_attempts(self):
+        cases = [{"context": context(), "targets": []}]
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)/"pilot"
+            def offline(*_a, **_k): raise OSError("synthetic failure")
+            pilot.run(cases, output, approved_root=directory, opener=offline, sleep=lambda _: None)
+            attempts = list(pilot.retained_attempts(output))
+            self.assertEqual(len(attempts), 1)
+            self.assertEqual(attempts[0][1], "full_context")
+            self.assertEqual(attempts[0][3]["evaluation"]["status"], "request_failed")
+            result_path = output/"result-00.json"
+            changed = json.loads(result_path.read_text(encoding="utf-8"))
+            changed["plan_sha256"] = "0"*64
+            result_path.write_text(json.dumps(changed), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "result_mismatch"):
+                list(pilot.retained_attempts(output))
+
+    def test_history_import_rejects_other_databases_before_writing(self):
+        class Connection:
+            def execute(self, sql):
+                if sql != "SELECT current_database()":
+                    raise AssertionError("must not write")
+                return self
+            def fetchone(self): return ("different_database",)
+        with self.assertRaisesRegex(ValueError, "wrong_source_test_database"):
+            pilot.import_attempt_history(Connection(), [])
+
 
 if __name__ == "__main__":
     unittest.main()

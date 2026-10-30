@@ -80,10 +80,10 @@ class LocationIqFirstPassTests(unittest.TestCase):
         params = urllib.parse.parse_qs(urllib.parse.urlsplit(seen["request"].full_url).query)
         self.assertTrue(urllib.parse.urlsplit(seen["request"].full_url).path.endswith("/search/structured"))
         self.assertNotIn("q", params)
-        self.assertEqual(params["street"], ["calle example 4"])
+        self.assertEqual(params["street"], ["4 calle example"])
         self.assertEqual(params["city"], ["Madrid"])
         self.assertEqual(params["postalcode"], ["28001"])
-        self.assertEqual(params["state"], ["Comunidad de Madrid"])
+        self.assertNotIn("state", params)
         self.assertEqual(params["country"], ["Spain"])
         self.assertEqual(params["countrycodes"], ["es"])
         self.assertEqual(params["limit"], ["2"])
@@ -92,7 +92,7 @@ class LocationIqFirstPassTests(unittest.TestCase):
         adapter, seen = self.make([candidate()])
         adapter.geocode(query("calle example 4", postcode=None, region=None))
         params = urllib.parse.parse_qs(urllib.parse.urlsplit(seen["request"].full_url).query)
-        self.assertEqual(params["street"], ["calle example 4"])
+        self.assertEqual(params["street"], ["4 calle example"])
         self.assertNotIn("q", params)
         self.assertNotIn("state", params)
         self.assertNotIn("postalcode", params)
@@ -106,6 +106,7 @@ class LocationIqFirstPassTests(unittest.TestCase):
             self.assertTrue(parsed.path.endswith("/search"))
             self.assertIn("q", params)
             self.assertNotIn("street", params)
+            self.assertNotIn("Comunidad de Madrid", params["q"][0])
 
     def test_county_region_is_retained_and_can_match_and_house_nodes_are_address_results(self):
         county_candidate = candidate(address={**candidate()["address"],

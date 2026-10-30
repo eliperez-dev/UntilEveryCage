@@ -36,6 +36,7 @@ class GeoapifyAdapter:
         locality_only: bool = False,
         municipality_only: bool = False,
         allow_locality_match: bool = True,
+        spanish_structured_search: bool | None = None,
     ):
         self.api_key = (api_key or os.environ.get("GEOAPIFY_API_KEY", "")).strip()
         if not self.api_key:
@@ -52,6 +53,11 @@ class GeoapifyAdapter:
             raise ValueError("locality-only matching requires a private source profile")
         if municipality_only and (not locality_only or country_code != "es"):
             raise ValueError("verified municipality matching requires the Spain locality-only profile")
+        if spanish_structured_search is not None and type(spanish_structured_search) is not bool:
+            raise ValueError("invalid Spanish structured-search mode")
+        if spanish_structured_search is True and (not private_source_profile or country_code != "es" or locality_only):
+            raise ValueError("structured Spanish search requires a private Spain address profile")
+        self.spanish_structured_search = spanish_structured_search
         self.country_code = country_code
         self.pilot_auto_display = pilot_auto_display
         self.private_source_profile = private_source_profile
@@ -69,7 +75,7 @@ class GeoapifyAdapter:
             "geoapify_forward", retryable, {"error": reason},
         )
 
-    def _private_match_diagnostics(self, features: list) -> dict:
+    def _private_match_diagnostics(self, features: list, request_input_mode: str | None = None) -> dict:
         """Retain bounded address evidence for private ES/PL/GB matching review."""
         if not (self.private_source_profile and self.country_code in {"es", "pl", "gb"}):
             return {"result_count": len(features), "viable_result_count": 0}
@@ -89,6 +95,15 @@ class GeoapifyAdapter:
             confidence = rank.get("confidence") if isinstance(rank, dict) else None
             if isinstance(confidence, (int, float)) and not isinstance(confidence, bool) and isfinite(confidence):
                 safe_props["rank_confidence"] = confidence
+            if isinstance(rank, dict):
+                for level in ("confidence_city_level", "confidence_street_level", "confidence_building_level"):
+                    value = rank.get(level)
+                    if isinstance(value, (int, float)) and not isinstance(value, bool) and isfinite(value):
+                        safe_props[f"rank_{level}"] = value
+                match_type = rank.get("match_type")
+                if match_type in {"full_match", "inner_part", "match_by_building", "match_by_street",
+                                  "match_by_postcode", "match_by_city_or_disrict", "match_by_country_or_state"}:
+                    safe_props["rank_match_type"] = match_type
             item = {"properties": safe_props}
             geom = feature.get("geometry")
             coords = geom.get("coordinates") if isinstance(geom, dict) else None
@@ -97,14 +112,18 @@ class GeoapifyAdapter:
                     and -180 <= coords[0] <= 180 and -90 <= coords[1] <= 90):
                 item["geometry"] = {"type": "Point", "coordinates": coords}
             retained.append(item)
-        return {"diagnostic_projection": f"private_{self.country_code}_rejected_candidate_properties",
-                "result_count": len(features), "features": retained}
+        diagnostic = {"diagnostic_projection": f"private_{self.country_code}_rejected_candidate_properties",
+                      "result_count": len(features), "features": retained}
+        if request_input_mode:
+            diagnostic["_uec_request_input_mode"] = request_input_mode
+        return diagnostic
 
     def geocode(self, query: str) -> GeocodeOutcome:
         query = query.strip()
         if not query:
             return self._failed("empty_query", False)
         spanish_context = None
+        request_input_mode = None
         provider_query = query
         if (self.private_source_profile and self.country_code == "es"
                 and not self.locality_only and query.startswith("{")):
@@ -115,12 +134,35 @@ class GeoapifyAdapter:
             if parsed is None or not parsed[1]:
                 return self._failed("invalid_source_address", False)
             spanish_context, provider_query = parsed[:4], parsed[-1]
+        components = spanish_addresses.structured_components(spanish_context[0]) if spanish_context else None
+        use_structured = self.spanish_structured_search is True or (
+            self.spanish_structured_search is None and components is not None)
+        if spanish_context and self.spanish_structured_search is None and not use_structured:
+            address, locality, postcode, _region = spanish_context
+            provider_query = ", ".join(part for part in (
+                spanish_addresses.provider_address(address), locality, postcode, "Spain") if part)
+            request_input_mode = "geoapify_spanish_address_town_v1"
         params = {
             "text": provider_query,
             "format": "geojson",
             "limit": 2,
             "apiKey": self.api_key,
         }
+        if use_structured:
+            if spanish_context is None:
+                return self._failed("structured_spanish_context_required", False)
+            source, locality, postcode, region = spanish_context
+            if components is None:
+                return self._failed("structured_numbered_street_required", False)
+            street, house = components
+            params.pop("text")
+            params.update(street=street, housenumber=house, city=locality, country="Spain")
+            if postcode:
+                params["postcode"] = postcode
+            # Source region spellings/levels are not provider state identifiers.
+            # Keep region in the source context and validate the returned result;
+            # sending it as state reduced scores even for matching buildings.
+            request_input_mode = "geoapify_structured_address_v2"
         if self.country_code:
             params["filter"] = f"countrycode:{self.country_code}"
             params["bias"] = "countrycode:none"
@@ -148,7 +190,7 @@ class GeoapifyAdapter:
             return GeocodeOutcome(
                 "unresolved", "unresolved", None, None, None, None,
                 "geoapify_forward", False,
-                self._private_match_diagnostics(features) if self.private_source_profile and self.country_code in {"es", "pl", "gb"} else payload,
+                self._private_match_diagnostics(features, request_input_mode) if self.private_source_profile and self.country_code in {"es", "pl", "gb"} else payload,
             )
         # Ignore weak/incompatible alternatives, but require exactly one
         # independently viable match. A second returned feature alone is not
@@ -241,7 +283,7 @@ class GeoapifyAdapter:
                 return GeocodeOutcome(
                     "review_required", "ambiguous_multiple_viable_results" if len(viable) > 1 else "address_or_locality_match_not_supported",
                     None, None, None, None, "geoapify_forward", False,
-                    (self._private_match_diagnostics(features) | {"viable_result_count": len(viable)}
+                    (self._private_match_diagnostics(features, request_input_mode) | {"viable_result_count": len(viable)}
                      if self.private_source_profile and self.country_code in {"es", "pl", "gb"}
                      else {"result_count": len(features), "viable_result_count": len(viable)}),
                 )
@@ -252,6 +294,8 @@ class GeoapifyAdapter:
             feature, accepted_match = viable[0]
         selected_index = next((index for index, item in enumerate(features) if item is feature), 0)
         retained_payload = {**payload, "_uec_selected_feature_index": selected_index}
+        if request_input_mode:
+            retained_payload["_uec_request_input_mode"] = request_input_mode
         if not isinstance(feature, dict):
             return self._failed("invalid_provider_feature", False)
         geometry = feature.get("geometry")

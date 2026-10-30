@@ -28,6 +28,10 @@ class SpanishRetainedReplayTests(unittest.TestCase):
         parent = uuid.UUID(int=42)
         self.assertEqual(recovery.result_id(parent), recovery.result_id(parent))
         self.assertNotEqual(recovery.result_id(parent), parent)
+        self.assertNotIn("_uec_request_input_mode", response)
+        tagged = {**retained, "_uec_request_input_mode": "locationiq_spanish_state_free_v1"}
+        self.assertEqual(recovery.replay(f.query("C/ Example, 4"), tagged)["_uec_request_input_mode"],
+                         tagged["_uec_request_input_mode"])
 
     def test_replay_rejects_empty_ambiguous_or_conflicting_evidence(self):
         for response in (None, {}, {"results": []},
@@ -54,6 +58,8 @@ class SpanishRetainedPostgisTests(unittest.TestCase):
 
     def test_street_format_and_administrative_parity(self):
         for source in ("C/ Example, 4", "Calle Example 4 Nave 2", "4 Calle Example",
+                       "Calle de Example 4", "Calle D Example 4", "Calle de La Example 4",
+                       "Calle Puente de Example 4", "Avenida de Example 4",
                        "Calle Example", "Calle Other 4", "Avenida Example 4",
                        "Calle Example 4-6", "Calle Example 4A"):
             expected = s.street_matches(source, "Calle Example", "4")

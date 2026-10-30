@@ -68,4 +68,15 @@ from streets and municipalities. Phonetic candidate retrieval does not itself
 establish an address match. This is a research option, not an integrated
 provider; current pilot authorization and readiness belong in the inventory.
 
+The same publisher also provides a [native address collection](https://api-features.idee.es/collections/address?f=json)
+through OGC API Features. Its metadata identifies CRS84 longitude/latitude and
+links the [IGN reuse licence](https://www.ign.es/resources/licencia/Condiciones_licenciaUso_IGN.pdf).
+The [schema](https://api-features.idee.es/collections/address/schema?f=json)
+includes municipality, province, postcode, road, house number, provider and
+point geometry. Municipality-level reference downloads could support local
+address comparisons without sending facility addresses. Only metadata and
+one-feature catalogue probes have been checked; no reference matching or
+coordinate-import bridge is implemented. A full national download is not
+needed for a bounded trial. Current research outcomes belong in the inventory.
+
 MAPA SILUM/SANDACH and other regional registers have distinct sector scopes and terms. They require independent verification and source IDs; none may be silently unioned with AESAN or Catalonia. `Old CSVs/spain-data.csv` remains a reconciliation-only V1 baseline, not an acquisition source.

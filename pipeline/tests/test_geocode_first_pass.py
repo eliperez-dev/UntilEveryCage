@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 import unittest
 
-from pipeline.geocoding.first_pass import structured_query, normalize_query, provider_query, partition_groups
+from pipeline.geocoding.first_pass import structured_query, normalize_query, provider_query, partition_groups, select_input_mode, validate_provider_interval, defer_explicit_no_number, reopen_local_input_rejections
 
 
 class FirstPassInputTests(unittest.TestCase):
@@ -33,7 +33,7 @@ class FirstPassInputTests(unittest.TestCase):
     def test_no_retry_and_local_database_guards_remain_in_planner(self):
         text=(Path(__file__).parents[1]/"geocoding/first_pass.py").read_text(encoding="utf-8")
         for snippet in ("uec.geocode_request_reservations", "attempted.source_record_key IS NULL",
-                        "wrong_source_test_database", "provider_interval=1.05", "first_pass_only"):
+                        "wrong_source_test_database", "first_pass_only"):
             self.assertIn(snippet,text)
         self.assertEqual(normalize_query("  One  ROAD, Town  "),"one road, town")
 
@@ -63,6 +63,52 @@ class FirstPassInputTests(unittest.TestCase):
             self.assertEqual(partition_groups(list(reversed(groups)),index,3),list(reversed(lanes[index])))
             for other in range(index):
                 self.assertFalse(identities[index]&identities[other])
+
+    def test_structured_input_selection_defers_complex_inputs_without_mutating_them(self):
+        groups = [{"source": "es.locations", "query": structured_query("es.locations",
+            {"address": address, "country_code": "ES", "region": "Madrid"}, municipality=town)}
+            for address, town in (("Calle Example 4", "Town"), ("Calle Other 5", "Town"),
+                                  ("Calle Example s/n", "Town"), ("Calle Example 4", ""))]
+        original = list(groups)
+        selected, deferred = select_input_mode(groups, "es_structured_numbered", 42)
+        self.assertEqual(deferred, 2)
+        self.assertEqual({g["query"] for g in selected}, {g["query"] for g in groups[:2]})
+        self.assertEqual(groups, original)
+        self.assertEqual(select_input_mode(groups)[0], groups)
+
+    def test_provider_interval_rejects_excessive_or_nonfinite_rates(self):
+        self.assertEqual(validate_provider_interval("geoapify", .25), .25)
+        self.assertEqual(validate_provider_interval("locationiq", .55), .55)
+        for provider in ("geoapify", "locationiq"):
+            for interval in (.1, float("nan"), float("inf"), -1):
+                with self.assertRaises(ValueError):
+                    validate_provider_interval(provider, interval)
+
+    def test_other_numbered_lane_is_disjoint_from_structured_and_deferred_inputs(self):
+        groups = [{"source": "es.locations", "query": structured_query("es.locations",
+            {"address": address, "country_code": "ES", "region": "Madrid"}, municipality="Town")}
+            for address in ("Travesia Example 4", "Calle Example 4", "Calle Example 0",
+                            "Poligono Example Parcela 4", "Carretera Example km 4", "Calle Example s/n")]
+        selected, _ = select_input_mode(groups, "es_other_numbered")
+        self.assertEqual(selected, groups[:1])
+
+    def test_explicit_no_number_deferral_is_reversible_and_does_not_mutate_queue(self):
+        groups = [{"source": "es.locations", "query": structured_query("es.locations",
+            {"address": address, "country_code": "ES", "region": "Madrid"}, municipality="Town")}
+            for address in ("Calle Example 4", "Calle Example s/n")]
+        self.assertEqual(defer_explicit_no_number(groups), (groups[:1], 1))
+        self.assertEqual(defer_explicit_no_number(groups, include_no_number=True), (groups, 0))
+        self.assertEqual(len(groups), 2)
+
+    def test_local_input_repair_rejects_other_databases_before_writing(self):
+        class Connection:
+            def execute(self, sql):
+                if sql != "SELECT current_database()":
+                    raise AssertionError("must not write")
+                return self
+            def fetchone(self): return ("different_database",)
+        with self.assertRaisesRegex(ValueError, "wrong_source_test_database"):
+            reopen_local_input_rejections(Connection())
 
 
 if __name__=="__main__":

@@ -17,11 +17,11 @@ The product is running at <https://untileverycage.onrender.com/>.
 The original website has not been replaced. Existing dataset approvals are
 complete; do not request another generic approval stamp.
 
-The backend country release remains local and held. Spanish town recovery has
-added 387 approximate municipality points without geocoding requests, but
-13,451 never-reserved Spanish address groups remain, plus two pilot jobs that
-were rejected before reaching a provider. Commercial bulk requests are paused
-after low-yield diagnostics while a better address reference is evaluated.
+The backend country release remains local and held. Spanish town recovery,
+retained-response matching repairs and the corrected numbered-address batches
+have passed local checks. Remaining address formats need further work; the
+country first pass is not complete. Addresses explicitly lacking a street
+number remain approximate where possible and stay unattempted in the queue.
 Current counts and evidence belong in [the source inventory](source-status.json).
 This work has not changed the hosted dataset or frontend.
 

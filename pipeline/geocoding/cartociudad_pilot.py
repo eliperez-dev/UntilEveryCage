@@ -13,6 +13,7 @@ import json
 import math
 from pathlib import Path
 import time
+import uuid
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -164,6 +165,8 @@ def run(cases, output, *, approved_root, query_style="full_context",
         sleep(1)
         with attempts.open("a", encoding="utf-8") as stream:
             stream.write(json.dumps({"case": index, "plan_sha256": digest,
+                "request_parameters": parameters(case["context"], query_style=query_style),
+                "address_format_version": s.RULESET,
                 "started_at": datetime.now(timezone.utc).isoformat()}) + "\n")
         try:
             rows, response_hash = fetch(case["context"], query_style=query_style, opener=opener)
@@ -185,3 +188,114 @@ def run(cases, output, *, approved_root, query_style="full_context",
               "outcomes": dict(counts), "database_writes": 0, "points_imported": 0,
               "automatic_bulk_expansion": False, "query_style": query_style}
     return report
+
+
+def retained_attempts(folder):
+    """Read immutable local checkpoints; never rerun the outbound lookup."""
+    folder = Path(folder)
+    raw = (folder/"private-plan.json").read_text(encoding="utf-8")
+    digest = hashlib.sha256(raw.encode()).hexdigest()
+    plan = json.loads(raw)
+    cases = plan if isinstance(plan, list) else plan["cases"]
+    style = "full_context" if isinstance(plan, list) else plan["query_style"]
+    if not 1 <= len(cases) <= 24:
+        raise ValueError("retained_pilot_scope_invalid")
+    for line in (folder/"attempts.jsonl").read_text(encoding="utf-8").splitlines():
+        event = json.loads(line)
+        if event["plan_sha256"] != digest or type(event["case"]) is not int or not 0 <= event["case"] < len(cases):
+            raise ValueError("retained_pilot_attempt_mismatch")
+        index = event["case"]
+        parameters(cases[index]["context"], query_style=style)
+        result_path = folder/f"result-{index:02d}.json"
+        result = json.loads(result_path.read_text(encoding="utf-8")) if result_path.exists() else None
+        if result and (result.get("plan_sha256") != digest or result.get("case") != index):
+            raise ValueError("retained_pilot_result_mismatch")
+        yield cases[index], style, event, result
+
+
+def import_attempt_history(connection, folders):
+    """Backfill existing job/result/events, without reservations or map points."""
+    from .first_pass import DATABASE, structured_query
+    if connection.execute("SELECT current_database()").fetchone()[0] != DATABASE:
+        raise ValueError("wrong_source_test_database")
+    namespace = uuid.UUID("7c24e676-13ca-423c-969b-267c1e085c6b")
+    added = 0
+    for folder in folders:
+        for case, style, event, result in retained_attempts(folder):
+            bound = []
+            for target in case["targets"]:
+                row = connection.execute("""SELECT location.location_evidence,verified.municipality,
+                    verified.province,artifact.artifact_id,run.retrieved_at
+                    FROM real_preview.candidates candidate
+                    JOIN real_preview.candidate_private_location_evidence location
+                      USING(candidate_id,snapshot_sha256,source_id)
+                    JOIN real_preview.source_preview_runs run USING(snapshot_sha256,source_id)
+                    JOIN uec.raw_artifacts artifact ON artifact.sha256=run.source_artifact_sha256
+                    JOIN LATERAL(SELECT municipality,province FROM real_preview.spain_verified_locality_evidence v
+                        WHERE v.candidate_id=candidate.candidate_id AND v.snapshot_sha256=candidate.snapshot_sha256
+                          AND v.source_id=candidate.source_id ORDER BY retrieved_at DESC,evidence_event_id DESC LIMIT 1)verified ON true
+                    WHERE candidate.candidate_id=%s AND candidate.snapshot_sha256=%s
+                      AND candidate.source_group_key=%s AND candidate.source_id='es.locations'
+                      AND candidate.country_code='ES' AND candidate.default_map_scope
+                      AND candidate.snapshot_sha256=(SELECT snapshot_sha256 FROM real_preview.source_preview_runs
+                        WHERE source_id='es.locations' ORDER BY created_at DESC,run_id DESC LIMIT 1)
+                      AND NOT EXISTS(SELECT 1 FROM real_preview.enrichment_state_events state
+                        WHERE state.candidate_id=candidate.candidate_id AND state.state_code='restricted')
+                      AND NOT EXISTS(SELECT 1 FROM real_preview.geocode_targets t JOIN uec.geocode_jobs j USING(job_id)
+                        JOIN uec.public_access_restricted restricted USING(source_record_id)
+                        WHERE t.candidate_id=candidate.candidate_id)""",
+                    (target["candidate_id"], target["snapshot_sha256"], target["source_record_key"])).fetchone()
+                context = case["context"]
+                if (target["source_id"] != "es.locations" or not row
+                        or row[0].get("address") != context["address"] or row[1] != context["locality"]
+                        or s.province_key(row[2]) != s.province_key(context["province"])
+                        or (row[0].get("postal_code") or row[0].get("postcode") or None) != context.get("postcode")):
+                    raise ValueError("retained_pilot_source_context_mismatch")
+                bound.append((target, row))
+            if not bound:
+                raise ValueError("retained_pilot_has_no_bound_targets")
+            target, row = bound[0]
+            projection = f"real-preview:{target['snapshot_sha256']}:{target['source_record_key']}"
+            fields = json.dumps({"projection": "real_preview_private_geocode_target", "snapshot_sha256": target["snapshot_sha256"]})
+            connection.execute("""INSERT INTO uec.source_records(source_id,source_record_key,artifact_id,raw_fields,parsed_at)
+                VALUES('es.locations',%s,%s,%s::jsonb,%s) ON CONFLICT DO NOTHING""", (projection,row[3],fields,row[4]))
+            record = connection.execute("""SELECT source_record_id FROM uec.source_records
+                WHERE source_id='es.locations' AND source_record_key=%s AND artifact_id=%s AND raw_fields=%s::jsonb""",
+                (projection,row[3],fields)).fetchone()
+            if not record:
+                raise ValueError("retained_pilot_source_record_mismatch")
+            query = structured_query("es.locations", row[0], municipality=row[1])
+            if query is None:
+                raise ValueError("retained_pilot_source_query_invalid")
+            # One job per query style preserves physical request provenance
+            # without pretending a retrospective import reserved quota first.
+            job_query = json.dumps({"source_context": json.loads(query), "query_style": style}, sort_keys=True)
+            connection.execute("""INSERT INTO uec.geocode_jobs(source_record_id,provider_id,query)
+                VALUES(%s,'cartociudad',%s) ON CONFLICT DO NOTHING""", (record[0],job_query))
+            job = connection.execute("""SELECT job_id FROM uec.geocode_jobs
+                WHERE source_record_id=%s AND provider_id='cartociudad' AND query=%s""", (record[0],job_query)).fetchone()[0]
+            for target, _ in bound:
+                connection.execute("""INSERT INTO real_preview.geocode_targets(job_id,candidate_id,snapshot_sha256,source_id,source_record_key)
+                    VALUES(%s,%s,%s,'es.locations',%s) ON CONFLICT DO NOTHING""",
+                    (job,target["candidate_id"],target["snapshot_sha256"],target["source_record_key"]))
+            identity = f"{event['plan_sha256']}:{event['case']}"
+            started = uuid.uuid5(namespace, identity+":started")
+            confirmed_response = bool(result and (result.get("response_sha256") or result.get("http_status")))
+            details = {"processing_mode": "cartociudad_pilot_checkpoint_import", "outbound_request_recorded": confirmed_response,
+                       "retrospective_import": True, "plan_sha256": event["plan_sha256"], "query_style": style}
+            connection.execute("""INSERT INTO uec.geocode_job_events(event_id,job_id,event_type,details,occurred_at)
+                VALUES(%s,%s,'started',%s::jsonb,%s) ON CONFLICT DO NOTHING""", (started,job,json.dumps(details),event["started_at"]))
+            if result is None:
+                continue
+            status = "review_required" if result["evaluation"]["status"] == "matched" else "unresolved"
+            result_id = uuid.uuid5(namespace, identity+":result")
+            inserted = connection.execute("""INSERT INTO uec.geocode_results(geocode_result_id,source_record_id,
+                provider_id,query,precision,match_method,status,response,queried_at)
+                VALUES(%s,%s,'cartociudad',%s,'unresolved','cartociudad_pilot_candidates_v1',%s,%s::jsonb,%s)
+                ON CONFLICT DO NOTHING RETURNING geocode_result_id""",
+                (result_id,record[0],job_query,status,json.dumps(result),result["retrieved_at"])).fetchone()
+            added += int(inserted is not None)
+            connection.execute("""INSERT INTO uec.geocode_job_events(event_id,job_id,event_type,details,occurred_at)
+                VALUES(%s,%s,%s,%s::jsonb,%s) ON CONFLICT DO NOTHING""",
+                (uuid.uuid5(namespace, identity+":outcome"),job,status,json.dumps(details),result["retrieved_at"]))
+    return {"result_rows_appended": added, "provider_calls": 0, "quota_reservations_added": 0, "points_imported": 0}

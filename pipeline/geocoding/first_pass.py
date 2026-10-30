@@ -14,6 +14,10 @@ import json
 import os
 from pathlib import Path
 import re
+import random
+import math
+import hashlib
+import uuid
 
 import psycopg
 
@@ -26,6 +30,21 @@ SOURCES = (
     "fsa_approved_establishments", "fss_approved_establishments", "nz.locations",
     "es.cat.feed-sandach", "es.locations",
 )
+
+# Retrospectively imported research calls have real started events but never
+# reserved a commercial account allowance. Queued-only jobs are not attempts.
+ATTEMPTED_JOBS = """
+ SELECT reservation.job_id FROM uec.geocode_request_reservations reservation
+ WHERE NOT EXISTS(SELECT 1 FROM uec.geocode_job_events event
+   WHERE event.job_id=reservation.job_id AND event.event_type='cancelled'
+     AND event.details->>'processing_mode'='first_pass_pre_call_input_repair'
+     AND event.details->>'no_provider_request_sent'='true')
+ UNION
+ SELECT event.job_id FROM uec.geocode_job_events event JOIN uec.geocode_jobs job USING(job_id)
+ WHERE job.provider_id='cartociudad' AND event.event_type='started'
+   AND event.details->>'processing_mode'='cartociudad_pilot_checkpoint_import'
+   AND event.details->>'outbound_request_recorded'='true'
+"""
 
 
 def restore_spain_localities(connection, events_path):
@@ -74,6 +93,101 @@ def partition_groups(groups, partition, partitions):
         (group["source"]+group["query"]).encode()).hexdigest(),16)%partitions == partition]
 
 
+def select_input_mode(groups, input_mode="standard", seed=None):
+    """Defer complex inputs explicitly; do not relabel them as attempted."""
+    if input_mode not in {"standard", "es_structured_numbered", "es_structured_complex", "es_other_numbered"}:
+        raise ValueError("unknown_first_pass_input_mode")
+    selected = list(groups)
+    if input_mode.startswith("es_structured_"):
+        from .spanish_addresses import input_kind, structured_components
+        selected = [g for g in selected if g["source"] == "es.locations"
+                    and json.loads(g["query"]).get("locality")
+                    and ((input_mode == "es_structured_numbered"
+                          and input_kind(json.loads(g["query"])["address"]) == "simple_numbered_road")
+                         or (input_mode == "es_structured_complex"
+                             and input_kind(json.loads(g["query"])["address"]) != "simple_numbered_road"
+                             and structured_components(json.loads(g["query"])["address"]) is not None))]
+    elif input_mode == "es_other_numbered":
+        from .spanish_addresses import input_kind, structured_components, address_parts
+        selected = [g for g in selected if g["source"] == "es.locations"
+                    and json.loads(g["query"]).get("locality")
+                    and input_kind(json.loads(g["query"])["address"]) == "other_numbered_address"
+                    and structured_components(json.loads(g["query"])["address"]) is None
+                    and any(int(re.match(r"[0-9]+", house)[0]) > 0
+                            for _, house in address_parts(json.loads(g["query"])["address"]))]
+    if seed is not None:
+        random.Random(seed).shuffle(selected)
+    return selected, len(groups)-len(selected)
+
+
+def validate_provider_interval(provider, interval):
+    minimum = .25 if provider == "geoapify" else .55
+    if not math.isfinite(interval) or interval < minimum:
+        raise ValueError("provider_interval_below_supported_rate")
+    return interval
+
+
+def defer_explicit_no_number(groups, *, include_no_number=False):
+    from .spanish_addresses import input_kind
+    if include_no_number:
+        return list(groups), 0
+    selected = [g for g in groups if g["source"] != "es.locations"
+                or input_kind(json.loads(g["query"])["address"]) != "explicit_no_number"]
+    return selected, len(groups)-len(selected)
+
+
+def reopen_local_input_rejections(connection):
+    """Correct attempt history only where the adapter demonstrably made no call."""
+    if connection.execute("SELECT current_database()").fetchone()[0] != DATABASE:
+        raise ValueError("wrong_source_test_database")
+    rows = connection.execute("""SELECT DISTINCT job.job_id,job.query,location.location_evidence,verified.municipality
+        FROM uec.geocode_jobs job JOIN real_preview.geocode_targets target USING(job_id)
+        JOIN real_preview.candidates candidate ON candidate.source_id=target.source_id
+          AND candidate.source_group_key=target.source_record_key
+        JOIN real_preview.candidate_private_location_evidence location ON location.candidate_id=candidate.candidate_id
+          AND location.snapshot_sha256=candidate.snapshot_sha256 AND location.source_id=candidate.source_id
+        JOIN LATERAL(SELECT municipality FROM real_preview.spain_verified_locality_evidence v
+            WHERE v.candidate_id=candidate.candidate_id AND v.snapshot_sha256=candidate.snapshot_sha256
+              AND v.source_id=candidate.source_id ORDER BY retrieved_at DESC,evidence_event_id DESC LIMIT 1)verified ON true
+        WHERE job.provider_id='geoapify' AND target.source_id='es.locations'
+          AND candidate.country_code='ES' AND candidate.default_map_scope
+          AND candidate.snapshot_sha256=(SELECT snapshot_sha256 FROM real_preview.source_preview_runs
+            WHERE source_id='es.locations' ORDER BY created_at DESC,run_id DESC LIMIT 1)
+          AND (SELECT count(*) FROM uec.geocode_request_reservations r WHERE r.job_id=job.job_id)=1
+          AND EXISTS(SELECT 1 FROM uec.geocode_results r WHERE r.source_record_id=job.source_record_id
+            AND r.provider_id=job.provider_id AND r.query=job.query AND r.status='failed'
+            AND r.match_method='geoapify_forward' AND r.response->>'error'='invalid_source_address')
+          AND NOT EXISTS(SELECT 1 FROM uec.geocode_results r WHERE r.source_record_id=job.source_record_id
+            AND r.provider_id=job.provider_id AND r.query=job.query AND
+            (r.status<>'failed' OR r.match_method<>'geoapify_forward'
+             OR r.response->>'error' IS DISTINCT FROM 'invalid_source_address'))
+          AND NOT EXISTS(SELECT 1 FROM uec.public_access_restricted r WHERE r.source_record_id=job.source_record_id)
+          AND NOT EXISTS(SELECT 1 FROM real_preview.enrichment_state_events state
+            WHERE state.candidate_id=candidate.candidate_id AND state.state_code='restricted')""").fetchall()
+    reopened = set()
+    for job, old_query, location, municipality in rows:
+        try:
+            old = json.loads(old_query)
+        except (TypeError, ValueError):
+            continue
+        if (not isinstance(old, dict) or old.get("schema_version") != "uec-address-query-v1"
+                or old.get("country_code") != "ES" or old.get("locality")):
+            continue
+        query = structured_query("es.locations", location, municipality=municipality)
+        if not query or query == old_query or not json.loads(query)["locality"]:
+            continue
+        digest = hashlib.sha256(query.encode()).hexdigest()
+        event = uuid.uuid5(uuid.UUID("9d6a0228-1088-4d24-b9e9-8ad4c56f6649"), f"{job}:{digest}")
+        inserted = connection.execute("""INSERT INTO uec.geocode_job_events(event_id,job_id,event_type,details)
+            VALUES(%s,%s,'cancelled',%s::jsonb) ON CONFLICT DO NOTHING RETURNING event_id""",
+            (event,job,json.dumps({"processing_mode":"first_pass_pre_call_input_repair",
+                "no_provider_request_sent":True,"replacement_query_sha256":digest,
+                "reason":"verified_town_recovered_after_local_input_rejection"}))).fetchone()
+        if inserted:
+            reopened.add(job)
+    return {"reopened_pre_call_jobs":len(reopened),"provider_calls":0,"quota_reservations_modified":0}
+
+
 def structured_query(source: str, location: dict, *, municipality: str = "") -> str | None:
     """Use source location fields, not establishment/contact names or guessed towns."""
     country = {SOURCES[0]: "GB", SOURCES[1]: "GB", SOURCES[2]: "NZ",
@@ -99,14 +213,14 @@ def structured_query(source: str, location: dict, *, municipality: str = "") -> 
     return query if LocationIqAdapter._parse_first_pass_query(query, country.lower()) else None
 
 
-_CANDIDATES = """
+_CANDIDATES = f"""
 WITH latest AS MATERIALIZED (
  SELECT DISTINCT ON(source_id) * FROM real_preview.source_preview_runs
  WHERE source_id=ANY(%s) ORDER BY source_id,created_at DESC,run_id DESC
 ), attempted AS MATERIALIZED (
  SELECT DISTINCT target.source_id,target.source_record_key
  FROM real_preview.geocode_targets target
- JOIN uec.geocode_request_reservations reservation USING(job_id)
+ JOIN ({ATTEMPTED_JOBS}) reservation USING(job_id)
 ), restricted AS MATERIALIZED (
  SELECT DISTINCT candidate_id FROM real_preview.enrichment_state_events WHERE state_code='restricted'
  UNION SELECT DISTINCT target.candidate_id FROM real_preview.geocode_targets target
@@ -148,8 +262,8 @@ def plan(connection, sources=SOURCES):
     # Skip earlier physical requests, including a duplicate address under a
     # different source record. No retry is introduced by query reformatting.
     requested = set()
-    for query, in connection.execute("""SELECT DISTINCT job.query FROM uec.geocode_jobs job
-            JOIN uec.geocode_request_reservations reservation USING(job_id)"""):
+    for query, in connection.execute(f"""SELECT DISTINCT job.query FROM uec.geocode_jobs job
+            JOIN ({ATTEMPTED_JOBS}) reservation USING(job_id)"""):
         requested.add(normalize_query(query))
         if query.lstrip().startswith("{"):
             try:
@@ -162,12 +276,12 @@ def plan(connection, sources=SOURCES):
     # A legacy Spain query omitted the town. Do not equate that incomplete
     # query with a different unattempted facility in another town. Reconstruct
     # physical-address identities from retained current source context instead.
-    attempted_rows = connection.execute("""WITH latest AS MATERIALIZED (
+    attempted_rows = connection.execute(f"""WITH latest AS MATERIALIZED (
         SELECT DISTINCT ON(source_id) source_id,snapshot_sha256 FROM real_preview.source_preview_runs
         WHERE source_id=ANY(%s) ORDER BY source_id,created_at DESC,run_id DESC
       ), attempted AS MATERIALIZED (
         SELECT DISTINCT t.source_id,t.source_record_key FROM real_preview.geocode_targets t
-        JOIN uec.geocode_request_reservations r USING(job_id)
+        JOIN ({ATTEMPTED_JOBS}) r USING(job_id)
       ), towns AS MATERIALIZED (
         SELECT DISTINCT ON(candidate_id,snapshot_sha256) candidate_id,snapshot_sha256,municipality
         FROM real_preview.spain_verified_locality_evidence ORDER BY candidate_id,snapshot_sha256,retrieved_at DESC,evidence_event_id DESC
@@ -232,8 +346,8 @@ def stage(connection, group, provider="locationiq"):
     usable = []
     for row in group["targets"]:
         candidate, snapshot, source, key, location, municipality, original, old_query, artifact, retrieved = row
-        if connection.execute("""SELECT 1 FROM real_preview.geocode_targets t
-            JOIN uec.geocode_request_reservations r USING(job_id)
+        if connection.execute(f"""SELECT 1 FROM real_preview.geocode_targets t
+            JOIN ({ATTEMPTED_JOBS}) r USING(job_id)
             WHERE t.source_id=%s AND t.source_record_key=%s LIMIT 1""", (source, key)).fetchone():
             continue
         if original is None:
@@ -286,15 +400,29 @@ def main():
     parser.add_argument("--partition", type=int, choices=(0,1,2,3), default=0)
     parser.add_argument("--partitions", type=int, choices=(1,2,3,4), default=1)
     parser.add_argument("--limit", type=int, default=5000)
+    parser.add_argument("--input-mode", choices=("standard", "es_structured_numbered", "es_structured_complex", "es_other_numbered"), default="standard")
+    parser.add_argument("--seed", type=int)
+    parser.add_argument("--worker-id")
+    parser.add_argument("--provider-interval", type=float, default=1.05)
+    parser.add_argument("--include-no-number", action="store_true")
     args = parser.parse_args()
+    validate_provider_interval(args.provider, args.provider_interval)
     if not 1 <= args.limit <= 5000 or args.partition >= args.partitions:
         raise ValueError("invalid_first_pass_limits")
     args.sources = args.sources or (["es.locations"] if args.provider == "geoapify" else list(SOURCES))
     if args.provider == "geoapify" and (args.account is not None or args.sources != ["es.locations"]):
         raise ValueError("geoapify_first_pass_requires_spain_and_no_named_account")
+    if args.input_mode.startswith("es_structured_") and (args.provider != "geoapify" or args.sources != ["es.locations"]):
+        raise ValueError("structured_numbered_mode_requires_geoapify_spain")
+    if args.input_mode == "es_other_numbered" and args.sources != ["es.locations"]:
+        raise ValueError("other_numbered_mode_requires_spain")
     args.account = (args.account or "primary") if args.provider == "locationiq" else None
     daily_budget = 5000 if args.provider == "locationiq" else 3000
     url = os.environ["UEC_DATABASE_URL"]
+    repair = {"reopened_pre_call_jobs": 0}
+    if args.run and "es.locations" in args.sources:
+        with psycopg.connect(url) as connection:
+            repair = reopen_local_input_rejections(connection)
     with psycopg.connect(url) as connection:
         connection.execute("SET TRANSACTION READ ONLY")
         connection.execute("SET LOCAL statement_timeout='90s'")
@@ -309,6 +437,7 @@ def main():
     remaining = max(0,daily_budget-(usage[0] if usage else 0))
     # Stable hash partitions remain disjoint even as other workers finish jobs.
     groups = partition_groups(groups,args.partition,args.partitions)
+    groups, deferred_no_number = defer_explicit_no_number(groups, include_no_number=args.include_no_number)
     blocked_context = 0
     if args.provider == "geoapify":
         # The Spanish exact-address bridge needs a source-bound town. Keep
@@ -317,8 +446,9 @@ def main():
         blocked_context = sum(not json.loads(group["query"])["locality"].strip() for group in groups)
         groups = [group for group in groups if json.loads(group["query"])["locality"].strip()]
     groups.sort(key=lambda g:(SOURCES.index(g["source"]),g["query"]))
+    groups, deferred_formats = select_input_mode(groups, args.input_mode, args.seed)
     groups = groups[:min(args.limit,remaining)]
-    print(json.dumps({"stage":"first_pass_plan","sources":summary,"provider":args.provider,"account":args.account,"selected_requests":len(groups),"provider_input_blocked_requests":blocked_context,"remaining_account_ledger":remaining,"provider_calls":0}),flush=True)
+    print(json.dumps({"stage":"first_pass_plan","sources":summary,"provider":args.provider,"account":args.account,"selected_requests":len(groups),"provider_input_blocked_requests":blocked_context,"deferred_no_street_number":deferred_no_number,"deferred_input_formats":deferred_formats,"input_mode":args.input_mode,"reopened_pre_call_jobs":repair["reopened_pre_call_jobs"],"remaining_account_ledger":remaining,"provider_calls":0}),flush=True)
     if not args.run or not groups:
         return
     spec=importlib.util.spec_from_file_location("first_pass_worker",ROOT/"pipeline/scripts/stages/geocode-worker.py")
@@ -332,7 +462,12 @@ def main():
             observed["acceptance"]=outcome.acceptance
             observed["error"]=outcome.response.get("error") if isinstance(outcome.response,dict) else None
             return outcome
-    worker.get_adapter=lambda *a,**kw:Observed(original_adapter(*a,**kw))
+    def configured_adapter(*args_, **kwargs):
+        adapter = original_adapter(*args_, **kwargs)
+        if args.input_mode.startswith("es_structured_"):
+            adapter.spanish_structured_search = True
+        return Observed(adapter)
+    worker.get_adapter = configured_adapter
     processed=accepted=0
     for group in groups:
         with psycopg.connect(url) as connection:
@@ -346,8 +481,8 @@ def main():
             # max_attempts=2 forbids a subsequent claim, and retries=1 means
             # exactly one provider invocation within that claim.
             count=worker.run(url,args.provider,1,0,1,daily_budget=daily_budget,max_attempts=2,
-                provider_interval=1.05,private_source_profile_id=profile,job_ids=(job,),
-                provider_account=args.account,worker_id=f"country-first-pass-{args.provider}-{args.account or 'default'}")
+                provider_interval=args.provider_interval,private_source_profile_id=profile,job_ids=(job,),
+                provider_account=args.account,worker_id=args.worker_id or f"country-first-pass-{args.provider}-{args.account or 'default'}")
         if not count:
             break
         processed+=count
@@ -357,7 +492,7 @@ def main():
         if (observed.get("acceptance") in {"authentication_rejected","provider_rate_limited"}
                 or observed.get("error") in {"authentication_rejected","provider_rate_limited"}):
             break
-    print(json.dumps({"stage":"first_pass_finished","provider":args.provider,"account":args.account,"processed":processed,"accepted":accepted,"local_only":True,"deployed":False}),flush=True)
+    print(json.dumps({"stage":"first_pass_finished","provider":args.provider,"account":args.account,"input_mode":args.input_mode,"processed":processed,"accepted":accepted,"local_only":True,"deployed":False}),flush=True)
 
 
 if __name__ == "__main__":

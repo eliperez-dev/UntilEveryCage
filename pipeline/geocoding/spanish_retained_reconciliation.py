@@ -43,10 +43,15 @@ def replay(query: str, retained_response: dict) -> dict | None:
     adapter = LocationIqAdapter(
         api_key="offline-placeholder", country_code="es", private_source_profile=True,
         query_kind="source_address_first_pass", first_pass_source=True,
+        spanish_state_free_search=False,
         opener=lambda *_a, **_k: _Response(payload),
     )
     outcome = adapter.geocode(query)
-    return outcome.response if outcome.status == "accepted" else None
+    if outcome.status != "accepted":
+        return None
+    if retained_response.get("_uec_request_input_mode") == "locationiq_spanish_state_free_v1":
+        outcome.response["_uec_request_input_mode"] = retained_response["_uec_request_input_mode"]
+    return outcome.response
 
 
 def result_id(parent_id) -> uuid.UUID:

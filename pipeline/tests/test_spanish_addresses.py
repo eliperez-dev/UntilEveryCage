@@ -29,12 +29,40 @@ class SpanishAddressTests(unittest.TestCase):
         for number in (None, True, "", "12;14", "12-14"):
             self.assertFalse(s.street_matches("Calle Example 12", "Calle Example", number))
 
+    def test_linking_preposition_only_after_explicit_road_type(self):
+        self.assertTrue(s.street_matches("Calle de Example 4", "Calle Example", "4"))
+        self.assertTrue(s.street_matches("Carrer Example 4", "Carrer de Example", "4"))
+        self.assertTrue(s.street_matches("Calle de La Example 4", "Calle La Example", "4"))
+        for source, road in (("Calle D Example 4", "Calle Example"),
+                             ("Calle de La Example 4", "Calle Example"),
+                             ("Calle Puente de Example 4", "Calle Puente Example"),
+                             ("Avenida de Example 4", "Calle Example"),
+                             ("Calle del Example 4", "Calle Example")):
+            self.assertFalse(s.street_matches(source, road, "4"))
+        self.assertFalse(s.street_matches("Calle de Example 5", "Calle Example", "4"))
+
     def test_provider_query_removes_clutter_only_for_one_explicit_road(self):
         self.assertEqual(s.provider_address("Industrial estate, C/ Example, 12, Nave 3"), "calle example 12")
         ambiguous = "Calle Example 12, Calle Other 14"
         self.assertEqual(s.provider_address(ambiguous), ambiguous)
         for source in ("Industrial estate, Plot 12", "Calle Example s/n", "Calle Example 12 Unknown Tail"):
             self.assertEqual(s.provider_address(source), source)
+
+    def test_input_classification_keeps_complex_addresses_eligible_but_separate(self):
+        cases = {"Calle de Example 4": "simple_numbered_road", "C/ Example, 4A": "simple_numbered_road",
+                 "Calle Example s/n": "explicit_no_number", "Carretera Example km 2": "road_distance",
+                 "Poligono Example Parcela 4": "estate_or_plot", "Calle Example 4 Nave 2": "building_unit",
+                 "Calle Example 4, Calle Other 5": "multiple_numbered_fragments",
+                 "Example 4": "other_numbered_address", "Calle Example": "unparsed_or_unnumbered"}
+        for source, expected in cases.items():
+            self.assertEqual(s.input_kind(source), expected)
+
+    def test_structured_components_use_known_street_without_guessing_plot_numbers(self):
+        self.assertEqual(s.structured_components("Estate, C/ Example, 4, Nave 2"), ("calle example", "4"))
+        self.assertEqual(s.structured_components("Calle de Example 4 Nave 2"), ("calle example", "4"))
+        for source in ("Poligono Example Parcela 4", "Carretera Example km 4", "Calle Example s/n",
+                       "Calle Example 4, Calle Other 5", "PG Example 4", "Calle Example 0"):
+            self.assertIsNone(s.structured_components(source))
 
     def test_locality_articles_accents_and_province_aliases(self):
         self.assertEqual(s.locality_key("Example (La)"), s.locality_key("La Example"))

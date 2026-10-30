@@ -25,7 +25,7 @@ class LocationIqAdapter:
     def __init__(self, api_key: str | None = None, timeout: int = 20,
                  opener: Callable = urllib.request.urlopen, *, country_code: str | None = None,
                  private_source_profile: bool = False, query_kind: str | None = None,
-                 first_pass_source: bool = False):
+                 first_pass_source: bool = False, spanish_state_free_search: bool | None = None):
         self.api_key = (api_key or os.environ.get("LOCATIONIQ_API_KEY", "")).strip()
         if not self.api_key:
             raise ValueError("LOCATIONIQ_API_KEY is required")
@@ -38,6 +38,13 @@ class LocationIqAdapter:
         self.private_source_profile = private_source_profile
         self.query_kind = query_kind
         self.first_pass_source = first_pass_source
+        spanish_address_profile = (country_code == "es" and private_source_profile and first_pass_source
+                                   and query_kind == "source_address_first_pass")
+        if spanish_state_free_search is not None and type(spanish_state_free_search) is not bool:
+            raise ValueError("invalid Spanish state-free search mode")
+        if spanish_state_free_search is True and not spanish_address_profile:
+            raise ValueError("state-free Spanish search requires a private Spain address profile")
+        self.spanish_state_free_search = spanish_address_profile if spanish_state_free_search is None else spanish_state_free_search
 
     @staticmethod
     def _parse_first_pass_query(query: str, country_code: str):
@@ -276,6 +283,9 @@ class LocationIqAdapter:
             "addressdetails": 1, "normalizeaddress": 0 if is_first_pass and self.country_code == "es" else 1, "normalizecity": 1,
             "statecode": 1, "limit": 2,
         }
+        if self.spanish_state_free_search and is_first_pass:
+            request_params["q"] = ", ".join(part for part in (
+                spanish_addresses.provider_address(source_address), locality, postcode, "Spain") if part)
         endpoint = self.endpoint
         # Keep explicit Spanish street/house and municipality in separate fields.
         # Free-form search can silently fall back to a town when parsing an
@@ -286,15 +296,19 @@ class LocationIqAdapter:
                                   if road.partition(" ")[0] in
                                   {"street", "avenue", "road", "path", "promenade", "square"}}
                                  if is_first_pass and self.country_code == "es" else set())
-        if (is_first_pass and self.country_code == "es" and locality
-                and len(numbered_spanish_roads) == 1):
+        components = spanish_addresses.structured_components(source_address) if is_first_pass and self.country_code == "es" else None
+        use_structured = components is not None if self.spanish_state_free_search else len(numbered_spanish_roads) == 1
+        if is_first_pass and self.country_code == "es" and locality and use_structured:
             endpoint += "/structured"
             del request_params["q"]
             request_params.update(street=spanish_addresses.provider_address(source_address),
                                   city=locality, country="Spain")
+            if self.spanish_state_free_search:
+                street, house = components
+                request_params["street"] = f"{house} {street}"
             if postcode:
                 request_params["postalcode"] = postcode
-            if region:
+            if region and not self.spanish_state_free_search:
                 request_params["state"] = region
         params = urllib.parse.urlencode(request_params)
         request = urllib.request.Request(endpoint + "?" + params,
@@ -446,6 +460,8 @@ class LocationIqAdapter:
                     viable.append((len(candidates) - 1, coords, safe))
 
         envelope = {"results": candidates}
+        if self.spanish_state_free_search and is_first_pass:
+            envelope["_uec_request_input_mode"] = "locationiq_spanish_state_free_v1"
         profile_can_accept = (self.private_source_profile and
                               self.country_code in {"de", "nz", "gb"})
         profile_can_accept = profile_can_accept or (
