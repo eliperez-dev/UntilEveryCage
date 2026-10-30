@@ -202,10 +202,16 @@ of the country sprint. Resume the unattempted queue with available authorized
 allowances; do not publish an intermediate snapshot instead.
 
 `--provider geoapify --sources es.locations` uses the existing Spanish address
-profile and its separate 3,000-request UTC-day ledger. It includes the retained
-AESAN town in the plaintext provider query, without changing either adapter's
-acceptance rules. A command without `--run` remains read-only. Confirm the
+profile and its separate 3,000-request UTC-day ledger. Apply migration 113 first.
+The job retains the structured source address and verified AESAN town; only the
+adapter formats provider request text. Python and SQL both require matching
+street/house number, town, and supplied postcode/province. The older shared
+handler cannot bypass the Spanish checks. Do not resume old plaintext address
+jobs as a substitute. A command without `--run` remains read-only. Confirm the
 source/provider transfer authorization before running it.
+Geoapify plans report `provider_input_blocked_requests` for addresses without a
+verified town. They stay in the overall inventory but are not staged or charged
+a reservation; recover their source context before attempting that provider.
 For three simultaneous lanes, use `--partitions 3` with distinct indices:
 Geoapify 0, LocationIQ primary 1, LocationIQ secondary 2. Partitioning uses the
 same source/structured-query identity before provider formatting, so the lanes
@@ -216,6 +222,14 @@ number merely to request a lookup. Exact-point acceptance separately requires
 matching address components and supplied context. NZ still requires exactly
 one physical location. Spanish municipality context comes only from retained,
 source-key-bound AESAN lookup evidence. Raw responses and queries remain private.
+
+`python -m pipeline.geocoding.retained_failure_audit` audits saved UK/Catalonia
+failures read-only, with no keys or provider requests. It reports missing
+address detail separately from mismatches and excludes already accepted replay
+evaluations. Current findings and the gate for resuming bulk work belong in
+`source-status.json`. UK Geoapify rejections now preserve the same bounded
+address-only diagnostics as Spain/Poland; older count-only responses cannot be
+reconstructed without another request.
 
 For Spanish addresses containing one explicit typed street/house and a retained
 municipality, LocationIQ uses its documented `/search/structured` endpoint with

@@ -213,10 +213,11 @@ def provider_query(group, provider):
     if provider != "geoapify" or group["source"] != "es.locations":
         raise ValueError("first_pass_provider_source_not_supported")
     parsed = LocationIqAdapter._parse_first_pass_query(group["query"], "es")
-    if parsed is None:
+    if parsed is None or not parsed[1]:
         raise ValueError("invalid_first_pass_source_query")
-    # The town is from retained, source-bound AESAN evidence, not guessed.
-    return parsed[-1]
+    # Preserve source components for independent Python/SQL validation. Only
+    # the adapter formats the text sent to the provider.
+    return group["query"]
 
 
 def stage(connection, group, provider="locationiq"):
@@ -308,9 +309,16 @@ def main():
     remaining = max(0,daily_budget-(usage[0] if usage else 0))
     # Stable hash partitions remain disjoint even as other workers finish jobs.
     groups = partition_groups(groups,args.partition,args.partitions)
+    blocked_context = 0
+    if args.provider == "geoapify":
+        # The Spanish exact-address bridge needs a source-bound town. Keep
+        # these addresses in the inventory, but do not reserve a request the
+        # adapter would reject locally before reaching the provider.
+        blocked_context = sum(not json.loads(group["query"])["locality"].strip() for group in groups)
+        groups = [group for group in groups if json.loads(group["query"])["locality"].strip()]
     groups.sort(key=lambda g:(SOURCES.index(g["source"]),g["query"]))
     groups = groups[:min(args.limit,remaining)]
-    print(json.dumps({"stage":"first_pass_plan","sources":summary,"provider":args.provider,"account":args.account,"selected_requests":len(groups),"remaining_account_ledger":remaining,"provider_calls":0}),flush=True)
+    print(json.dumps({"stage":"first_pass_plan","sources":summary,"provider":args.provider,"account":args.account,"selected_requests":len(groups),"provider_input_blocked_requests":blocked_context,"remaining_account_ledger":remaining,"provider_calls":0}),flush=True)
     if not args.run or not groups:
         return
     spec=importlib.util.spec_from_file_location("first_pass_worker",ROOT/"pipeline/scripts/stages/geocode-worker.py")

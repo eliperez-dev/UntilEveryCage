@@ -340,7 +340,7 @@ class GeoapifyAdapterTests(unittest.TestCase):
         self.assertEqual(unresolved.response["features"], [])
         self.assertNotIn("apiKey", json.dumps(unresolved.response))
 
-    def test_non_spain_private_rejection_diagnostics_remain_unchanged(self):
+    def test_uk_private_rejections_keep_address_evidence_without_business_names(self):
         feature = {"geometry": {"coordinates": [-2.5, 55.9]}, "properties": {
             "country_code": "gb", "result_type": "building", "address_line1": "11 Other Road",
             "rank": {"confidence": 0.96}, "name": "Synthetic Business"}}
@@ -348,7 +348,19 @@ class GeoapifyAdapterTests(unittest.TestCase):
             api_key="test-secret", opener=unittest.mock.Mock(return_value=FakeResponse({"features": [feature]}))
         ).geocode("10 Example Road, Exampleton, AB1 2CD, United Kingdom")
         self.assertEqual(result.status, "review_required")
-        self.assertEqual(result.response, {"result_count": 1, "viable_result_count": 0})
+        self.assertEqual(result.response["diagnostic_projection"], "private_gb_rejected_candidate_properties")
+        self.assertEqual(result.response["features"][0]["properties"]["address_line1"], "11 Other Road")
+        self.assertNotIn("Synthetic Business", json.dumps(result.response))
+        self.assertNotIn("test-secret", json.dumps(result.response))
+
+    def test_other_private_country_diagnostics_remain_count_only(self):
+        feature={"geometry":{"type":"Point","coordinates":[12.5,55.7]},
+                 "properties":{"country_code":"dk","result_type":"building",
+                               "address_line1":"11 Other Road","rank":{"confidence":.96}}}
+        adapter=geoapify.GeoapifyAdapter(api_key="synthetic-test-key",country_code="dk",private_source_profile=True,
+            opener=unittest.mock.Mock(return_value=FakeResponse({"features":[feature]})))
+        self.assertEqual(adapter.geocode("10 Example Road, Example Town, Denmark").response,
+                         {"result_count":1,"viable_result_count":0})
 
     def test_private_source_profile_rejects_multiple_viable_or_wrong_country(self):
         base = {"geometry": {"type": "Point", "coordinates": [-2.5, 55.9]},

@@ -17,6 +17,7 @@ import unicodedata
 from typing import Callable
 
 from .base import GeocodeOutcome
+from . import spanish_addresses
 
 
 class GeoapifyAdapter:
@@ -69,19 +70,21 @@ class GeoapifyAdapter:
         )
 
     def _private_match_diagnostics(self, features: list) -> dict:
-        """Retain bounded address evidence for private Spain/Poland matching review."""
-        if not (self.private_source_profile and self.country_code in {"es", "pl"}):
+        """Retain bounded address evidence for private ES/PL/GB matching review."""
+        if not (self.private_source_profile and self.country_code in {"es", "pl", "gb"}):
             return {"result_count": len(features), "viable_result_count": 0}
         allowed = {"country_code", "result_type", "address_line1", "street", "housenumber",
-                   "city", "county", "state_code", "state", "postcode"}
+                   "city", "town", "village", "suburb", "municipality", "county",
+                   "province", "state_district", "state_code", "state", "postcode"}
         retained = []
         for feature in features[:2]:
             if not isinstance(feature, dict):
                 continue
             props = feature.get("properties")
             props = props if isinstance(props, dict) else {}
-            safe_props = {key: value[:300] if isinstance(value, str) else value
-                          for key, value in props.items() if key in allowed and isinstance(value, (str, int))}
+            safe_props = {key: value.replace(self.api_key, "[redacted]")[:300] if isinstance(value, str) else value
+                          for key, value in props.items() if key in allowed and isinstance(value, (str, int))
+                          and not isinstance(value, bool)}
             rank = props.get("rank")
             confidence = rank.get("confidence") if isinstance(rank, dict) else None
             if isinstance(confidence, (int, float)) and not isinstance(confidence, bool) and isfinite(confidence):
@@ -101,8 +104,19 @@ class GeoapifyAdapter:
         query = query.strip()
         if not query:
             return self._failed("empty_query", False)
+        spanish_context = None
+        provider_query = query
+        if (self.private_source_profile and self.country_code == "es"
+                and not self.locality_only and query.startswith("{")):
+            # Local import avoids the legacy LocationIQ -> Geoapify normalizer
+            # dependency at module initialization.
+            from .locationiq import LocationIqAdapter
+            parsed = LocationIqAdapter._parse_first_pass_query(query, "es")
+            if parsed is None or not parsed[1]:
+                return self._failed("invalid_source_address", False)
+            spanish_context, provider_query = parsed[:4], parsed[-1]
         params = {
-            "text": query,
+            "text": provider_query,
             "format": "geojson",
             "limit": 2,
             "apiKey": self.api_key,
@@ -134,7 +148,7 @@ class GeoapifyAdapter:
             return GeocodeOutcome(
                 "unresolved", "unresolved", None, None, None, None,
                 "geoapify_forward", False,
-                self._private_match_diagnostics(features) if self.private_source_profile and self.country_code in {"es", "pl"} else payload,
+                self._private_match_diagnostics(features) if self.private_source_profile and self.country_code in {"es", "pl", "gb"} else payload,
             )
         # Ignore weak/incompatible alternatives, but require exactly one
         # independently viable match. A second returned feature alone is not
@@ -168,6 +182,13 @@ class GeoapifyAdapter:
                     or not isfinite(candidate_confidence) or candidate_confidence < self.minimum_rank_confidence):
                 continue
             candidate_type = candidate_props.get("result_type")
+            if spanish_context is not None:
+                if (candidate_geometry.get("type") == "Point" and candidate_confidence <= 1
+                        and candidate_type in {"building", "amenity"}
+                        and self._spanish_context_matches(candidate_props, spanish_context)
+                        and -19 <= lng <= 5 and 27 <= lat <= 44.5):
+                    viable.append((candidate, "high_confidence_address_match"))
+                continue
             parts = [self._normalize(part) for part in query.split(",") if self._normalize(part)]
             candidate_address = candidate_props.get("address_line1")
             candidate_street = candidate_props.get("street")
@@ -221,7 +242,7 @@ class GeoapifyAdapter:
                     "review_required", "ambiguous_multiple_viable_results" if len(viable) > 1 else "address_or_locality_match_not_supported",
                     None, None, None, None, "geoapify_forward", False,
                     (self._private_match_diagnostics(features) | {"viable_result_count": len(viable)}
-                     if self.private_source_profile and self.country_code in {"es", "pl"}
+                     if self.private_source_profile and self.country_code in {"es", "pl", "gb"}
                      else {"result_count": len(features), "viable_result_count": len(viable)}),
                 )
             feature, accepted_match = viable[0]
@@ -286,7 +307,7 @@ class GeoapifyAdapter:
             and confidence is not None
             and confidence >= self.minimum_rank_confidence
             and query_parts
-            and normalized_address == query_parts[0]
+            and (spanish_context is not None or normalized_address == query_parts[0])
             and (self.country_code != "pl" or self._poland_context_matches(properties, query_parts))
             and (self.country_code != "de" or self._germany_context_matches(properties, query_parts))
         ):
@@ -325,6 +346,19 @@ class GeoapifyAdapter:
             "review_required", "address_or_locality_match_not_supported", None, None,
             None, precision, "geoapify_forward", False,
             {"error": "address_or_locality_match_not_supported"},
+        )
+
+    @staticmethod
+    def _spanish_context_matches(properties: dict, context: tuple) -> bool:
+        address, locality, postcode, region = context
+        return bool(
+            spanish_addresses.street_matches(address, properties.get("street"), properties.get("housenumber"))
+            and locality and any(
+                spanish_addresses.locality_key(locality) == spanish_addresses.locality_key(properties.get(key))
+                for key in ("city", "town", "village", "suburb", "municipality"))
+            and (not postcode or re.sub(r"\s+", "", postcode).upper()
+                 == re.sub(r"\s+", "", str(properties.get("postcode") or "")).upper())
+            and spanish_addresses.province_matches(properties, region, postcode)
         )
 
     @staticmethod

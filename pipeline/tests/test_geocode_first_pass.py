@@ -42,10 +42,12 @@ class FirstPassInputTests(unittest.TestCase):
         group={"source":"es.locations", "query":structured_query("es.locations",location,municipality="Example Town")}
         original_query = group["query"]
         self.assertEqual(provider_query(group,"locationiq"),group["query"])
-        self.assertEqual(provider_query(group,"geoapify"),
-                         "calle ejemplo 4, Example Town, Madrid, Spain")
+        self.assertEqual(provider_query(group,"geoapify"),group["query"])
         self.assertEqual(group["query"], original_query)
         self.assertEqual(json.loads(group["query"])["address"], location["address"])
+        missing_town={"source":"es.locations","query":structured_query("es.locations",location)}
+        with self.assertRaises(ValueError):
+            provider_query(missing_town,"geoapify")
         for provider, source in (("other","es.locations"),("geoapify","nz.locations"),
                                  ("geoapify","es.cat.feed-sandach")):
             with self.subTest(provider=provider,source=source), self.assertRaises(ValueError):

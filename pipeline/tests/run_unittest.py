@@ -35,16 +35,6 @@ ALLOWED_SKIPPED_TESTS = {
         "set UEC_SPAIN_MUNICIPALITY_REAL_ACCEPTANCE=true and assigned UEC_DATABASE_URL",
     ),
     (
-        "test_spain_geocoding_profile.SpainGeocodingProfileTests"
-        ".test_database_display_bridge_positive_and_negative_cases_rollback",
-        "set UEC_SPAIN_REAL_DATA_ACCEPTANCE=true with the assigned private DB URL",
-    ),
-    (
-        "pipeline.tests.test_spain_geocoding_profile.SpainGeocodingProfileTests"
-        ".test_database_display_bridge_positive_and_negative_cases_rollback",
-        "set UEC_SPAIN_REAL_DATA_ACCEPTANCE=true with the assigned private DB URL",
-    ),
-    (
         "sources.germany.test_geocoding.GermanyPrivateGeocodingTests"
         ".test_database_display_bridge_positive_and_negative_cases_rollback",
         "set UEC_GERMANY_REAL_DATA_ACCEPTANCE=true with the assigned private DB URL",
@@ -100,6 +90,11 @@ ALLOWED_SKIPPED_TESTS = {
         "set UEC_RUN_REAL_GRAPH_ACTIVATION=1 for approved local real-data acceptance",
     ),
 }
+ALLOWED_SKIPPED_TESTS.update(
+    (f"{prefix}test_spain_geoapify_structured.SpanishStructuredGeoapifyPostgisTests."
+     "test_real_retained_match_and_rejection_guards_rollback", "assigned retained Spain database required")
+    for prefix in ("", "pipeline.tests.")
+)
 
 # These checks use the approved retained v0 copy, which CI does not contain.
 # Keep the exemption scoped to these test IDs, not a reusable skip reason.
