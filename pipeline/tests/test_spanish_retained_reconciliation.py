@@ -72,6 +72,12 @@ class SpanishRetainedPostgisTests(unittest.TestCase):
                 self.assertEqual(actual, expected)
 
     def test_reference_region_and_province_alias_parity(self):
+        for source, expected in (("Bilbao", "bizkaia"), ("Palma de Mallorca", "baleares"),
+                                 ("Bizkaia", "bizkaia"), ("Illes Balears", "baleares")):
+            actual = self.connection.execute(
+                "SELECT real_preview.spanish_province_key(%s)", (source,)).fetchone()[0]
+            self.assertEqual(actual, expected)
+            self.assertEqual(s.province_key(source), expected)
         for aliases, provinces in s.REGIONS:
             for alias in aliases:
                 actual = self.connection.execute("SELECT real_preview.spanish_region_members(%s)", (alias,)).fetchone()[0]

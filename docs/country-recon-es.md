@@ -50,4 +50,22 @@ Location-evidence contract verification (2026-10-02) reprocessed that retained s
 
 ## Remaining Spain-wide work
 
+AESAN locality recovery treats `Bilbao` and `Palma de Mallorca` as
+source-specific province-field spellings for Bizkaia and Illes Balears. This
+is supported by retained AESAN province-filter exports and IGN's province and
+capital reference; it does not make the capital interchangeable with every
+municipality in that province. Recovery requires the same registration and
+industrial address, retains the original source row, and appends town evidence.
+IGN municipality reference points remain approximate.
+
+For address-level enrichment, [CartoCiudad's government geocoder](https://www.cartociudad.es/web/portal/directorio-de-servicios/geoprocesamiento)
+offers numbered address candidates with municipality, province, postcode and
+WGS84 coordinates. Its [usage terms](https://www.cartociudad.es/web/portal/faq)
+allow reuse under CC BY 4.0 with CartoCiudad attribution. The
+[publisher's API documentation](https://github.com/IDEESpain/Cartociudad)
+documents structured geographic filters and distinguishes numbered portals
+from streets and municipalities. Phonetic candidate retrieval does not itself
+establish an address match. This is a research option, not an integrated
+provider; current pilot authorization and readiness belong in the inventory.
+
 MAPA SILUM/SANDACH and other regional registers have distinct sector scopes and terms. They require independent verification and source IDs; none may be silently unioned with AESAN or Catalonia. `Old CSVs/spain-data.csv` remains a reconciliation-only V1 baseline, not an acquisition source.

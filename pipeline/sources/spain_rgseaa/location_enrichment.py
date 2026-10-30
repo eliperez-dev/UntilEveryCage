@@ -181,8 +181,12 @@ def same_official_province(left: str, right: str) -> bool:
 
 
 def official_province_key(value: str) -> str:
-    """Return a stable key across only the explicit official province aliases."""
+    """Normalize the explicit labels used in AESAN province fields only."""
     key = _province_key(value)
+    # AESAN's workbook uses Bilbao for Bizkaia (IGN province 48, capital
+    # Bilbao). Its Islas Baleares/IB exports label province rows Palma de
+    # Mallorca. These source-field spellings are not municipality aliases.
+    key = {"bilbao": "bizkaia", "palmademallorca": "baleares"}.get(key, key)
     aliases = next((group for group in _PROVINCE_ALIASES if key in group), None)
     return min(aliases) if aliases else key
 

@@ -2,7 +2,7 @@
 
 **Canonical authority:** this document is the sole product-level readiness and overall V2 roadmap authority.
 
-**Owner:** project maintainer. **Updated:** 2026-10-28, Pacific.
+**Owner:** project maintainer. **Updated:** 2026-10-30, Pacific.
 This is the only product roadmap. Source readiness belongs in
 [source-status.json](source-status.json); current frontend instructions belong
 in [frontend/README.md](frontend/README.md). [ETHICS.md](ETHICS.md) governs data work.
@@ -16,6 +16,14 @@ to datasets; legacy V1 refers to the original website.
 The product is running at <https://untileverycage.onrender.com/>.
 The original website has not been replaced. Existing dataset approvals are
 complete; do not request another generic approval stamp.
+
+The backend country release remains local and held. Spanish town recovery has
+added 387 approximate municipality points without geocoding requests, but
+13,451 never-reserved Spanish address groups remain, plus two pilot jobs that
+were rejected before reaching a provider. Commercial bulk requests are paused
+after low-yield diagnostics while a better address reference is evaluated.
+Current counts and evidence belong in [the source inventory](source-status.json).
+This work has not changed the hosted dataset or frontend.
 
 | Area | Last verified state |
 | --- | --- |

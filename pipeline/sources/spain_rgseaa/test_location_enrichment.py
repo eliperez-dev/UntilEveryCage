@@ -243,8 +243,9 @@ class AesanLocationEnrichmentTests(unittest.TestCase):
         self.assertTrue(same_official_province("La Rioja", "Rioja, La"))
         self.assertTrue(same_official_province("Las Palmas", "Palmas, Las"))
         self.assertTrue(same_official_province("Comunidad Foral de Navarra", "Navarra"))
-        # Bilbao is a city, not a province alias for all of Bizkaia.
-        self.assertFalse(same_official_province("Bilbao", "Bizkaia"))
+        self.assertTrue(same_official_province("Bilbao", "Bizkaia"))
+        self.assertTrue(same_official_province("Palma de Mallorca", "Illes Balears"))
+        self.assertFalse(same_official_province("Palma de Mallorca", "Bizkaia"))
         self.assertFalse(same_official_province("Sevilla", "Córdoba"))
 
 

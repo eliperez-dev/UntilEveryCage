@@ -11,6 +11,29 @@ from pipeline.sources.spain_rgseaa.location_enrichment import UnsupportedAesanPr
 
 
 class SpainBulkCohortAcquisitionTests(unittest.TestCase):
+    def test_missing_locality_selection_is_explicit_and_source_bound(self):
+        class Result:
+            def __init__(self,value):self.value=value
+            def fetchone(self):return self.value
+            def fetchall(self):return []
+        class Connection:
+            def __init__(self):self.queries=[]
+            def __enter__(self):return self
+            def __exit__(self,*_):return False
+            def transaction(self):return self
+            def execute(self,sql,*_):
+                self.queries.append(sql)
+                if 'SELECT current_database()' in sql:return Result(('uec_launch_sources_test_20261025',))
+                if 'FROM real_preview.source_manifests manifest' in sql:return Result(('expected',))
+                return Result(None)
+        for missing_only in (False,True):
+            connection=Connection()
+            acquisition._eligible_representatives('unused','expected',lambda *_a,**_k:connection,
+                missing_localities_only=missing_only)
+            self.assertEqual('real_preview.spain_verified_locality_evidence' in connection.queries[-1],missing_only)
+            self.assertIn('candidate.snapshot_sha256',connection.queries[-1])
+            self.assertIn("state.state_code='restricted'",connection.queries[-1])
+
     def test_unsupported_province_stays_pending_and_does_not_block_valid_groups(self):
         keys = ["1" * 64, "2" * 64]
         registrations = ["10.000007/B", "10.000008/M"]

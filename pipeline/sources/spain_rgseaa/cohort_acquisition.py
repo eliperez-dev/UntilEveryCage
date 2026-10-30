@@ -151,7 +151,7 @@ def _retain_bulk_export(output_path: Path, approved_root: Path, group: dict[str,
 
 
 def _eligible_representatives(database_url: str, normalized_sha256: str,
-                              connect: Any) -> list[tuple[str, str]]:
+                              connect: Any, *, missing_localities_only: bool = False) -> list[tuple[str, str]]:
     with connect(database_url, options="-c default_transaction_read_only=on") as connection:
         with connection.transaction():
             connection.execute("SET TRANSACTION READ ONLY")
@@ -168,7 +168,12 @@ def _eligible_representatives(database_url: str, normalized_sha256: str,
             """, (SOURCE_ID, SOURCE_ID)).fetchone()
             if not manifest or normalized_sha256 != manifest[0].strip():
                 raise RuntimeError("normalized_records_not_latest_snapshot")
-            return connection.execute("""
+            missing_filter = """AND NOT EXISTS (
+                SELECT 1 FROM real_preview.spain_verified_locality_evidence verified
+                WHERE verified.candidate_id=candidate.candidate_id
+                  AND verified.snapshot_sha256=candidate.snapshot_sha256
+                  AND verified.source_id=candidate.source_id)""" if missing_localities_only else ""
+            return connection.execute(f"""
                 WITH latest AS (
                     SELECT snapshot_sha256 FROM real_preview.source_preview_runs
                      WHERE source_id=%s ORDER BY created_at DESC,run_id DESC LIMIT 1
@@ -193,6 +198,10 @@ def _eligible_representatives(database_url: str, normalized_sha256: str,
                        JOIN uec.public_access_restricted restricted USING(source_record_id)
                        WHERE target.candidate_id=candidate.candidate_id
                    )
+                   AND NOT EXISTS (
+                       SELECT 1 FROM real_preview.enrichment_state_events state
+                       WHERE state.candidate_id=candidate.candidate_id AND state.state_code='restricted')
+                   {missing_filter}
                  ORDER BY candidate.candidate_id
             """, (SOURCE_ID, SOURCE_ID)).fetchall()
 
@@ -270,7 +279,8 @@ def acquire(database_url: str, records_path: Path, output_path: Path, *,
 def acquire_bulk(database_url: str, records_path: Path, output_path: Path, *,
                  group_limit: int = 10000, max_seconds: float = 3600,
                  request_interval_seconds: float = DEFAULT_REQUEST_INTERVAL_SECONDS,
-                 lookup: Any = None, connect: Any = None) -> dict[str, Any]:
+                 lookup: Any = None, connect: Any = None,
+                 missing_localities_only: bool = False) -> dict[str, Any]:
     """Recover locality rows with AESAN's ordinary province/sector Excel export.
 
     Each query leaves the registration number blank and follows the form's
@@ -293,7 +303,8 @@ def acquire_bulk(database_url: str, records_path: Path, output_path: Path, *,
 
     records, normalized_sha256 = _load_records(records_path)
     connect = connect or psycopg.connect
-    candidates = _eligible_representatives(database_url, normalized_sha256, connect)
+    candidates = _eligible_representatives(database_url, normalized_sha256, connect,
+        missing_localities_only=missing_localities_only)
     processed = _processed_keys(output_path)
     pending_by_group: list[dict[str, Any]] = []
     for registration, record_key in candidates:
@@ -323,6 +334,8 @@ def acquire_bulk(database_url: str, records_path: Path, output_path: Path, *,
             grouped.append(group)
         group["records"].append(item["record"])
 
+    if missing_localities_only:
+        grouped.sort(key=lambda group: (-len(group["records"]), group["province"], group["sector"]))
     all_groups = grouped
     total_groups = len(all_groups)
     grouped = all_groups[:group_limit]
@@ -428,14 +441,19 @@ def main() -> int:
                         default=DEFAULT_REQUEST_INTERVAL_SECONDS)
     parser.add_argument("--strategy", choices=("bulk", "individual"), default="bulk",
                         help="bulk follows AESAN's ordinary province/sector Excel export")
+    parser.add_argument("--missing-localities-only", action="store_true",
+                        help="query only current candidates without verified locality evidence")
     args = parser.parse_args()
     if not args.database_url:
         parser.error("--database-url or UEC_DATABASE_URL is required")
+    if args.missing_localities_only and args.strategy != "bulk":
+        parser.error("--missing-localities-only requires --strategy bulk")
     try:
         if args.strategy == "bulk":
             result = acquire_bulk(args.database_url, args.records, args.output,
                                   group_limit=args.limit, max_seconds=args.max_seconds,
-                                  request_interval_seconds=args.request_interval_seconds)
+                                  request_interval_seconds=args.request_interval_seconds,
+                                  missing_localities_only=args.missing_localities_only)
         else:
             result = acquire(args.database_url, args.records, args.output, limit=args.limit,
                              max_seconds=args.max_seconds,

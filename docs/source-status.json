@@ -93,16 +93,17 @@
       },
       "latest_checkpoint": {
         "checked_date_utc": "2026-10-30",
-        "status": "matching_repair_verified_locally_new_pilot_low_yield_bulk_paused",
+        "status": "town_recovery_applied_locally_better_address_reference_under_review_bulk_paused",
         "source_id": "es.locations",
         "unattempted_unique_addresses_before_pilots": 14960,
         "freeform_corrected_pilot": {"requests": 24, "accepted_address_results": 0},
         "structured_corrected_pilot": {"requests": 24, "accepted_address_results": 2, "display_evidence_records": 2},
         "structured_request_reference": "https://docs.locationiq.com/reference/search-structured",
         "previous_expansion": {"planned_primary": 4952, "planned_secondary": 5000, "last_physical_result_at_utc": "2026-10-29T16:37:59Z", "requests_including_pilots": 1484, "accepted_requests": 96, "display_records": 103, "unreserved_interrupted_claims": 4, "completion_receipt_written": false},
-        "remaining_spanish_unique_addresses": 13452,
+        "remaining_spanish_unique_addresses": 13451,
         "locally_rejected_pilot_addresses_not_sent_to_provider": 2,
-        "remaining_needing_real_provider_attempt_including_local_rejections": 13454,
+        "remaining_needing_real_provider_attempt_including_local_rejections": 13453,
+        "remaining_count_basis": "13,451 never-reserved address groups after verified-town recovery, plus two retained pilot jobs rejected locally before any provider request. One formerly separate group now shares an already-attempted address after its town was recovered.",
         "provider_utc_window_date": "2026-10-30",
         "account_ledger_requests_at_checkpoint": {"primary": 72, "secondary": 0},
         "geoapify_requests_at_checkpoint": 170,
@@ -192,7 +193,38 @@
           "bulk_resumed": false,
           "deployed": false
         },
-        "next_action": "Keep Spanish bulk requests paused: the corrected random pilot produced only one address match from 22 outbound attempts. Recover verified town evidence for 452 unattempted addresses plus the two locally rejected pilot jobs; do not count those two as actual provider attempts. Assess a better address reference or provider route before more bulk calls. Recover the four unreserved interrupted claims before resuming, without counting them as paid attempts."
+        "locality_recovery_20261030": {
+          "implementation": ["pipeline/sources/spain_rgseaa/locality_recovery.py", "pipeline/sources/spain_rgseaa/cohort_acquisition.py", "pipeline/migrations/114_spanish_source_province_labels.sql"],
+          "province_field_corrections": {"Bilbao": "Bizkaia", "Palma de Mallorca": "Illes Balears"},
+          "province_correction_scope": "Source province fields only; not general municipality aliases. Retained IGN province/capital reference and AESAN province-filter exports establish the source spellings.",
+          "missing_locality_records_examined": 723,
+          "retained_exports_checked": 188,
+          "towns_recovered_from_retained_exports": 92,
+          "fresh_province_sector_groups_completed": 95,
+          "fresh_source_http_requests": 285,
+          "towns_recovered_from_fresh_exports": 324,
+          "total_towns_recovered": 416,
+          "approximate_ign_municipality_points_added": 387,
+          "recovered_towns_without_reference_point": 29,
+          "remaining_records_without_verified_town": 307,
+          "remaining_unattempted_address_groups_without_verified_town": 192,
+          "registration_only_diagnostic": {"sample_records": 12, "matched": 0, "not_found": 12},
+          "current_source_records": 19777,
+          "current_source_mapped_records": 15744,
+          "geocoding_provider_calls": 0,
+          "baseline": "verified_unchanged",
+          "evidence": "data/staging/spain-context-recovery-20261030",
+          "activation": "Append-only verified locality evidence and IGN municipality display evidence; original addresses and classifications preserved. These are approximate municipality points, not address matches. Repeated activation adds no duplicate points."
+        },
+        "address_reference_research": {
+          "service": "CartoCiudad IGN/CNIG government address service",
+          "documentation": "https://www.cartociudad.es/web/portal/directorio-de-servicios/geoprocesamiento",
+          "terms": "https://www.cartociudad.es/web/portal/faq",
+          "licence": "CC BY 4.0 with CartoCiudad attribution",
+          "real_address_queries": 0,
+          "status": "Research only; 24-address transfer authorization requested, no real-address pilot run"
+        },
+        "next_action": "Keep commercial bulk requests paused: all 20 review-required random-pilot responses also failed source address/context matching independently of confidence. Town recovery is complete across all 95 missing province/sector groups. Evaluate CartoCiudad through a bounded pilot after authorization, then choose the next Spanish first-pass route. The two locally rejected pilot jobs still need real provider attempts. Recover four unreserved interrupted claims without counting them as paid attempts."
       },
       "uk_catalonia_retained_audit_20261030": {
         "implementation": "pipeline.geocoding.retained_failure_audit",
@@ -201,7 +233,8 @@
         "fsa": {"failed_locationiq_jobs": 1817, "no_returned_street_house_pair": 1622, "returned_street_or_house_differs": 101, "matching_street_house_but_context_differs": 86, "multiple_matching_addresses": 4, "result_type_country_or_coordinates_rejected": 4, "town_only_conflicts_with_matching_postcode": 43, "queries_with_explicit_numbered_road": 682, "all_queries_include_town_and_postcode": true, "older_geoapify_failures_without_retained_address_evidence": 1784},
         "fss": {"failed_locationiq_jobs": 1, "no_returned_street_house_pair": 1, "older_geoapify_failures_without_retained_address_evidence": 557},
         "source_field_check": "Catalonia adapter reads codi_postal separately from codi_municipi_idescat; UK FSA retains source Town and Postcode fields. Missing provider house numbers do not establish unusable source addresses.",
-        "uk_native_coordinate_lead": {"retained_fsa_records_with_raw_xy_pairs": 2045, "crs_confirmed": false, "points_promoted": 0, "next_action": "Verify source CRS/coordinate meaning against authoritative metadata before considering native-coordinate recovery instead of more address requests"},
+        "uk_native_coordinate_lead": {"retained_fsa_records_with_raw_xy_pairs": 2045, "distinct_pairs": 1741, "crs_confirmed": false, "points_promoted": 0, "implementation": "pipeline/geocoding/uk_grid_audit.py", "comparison_to_existing_address_points": {"compared": 39, "within_50m": 15, "within_250m": 27, "within_1km": 38, "at_least_10km_apart": 1}, "finding": "British-grid coordinates are plausible, but multiple CRS/order hypotheses fit broad UK bounds. Source schema and linked metadata do not identify CRS or point meaning; do not auto-promote all raw X/Y pairs."},
+        "uk_fhrs_reference_research": {"implementation": "pipeline/sources/uk/fhrs_reference.py", "source_url": "https://api.ratings.food.gov.uk/help", "source_category": "Manufacturers/packers", "published_records": 12231, "unique_records_observed": 12229, "usable_coordinate_references": 6825, "snapshot_atomic": false, "primary_records_checked": 4884, "exact_name_postcode_full_address_matches": 31, "currently_unmapped_exact_matches": 20, "points_imported": 0, "requests_contained_facility_data": false, "raw_contact_fields_retained": false, "evidence": "data/staging/uk-fhrs-reference-20261030", "scope": "Research only; no source registration or coordinate-import bridge implemented. Exact matching uses checksum-bound retained trading names, not intentionally blank preview names."},
         "future_uk_geoapify_rejections": "Retain bounded allow-listed address/coordinate diagnostic fields, excluding business names, contacts and credentials, as already done for Spain/Poland",
         "corrected_historical_no_address_match_percent": {"de.locations": 66.3, "es.cat.feed-sandach": 97.7, "es.locations": 97.4, "fsa_approved_establishments": 98.2, "fss_approved_establishments": 95.4, "nz.locations": 68.2, "pl.giw.approved-food": 69.2},
         "rate_limit": "Lookup-job rates include historical provider retries and are not unique-facility failure rates. Accepted retained replays count as recoveries even when their timestamps equal the parent timestamp.",
@@ -212,7 +245,7 @@
       "live_progress_authority": "Existing source-key-linked request reservations, results and job events in uec_launch_sources_test_20261025; count across all providers and snapshots",
       "previous_snapshot_requires_reassembly": true
     },
-    "next_action": "Poland's 3,136 unique eligible addresses have received a first attempt; shared-query target reconciliation remains. Spanish matching is repaired locally, but a 24-job random pilot produced one address match from 22 outbound attempts, so bulk stays paused. There are 13,452 never-reserved Spanish address groups plus two locally rejected jobs still needing a real provider attempt; 452 never-reserved groups lack verified town evidence. UK/Catalonia audits mostly found missing provider address detail; check 43 UK/24 Catalonia town-only conflicts and the UK's 2,045 raw source-coordinate pairs before more requests. Then complete the Spanish first pass through a justified route, overlap/reuse review, expanded release assembly, graph/report projections and package testing. Keep results local; do not cut over the older 93,058-point snapshot."
+    "next_action": "Poland's 3,136 unique eligible addresses have received a first attempt; shared-query target reconciliation remains. Spanish town recovery added 387 approximate IGN points with zero geocoding requests. There are 13,451 never-reserved Spanish address groups plus two locally rejected jobs still needing a real provider attempt; 192 never-reserved groups lack verified town evidence. Commercial bulk stays paused after the low-yield pilot; CartoCiudad is under review as an alternative. UK raw X/Y still lack confirmed CRS/precision; the FHRS reference found 20 unmapped exact matches but no import is implemented. Complete the Spanish first pass through a justified route, overlap/reuse review, expanded release assembly, graph/report projections and package testing. Keep results local; do not cut over the older 93,058-point snapshot."
   },
   "next_source_research": {
     "checked_date_utc": "2026-10-28",
