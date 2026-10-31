@@ -230,20 +230,22 @@ test('map detail shows one category and each activity, preserves facts, and open
 });
 
 test('Spanish processing summary is deduplicated in map detail and the full record', async ({ page }) => {
+  const expectedSummary = 'El procesamiento de aves prepara su carne para la venta o para su transformación posterior. La fuente registra el sacrificio de aves de corral y el procesamiento de carne de pollo.';
   await page.addInitScript(() => localStorage.setItem('uec-language', 'es'));
   await mockPublicRecord(page);
   await page.goto(`./#/map?selected=${id}&release_id=${release}`);
   const panel = page.locator('.reading-sheet[aria-label="Record evidence"]');
+  await expect(panel).toBeVisible({ timeout: 20_000 });
   await expect(panel.getByText('Procesamiento y preparación', { exact: true })).toHaveCount(1);
   const mapActivities = panel.locator('.classification-summary .summary');
-  await expect(mapActivities).toHaveText('El procesamiento de aves prepara su carne para la venta o para su transformación posterior.');
+  await expect(mapActivities).toHaveText(expectedSummary);
   await expect(mapActivities).not.toHaveText(/(?:^|,\s*)Procesamiento(?:,\s*|$)/);
   await expect(panel.getByRole('link', { name: 'Abrir página de la instalación', exact: true })).toBeVisible();
   await panel.locator(`a[href="#/records/${id}?profile=official&release_id=${release}"]`).click();
   const full = page.locator('.public-record');
   await expect(full.getByText('Procesamiento y preparación', { exact: true })).toHaveCount(1);
   const fullActivities = full.locator('.classification-summary .summary');
-  await expect(fullActivities).toHaveText('El procesamiento de aves prepara su carne para la venta o para su transformación posterior.');
+  await expect(fullActivities).toHaveText(expectedSummary);
   await expect(fullActivities).not.toHaveText(/(?:^|,\s*)Procesamiento(?:,\s*|$)/);
 });
 
@@ -283,14 +285,22 @@ test('city-level geocoding keeps its approximation and actual provider score in 
   const panel = page.locator('.reading-sheet[aria-label="Record evidence"]');
   await expect(panel.getByRole('heading', { name: 'Location', exact: true })).toHaveCount(1);
   await expect(panel).toContainText('Approximate location');
-  await expect(panel).toContainText('Geoapify forward');
-  await expect(panel).toContainText('Synthetic geocoder');
-  await expect(panel).toContainText('0.72 (provider score) · Medium');
+  await expect(panel.locator('.location-details')).not.toHaveAttribute('open', '');
+  await expect(panel.getByText('55, 10', { exact: true })).toBeHidden();
+  await panel.locator('.location-details > summary').click();
+  await expect(panel.locator('.location-details')).toHaveAttribute('open', '');
+  await expect(panel.getByText('Geoapify forward', { exact: true })).toBeVisible();
+  await expect(panel.getByText('Synthetic geocoder', { exact: true })).toBeVisible();
+  await expect(panel.getByText('0.72 (provider score) · Medium', { exact: true })).toBeVisible();
   await expect(panel.getByText('55, 10', { exact: true })).toBeVisible();
   await expect(panel.getByText('Address', { exact: true })).toHaveCount(0);
   await panel.getByRole('link', { name: 'Open facility page', exact: true }).click();
   const full = page.locator('.public-record');
   await expect(full).toContainText('Approximate location');
+  await expect(full.locator('.location-details')).not.toHaveAttribute('open', '');
+  await expect(full.getByText('55, 10', { exact: true })).toBeHidden();
+  await full.locator('.location-details > summary').click();
+  await expect(full.getByText('55, 10', { exact: true })).toBeVisible();
   await expect(full.locator('.location-preview')).toHaveAttribute('aria-label', 'Approximate road map preview');
   const pageOrder = await full.evaluate(root => {
     const location = root.querySelector('#location-heading');
@@ -302,7 +312,7 @@ test('city-level geocoding keeps its approximation and actual provider score in 
   });
   expect(pageOrder).toBe(true);
   await expect(full.locator('.location-preview .map')).toHaveAttribute('data-pin-loaded', 'true');
-  await expect(full).toContainText('0.72 (provider score) · Medium');
+  await expect(full.getByText('0.72 (provider score) · Medium', { exact: true })).toBeVisible();
   await expect(full.getByRole('heading', { name: 'Location', exact: true })).toHaveCount(1);
 });
 
