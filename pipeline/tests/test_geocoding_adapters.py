@@ -357,7 +357,7 @@ class GeoapifyAdapterTests(unittest.TestCase):
         feature={"geometry":{"type":"Point","coordinates":[12.5,55.7]},
                  "properties":{"country_code":"dk","result_type":"building",
                                "address_line1":"11 Other Road","rank":{"confidence":.96}}}
-        adapter=geoapify.GeoapifyAdapter(api_key="synthetic-test-key",country_code="dk",private_source_profile=True,
+        adapter=geoapify.GeoapifyAdapter(api_key="placeholder-test-key",country_code="dk",private_source_profile=True,
             opener=unittest.mock.Mock(return_value=FakeResponse({"features":[feature]})))
         self.assertEqual(adapter.geocode("10 Example Road, Example Town, Denmark").response,
                          {"result_count":1,"viable_result_count":0})

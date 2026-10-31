@@ -95,6 +95,26 @@ ALLOWED_SKIPPED_TESTS.update(
      "test_real_retained_match_and_rejection_guards_rollback", "assigned retained Spain database required")
     for prefix in ("", "pipeline.tests.")
 )
+# These retained-data cases run against the assigned local V0 copy; public CI
+# cannot contain their source rows or saved geocoder responses.
+ALLOWED_SKIPPED_TESTS.update(
+    (prefix + test_id, reason)
+    for prefix in ("", "pipeline.tests.")
+    for test_id, reason in (
+        ("test_spain_geoapify_structured.SpanishStructuredGeoapifyPostgisTests."
+         "test_retained_projection_replay_uses_stored_rows_without_another_request",
+         "assigned retained Spain database required"),
+        ("test_shared_query_reconciliation.SharedQueryPostgisTests."
+         "test_real_identical_targets_reuse_existing_evidence_without_requests",
+         "assigned local test copy required"),
+        ("test_spanish_provincial_reference.ProvincialPostgisTests."
+         "test_real_matches_rollback_and_forged_components_do_not_project",
+         "opt-in approved local database and retained provincial comparison required"),
+        ("test_spanish_provincial_reference.ProvincialPostgisTests."
+         "test_stored_result_geometry_and_components_are_checked_without_new_requests",
+         "opt-in approved local database and retained provincial comparison required"),
+    )
+)
 
 # These checks use the approved retained v0 copy, which CI does not contain.
 # Keep the exemption scoped to these test IDs, not a reusable skip reason.

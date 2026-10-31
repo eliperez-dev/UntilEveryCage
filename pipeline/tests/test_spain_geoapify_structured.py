@@ -29,7 +29,7 @@ def evaluate(features, source_query, **options):
     def opener(request, **_):
         seen["params"] = parse_qs(urlsplit(request.full_url).query)
         return Response({"type": "FeatureCollection", "features": features})
-    adapter = GeoapifyAdapter(api_key="synthetic-test-key", country_code="es",
+    adapter = GeoapifyAdapter(api_key="placeholder-test-key", country_code="es",
         private_source_profile=True, allow_locality_match=False, opener=opener, **options)
     return adapter.geocode(source_query), seen
 
