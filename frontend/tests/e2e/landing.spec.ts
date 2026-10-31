@@ -34,7 +34,7 @@ test('landing stays separate from the map with unobstructed background media', a
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('HIDDEN INPLAIN SIGHT.');
 });
 
-test('landing supports narrow screens, keyboard entry and reduced motion', async ({ page }) => {
+test('landing supports narrow screens, keyboard entry and reduced motion', async ({ page, browserName }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.setViewportSize({ width: 320, height: 760 });
   await page.goto('./');
@@ -43,7 +43,10 @@ test('landing supports narrow screens, keyboard entry and reduced motion', async
   await expect(page.locator('.pig')).toHaveCSS('animation-name', 'none');
   await expect(page.locator('.cow')).toBeHidden();
   await expect(page.locator('.motion-toggle')).toHaveCount(0);
-  await page.keyboard.press('Tab');
+  // WebKit's default Tab policy omits links, even in plain HTML. Exercise the
+  // skip action explicitly there, and retain the Tab-order check in Chromium.
+  if (browserName === 'webkit') await page.getByRole('link', { name: 'Skip to content' }).focus();
+  else await page.keyboard.press('Tab');
   await expect(page.getByRole('link', { name: 'Skip to content' })).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(page.getByRole('main')).toBeFocused();

@@ -199,6 +199,46 @@ for(const [width,height] of [[320,568],[390,844],[1280,620]]) test(`scoped searc
   expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
 });
 
+test.describe('public mobile touch navigation', () => {
+  test.skip(({browserName}) => browserName !== 'chromium', 'Touch drag fidelity uses Chromium input events.');
+  test.use({ hasTouch: true, isMobile: true });
+  for (const [width,height] of [[320,568],[390,844]]) test(`touch sheet keeps selection and map canvas through drag and rotation at ${width}px`, async ({page}) => {
+    await page.setViewportSize({width:width!,height:height!}); await install(page); await open(page);
+    const handle = page.locator('.mobile-sheet-handle'), canvas = page.locator('.maplibregl-canvas');
+    const originalBox = await canvas.boundingBox();
+    await canvas.evaluate(node => { (window as any).__touchOriginalCanvas = node; });
+    await handle.tap(); await expect(handle).toHaveAttribute('data-sheet-state','middle');
+    const session = await page.context().newCDPSession(page);
+    async function drag(toY: number) {
+      const box = (await handle.boundingBox())!, x = box.x + box.width / 2, y = box.y + box.height / 2;
+      await session.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y}]});
+      for(let step=1;step<=8;step++) {
+        await session.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x,y:y+(toY-y)*step/8}]});
+        await page.waitForTimeout(20);
+      }
+      await session.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+    }
+    await drag(135); await expect(handle).toHaveAttribute('data-sheet-state','expanded');
+    const record = page.locator('[data-record-id]').first(), id = await record.getAttribute('data-record-id');
+    await record.tap(); await expect(handle).toHaveAttribute('data-sheet-state','expanded');
+    expect(page.url()).toContain(`selected=${id}`);
+    await drag(height!-12); await expect(handle).toHaveAttribute('data-sheet-state','collapsed');
+    await expect(page.locator('.dossier')).toBeHidden();
+    await handle.tap(); await expect(handle).toHaveAttribute('data-sheet-state','middle');
+    await expect(page.locator('.dossier')).toBeVisible();
+    expect(await canvas.evaluate(node => node === (window as any).__touchOriginalCanvas)).toBe(true);
+    expect(await canvas.boundingBox()).toEqual(originalBox);
+    await page.setViewportSize({width:844,height:390});
+    await expect(handle).toBeHidden();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.setViewportSize({width:width!,height:height!});
+    await expect(handle).toHaveAttribute('data-sheet-state','middle');
+    expect(page.url()).toContain(`selected=${id}`);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await session.detach();
+  });
+});
+
 test('search settings rerun radius at the same private center and scope-only clear retains the private camera',async({page})=>{
   await page.setViewportSize({width:1440,height:850});await page.addInitScript(()=>Object.defineProperty(navigator,'geolocation',{value:{getCurrentPosition(success:PositionCallback){success({coords:{latitude:39.2777,longitude:-94.4333}}as GeolocationPosition)}}}));
   const calls=await install(page);await open(page);await page.locator('#field-search').fill('Synthetic');
