@@ -258,7 +258,7 @@ class CandidateBridgeTests(unittest.TestCase):
                  "source_artifact_path": None, "source_artifact_byte_size": None}
         parsed = (None, None, "FR")
         entries = {source: entry}
-        handoffs = {source: {"rows": [(parsed, {})], "representatives": {group: object()}}}
+        handoffs = {source: {"rows": [(parsed, {})], "representatives": {group: (parsed, {})}}}
 
         class Connection:
             def __init__(self, *, sources=(), artifacts=(), facilities=()):
@@ -301,6 +301,29 @@ class CandidateBridgeTests(unittest.TestCase):
         self.assertLess(call, script.index("baseline_before = None", call))
         self.assertLess(call, script.index('INSERT INTO uec.releases', call))
         self.assertLess(call, script.index('INSERT INTO uec.source_records', call))
+
+    def test_multicountry_source_replay_compares_each_facility_country(self):
+        source = "eu.eea.intensive-livestock"
+        representatives = {country: ((None, None, country), {}) for country in ("DE", "FR")}
+        facilities = [(bridge._uuid("facility", source, country), country, "Synthetic", [source])
+                      for country in representatives]
+
+        class Connection:
+            def __init__(self, rows):
+                self.rows = rows
+
+            def execute(self, query, params):
+                rows = ([(source, "EU")] if "FROM uec.sources" in query else
+                        [] if "FROM uec.raw_artifacts" in query else self.rows)
+                return type("Result", (), {"fetchall": lambda _self: rows})()
+
+        entries = {source: {"source_artifact_sha256": "a" * 64, "source_bytes_state": "not_retained"}}
+        handoffs = {source: {"rows": list(representatives.values()), "representatives": representatives}}
+        result = bridge._preflight_target_identity(Connection(facilities), entries, handoffs)
+        self.assertEqual(set(result[source]), {"DE", "FR"})
+        mismatched = [(facilities[0][0], "EU", *facilities[0][2:]), facilities[1]]
+        with self.assertRaisesRegex(bridge.BridgeError, "canonical_facility_identity_conflict"):
+            bridge._preflight_target_identity(Connection(mismatched), entries, handoffs)
 
     def test_retained_release_inventory_and_manifest_are_fixed(self):
         self.assertEqual(len(bridge.RETAINED_RELEASE_IDS), 5)

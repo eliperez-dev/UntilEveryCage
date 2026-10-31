@@ -1149,11 +1149,16 @@ def _preflight_target_identity(connection: Any, entries: dict[str, dict[str, Any
             (list(facility_ids.values()),)).fetchall()
         group_by_id = {facility_id: group for group, facility_id in facility_ids.items()}
         for facility_id, country_code, canonical_name, linked_sources in rows:
-            if str(country_code).strip().upper() != countries[source]:
+            group = group_by_id[str(facility_id)]
+            # Publisher scope can span countries (EEA). A replay must compare
+            # the existing facility with its own source-native representative.
+            representative = groups[group][0]
+            expected_country = str(representative[2]).strip().upper()
+            if str(country_code).strip().upper() != expected_country:
                 raise BridgeError("canonical_facility_identity_conflict")
             if any(str(linked_source) != source for linked_source in (linked_sources or [])):
                 raise BridgeError("canonical_facility_source_identity_conflict")
-            preflight_facilities[source][group_by_id[str(facility_id)]] = (
+            preflight_facilities[source][group] = (
                 (country_code, canonical_name), [(linked_source,) for linked_source in (linked_sources or [])])
     return preflight_facilities
 
