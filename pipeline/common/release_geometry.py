@@ -5,15 +5,20 @@ from __future__ import annotations
 from pipeline.common.release_cohort_review import APPROVED_GEOMETRY_MEMBERS_CTE
 
 
-# LocationIQ component matching has no numeric probability. Preserve its
-# independently audited address-match evidence rather than inventing a score.
+# Component matches have no numeric probability. Preserve their independently
+# audited address evidence rather than inventing a score.
 PROVIDER_CONFIDENCE_SQL = """(
-    CASE WHEN lower(coalesce(evidence #>> '{display_location,provider}',''))<>'locationiq'
+    CASE WHEN lower(coalesce(evidence #>> '{display_location,provider}','')) NOT IN ('locationiq','cartociudad_local')
               AND evidence #>> '{display_location,confidence}' ~ '^[0-9]+([.][0-9]+)?$'
          THEN (evidence #>> '{display_location,confidence}')::numeric BETWEEN 0 AND 1
          ELSE false END
     OR (lower(evidence #>> '{display_location,provider}')='locationiq'
         AND evidence #>> '{display_location,method}'='locationiq_forward'
+        AND evidence #>> '{display_location,precision}'='provider_address_point_high_confidence'
+        AND evidence #>> '{display_location,coordinate_review_status}'='automated_high_confidence_private_display'
+        AND evidence #> '{display_location,confidence}'='null'::jsonb)
+    OR (lower(evidence #>> '{display_location,provider}')='cartociudad_local'
+        AND evidence #>> '{display_location,method}'='cartociudad_local_portal_v1'
         AND evidence #>> '{display_location,precision}'='provider_address_point_high_confidence'
         AND evidence #>> '{display_location,coordinate_review_status}'='automated_high_confidence_private_display'
         AND evidence #> '{display_location,confidence}'='null'::jsonb)

@@ -83,10 +83,19 @@ comparing a municipality. The live trial retained a partial page before
 timeouts; no complete comparison or coordinate import has run.
 
 The [official provincial catalogue](https://centrodedescargas.cnig.es/CentroDescargas/cartociudad)
-also lists GeoPackage archives with a `portalpk_publi` layer containing portals
-and kilometre points. A provincial archive is the next reference option to
-inspect. Its actual schema, point types, dates and CRS must be checked before
-local matching; no archive has been downloaded. Current outcomes and counts
-belong in the inventory.
+provides GeoPackage archives with a `portalpk_publi` layer containing portals
+and kilometre points. The [provincial helper](../pipeline/geocoding/spanish_provincial_reference.py)
+reads normally downloaded archives locally, checks their hashes, schema,
+province, point types and native CRS, and compares only never-attempted source
+addresses. It uses retained verified province evidence, rather than treating
+the query's autonomous-community region as a province. Numbered portal matches
+require one reference with matching street, house, town, province and any
+supplied postcode. Native ETRS89/REGCAN95 coordinates retain their CRS and are
+transformed to WGS84 by PostGIS when imported. The shared geocoding job/result
+history records the archive and reference identity; no external reservation or
+numeric confidence is invented. SQL independently checks source and geometry
+bindings before updating the private display cache. Kilometre comparisons stay
+separate, approximate research results; they are not imported as facility points.
+Current provincial coverage, outcomes and remaining work belong in the inventory.
 
 MAPA SILUM/SANDACH and other regional registers have distinct sector scopes and terms. They require independent verification and source IDs; none may be silently unioned with AESAN or Catalonia. `Old CSVs/spain-data.csv` remains a reconciliation-only V1 baseline, not an acquisition source.

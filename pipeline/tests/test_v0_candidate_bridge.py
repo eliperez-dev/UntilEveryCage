@@ -890,6 +890,11 @@ class CandidateBridgeTests(unittest.TestCase):
         candidate[28] = "locationiq"
         locationiq = bridge._coordinate({}, tuple(candidate), allow_display=True)
         self.assertEqual(locationiq[2:5], ("locationiq_forward", "house_number", "locationiq"))
+        candidate[28] = "cartociudad_local"
+        native = bridge._coordinate({}, tuple(candidate), allow_display=True)
+        self.assertEqual(native[2:5], ("cartociudad_local_portal_v1", "house_number", "cartociudad_local"))
+        self.assertEqual(native[-1], "provider_derived")
+        candidate[28] = "locationiq"
         candidate[24] = "provider_locality_approximate"
         postcode = bridge._coordinate({}, tuple(candidate), allow_display=True)
         self.assertEqual(postcode[2:5], ("locationiq_forward", "provider_locality_approximate", "locationiq"))

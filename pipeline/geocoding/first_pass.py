@@ -32,7 +32,8 @@ SOURCES = (
 )
 
 # Retrospectively imported research calls have real started events but never
-# reserved a commercial account allowance. Queued-only jobs are not attempts.
+# reserved a commercial account allowance. Validated local portal matches also
+# resolve a first pass without an external reservation. Queued-only jobs do not.
 ATTEMPTED_JOBS = """
  SELECT reservation.job_id FROM uec.geocode_request_reservations reservation
  WHERE NOT EXISTS(SELECT 1 FROM uec.geocode_job_events event
@@ -44,6 +45,14 @@ ATTEMPTED_JOBS = """
  WHERE job.provider_id='cartociudad' AND event.event_type='started'
    AND event.details->>'processing_mode'='cartociudad_pilot_checkpoint_import'
    AND event.details->>'outbound_request_recorded'='true'
+ UNION
+ SELECT job.job_id FROM uec.geocode_jobs job
+ JOIN uec.geocode_results result ON result.source_record_id=job.source_record_id
+   AND result.provider_id=job.provider_id AND result.query=job.query
+ WHERE job.provider_id='cartociudad_local' AND result.status='accepted'
+   AND result.match_method='cartociudad_local_portal_v1'
+   AND EXISTS(SELECT 1 FROM real_preview.geocode_display_evidence evidence
+              WHERE evidence.geocode_result_id=result.geocode_result_id)
 """
 
 

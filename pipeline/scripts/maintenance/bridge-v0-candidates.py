@@ -945,7 +945,8 @@ def _coordinate(normalized: dict[str, Any], preview_candidate: tuple[Any, ...], 
     if lat is None and allow_display and preview_candidate[11] is not None:
         lat, lon = preview_candidate[11], preview_candidate[12]
         if preview_candidate[27] is not None and preview_candidate[29] == "accepted" and preview_candidate[24] is not None:
-            method = {"geoapify": "geoapify_forward", "locationiq": "locationiq_forward"}.get(
+            method = {"geoapify": "geoapify_forward", "locationiq": "locationiq_forward",
+                      "cartociudad_local": "cartociudad_local_portal_v1"}.get(
                 preview_candidate[28], "address_geocode")
             provider = preview_candidate[28]
             precision = preview_candidate[24]
