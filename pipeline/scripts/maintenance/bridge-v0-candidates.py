@@ -909,7 +909,8 @@ def _correction_source_record_key(snapshot_sha256: str, source_identifier: str,
 
 
 def _projection_revision(display_evidence_revision: str, contract: Mapping[str, Any],
-                         projection_policy_revision: str | None = None) -> str:
+                         projection_policy_revision: str | None = None,
+                         source_projection_sha256: str | None = None) -> str:
     """Version only derived display/taxonomy projection, never source evidence."""
     payload = {
         "display_evidence_revision": display_evidence_revision,
@@ -918,6 +919,10 @@ def _projection_revision(display_evidence_revision: str, contract: Mapping[str, 
     }
     if projection_policy_revision:
         payload["projection_policy_revision"] = projection_policy_revision
+    if source_projection_sha256 is not None:
+        if not re.fullmatch(r"[0-9a-f]{64}", source_projection_sha256):
+            raise BridgeError("source_projection_sha256_invalid")
+        payload["source_projection_sha256"] = source_projection_sha256
     return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode()).hexdigest()
 
 
@@ -1721,11 +1726,6 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                     candidate_display_revision = _candidate_display_evidence_revision(candidate)
                     projection_policy_revision = _coordinate_scope_revision(source, normalized)
                     projection_policy_revisions[identifier] = projection_policy_revision
-                    projection_revision = _projection_revision(candidate_display_revision, contract,
-                                                                projection_policy_revision)
-                    projection_revisions[identifier] = projection_revision
-                    source_record_key = _correction_source_record_key(
-                        entry["snapshot_sha256"], identifier, projection_revision, projection_policy_revision)
                     raw_fields = {"evidence_kind": "authenticated_normalized_handoff",
                                   "snapshot_sha256": entry["snapshot_sha256"],
                                   "source_identifier": identifier,
@@ -1733,6 +1733,15 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                                   "source_activity_codes": contract.get("source_activity_codes", []),
                                   "source_activity_labels": contract.get("source_activity_labels", []),
                                   "handoff_normalized_sha256": handoff["normalized_sha256"]}
+                    source_projection_sha256 = hashlib.sha256(json.dumps(
+                        raw_fields, sort_keys=True, separators=(",", ":"),
+                        ensure_ascii=False, default=str).encode()).hexdigest()
+                    projection_revision = _projection_revision(
+                        candidate_display_revision, contract, projection_policy_revision,
+                        source_projection_sha256=source_projection_sha256)
+                    projection_revisions[identifier] = projection_revision
+                    source_record_key = _correction_source_record_key(
+                        entry["snapshot_sha256"], identifier, projection_revision, projection_policy_revision)
                     connection.execute("""INSERT INTO uec.source_records
                         (source_id,source_record_key,artifact_id,raw_fields,parsed_at)
                         VALUES (%s,%s,%s,%s,%s) ON CONFLICT (source_id,source_record_key,artifact_id) DO NOTHING""",

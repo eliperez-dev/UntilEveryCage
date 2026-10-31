@@ -371,6 +371,24 @@ class CandidateBridgeTests(unittest.TestCase):
             bridge._correction_source_record_key("a" * 64, "native-id", changed),
         )
 
+    def test_retained_public_fields_create_successor_without_replacing_frozen_evidence(self):
+        contract = {"crosswalk_document": {"crosswalk_version": "fixture-v1"}}
+        original = {"normalized": {"source_identifier": "fixture"}}
+        expanded = {"normalized": {"source_identifier": "fixture", "source_scope_eligibility": "in_scope"}}
+        digest = lambda value: hashlib.sha256(json.dumps(
+            value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
+        previous = bridge._projection_revision("b" * 64, contract,
+                                               source_projection_sha256=digest(original))
+        current = bridge._projection_revision("b" * 64, contract,
+                                              source_projection_sha256=digest(expanded))
+        self.assertNotEqual(previous, current)
+        self.assertEqual(current, bridge._projection_revision(
+            "b" * 64, contract, source_projection_sha256=digest(expanded)))
+        self.assertNotEqual(bridge._correction_source_record_key("a" * 64, "fixture", previous),
+                            bridge._correction_source_record_key("a" * 64, "fixture", current))
+        with self.assertRaisesRegex(bridge.BridgeError, "source_projection_sha256_invalid"):
+            bridge._projection_revision("b" * 64, contract, source_projection_sha256="invalid")
+
     def test_representative_uses_its_own_projection_key_after_multi_row_write_loop(self):
         source = SCRIPT.read_text(encoding="utf-8")
         representative = source.index("for group, (rep, raw) in handoff[\"representatives\"].items()")
