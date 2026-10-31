@@ -1189,12 +1189,17 @@ def _baseline_contract() -> dict[str, Any]:
     return value
 
 
-def _digest_query(connection: Any, query: str, params: tuple[Any, ...] = ()) -> str:
+def _digest_query(connection: Any, query: str, params: tuple[Any, ...] = (), *,
+                  unordered: bool = False) -> str:
     """Hash ordered JSONB rows on the server, transferring only row digests."""
     digest = hashlib.sha256()
     with connection.cursor() as cursor:
+        # Relation snapshots need multiset identity, not an expensive sort of
+        # complete JSON records. Sort their fixed-size row hashes instead;
+        # duplicate rows still contribute once per occurrence.
         cursor.execute("SELECT encode(digest(row_payload::text,'sha256'),'hex') FROM ("
-                       + query + ") AS baseline_rows(row_payload)", params)
+                       + query + ") AS baseline_rows(row_payload)"
+                       + (" ORDER BY 1" if unordered else ""), params)
         for row in cursor:
             digest.update(row[0].encode("ascii"))
             digest.update(b"\n")
@@ -1234,7 +1239,8 @@ def _baseline_snapshot(connection: Any, contract: dict[str, Any], *, expected_st
     if include_shared:
         for relation in PUBLIC_PROJECTION_RELATIONS:
             if connection.execute("SELECT to_regclass(%s)", (relation,)).fetchone()[0] is not None:
-                public[relation] = _digest_query(connection, f"SELECT to_jsonb(value) FROM {relation} value ORDER BY to_jsonb(value)::text")
+                public[relation] = _digest_query(
+                    connection, f"SELECT to_jsonb(value) FROM {relation} value", unordered=True)
         snapshot["public"] = public
     return snapshot
 
@@ -1344,12 +1350,12 @@ def _shared_baseline_snapshot(connection: Any, release_ids: tuple[str, ...], *,
     for relation in PUBLIC_PROJECTION_RELATIONS:
         if connection.execute("SELECT to_regclass(%s)", (relation,)).fetchone()[0] is not None:
             result["public"][relation] = _digest_query(
-                connection, f"SELECT to_jsonb(value) FROM {relation} value ORDER BY to_jsonb(value)::text"
+                connection, f"SELECT to_jsonb(value) FROM {relation} value", unordered=True
             )
     for relation in GRAPH_IMMUTABLE_RELATIONS:
         if connection.execute("SELECT to_regclass(%s)", (relation,)).fetchone()[0] is not None:
             result["graph"][relation] = _digest_query(
-                connection, f"SELECT to_jsonb(value) FROM {relation} value ORDER BY to_jsonb(value)::text"
+                connection, f"SELECT to_jsonb(value) FROM {relation} value", unordered=True
             )
     return result
 
