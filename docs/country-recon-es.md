@@ -90,8 +90,12 @@ province, point types and native CRS, and compares only never-attempted source
 addresses. It uses retained verified province evidence, rather than treating
 the query's autonomous-community region as a province. Numbered portal matches
 require one reference with matching street, house, town, province and any
-supplied postcode. Native ETRS89/REGCAN95 coordinates retain their CRS and are
-transformed to WGS84 by PostGIS when imported. The shared geocoding job/result
+supplied postcode. Native ETRS89 (EPSG:4258) and Canary REGCAN95 (EPSG:4081)
+coordinates retain the CRS declared in each downloaded GeoPackage and are
+transformed to WGS84 by PostGIS when imported. Canary CRS and geographic extent
+are checked separately. Service-road kilometre points are excluded. A province
+with no remaining eligible source addresses still receives a file-validation
+receipt without retaining unrelated reference points. The shared geocoding job/result
 history records the archive and reference identity; no external reservation or
 numeric confidence is invented. SQL independently checks source and geometry
 bindings before updating the private display cache. Kilometre comparisons stay

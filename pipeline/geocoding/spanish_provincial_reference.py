@@ -1,7 +1,7 @@
 """Read official CartoCiudad provincial archives for local first-pass matching.
 
-No network calls, provider retries, or database writes. Coordinates retain their
-native CRS; a downstream importer must transform them, never relabel them.
+No network calls or provider retries. Optional portal imports stay in the local
+test database. Coordinates retain their native CRS and are transformed at import.
 """
 from __future__ import annotations
 
@@ -64,11 +64,12 @@ def read_archive(archive, *, province, source_url, retrieved_at, expected_sha256
             or not province or not retrieved_at):
         raise ValueError("cartociudad_provenance_invalid")
     wanted_towns = None if municipalities is None else {s.locality_key(v) for v in municipalities if v}
-    if wanted_towns is not None and (not wanted_towns or len(wanted_towns) > 10000):
+    if wanted_towns is not None and (len(wanted_towns) > 10000 or
+            (not wanted_towns and matching_inputs != [])):
         raise ValueError("cartociudad_municipality_scope")
     portals, distances = {}, set()
     if matching_inputs is not None:
-        if not 0 < len(matching_inputs) <= 10000:
+        if not 0 <= len(matching_inputs) <= 10000:
             raise ValueError("cartociudad_comparison_scope")
         for item in matching_inputs:
             context = item["context"]
@@ -111,9 +112,12 @@ def read_archive(archive, *, province, source_url, retrieved_at, expected_sha256
                 db.set_progress_handler(bounded, 10000)
                 geometry = db.execute("SELECT column_name,geometry_type_name,srs_id,z,m "
                     "FROM gpkg_geometry_columns WHERE table_name='portalpk_publi'").fetchall()
-                if len(geometry) != 1 or geometry[0] not in (("geom", "POINT", 4258, 0, 0), ("geom", "POINT", 8081, 0, 0)):
+                if len(geometry) != 1 or geometry[0] not in (("geom", "POINT", 4258, 0, 0), ("geom", "POINT", 4081, 0, 0)):
                     raise ValueError("cartociudad_geometry_schema")
                 srid = geometry[0][2]
+                canary_province = s.province_key(province) in {"laspalmas", "santacruzdetenerife"}
+                if (srid == 4081) != canary_province:
+                    raise ValueError("cartociudad_crs_province_conflict")
                 declared = db.execute("SELECT organization,organization_coordsys_id FROM gpkg_spatial_ref_sys WHERE srs_id=?", (srid,)).fetchall()
                 if declared != [("EPSG", srid)]:
                     raise ValueError("cartociudad_crs_definition")
@@ -128,6 +132,9 @@ def read_archive(archive, *, province, source_url, retrieved_at, expected_sha256
                     if not ident or ident in seen or s.province_key(prov) != s.province_key(province):
                         raise ValueError("cartociudad_identity_or_province")
                     seen.add(ident)
+                    if kind == "PK de vía de servicio":
+                        counts["service_road_kilometre_points_excluded"] += 1
+                        continue
                     if kind not in {"Portal", "PK"}:
                         raise ValueError("cartociudad_unknown_point_type")
                     if kind == "PK" and not include_kilometres:
@@ -158,6 +165,8 @@ def read_archive(archive, *, province, source_url, retrieved_at, expected_sha256
                             counts["other_road_kilometre_points"] += 1
                             continue
                     x, y = point_geometry(blob, srid)
+                    if srid == 4081 and not (-19 <= x <= -13 and 27 <= y <= 30):
+                        raise ValueError("cartociudad_canary_geometry_out_of_bounds")
                     references.append({"reference_id": ["ES.SCNE.CARTOCIUDAD", str(ident)],
                         "street": str(road_type) + " " + str(road), "house": house,
                         "point_kind": "portal" if kind == "Portal" else "kilometre", "kilometre": km,
@@ -168,6 +177,7 @@ def read_archive(archive, *, province, source_url, retrieved_at, expected_sha256
         "kilometre_reference_points": sum(r["point_kind"] == "kilometre" for r in references),
         "archive_sha256": digest, "source_url": source_url, "retrieved_at": retrieved_at,
         "province": province, "crs": f"EPSG:{srid}", "provider_calls": 0,
+        "address_normalization_ruleset": s.RULESET,
         "facility_addresses_sent": False, "points_imported": 0,
         "attribution": "Obra derivada de CartoCiudad CC-BY 4.0 scne.es"}
 
@@ -293,7 +303,7 @@ def apply_portal_matches(connection, primary, matches, archive):
         result = uuid.uuid5(uuid.NAMESPACE_URL, f"cartociudad-local:{record}:{archive['archive_sha256']}:{fresh['query']}")
         response = {"ruleset":"cartociudad-local-portal-v1", "unique_reference_count":1,
                     "archive":archive,"selected":reference}
-        srid = {"EPSG:4258":4258,"EPSG:8081":8081}[reference["crs"]]
+        srid = {"EPSG:4258":4258,"EPSG:4081":4081}[reference["crs"]]
         connection.execute("""INSERT INTO uec.geocode_results(geocode_result_id,source_record_id,
             provider_id,provider_version,query,provider_address_id,result,precision,match_method,
             status,attempt_number,retryable,response,queried_at)
@@ -345,9 +355,6 @@ def main():
         connection.execute("SET TRANSACTION READ ONLY")
         verify_connection(connection, contract)
         primary, planned = plan_comparison(connection, args.province)
-        if not primary:
-            print(json.dumps({**planned, "provider_calls": 0, "points_imported": 0}))
-            return
         references, captured = read_archive(args.archive, province=args.province, source_url=args.source_url,
             retrieved_at=args.retrieved_at, expected_sha256=args.sha256,
             municipalities={row["context"]["locality"] for row in primary}, include_kilometres=True,
@@ -356,7 +363,7 @@ def main():
         distance_matches, distance_compared = kilometre_matches(primary, references)
         verify_connection(connection, contract)
     applied = {"local_results_appended":0,"display_evidence_appended":0}
-    if args.apply_portals:
+    if args.apply_portals and matches:
         with psycopg.connect(os.environ["UEC_DATABASE_URL"], options="-c statement_timeout=90000") as connection:
             verify_connection(connection, contract)
             applied = apply_portal_matches(connection, primary, matches, captured)

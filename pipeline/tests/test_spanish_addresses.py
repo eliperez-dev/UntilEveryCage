@@ -92,6 +92,13 @@ class SpanishAddressTests(unittest.TestCase):
         self.assertEqual(s.province_key("Provincia de Girona"), s.province_key("Gerona"))
 
     def test_region_hierarchy_never_overrides_explicit_conflicts(self):
+        for value in ("Alicante", "Alacant", "Alicante/Alacant", "Alacant/Alicante"):
+            self.assertEqual(s.province_key(value), "alacantalicante")
+            self.assertTrue(s.province_matches({"province":value}, "Comunitat Valenciana", None))
+        for value in ("Castellón", "Castelló", "Castellón/Castelló", "Castelló/Castellón"):
+            self.assertEqual(s.province_key(value), "castellocastellon")
+            self.assertTrue(s.province_matches({"province":value}, "Comunitat Valenciana", None))
+        self.assertFalse(s.province_matches({"province":"Alicante"}, "Castellón", None))
         self.assertTrue(s.province_matches({"state": "Cataluña", "state_code": "CT"}, "Girona", None))
         self.assertTrue(s.province_matches({"state": "Catalonia", "province": "Gerona"}, "Girona", None))
         self.assertFalse(s.province_matches({"state": "Catalonia", "province": "Barcelona"}, "Girona", None))

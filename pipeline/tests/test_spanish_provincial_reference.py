@@ -53,11 +53,29 @@ class ProvincialReferenceTests(unittest.TestCase):
             self.assertFalse(report['facility_addresses_sent'])
             self.assertEqual(report['points_imported'],0)
 
+    def test_empty_plan_validates_archive_without_retaining_unrelated_points(self):
+        with tempfile.TemporaryDirectory() as root:
+            archive,args=self.archive(root)
+            rows,report=p.read_archive(archive,**args,municipalities=set(),matching_inputs=[])
+            self.assertEqual(rows,[])
+            self.assertEqual(report['source_points'],1)
+            self.assertEqual(report['numbered_reference_points'],0)
+            self.assertEqual(report['provider_calls'],0)
+        with tempfile.TemporaryDirectory() as root:
+            archive,args=self.archive(root,changes={'provincia':'Other Province'})
+            with self.assertRaisesRegex(ValueError,'identity_or_province'):
+                p.read_archive(archive,**args,municipalities=set(),matching_inputs=[])
+
     def test_pk_and_zero_house_are_never_numbered_portals(self):
         for changes in ({'tipo':'PK'},{'numero':'0'},{'numero':'S/N'},{'extension':'Nave 9'}):
             with self.subTest(changes=changes),tempfile.TemporaryDirectory() as root:
                 archive,args=self.archive(root,changes=changes)
                 self.assertEqual(p.read_archive(archive,**args)[0],[])
+        with tempfile.TemporaryDirectory() as root:
+            archive,args=self.archive(root,kind='PK de vía de servicio')
+            rows,report=p.read_archive(archive,**args,include_kilometres=True)
+            self.assertEqual(rows,[])
+            self.assertEqual(report['service_road_kilometre_points_excluded'],1)
 
     def test_municipality_scope_does_not_load_unrelated_portals(self):
         with tempfile.TemporaryDirectory() as root:
@@ -126,6 +144,19 @@ class ProvincialReferenceTests(unittest.TestCase):
                 if failure=='hash': args['expected_sha256']='0'*64
                 if failure=='province': args['province']='Sevilla'
                 with self.assertRaises(ValueError):p.read_archive(archive,**args)
+
+    def test_canary_file_retains_its_verified_regcan95_crs_and_extent(self):
+        with tempfile.TemporaryDirectory() as root:
+            archive,args=self.archive(root,srid=4081,changes={'provincia':'Las Palmas','geom':geometry(4081,-15.4,28.1)})
+            args['province']='Las Palmas'
+            rows,report=p.read_archive(archive,**args)
+            self.assertEqual(rows[0]['crs'],'EPSG:4081')
+            self.assertEqual(report['crs'],'EPSG:4081')
+            with self.assertRaises(ValueError):p.read_archive(archive,**{**args,'province':'Madrid'})
+        with tempfile.TemporaryDirectory() as root:
+            archive,args=self.archive(root,srid=4081,changes={'provincia':'Las Palmas','geom':geometry(4081,-3.7,40.4)})
+            args['province']='Las Palmas'
+            with self.assertRaisesRegex(ValueError,'canary_geometry_out_of_bounds'):p.read_archive(archive,**args)
 
     def test_geometry_rejects_swapped_missing_nonfinite_and_wrong_srs(self):
         for blob in (geometry(4326),geometry(x=float('nan')),geometry(x=40,y=-3),

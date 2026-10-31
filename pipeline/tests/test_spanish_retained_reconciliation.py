@@ -82,7 +82,10 @@ class SpanishRetainedPostgisTests(unittest.TestCase):
                 self.assertEqual(actual, expected)
 
     def test_reference_region_and_province_alias_parity(self):
-        for source, expected in (("Bilbao", "bizkaia"), ("Palma de Mallorca", "baleares"),
+        for source, expected in (("Alicante", "alacantalicante"), ("Alacant/Alicante", "alacantalicante"),
+                                 ("Alicante/Alacant", "alacantalicante"), ("Castelló/Castellón", "castellocastellon"),
+                                 ("Castellón/Castelló", "castellocastellon"),
+                                 ("Bilbao", "bizkaia"), ("Palma de Mallorca", "baleares"),
                                  ("Bizkaia", "bizkaia"), ("Illes Balears", "baleares")):
             actual = self.connection.execute(
                 "SELECT real_preview.spanish_province_key(%s)", (source,)).fetchone()[0]

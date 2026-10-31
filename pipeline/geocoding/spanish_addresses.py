@@ -6,7 +6,7 @@ import unicodedata
 
 from pipeline.sources.spain_rgseaa.location_enrichment import official_province_key
 
-RULESET = "spanish-address-format-v5"
+RULESET = "spanish-address-format-v6"
 HOUSE = r"[0-9]+(?:[ -]?[a-z])?(?:\s*[-/]\s*[0-9]+[a-z]?)?"
 UNIT = r"(?:nave|nau|local|piso|planta|puerta|baixos|bajo|bajos|edificio|edifici|bloque)"
 ROAD_TYPES = frozenset({"street", "avenue", "road", "path", "promenade", "square"})
@@ -195,7 +195,8 @@ def province_key(value: object) -> str:
     if not isinstance(value, str):
         return ""
     key = official_province_key(re.sub(r"^provincia\s+de\s+", "", value.strip(), flags=re.I))
-    return {"comunidaddemadrid": "madrid", "principadodeasturias": "asturias",
+    return {"alacant": "alacantalicante", "castello": "castellocastellon",
+            "comunidaddemadrid": "madrid", "principadodeasturias": "asturias",
             "regiondemurcia": "murcia"}.get(key, key)
 
 
