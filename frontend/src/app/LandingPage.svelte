@@ -5,6 +5,8 @@
   import type { TaxonomyPrimaryKey } from '../domain/taxonomy';
   import { landingCategoryHref, loadLandingReleaseSummary, type LandingReleaseSummary } from './landingReleaseSummary';
   import PreviewMasthead from './PreviewMasthead.svelte';
+  import ScaleStory from './scale-story/ScaleStory.svelte';
+  import { storyMessages } from './scale-story/messages';
   import pig from '../assets/landing/pig.jpg';
   import cow from '../assets/landing/cow.jpg';
   import mapPreview from '../assets/landing/map-preview.jpg';
@@ -22,8 +24,14 @@
   let nearbyController: AbortController | null = null;
   let summary = $state<LandingReleaseSummary | null>(null);
   let summaryState = $state<'loading' | 'ready' | 'unavailable'>('loading');
+  let countriesPending = $state(false);
   let summaryController: AbortController | null = null;
   let summaryRetry = $state(0);
+  function seeScale() {
+    const section = document.getElementById('landing-scale-story');
+    section?.scrollIntoView({ behavior: reducedMotion ? 'instant' : 'smooth', block: 'start' });
+    section?.focus({ preventScroll: true });
+  }
   const categoryLinks: readonly { key: TaxonomyPrimaryKey; label: string }[] = [
     { key: 'slaughter', label: 'Slaughter' }, { key: 'animal_keeping_and_production', label: 'Animal keeping' },
     { key: 'processing_and_preparation', label: 'Processing' }, { key: 'research_and_animal_use', label: 'Research' },
@@ -33,10 +41,12 @@
     void summaryRetry;
     const requestedRelease = new URLSearchParams(mapHref.split('?')[1] ?? '').get('release_id') ?? undefined;
     const controller = new AbortController(); summaryController = controller;
-    summary = null; summaryState = 'loading';
-    void loadLandingReleaseSummary(controller.signal, requestedRelease).then(value => {
-      if (!controller.signal.aborted) { summary = value; summaryState = value ? 'ready' : 'unavailable'; }
-    }).catch(() => { if (!controller.signal.aborted) summaryState = 'unavailable'; });
+    summary = null; summaryState = 'loading'; countriesPending = false;
+    void loadLandingReleaseSummary(controller.signal, requestedRelease, globalThis.fetch, value => {
+      if (!controller.signal.aborted) { summary = value; summaryState = 'ready'; countriesPending = true; }
+    }).then(value => {
+      if (!controller.signal.aborted) { summary = value; summaryState = value ? 'ready' : 'unavailable'; countriesPending = false; }
+    }).catch(() => { if (!controller.signal.aborted) { summary = null; summaryState = 'unavailable'; countriesPending = false; } });
     return () => controller.abort();
   });
   async function findNearby() {
@@ -88,6 +98,7 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="6" /><circle cx="12" cy="12" r="2" /><path d="M12 2v3m0 14v3M2 12h3m14 0h3" /></svg>
             {tr(nearbyBusy ? 'Finding your location…' : 'Find locations near me', $language)}
           </button>{/if}
+          <button class="scale-action" type="button" onclick={seeScale}>{storyMessages($language).seeScale}<span aria-hidden="true">↓</span></button>
         </div>
         {#if nearbyError}<p class="nearby-error" role="alert">{tr(nearbyError, $language)}</p>{/if}
       </div>
@@ -97,6 +108,7 @@
         </button>
       {/if}
     </section>
+    <ScaleStory {mapHref} />
     <section class="discovery" aria-labelledby="discovery-title">
       <div class="discovery-heading">
         <h2 id="discovery-title">{tr('See how far', $language)}<br />{tr('it reaches.', $language)}</h2>
@@ -108,7 +120,7 @@
             <div><dt>{tr('Records in this release', $language)}</dt><dd>{summary.records.toLocaleString($language)}</dd></div>
             <div><dt>{tr('With map locations', $language)}</dt><dd>{summary.mapped.toLocaleString($language)}</dd></div>
             <div><dt>{tr('Public sources', $language)}</dt><dd>{summary.sources.toLocaleString($language)}</dd></div>
-            <div class="mapped-countries"><dt>{tr('Countries mapped', $language)}</dt><dd class:unavailable={summary.countries === null}>{summary.countries === null ? tr('Unavailable', $language) : summary.countries.toLocaleString($language)}</dd></div>
+            <div class="mapped-countries"><dt>{tr('Countries mapped', $language)}</dt><dd aria-busy={countriesPending} class:unavailable={summary.countries === null}>{countriesPending ? tr('Loading…', $language) : summary.countries === null ? tr('Unavailable', $language) : summary.countries.toLocaleString($language)}</dd></div>
           </dl>
           <nav class="activity-links" aria-label={tr('Explore by activity', $language)}>
             {#each categoryLinks as category}<a href={landingCategoryHref(mapHref, summary.releaseId, category.key)}><span class="category-swatch" style:background={CATEGORY_PRESENTATIONS[category.key].color}></span><span>{tr(category.label, $language)}</span>{@render arrow()}</a>{/each}
@@ -149,6 +161,7 @@
   .hero-copy p{max-width:39ch;font-size:16px;line-height:1.6;margin:0 0 30px;color:var(--photo-ink)}
   .action{display:inline-flex;gap:32px;align-items:center;min-height:48px;padding:13px 20px;color:#171d17;background:var(--button-bg);font-weight:500}.action:hover{background:#fffbed;text-decoration:none}
   .hero-actions{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center}.nearby-action{display:inline-flex;align-items:center;justify-content:center;gap:10px;min-height:48px;padding:12px 0;background:none;color:var(--photo-ink);border:0;border-bottom:1px solid #f5f1e67a;font:500 14px/1.4 system-ui,sans-serif;cursor:pointer}.nearby-action:hover{border-color:var(--photo-ink)}.nearby-action:disabled{opacity:.7;cursor:wait}.hero-copy .nearby-error{margin:14px 0 0;font-size:13px;max-width:43ch}
+  .scale-action{display:inline-flex;gap:16px;align-items:center;min-height:48px;padding:12px 0;background:none;color:var(--photo-ink);border:0;border-bottom:1px solid #f5f1e67a;font:500 14px/1.4 system-ui,sans-serif;cursor:pointer}.scale-action:hover{border-color:var(--photo-ink)}
   .motion-toggle{position:absolute;right:24px;bottom:22px;display:grid;place-items:center;width:44px;height:44px;min-height:44px;padding:0;color:var(--photo-ink);background:#14141499;border:1px solid #f5f1e680;border-radius:0}.motion-toggle:hover{background:#141414e6}.motion-toggle svg{width:21px;height:21px}
   .paused .hero-photo{animation-play-state:paused}.reduced-motion .hero-photo{animation:none;will-change:auto}.reduced-motion .cow{display:none}
   .discovery{padding:64px 48px 56px}.discovery-heading{display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:end;margin-bottom:34px}

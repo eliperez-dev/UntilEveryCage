@@ -3,7 +3,10 @@ import { defineConfig, devices } from '@playwright/test';
 const livePreviewUrl = process.env.UEC_REAL_PREVIEW_URL;
 const chromiumExecutablePath = process.env.UEC_PLAYWRIGHT_CHROMIUM_PATH;
 const firefoxExecutablePath = process.env.UEC_PLAYWRIGHT_FIREFOX_PATH;
-const desktopChromium = { ...devices['Desktop Chrome'], ...(chromiumExecutablePath ? { launchOptions: { executablePath: chromiumExecutablePath } } : {}) };
+// Use the real Chromium compositor for WebGL/camera fidelity. The separate
+// headless shell stalls native cluster placement under the same gestures.
+// Keep the existing assertions and Firefox/WebKit coverage unchanged.
+const desktopChromium = { ...devices['Desktop Chrome'], channel: 'chromium', ...(chromiumExecutablePath ? { launchOptions: { executablePath: chromiumExecutablePath } } : {}) };
 const desktopFirefox = { ...devices['Desktop Firefox'], ...(firefoxExecutablePath ? { launchOptions: { executablePath: firefoxExecutablePath } } : {}) };
 
 export default defineConfig({

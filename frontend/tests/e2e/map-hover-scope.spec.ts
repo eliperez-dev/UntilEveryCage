@@ -5,10 +5,18 @@ import { expect, test, type Page } from '@playwright/test';
 const release = 'synthetic-hover-scope';
 const id = '550e8400-e29b-41d4-a716-446655440000';
 const point: [number, number] = [5, 45];
-async function install(page: Page, precision = 'source_reported', filters = '', category = 'slaughter') {
+async function install(page: Page, precision = 'source_reported', filters = '', category = 'slaughter', loadedPin = false) {
   const state = { details: 0, delay: 0, status: 200, generation: 1, feeds: 0 };
   const meta = { profile: 'official', release_id: release, ruleset_version: 'synthetic-rules', release_created_at: '2026-01-01T00:00:00Z' };
   const row = { facility_id: id, canonical_name: 'Synthetic <img src=x onerror=alert(1)> facility', country_code: 'BE', city: 'Synthetic city', category, taxonomy_display_category: category, taxonomy_primary_categories: [category], publication_profile: 'official', factual_review_status: 'reviewed', privacy_screening_status: 'passed', project_approval: 'approved', reviewer_role: null, publication_warning: null, display_precision: precision, latitude: point[1], longitude: point[0], first_observed_at: null, last_observed_at: null, observation_count: 1, lifecycle_status: 'status_unknown', source_type: 'official', source_rights_status: 'cleared', provenance_source: null, release_id: release, release_ruleset_version: 'synthetic-rules', provenance_source_id: 'synthetic-source', provenance_source_name: 'Synthetic source', provenance_source_url: 'https://example.test/source', provenance_retrieved_at: '2026-01-01T00:00:00Z' };
+  await page.addInitScript(() => {
+    // Repositories capture fetch at construction, so instrument before the app.
+    const originalFetch = window.fetch;
+    window.fetch = function (input, init) {
+      if (new URL(String(input), location.origin).pathname.startsWith('/api/v2/locations/')) window.dispatchEvent(new Event('synthetic-hover-request'));
+      return originalFetch.call(window, input, init);
+    };
+  });
   await page.route('https://**/*', route => route.abort());
   await page.route('**/api/v2/**', async route => {
     const url = new URL(route.request().url()), path = url.pathname;
@@ -16,7 +24,7 @@ async function install(page: Page, precision = 'source_reported', filters = '', 
     if (path === '/api/v2/releases/manifest') return route.fulfill({ json: { api_version: 'v2', data: { ...identity, manifest: {} } } });
     if (path === '/api/v2/map/feed') { state.feeds++; return route.fulfill({ json: { api_version: 'v2', data: { type: 'FeatureCollection', features: [{ type: 'Feature', id, geometry: { type: 'Point', coordinates: point }, properties: { facility_id: id, source_id: 'synthetic-source', country_code: 'BE', category_key: category, category_keys: [category], precision, weight: 1 } }] }, meta: { ...identity, feature_count: 1, public_record_count: 1, unmapped_count: 0, release_label: 'Synthetic release', dataset_version: 'synthetic' } } }); }
     // Simulate a public pin outside the already loaded result page.
-    if (path === '/api/v2/locations') return route.fulfill({ json: { api_version: 'v2', data: [{ ...row, facility_id: '550e8400-e29b-41d4-a716-446655440001', canonical_name: 'Another synthetic result' }], meta: { ...meta, coverage_note: 'Synthetic renderer checks.', next_cursor: null, total_count: 2 } } });
+    if (path === '/api/v2/locations') return route.fulfill({ json: { api_version: 'v2', data: loadedPin ? [row] : [{ ...row, facility_id: '550e8400-e29b-41d4-a716-446655440001', canonical_name: 'Another synthetic result' }], meta: { ...meta, coverage_note: 'Synthetic renderer checks.', next_cursor: null, total_count: 2 } } });
     if (path === `/api/v2/locations/${id}`) {
       state.details++; expect(url.searchParams.get('release_id')).toBe(release);
       if (state.delay) await new Promise(resolve => setTimeout(resolve, state.delay));
@@ -44,6 +52,42 @@ async function hoverPin(page: Page, verticalOffset = 14) {
   await page.mouse.move(pixel.x, pixel.y - verticalOffset);
   return { ...pixel, y: pixel.y - verticalOffset };
 }
+
+// Measure within one page event loop, excluding automation/HTTP round-trip time.
+async function timedHover(page: Page, phase: 'request' | 'label') {
+  return page.evaluate(({ coordinates, phase }) => new Promise<number>((resolve, reject) => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__, canvas = map.getCanvas();
+    const pixel = map.project(coordinates), box = canvas.getBoundingClientRect();
+    let timer: ReturnType<typeof setTimeout>;
+    const started = performance.now();
+    const observer = new MutationObserver(() => {
+      if (phase === 'label' && document.querySelector('[role="tooltip"]')) finish();
+    });
+    function clean() { clearTimeout(timer); observer.disconnect(); window.removeEventListener('synthetic-hover-request', finish); }
+    function finish() { const elapsed = performance.now() - started; clean(); resolve(elapsed); }
+    if (phase === 'request') window.addEventListener('synthetic-hover-request', finish);
+    else observer.observe(document.body, { childList: true, subtree: true });
+    timer = setTimeout(() => { clean(); reject(new Error(`Hover ${phase} did not occur`)); }, 3000);
+    canvas.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: box.x + pixel.x, clientY: box.y + pixel.y - 14 }));
+  }), { coordinates: point, phase });
+}
+
+test('cold hover starts its one request immediately and cached names render within100ms', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const state = await install(page);
+  expect(await timedHover(page, 'request')).toBeLessThan(100);
+  await expect(page.getByRole('tooltip')).toContainText('Synthetic <img src=x onerror=alert(1)> facility');
+  expect(state.details).toBe(1);
+  await page.keyboard.press('Escape'); await expect(page.getByRole('tooltip')).toHaveCount(0);
+  expect(await timedHover(page, 'label')).toBeLessThan(100); expect(state.details).toBe(1);
+});
+
+test('a verified loaded search result has an immediate hover name without a detail request', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const state = await install(page, 'source_reported', '', 'slaughter', true);
+  await expect(page.locator(`#record-list [data-record-id="${id}"]`)).toHaveCount(1);
+  expect(await timedHover(page, 'label')).toBeLessThan(100); expect(state.details).toBe(0);
+});
 test('hover shows safe name/category without moving the camera, caches labels and leaves a cold approximate click intact', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   const state = await install(page, 'approximate');
