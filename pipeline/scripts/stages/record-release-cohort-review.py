@@ -143,7 +143,8 @@ def _validate_database_url(database_url: str, expected_database: str) -> None:
     if routing.intersection({"host", "hostaddr", "service", "servicefile"}):
         raise CohortReviewError("database URL must not override the loopback target")
     if (not re.fullmatch(r"uec_v0_review(?:_[a-z0-9]+)?", expected_database)
-            and expected_database != "uec_country_release_test_20261027"):
+            and expected_database not in {
+                "uec_country_release_test_20261027", "uec_country_release_test_20261031"}):
         raise CohortReviewError("expected database must be an allowlisted isolated review database")
     if parsed.path.lstrip("/") != expected_database:
         raise CohortReviewError("database URL does not match expected database")

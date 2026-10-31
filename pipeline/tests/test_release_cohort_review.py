@@ -26,6 +26,8 @@ OWNED_DATABASE = "uec_v0_cohort_review_test20261005"
 
 class CohortReviewContractTests(unittest.TestCase):
     def test_country_review_target_is_exact_and_cannot_override_routing(self):
+        current = "uec_country_release_test_20261031"
+        recorder._validate_database_url("postgresql://synthetic@127.0.0.1:55433/" + current, current)
         target = "uec_country_release_test_20261027"
         url = "postgresql://synthetic@127.0.0.1:55433/" + target
         recorder._validate_database_url(url, target)

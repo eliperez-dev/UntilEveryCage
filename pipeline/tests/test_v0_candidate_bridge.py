@@ -22,6 +22,31 @@ def _canonical(value):
 
 
 class CandidateBridgeTests(unittest.TestCase):
+    def test_historical_baseline_requires_public_history_and_matching_read_model(self):
+        class Connection:
+            def __init__(self):
+                self.rows = iter([
+                    ("validated", bridge.PROFILE, False),
+                    (bridge.RELEASE_BASELINE_MANIFEST_SHA256,),
+                    (False,),
+                ])
+
+            def execute(self, query, parameters=()):
+                self.query = query
+                self.row = next(self.rows)
+                return self
+
+            def fetchone(self):
+                return self.row
+
+        connection = Connection()
+        with self.assertRaisesRegex(bridge.BridgeError, "release_baseline_public_history_missing"):
+            bridge._release_baseline_snapshot(
+                connection, bridge.RELEASE_BASELINE_ID, bridge.RELEASE_BASELINE_MANIFEST_SHA256,
+                expected_status="validated")
+        self.assertIn("public_release_history", connection.query)
+        self.assertIn("model.manifest_sha256", connection.query)
+
     @patch.object(bridge, "datetime", wraps=datetime)
     def test_preview_timeline_binds_first_handoff_and_latest_verified_acquisition(self, clock):
         # Keep the future-timestamp rejection deterministic after UTC rollover.
@@ -74,8 +99,12 @@ class CandidateBridgeTests(unittest.TestCase):
         self.assertIn('parser.add_argument("--append-to-release-baseline"', source)
         self.assertIn('parser.add_argument("--retained-release-id", action="append"', source)
         self.assertIn('expected_status="validated" if append_to_release_baseline else "promoted"', source)
-        self.assertIn("_release_baseline_snapshot(connection, baseline_release_id, baseline_manifest_sha256)", source)
-        self.assertIn('baseline_before["shared"] = _shared_baseline_snapshot(connection, shared_release_ids)', source)
+        self.assertIn("expected_status=RELEASE_BUILD_BASELINE_STATUS[expected_database]", source)
+        self.assertIn('expected_graph_edges=RELEASE_BUILD_BASELINE_GRAPH_EDGES[expected_database]', source)
+        self.assertEqual(bridge.RELEASE_BUILD_BASELINE_GRAPH_EDGES, {
+            "uec_country_release_test_20261027": 60263,
+            "uec_country_release_test_20261031": 69526,
+        })
         self.assertIn("_retained_release_snapshots(connection, retained_release_ids)", source)
         self.assertIn("approved_release_baseline_changed", source)
 
@@ -283,8 +312,11 @@ class CandidateBridgeTests(unittest.TestCase):
         self.assertEqual(bridge.RELEASE_REPLACEMENT_SOURCES, {
             "de.locations", "es.locations", "fr.georisques.icpe.animal", "mx.locations",
             "nz.locations", "fsa_approved_establishments", "fss_approved_establishments"})
-        self.assertTrue("set(entries) != RELEASE_REPLACEMENT_SOURCES" in source,
+        self.assertTrue("set(entries) != RELEASE_BUILD_SOURCE_SCOPES[expected_database]" in source,
                         "new mode must require the exact country cohort set")
+        self.assertEqual(bridge.RELEASE_BUILD_SOURCE_SCOPES['uec_country_release_test_20261031'],
+            bridge.RELEASE_REPLACEMENT_SOURCES | {'es.cat.feed-sandach','eu.eea.intensive-livestock',
+                                                  'no.fiskeridir.aquaculture','pl.giw.approved-food'})
         self.assertIn("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY", source)
         self.assertIn("release_baseline.verify_connection(preview_connection, contract)", source)
         self.assertIn("_verify_preview_source(\n                        preview_connection or connection", source)

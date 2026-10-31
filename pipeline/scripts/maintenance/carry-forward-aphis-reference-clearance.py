@@ -18,6 +18,8 @@ TARGET_DATABASE = "uec_country_release_test_20261027"
 SOURCE_RELEASE = "release-2026-10-18"
 TARGET_RELEASE = "release-2026-10-27-r2"
 TARGET_FREEZE_SHA256 = "86d32bf5c0dcfd56dc93773b42040d40cfca082c5cd3d8424dfc88b249bcde0e"
+TARGET_DATABASES = {TARGET_RELEASE: TARGET_DATABASE,
+                    "release-2026-10-31": "uec_country_release_test_20261031"}
 DECISION_REFERENCE = (
     "user-approved-reference-metadata-only;"
     "https://www.aphis.usda.gov/animal-care/awa-services/usda-animal-care-public-search-tool"
@@ -34,8 +36,8 @@ class CarryForwardError(ValueError):
     """Safe, non-row-bearing error for a failed carry-forward precondition."""
 
 
-def validate_database_url(database_url: str, expected_database: str) -> None:
-    if expected_database != TARGET_DATABASE:
+def validate_database_url(database_url: str, expected_database: str, target_release: str = TARGET_RELEASE) -> None:
+    if expected_database != TARGET_DATABASES.get(target_release):
         raise CarryForwardError("expected_database_not_allowed")
     try:
         parsed = urlsplit(database_url)
@@ -44,7 +46,7 @@ def validate_database_url(database_url: str, expected_database: str) -> None:
         raise CarryForwardError("database_url_invalid") from exc
     if parsed.scheme not in {"postgres", "postgresql"}:
         raise CarryForwardError("database_url_scheme_invalid")
-    if parsed.path.lstrip("/") != TARGET_DATABASE:
+    if parsed.path.lstrip("/") != expected_database:
         raise CarryForwardError("database_url_database_mismatch")
     if parsed.hostname not in {"localhost", "127.0.0.1", "::1"}:
         raise CarryForwardError("database_url_host_not_loopback")
@@ -54,7 +56,8 @@ def validate_database_url(database_url: str, expected_database: str) -> None:
         raise CarryForwardError("database_url_routing_options_forbidden")
 
 
-def _eligible_rows(connection, *, candidate_target: bool = False):
+def _eligible_rows(connection, *, candidate_target: bool = False,
+                   target_release: str = TARGET_RELEASE, target_freeze_sha256: str = TARGET_FREEZE_SHA256):
     """Return only rows passing all source/target and current-safety gates."""
     target_gate = (
         "target_release.profile='official' AND target_release.test_only IS FALSE "
@@ -201,9 +204,9 @@ def _eligible_rows(connection, *, candidate_target: bool = False):
                         AND event.event_date IS NOT NULL)))
         ORDER BY record.source_id,record.source_record_id
         """,
-        (list(ALLOWED_SOURCES), SOURCE_RELEASE, SOURCE_RELEASE, TARGET_RELEASE,
-         list(ALLOWED_SOURCES), TARGET_RELEASE, SOURCE_RELEASE, TARGET_RELEASE,
-         *((TARGET_FREEZE_SHA256,) if candidate_target else ()),
+        (list(ALLOWED_SOURCES), SOURCE_RELEASE, SOURCE_RELEASE, target_release,
+         list(ALLOWED_SOURCES), target_release, SOURCE_RELEASE, target_release,
+         *((target_freeze_sha256,) if candidate_target else ()),
          SCOPE_VERSION, APPROVED_FIELDS, DECISION_REFERENCE),
     ).fetchall()
 
@@ -249,11 +252,14 @@ def _provenance_prefix(row) -> str:
 
 
 def carry_forward(connection, *, actor: str, apply: bool = False,
-                  prepare_reviews_only: bool = False) -> dict[str, int | str]:
+                  prepare_reviews_only: bool = False, target_release: str = TARGET_RELEASE,
+                  target_freeze_sha256: str = TARGET_FREEZE_SHA256) -> dict[str, int | str]:
     actor = actor.strip()
     if not re.fullmatch(r"[A-Za-z0-9 ._@:/+-]{1,200}", actor):
         raise CarryForwardError("operator_actor_invalid")
-    if connection.execute("SELECT current_database()").fetchone()[0] != TARGET_DATABASE:
+    if target_release not in TARGET_DATABASES or not re.fullmatch(r"[0-9a-f]{64}", target_freeze_sha256):
+        raise CarryForwardError("target_contract_invalid")
+    if connection.execute("SELECT current_database()").fetchone()[0] != TARGET_DATABASES[target_release]:
         raise CarryForwardError("connected_database_mismatch")
     schema = connection.execute(
         """SELECT to_regclass('uec.publication_review_release_scopes') IS NOT NULL,
@@ -278,23 +284,24 @@ def carry_forward(connection, *, actor: str, apply: bool = False,
                   summary->>'candidate_only',summary->>'freeze_sha256'
            FROM uec.releases release
            WHERE release_id = ANY(%s)""",
-        ([SOURCE_RELEASE, TARGET_RELEASE],),
+        ([SOURCE_RELEASE, target_release],),
     ).fetchall()
     release_map = {row[0]: row[1:] for row in release_rows}
-    for release_id in (SOURCE_RELEASE, TARGET_RELEASE):
+    for release_id in (SOURCE_RELEASE, target_release):
         release = release_map.get(release_id)
         if release is None:
             raise CarryForwardError("release_missing")
         profile, test_only, status, was_public, candidate_only, freeze_sha = release
         if profile != "official" or test_only is not False:
             raise CarryForwardError("release_not_historically_public_official")
-        if release_id == TARGET_RELEASE and prepare_reviews_only:
+        if release_id == target_release and prepare_reviews_only:
             if (status not in {"candidate", "validated"} or candidate_only != "true"
-                    or freeze_sha != TARGET_FREEZE_SHA256):
+                    or freeze_sha != target_freeze_sha256):
                 raise CarryForwardError("target_candidate_identity_mismatch")
         elif not (status == "promoted" or (status == "validated" and was_public)):
             raise CarryForwardError("release_not_historically_public_official")
-    rows = _eligible_rows(connection, candidate_target=prepare_reviews_only)
+    rows = _eligible_rows(connection, candidate_target=prepare_reviews_only,
+                          target_release=target_release, target_freeze_sha256=target_freeze_sha256)
     already = (
         sum(1 for row in rows if _review_is_same(row))
         if prepare_reviews_only
@@ -332,7 +339,7 @@ def carry_forward(connection, *, actor: str, apply: bool = False,
                    (source_id,profile,release_id,artifact_id,artifact_sha256,scope_version,
                     decision_status,approved_fields,decision_actor,decision_reference,decided_at)
                    VALUES (%s,'official',%s,%s,%s,%s,'approved',%s,%s,%s,now())""",
-                    (source_id, TARGET_RELEASE, artifact_id, digest, SCOPE_VERSION,
+                    (source_id, target_release, artifact_id, digest, SCOPE_VERSION,
                  APPROVED_FIELDS,
                  f"{actor}; carried forward from clearance {prior_clearance_id} by {prior_actor}",
                  DECISION_REFERENCE),
@@ -345,7 +352,7 @@ def carry_forward(connection, *, actor: str, apply: bool = False,
                         maintainer_approval,publication_eligible,reviewer_role,note)
                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
                        RETURNING publication_review_event_id""",
-                    (source_record_id, TARGET_RELEASE, *source_review[:5],
+                    (source_record_id, target_release, *source_review[:5],
                      f"{provenance} Operator recording carry-forward: {actor}."),
                 ).fetchone()[0]
                 scoped_review = connection.execute(
@@ -353,14 +360,14 @@ def carry_forward(connection, *, actor: str, apply: bool = False,
                            SELECT 1 FROM uec.publication_review_release_scopes scope
                            WHERE scope.publication_review_event_id=%s
                              AND scope.release_id=%s)""",
-                    (inserted_review_id, TARGET_RELEASE),
+                    (inserted_review_id, target_release),
                 ).fetchone()[0]
                 if not scoped_review:
                     raise CarryForwardError("release_scoped_review_not_created")
     return {
         "status": "prepared_reviews" if prepare_reviews_only else "applied" if apply else "dry_run",
         "stage": "prepare_reviews_only" if prepare_reviews_only else "final_clearance",
-        "release": TARGET_RELEASE,
+        "release": target_release,
         "eligible_records": len(rows),
         "already_identical": already,
         "would_copy_records": len(pending),
@@ -377,6 +384,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--database-url", default=os.environ.get("UEC_DATABASE_URL", ""))
     parser.add_argument("--expected-database", required=True)
+    parser.add_argument("--target-release", choices=sorted(TARGET_DATABASES), default=TARGET_RELEASE)
+    parser.add_argument("--target-freeze-sha256", default=TARGET_FREEZE_SHA256)
     parser.add_argument("--decision-reference", required=True)
     parser.add_argument("--actor", required=True, help="operator identity to record for this carry-forward")
     action = parser.add_mutually_exclusive_group()
@@ -387,7 +396,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if not args.database_url:
             raise CarryForwardError("database_url_required")
-        validate_database_url(args.database_url, args.expected_database)
+        validate_database_url(args.database_url, args.expected_database,args.target_release)
         if args.decision_reference != DECISION_REFERENCE:
             raise CarryForwardError("decision_reference_mismatch")
         import psycopg
@@ -399,7 +408,9 @@ def main(argv: list[str] | None = None) -> int:
                 if not writes:
                     connection.execute("SET TRANSACTION READ ONLY")
                 result = carry_forward(connection, actor=args.actor, apply=args.apply,
-                                       prepare_reviews_only=args.prepare_reviews_only)
+                                       prepare_reviews_only=args.prepare_reviews_only,
+                                       target_release=args.target_release,
+                                       target_freeze_sha256=args.target_freeze_sha256)
         print(json.dumps(result, sort_keys=True))
         return 0
     except CarryForwardError as exc:

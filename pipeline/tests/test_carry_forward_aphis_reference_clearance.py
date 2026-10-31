@@ -88,6 +88,27 @@ class FakeCursor:
 
 
 class CarryForwardAphisReferenceClearanceTests(unittest.TestCase):
+    def test_new_release_is_bound_to_its_own_database_and_freeze(self):
+        release = "release-2026-10-31"
+        database = MODULE.TARGET_DATABASES[release]
+        digest = "b" * 64
+        url = f"postgresql://user:secret@127.0.0.1:55433/{database}"
+        MODULE.validate_database_url(url, database, release)
+        with self.assertRaises(MODULE.CarryForwardError):
+            MODULE.validate_database_url(url, database, MODULE.TARGET_RELEASE)
+        connection = FakeConnection(rows=[eligible_row()], database=database, releases=[
+            (MODULE.SOURCE_RELEASE, "official", False, "promoted", True, None, None),
+            (release, "official", False, "candidate", False, "true", digest),
+        ])
+        result = MODULE.carry_forward(
+            connection, actor="release-operator", prepare_reviews_only=True,
+            target_release=release, target_freeze_sha256=digest)
+        self.assertEqual(result["release"], release)
+        query_parameters = next(params for sql, params in connection.calls
+                                if "WITH eligible_release AS" in sql)
+        self.assertEqual(query_parameters[6:9], (MODULE.SOURCE_RELEASE, release, digest))
+        self.assertEqual(connection.executed_writes[0][1][1], release)
+
     def test_url_is_pinned_to_local_test_database_without_routing_options(self):
         url = "postgresql://user:secret@127.0.0.1:55433/uec_country_release_test_20261027"
         MODULE.validate_database_url(url, MODULE.TARGET_DATABASE)

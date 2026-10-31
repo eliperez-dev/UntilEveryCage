@@ -343,6 +343,11 @@ _CANDIDATE_DATABASE = "uec_country_release_test_20261027"
 _CANDIDATE_RELEASE = "release-2026-10-27-r2"
 _CANDIDATE_FREEZE_RELEASE = "v0-candidate-country-2026-10-27"
 _CANDIDATE_FREEZE_BINDING = "release-2026-10-27"
+_CANDIDATE_CONTRACTS = {
+    _CANDIDATE_RELEASE: (_CANDIDATE_DATABASE, _CANDIDATE_FREEZE_RELEASE, _CANDIDATE_FREEZE_BINDING),
+    "release-2026-10-31": ("uec_country_release_test_20261031",
+                           "v0-candidate-country-2026-10-31", "release-2026-10-31"),
+}
 
 _CANDIDATE_MEMBER_SQL = """
 SELECT member.release_id, member.facility_id::text, member.observation_id::text,
@@ -412,7 +417,11 @@ ORDER BY record.source_id, artifact.sha256, record.source_record_key,
 """
 
 
-def _candidate_paths(freeze_path: Path, review_path: Path, output_root: Path) -> tuple[dict[str, Any], dict[str, Any], Path]:
+def _candidate_paths(freeze_path: Path, review_path: Path, output_root: Path,
+                     release_id: str = _CANDIDATE_RELEASE) -> tuple[dict[str, Any], dict[str, Any], Path]:
+    contract = _CANDIDATE_CONTRACTS.get(release_id)
+    if contract is None:
+        raise CandidateExportError("candidate_release_mismatch")
     reports_root = (Path.cwd() / "data" / "reports").resolve()
     staging_root = (Path.cwd() / "data" / "staging").resolve()
     try:
@@ -432,15 +441,15 @@ def _candidate_paths(freeze_path: Path, review_path: Path, output_root: Path) ->
     expected_hashes = (review.get("freeze_sha256"), review.get("inventory_sha256"), review.get("member_sha256"))
     if (freeze.get("schema_version") != "v0-candidate-freeze-v1"
             or review.get("schema_version") != "uec-release-cohort-review-v1"
-            or review.get("release_id") != _CANDIDATE_RELEASE
+            or review.get("release_id") != release_id
             or not isinstance(review.get("member_count"), int) or review["member_count"] < 1
             or any(not isinstance(value, str) or len(value) != 64
                    or any(character not in "0123456789abcdef" for character in value)
                    for value in expected_hashes)
             or not isinstance(freeze.get("inventory_sha256"), str)
             or len(freeze["inventory_sha256"]) != 64
-            or freeze.get("release_id") != _CANDIDATE_FREEZE_RELEASE
-            or review.get("freeze_sha256") != canonical_sha256({**freeze, "release_id": _CANDIDATE_FREEZE_BINDING})
+            or freeze.get("release_id") != contract[1]
+            or review.get("freeze_sha256") != canonical_sha256({**freeze, "release_id": contract[2]})
             or review.get("inventory_sha256") != freeze.get("inventory_sha256")):
         raise CandidateExportError("candidate_control_hash_mismatch")
     output = output_root.resolve(strict=False)
@@ -463,7 +472,7 @@ def _validate_candidate_database_url(database_url: str, expected_database: str) 
             or parsed.hostname not in {"127.0.0.1", "localhost", "::1"}
             or parsed.path.lstrip("/") != expected_database
             or routing.intersection({"host", "hostaddr", "service", "servicefile"})
-            or expected_database != _CANDIDATE_DATABASE):
+            or expected_database not in {c[0] for c in _CANDIDATE_CONTRACTS.values()}):
         raise CandidateExportError("candidate_database_mismatch")
 
 
@@ -524,10 +533,11 @@ def _verify_candidate_export(output_root: Path, expected_groups: dict[tuple[str,
 def export_frozen_candidate(database_url: str, *, expected_database: str, release_id: str,
                             freeze_path: Path, review_path: Path, output_root: Path) -> dict[str, Any]:
     """Export only exact, unrestricted members of the assigned frozen candidate."""
-    if release_id != _CANDIDATE_RELEASE:
+    contract = _CANDIDATE_CONTRACTS.get(release_id)
+    if contract is None or expected_database != contract[0]:
         raise CandidateExportError("candidate_release_mismatch")
     _validate_candidate_database_url(database_url, expected_database)
-    freeze, review, output = _candidate_paths(freeze_path, review_path, output_root)
+    freeze, review, output = _candidate_paths(freeze_path, review_path, output_root, release_id)
     if review.get("release_id") != release_id:
         raise CandidateExportError("candidate_control_release_mismatch")
     selected = freeze.get("selected_sources")
@@ -926,8 +936,9 @@ def main() -> int:
     parser.add_argument("--database-url-env", default="UEC_GRAPH_EXPORT_URL")
     parser.add_argument("--candidate-export", action="store_true",
                         help="export the exact assigned frozen candidate, separately from legacy release mode")
-    parser.add_argument("--expected-database", choices=[_CANDIDATE_DATABASE])
-    parser.add_argument("--candidate-release-id", choices=[_CANDIDATE_RELEASE])
+    parser.add_argument("--expected-database", choices=sorted({
+        contract[0] for contract in _CANDIDATE_CONTRACTS.values()}))
+    parser.add_argument("--candidate-release-id", choices=sorted(_CANDIDATE_CONTRACTS))
     parser.add_argument("--freeze", type=Path)
     parser.add_argument("--review-template", type=Path)
     parser.add_argument("--release-manifest")

@@ -56,6 +56,21 @@ RELEASE_REPLACEMENT_SOURCES = frozenset({
     "de.locations", "es.locations", "fr.georisques.icpe.animal", "mx.locations",
     "nz.locations", "fsa_approved_establishments", "fss_approved_establishments",
 })
+RELEASE_BUILD_SOURCE_SCOPES = {
+    "uec_country_release_test_20261027": RELEASE_REPLACEMENT_SOURCES,
+    "uec_country_release_test_20261031": RELEASE_REPLACEMENT_SOURCES | frozenset({
+        "es.cat.feed-sandach", "eu.eea.intensive-livestock",
+        "no.fiskeridir.aquaculture", "pl.giw.approved-food",
+    }),
+}
+RELEASE_BUILD_BASELINE_GRAPH_EDGES = {
+    "uec_country_release_test_20261027": 60263,
+    "uec_country_release_test_20261031": 69526,
+}
+RELEASE_BUILD_BASELINE_STATUS = {
+    "uec_country_release_test_20261027": "promoted",
+    "uec_country_release_test_20261031": "validated",
+}
 RETAINED_RELEASE_IDS = (
     "v0-candidate-2026-10-10-fsis-au-repair",
     "v0-candidate-2026-10-10-fsis-au-repair-r2",
@@ -65,6 +80,12 @@ RETAINED_RELEASE_IDS = (
 )
 RETAINED_MANIFEST_SHA256 = {"v0-candidate-2026-10-10-fsis-au-repair-r2":
     "b47b411a27542da4a538a2773dd383b0a1003ed188b7e8304f0898c39c592926"}
+RELEASE_BUILD_EXTRA_PROTECTED = {
+    "uec_country_release_test_20261031": {
+        "release-2026-10-27": ("candidate", None),
+        "release-2026-10-27-r2": ("promoted", "489295f13ab29be56f4b73c44a59955c5c4f684b726430ac03982cb930c84efe"),
+    },
+}
 GRAPH_IMMUTABLE_RELATIONS = (
     "uec.graph_public_projection_builds", "uec.graph_public_projection_endpoints",
     "uec.graph_public_projection_edges", "uec.graph_public_projection_edge_supports",
@@ -1172,7 +1193,8 @@ def _baseline_snapshot(connection: Any, contract: dict[str, Any], *, expected_st
     return snapshot
 
 
-def _release_baseline_snapshot(connection: Any, release_id: str, manifest_sha256: str) -> dict[str, Any]:
+def _release_baseline_snapshot(connection: Any, release_id: str, manifest_sha256: str,
+                               *, expected_status: str = "promoted") -> dict[str, Any]:
     """Verify/fingerprint the Oct 18 public release facts and public aggregates."""
     if (release_id != RELEASE_BASELINE_ID
             or manifest_sha256 != RELEASE_BASELINE_MANIFEST_SHA256):
@@ -1183,8 +1205,16 @@ def _release_baseline_snapshot(connection: Any, release_id: str, manifest_sha256
     manifest = connection.execute(
         "SELECT manifest_sha256 FROM uec.release_manifests WHERE release_id=%s", (release_id,)
     ).fetchone()
-    if release != ("promoted", PROFILE, False) or manifest != (manifest_sha256,):
+    if (expected_status not in {"promoted", "validated"}
+            or release != (expected_status, PROFILE, False) or manifest != (manifest_sha256,)):
         raise BridgeError("release_baseline_identity_mismatch")
+    if expected_status == "validated" and not connection.execute(
+        "SELECT EXISTS(SELECT 1 FROM uec.public_release_history history "
+        "JOIN uec.public_discovery_read_models model USING(release_id) "
+        "WHERE history.release_id=%s AND history.profile=%s AND model.manifest_sha256=%s)",
+        (release_id, PROFILE, manifest_sha256),
+    ).fetchone()[0]:
+        raise BridgeError("release_baseline_public_history_missing")
     members, visible = connection.execute(
         "SELECT count(*),count(*) FILTER (WHERE default_visible) FROM uec.release_members WHERE release_id=%s",
         (release_id,),
@@ -1237,7 +1267,8 @@ def _shared_fact_queries(release_ids: tuple[str, ...]) -> dict[str, tuple[str, t
     }
 
 
-def _shared_baseline_snapshot(connection: Any, release_ids: tuple[str, ...]) -> dict[str, Any]:
+def _shared_baseline_snapshot(connection: Any, release_ids: tuple[str, ...], *,
+                              expected_graph_edges: int = 60263) -> dict[str, Any]:
     """Hash shared restrictions/public/graph state once per before/after phase."""
     active_build = connection.execute(
         "SELECT count(*) FROM uec.graph_public_projection_builds "
@@ -1255,7 +1286,7 @@ def _shared_baseline_snapshot(connection: Any, release_ids: tuple[str, ...]) -> 
         "JOIN uec.graph_public_projection_builds build USING(projection_id) "
         "WHERE build.release_id=%s AND build.active AND build.status='completed'", (RELEASE_BASELINE_ID,)
     ).fetchone()[0])
-    if graph_edges != 60263 or evidence_references != 1024:
+    if graph_edges != expected_graph_edges or evidence_references != 1024:
         raise BridgeError("release_baseline_graph_aggregate_mismatch")
     result: dict[str, Any] = {
         "aggregates": {"graph_edges": graph_edges, "graph_evidence_references": evidence_references},
@@ -1308,6 +1339,21 @@ def _release_append_scope_is_valid(connection: Any, baseline_ids: tuple[str, ...
     manifest_ids = {str(row[0]) for row in manifests}
     if not set(baseline_ids).issubset(manifest_ids) or manifest_ids - (set(baseline_ids) | set(retained_ids)):
         raise BridgeError("candidate_append_manifest_scope_mismatch")
+
+
+def _extra_protected_snapshots(connection: Any, expected_database: str) -> dict[str, Any]:
+    snapshots = {}
+    for release_id, (status, digest) in RELEASE_BUILD_EXTRA_PROTECTED.get(expected_database, {}).items():
+        row = connection.execute(
+            "SELECT status,profile,test_only FROM uec.releases WHERE release_id=%s", (release_id,)
+        ).fetchone()
+        manifest = connection.execute(
+            "SELECT manifest_sha256 FROM uec.release_manifests WHERE release_id=%s", (release_id,)
+        ).fetchone()
+        if row != (status, PROFILE, False) or manifest != ((digest,) if digest else None):
+            raise BridgeError("protected_prior_build_identity_mismatch")
+        snapshots[release_id] = _release_facts_snapshot(connection, release_id, include_facts=False)
+    return snapshots
 
 
 def _validate_preview_source_database_url(database_url: str) -> None:
@@ -1396,6 +1442,7 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
         raise BridgeError("baseline_modes_are_mutually_exclusive")
     append_mode = append_to_v0_baseline or append_to_release_baseline
     additional_baseline_ids: tuple[str, ...] = ()
+    extra_protected_ids = tuple(RELEASE_BUILD_EXTRA_PROTECTED.get(expected_database,{})) if append_to_release_baseline else ()
     if append_to_v0_baseline:
         if expected_database not in {"uec_v0_api_repair", "uec_launch_sources_test_20261025"}:
             raise BridgeError("append_candidate_database_not_allowlisted")
@@ -1407,7 +1454,7 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
             if (successor is None or parent_candidate_release_id != f"{successor.group(1)}-r{int(successor.group(2)) - 1}"):
                 raise BridgeError("parent_candidate_must_be_immediate_same_family_predecessor")
     elif append_to_release_baseline:
-        if expected_database != "uec_country_release_test_20261027":
+        if expected_database not in RELEASE_BUILD_SOURCE_SCOPES:
             raise BridgeError("append_candidate_database_not_allowlisted")
         baseline_contract = _baseline_contract()
         if (baseline_release_id != RELEASE_BASELINE_ID
@@ -1420,7 +1467,7 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
         _validate_preview_source_database_url(preview_source_database_url)
         if freeze["release_id"] in {baseline_contract["release_id"], baseline_release_id, *retained_release_ids}:
             raise BridgeError("append_candidate_release_id_must_be_distinct")
-        additional_baseline_ids = (baseline_release_id, *retained_release_ids)
+        additional_baseline_ids = (baseline_release_id, *retained_release_ids, *extra_protected_ids)
         if parent_candidate_release_id is not None:
             if parent_candidate_release_id != baseline_release_id:
                 successor = re.fullmatch(r"(.+)-r([2-9][0-9]*)", freeze["release_id"])
@@ -1433,8 +1480,8 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
     if parsed_url.path.lstrip("/") != expected_database:
         raise BridgeError("database_name_does_not_match_expected")
     entries = {item["source_id"]: item for item in freeze["selected_sources"]}
-    if append_to_release_baseline and set(entries) != RELEASE_REPLACEMENT_SOURCES:
-        raise BridgeError("release_baseline_requires_seven_non_us_replacement_sources")
+    if append_to_release_baseline and set(entries) != RELEASE_BUILD_SOURCE_SCOPES[expected_database]:
+        raise BridgeError("release_baseline_source_scope_mismatch")
     inheritance_parent_release_id = _inheritance_parent_id(
         append_to_release_baseline, baseline_release_id or "", parent_candidate_release_id)
     inventory_sources = {item["source_id"]: item for item in inventory["source_scope"]["sources"]}
@@ -1519,11 +1566,15 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                     include_facts=not append_to_release_baseline)}
                 if append_to_release_baseline:
                     shared_release_ids = tuple(sorted((baseline_contract["release_id"], baseline_release_id,
-                                                       *retained_release_ids)))
-                    baseline_before["shared"] = _shared_baseline_snapshot(connection, shared_release_ids)
+                                                       *retained_release_ids, *extra_protected_ids)))
+                    baseline_before["shared"] = _shared_baseline_snapshot(
+                        connection, shared_release_ids,
+                        expected_graph_edges=RELEASE_BUILD_BASELINE_GRAPH_EDGES[expected_database])
                     baseline_before["release"] = _release_baseline_snapshot(
-                        connection, baseline_release_id, baseline_manifest_sha256)
+                        connection, baseline_release_id, baseline_manifest_sha256,
+                        expected_status=RELEASE_BUILD_BASELINE_STATUS[expected_database])
                     baseline_before["retained"] = _retained_release_snapshots(connection, retained_release_ids)
+                    baseline_before["prior_builds"] = _extra_protected_snapshots(connection,expected_database)
             if (not append_mode and (public_projection_before != 0
                     or connection.execute("SELECT count(*) FROM uec.releases WHERE status IN ('validated','promoted')").fetchone()[0] != 0
                     or connection.execute("SELECT count(*) FROM uec.release_manifests").fetchone()[0] != 0)):
@@ -1533,13 +1584,14 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
             elif append_to_release_baseline:
                 _release_append_scope_is_valid(
                     connection, (baseline_contract["release_id"], baseline_release_id),
-                    retained_release_ids, freeze["release_id"])
+                    (*retained_release_ids,*extra_protected_ids), freeze["release_id"])
             inherited_members = 0
             if inheritance_parent_release_id is not None:
                 parent = connection.execute("SELECT status,profile,test_only,summary FROM uec.releases WHERE release_id=%s",
                                             (inheritance_parent_release_id,)).fetchone()
                 if append_to_release_baseline and inheritance_parent_release_id == baseline_release_id:
-                    if parent is None or parent[:3] != ("promoted", PROFILE, False):
+                    if parent is None or parent[:3] != (
+                            RELEASE_BUILD_BASELINE_STATUS[expected_database], PROFILE, False):
                         raise BridgeError("parent_candidate_identity_mismatch")
                 else:
                     if (parent is None or parent[0] != "candidate" or parent[1] != PROFILE or parent[2] is not False
@@ -1877,13 +1929,18 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
             elif append_to_release_baseline:
                 _release_append_scope_is_valid(
                     connection, (baseline_contract["release_id"], baseline_release_id),
-                    retained_release_ids, freeze["release_id"])
+                    (*retained_release_ids,*extra_protected_ids), freeze["release_id"])
                 baseline_after = {
                     "v0": _baseline_snapshot(connection, baseline_contract, expected_status="validated",
                                               include_shared=False, include_facts=False),
-                    "shared": _shared_baseline_snapshot(connection, shared_release_ids),
-                    "release": _release_baseline_snapshot(connection, baseline_release_id, baseline_manifest_sha256),
+                    "shared": _shared_baseline_snapshot(
+                        connection, shared_release_ids,
+                        expected_graph_edges=RELEASE_BUILD_BASELINE_GRAPH_EDGES[expected_database]),
+                    "release": _release_baseline_snapshot(
+                        connection, baseline_release_id, baseline_manifest_sha256,
+                        expected_status=RELEASE_BUILD_BASELINE_STATUS[expected_database]),
                     "retained": _retained_release_snapshots(connection, retained_release_ids),
+                    "prior_builds": _extra_protected_snapshots(connection,expected_database),
                 }
                 if baseline_after != baseline_before:
                     raise BridgeError("approved_release_baseline_changed")

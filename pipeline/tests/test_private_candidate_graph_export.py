@@ -276,6 +276,24 @@ class FrozenCandidateExportTests(unittest.TestCase):
             with self.assertRaisesRegex(EXPORTER.CandidateExportError, "candidate_output_must_be_new"):
                 EXPORTER._candidate_paths(self.freeze_path, self.review_path, self.output)
 
+    def test_final_dated_release_keeps_its_own_database_and_freeze_hash_binding(self):
+        self.freeze['release_id']='v0-candidate-country-2026-10-31'
+        self.review['release_id']='release-2026-10-31'
+        self.review['freeze_sha256']=canonical_sha256({**self.freeze,'release_id':'release-2026-10-31'})
+        self._write_controls([member_row()])
+        with mock.patch.object(EXPORTER.Path,'cwd',return_value=self.root):
+            freeze,review,_=EXPORTER._candidate_paths(self.freeze_path,self.review_path,self.output,'release-2026-10-31')
+            self.assertEqual(review['release_id'],'release-2026-10-31')
+            self.assertEqual(freeze['release_id'],'v0-candidate-country-2026-10-31')
+            with self.assertRaisesRegex(EXPORTER.CandidateExportError,'candidate_control_hash_mismatch'):
+                EXPORTER._candidate_paths(self.freeze_path,self.review_path,self.output)
+        with mock.patch.object(EXPORTER.psycopg,'connect') as connect:
+            with self.assertRaisesRegex(EXPORTER.CandidateExportError,'candidate_release_mismatch'):
+                EXPORTER.export_frozen_candidate('postgresql://user:secret@localhost/uec_country_release_test_20261027',
+                    expected_database='uec_country_release_test_20261027',release_id='release-2026-10-31',
+                    freeze_path=self.freeze_path,review_path=self.review_path,output_root=self.output)
+            connect.assert_not_called()
+
     def test_freeze_hash_mismatch_is_rejected_before_database_connection(self):
         self._write_controls([member_row()])
         self.review["freeze_sha256"] = "e" * 64
