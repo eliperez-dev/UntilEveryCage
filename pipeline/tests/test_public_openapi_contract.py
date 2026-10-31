@@ -230,7 +230,14 @@ class PublicOpenApiContractTests(unittest.TestCase):
         self.assertNotIn("canonical_name", map_feed)
         self.assertNotIn("address", map_feed)
         self.assertEqual(self.spec["components"]["schemas"]["FacetValues"]["maxItems"], 20)
-        self.assertIn(".take(20)", self.handler(self.rust, "get_v2_facets_handler"))
+        self.assertEqual(self.spec["components"]["schemas"]["CountryFacetValues"]["maxItems"], 249)
+        dimensions = self.spec["components"]["schemas"]["Facets"]["properties"]["dimensions"]
+        self.assertEqual(dimensions["properties"]["country_code"]["$ref"], "#/components/schemas/CountryFacetValues")
+        self.assertEqual(dimensions["properties"]["source_id"]["$ref"], "#/components/schemas/SourceFacetValues")
+        self.assertIn("source_id", dimensions["required"])
+        self.assertIn('.take(if name == "country_code" { 249 } else { 20 })',
+                      self.handler(self.rust, "get_v2_facets_handler"))
+        self.assertEqual(self.contract["endpoints"]["GET /api/v2/discovery/facets"]["max_values_by_dimension"]["country_code"], 249)
         self.assertEqual(params["zPath"]["schema"]["maximum"], 14)
         self.assertIn("z > 14", self.handler(self.rust, "get_v2_map_tile_handler"))
         for path in ["/api/v2/locations", "/api/v2/locations/{facility_id}"]:

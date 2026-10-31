@@ -1470,6 +1470,26 @@
           "additionalProperties": false
         }
       },
+      "CountryFacetValues": {
+        "type": "array",
+        "maxItems": 249,
+        "items": {
+          "$ref": "#/components/schemas/FacetValues/items"
+        }
+      },
+      "SourceFacetValues": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["value", "label", "count"],
+          "properties": {
+            "value": {"type": "string"},
+            "label": {"type": "string"},
+            "count": {"type": "integer", "minimum": 0}
+          },
+          "additionalProperties": false
+        }
+      },
       "Facets": {
         "type": "object",
         "required": [
@@ -1503,6 +1523,7 @@
             "type": "object",
             "required": [
               "country_code",
+              "source_id",
               "category",
               "display_precision",
               "lifecycle_status",
@@ -1511,7 +1532,10 @@
             ],
             "properties": {
               "country_code": {
-                "$ref": "#/components/schemas/FacetValues"
+                "$ref": "#/components/schemas/CountryFacetValues"
+              },
+              "source_id": {
+                "$ref": "#/components/schemas/SourceFacetValues"
               },
               "category": {
                 "$ref": "#/components/schemas/FacetValues"
