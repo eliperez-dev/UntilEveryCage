@@ -1679,6 +1679,10 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                     raise BridgeError(f"preview_validation_failed:{source}:{error}") from None
             for provenance in summary["source_provenance"]:
                 provenance["display_evidence_revision"] = preview_checks[provenance["source_id"]]["display_evidence_revision"]
+            # Queue independent writes until a result is needed. Fetches still
+            # synchronize and every check stays in the same serializable
+            # transaction; this avoids a network round trip for each INSERT.
+            stack.enter_context(connection.pipeline())
             if not existing:
                 connection.execute("""INSERT INTO uec.releases(release_id,status,ruleset_version,summary,profile,test_only)
                     VALUES (%s,'candidate',%s,%s,%s,false)""",
