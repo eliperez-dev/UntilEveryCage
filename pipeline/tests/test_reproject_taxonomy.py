@@ -79,6 +79,9 @@ class ReprojectTaxonomyTests(unittest.TestCase):
 
     def test_loopback_target_requires_exact_allowed_database_name(self):
         REPROJECT._validate_preview_database_url(
+            "postgresql://user:pass@127.0.0.1:55433/uec_country_preview_test_20261031",
+            "uec_country_preview_test_20261031")
+        REPROJECT._validate_preview_database_url(
             "postgresql://user:pass@localhost:55433/uec_v0_review_r2", "uec_v0_review_r2")
         REPROJECT._validate_preview_database_url(
             "postgresql://user:pass@127.0.0.1:55433/uec", "uec")

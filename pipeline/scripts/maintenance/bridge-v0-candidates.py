@@ -71,6 +71,11 @@ RELEASE_BUILD_BASELINE_STATUS = {
     "uec_country_release_test_20261027": "promoted",
     "uec_country_release_test_20261031": "validated",
 }
+SOURCE_ATTRIBUTIONS = {
+    "eu.eea.intensive-livestock": "European Environment Agency; Industrial Reporting version 16 (2007-2024)",
+    "no.fiskeridir.aquaculture": "Source: Fiskeridirektoratet",
+    "pl.giw.approved-food": "Source: Główny Inspektorat Weterynarii (GIW), approved-establishment register",
+}
 RETAINED_RELEASE_IDS = (
     "v0-candidate-2026-10-10-fsis-au-repair",
     "v0-candidate-2026-10-10-fsis-au-repair-r2",
@@ -613,7 +618,9 @@ def verify_handoff(entry: dict[str, Any], inventory_source: dict[str, Any]) -> d
 def verify_current_candidate_taxonomy(connection: Any, *, candidate_id: str,
                                       representative_observation_id: str, snapshot_sha256: str,
                                       source_id: str, document: dict[str, Any],
-                                      assignment_rows: list[dict[str, Any]]) -> None:
+                                      assignment_rows: list[dict[str, Any]],
+                                      stored_sets: list[tuple[Any, ...]] | None = None,
+                                      stored_assignments: dict[str, list[tuple[Any, ...]]] | None = None) -> None:
     """Require the exact append-only current assignment set, independent of legacy cache columns."""
     try:
         expected_rows = _canonical_rows(representative_observation_id, candidate_id, snapshot_sha256,
@@ -621,7 +628,8 @@ def verify_current_candidate_taxonomy(connection: Any, *, candidate_id: str,
         display_category = choose_display_category(expected_rows)
     except Exception:
         raise BridgeError("preview_candidate_taxonomy_expectation_invalid") from None
-    sets = connection.execute("""SELECT assignment_set_id::text,representative_observation_id::text,
+    if stored_sets is None:
+        sets = connection.execute("""SELECT assignment_set_id::text,representative_observation_id::text,
             snapshot_sha256,source_id,taxonomy_version,crosswalk_version,ruleset_version,display_category
         FROM real_preview.candidate_taxonomy_assignment_sets assignment_set
         WHERE candidate_id=%s AND snapshot_sha256=%s AND source_id=%s
@@ -635,6 +643,9 @@ def verify_current_candidate_taxonomy(connection: Any, *, candidate_id: str,
           )""",
         (candidate_id, snapshot_sha256, source_id, document["taxonomy_version"],
          document["crosswalk_version"], document["ruleset_version"])).fetchall()
+    else:
+        versions = (document["taxonomy_version"], document["crosswalk_version"], document["ruleset_version"])
+        sets = [row for row in stored_sets if row[4:7] == versions]
     if len(sets) != 1:
         raise BridgeError("preview_candidate_taxonomy_assignment_set_missing_or_ambiguous")
     set_row = sets[0]
@@ -644,16 +655,48 @@ def verify_current_candidate_taxonomy(connection: Any, *, candidate_id: str,
     actual_lineage = tuple(str(value).strip() for value in set_row[1:])
     if actual_lineage != expected_lineage:
         raise BridgeError("preview_candidate_taxonomy_assignment_lineage_mismatch")
-    actual_rows = connection.execute("""SELECT assignment_ordinal,primary_key,leaf_key,leaf_label,
+    if stored_assignments is None:
+        actual_rows = connection.execute("""SELECT assignment_ordinal,primary_key,leaf_key,leaf_label,
             source_code_reference,source_label_reference,source_code,source_label,mapping_method,mapping_status
         FROM real_preview.candidate_taxonomy_assignments
         WHERE assignment_set_id=%s ORDER BY assignment_ordinal""", (set_row[0],)).fetchall()
+    else:
+        actual_rows = stored_assignments.get(set_row[0], [])
     expected_assignments = tuple((ordinal, row.primary_key, row.leaf_key, row.leaf_label,
                                   row.source_code_reference, row.source_label_reference,
                                   row.source_code, row.source_label, row.method, row.status)
                                  for ordinal, row in enumerate(expected_rows))
     if tuple(tuple(row) for row in actual_rows) != expected_assignments:
         raise BridgeError("preview_candidate_taxonomy_assignments_mismatch")
+
+
+def _preview_taxonomy_snapshot(connection: Any, source: str, snapshot: str):
+    """Read the same current assignment sets once within the caller's snapshot."""
+    rows = connection.execute("""SELECT assignment_set.candidate_id::text,
+            assignment_set.assignment_set_id::text,assignment_set.representative_observation_id::text,
+            assignment_set.snapshot_sha256,assignment_set.source_id,assignment_set.taxonomy_version,
+            assignment_set.crosswalk_version,assignment_set.ruleset_version,assignment_set.display_category,
+            assignment.assignment_ordinal,assignment.primary_key,assignment.leaf_key,assignment.leaf_label,
+            assignment.source_code_reference,assignment.source_label_reference,assignment.source_code,
+            assignment.source_label,assignment.mapping_method,assignment.mapping_status
+        FROM real_preview.candidate_taxonomy_assignment_sets assignment_set
+        LEFT JOIN real_preview.candidate_taxonomy_assignments assignment USING(assignment_set_id)
+        WHERE assignment_set.source_id=%s AND assignment_set.snapshot_sha256=%s
+          AND NOT EXISTS (
+              SELECT 1 FROM real_preview.candidate_taxonomy_assignment_sets newer
+              WHERE newer.candidate_id=assignment_set.candidate_id
+                AND newer.taxonomy_version=assignment_set.taxonomy_version
+                AND (newer.created_at,newer.assignment_set_id)>
+                    (assignment_set.created_at,assignment_set.assignment_set_id))
+        ORDER BY assignment_set.candidate_id,assignment_set.assignment_set_id,assignment.assignment_ordinal
+        """, (source, snapshot)).fetchall()
+    sets: dict[str, dict[str, tuple[Any, ...]]] = {}
+    assignments: dict[str, list[tuple[Any, ...]]] = {}
+    for row in rows:
+        sets.setdefault(row[0], {})[row[1]] = tuple(row[1:9])
+        if row[9] is not None:
+            assignments.setdefault(row[1], []).append(tuple(row[9:]))
+    return {candidate: list(values.values()) for candidate, values in sets.items()}, assignments
 
 
 def _deduplicate_exact_assignment_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -795,15 +838,16 @@ def _verify_preview_source(connection: Any, source: str, entry: dict[str, Any], 
                 or retained_crosswalk[1] != document["ruleset_version"]
                 or str(retained_crosswalk[2]).strip() != crosswalk_sha256(document)):
             raise BridgeError("preview_taxonomy_crosswalk_mismatch")
+    stored_sets, stored_assignments = _preview_taxonomy_snapshot(connection, source, snapshot)
+    identifier_by_preview_id = {preview_id: identifier for identifier, preview_id in preview_id_by_identifier.items()}
     rep_by_id = {}
     for group, (parsed, raw) in handoff["representatives"].items():
         identifier = str(parsed[0])
         db_candidate = by_group[group]
         # Exact source identifier matching is validated by a lookup against the
         # immutable private preview row before any canonical record is staged.
-        candidate_rep = connection.execute("SELECT source_identifier FROM real_preview.observations WHERE preview_id=%s",
-                                           (db_candidate[2],)).fetchone()
-        if candidate_rep is None or str(candidate_rep[0]) != identifier:
+        candidate_rep = identifier_by_preview_id.get(str(db_candidate[2]))
+        if candidate_rep != identifier:
             raise BridgeError("preview_representative_mismatch")
         if int(db_candidate[10]) != len(handoff["groups"][group]):
             raise BridgeError("preview_group_observation_count_mismatch")
@@ -817,6 +861,8 @@ def _verify_preview_source(connection: Any, source: str, entry: dict[str, Any], 
             representative_observation_id=str(db_candidate[2]), snapshot_sha256=snapshot,
             source_id=source, document=merged["crosswalk_document"],
             assignment_rows=merged["taxonomy_assignment_rows"],
+            stored_sets=stored_sets.get(str(db_candidate[0]), []),
+            stored_assignments=stored_assignments,
         )
         rep_by_id[group] = identifier
     for parsed, raw in handoff["rows"]:
@@ -998,9 +1044,9 @@ def _insert_source(connection: Any, source: str, country: str, name: str, url: s
     prior = connection.execute("SELECT country_code FROM uec.sources WHERE source_id=%s", (source,)).fetchone()
     if prior and str(prior[0]).strip().upper() != country:
         raise BridgeError("existing_source_identity_conflict")
-    connection.execute("""INSERT INTO uec.sources(source_id,country_code,name,official_url,access_method,status,origin_type)
-        VALUES (%s,%s,%s,%s,'source_handoff_private_candidate','source_candidate','official') ON CONFLICT (source_id) DO NOTHING""",
-        (source, country, name, url))
+    connection.execute("""INSERT INTO uec.sources(source_id,country_code,name,official_url,access_method,status,origin_type,attribution)
+        VALUES (%s,%s,%s,%s,'source_handoff_private_candidate','source_candidate','official',%s) ON CONFLICT (source_id) DO NOTHING""",
+        (source, country, name, url, SOURCE_ATTRIBUTIONS.get(source)))
 
 
 def _ensure_artifact(connection: Any, entry: dict[str, Any], retrieved: datetime) -> str:
@@ -1361,7 +1407,8 @@ def _validate_preview_source_database_url(database_url: str) -> None:
     query_options = {key.lower() for key, _ in parse_qsl(parsed.query, keep_blank_values=True)}
     if (parsed.scheme not in {"postgres", "postgresql"}
             or parsed.hostname not in {"127.0.0.1", "localhost", "::1"}
-            or parsed.path.strip("/") != "uec_launch_sources_test_20261025"
+            or parsed.path.strip("/") not in {
+                "uec_launch_sources_test_20261025", "uec_country_preview_test_20261031"}
             or query_options.intersection({"host", "hostaddr", "service", "servicefile"})):
         raise BridgeError("preview_source_database_not_allowlisted")
 
@@ -1535,7 +1582,7 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                 stack.enter_context(preview_connection.transaction())
                 preview_connection.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
                 source_database = preview_connection.execute("SELECT current_database()").fetchone()[0]
-                if source_database != "uec_launch_sources_test_20261025":
+                if source_database != urlsplit(preview_source_database_url).path.strip("/"):
                     raise BridgeError("preview_source_database_mismatch")
                 from pipeline.scripts import release_baseline
                 try:

@@ -46,7 +46,8 @@ def _load_bridge_module():
 
 
 def _validate_preview_database_url(database_url: str, expected_database: str) -> None:
-    if expected_database not in {"uec_v0_review_r2", "uec", "uec_v0_api_repair"}:
+    if expected_database not in {"uec_v0_review_r2", "uec", "uec_v0_api_repair",
+                                 "uec_country_preview_test_20261031"}:
         raise ValueError("expected database must be an approved isolated preview database")
     try:
         parsed = urlsplit(database_url)
@@ -190,6 +191,11 @@ def _reconcile_preview_freeze_in_transaction(connection, freeze_path: Path, inve
     actual_database = connection.execute("SELECT current_database()").fetchone()[0]
     if actual_database != expected_database:
         raise ValueError("connected database does not match expected database")
+    baseline_contract = None
+    baseline_before = None
+    if expected_database == "uec_country_preview_test_20261031":
+        baseline_contract = bridge._baseline_contract()
+        baseline_before = bridge._baseline_snapshot(connection, baseline_contract)
     if apply_changes:
         connection.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", ("v0-taxonomy-reconciliation:" + freeze["release_id"],))
     before_candidates = {}
@@ -273,7 +279,10 @@ def _reconcile_preview_freeze_in_transaction(connection, freeze_path: Path, inve
     public_state = connection.execute("""SELECT
         (SELECT count(*) FROM uec.releases),
         (SELECT count(*) FROM uec.release_members)""").fetchone()
-    if expected_database != "uec_v0_api_repair" and any(int(value) != 0 for value in public_state):
+    if baseline_contract is not None:
+        if bridge._baseline_snapshot(connection, baseline_contract) != baseline_before:
+            raise ValueError("approved V0 baseline changed during preview taxonomy reprojection")
+    elif expected_database != "uec_v0_api_repair" and any(int(value) != 0 for value in public_state):
         raise ValueError("candidate-only database contains release or membership state")
     return {"mode": "applied" if apply_changes else "dry_run", "candidate_freeze_id": freeze["release_id"],
             "selected_source_count": len(results), "sources": results,

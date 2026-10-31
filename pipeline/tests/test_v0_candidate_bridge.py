@@ -22,6 +22,27 @@ def _canonical(value):
 
 
 class CandidateBridgeTests(unittest.TestCase):
+    def test_batched_taxonomy_uses_identical_lineage_and_assignment_checks(self):
+        contract = bridge.IMPORTER.activity_contract({}, "dk.smiley", {})
+        document = contract["crosswalk_document"]
+        assignments = contract["taxonomy_assignment_rows"]
+        expected = bridge._canonical_rows("observation", "candidate", "snapshot", document, assignments)
+        stored_set = ("set", "observation", "snapshot", "dk.smiley", document["taxonomy_version"],
+                      document["crosswalk_version"], document["ruleset_version"],
+                      bridge.choose_display_category(expected))
+        rows = [(ordinal, row.primary_key, row.leaf_key, row.leaf_label,
+                 row.source_code_reference, row.source_label_reference, row.source_code,
+                 row.source_label, row.method, row.status) for ordinal, row in enumerate(expected)]
+        kwargs = dict(candidate_id="candidate", representative_observation_id="observation",
+                      snapshot_sha256="snapshot", source_id="dk.smiley", document=document,
+                      assignment_rows=assignments, stored_sets=[stored_set], stored_assignments={"set": rows})
+        bridge.verify_current_candidate_taxonomy(None, **kwargs)
+        with self.assertRaisesRegex(bridge.BridgeError, "preview_candidate_taxonomy_assignment_lineage_mismatch"):
+            bridge.verify_current_candidate_taxonomy(None, **{**kwargs,
+                "stored_sets": [(stored_set[0], "other-observation", *stored_set[2:])]})
+        with self.assertRaisesRegex(bridge.BridgeError, "preview_candidate_taxonomy_assignments_mismatch"):
+            bridge.verify_current_candidate_taxonomy(None, **{**kwargs, "stored_assignments": {"set": []}})
+
     def test_historical_baseline_requires_public_history_and_matching_read_model(self):
         class Connection:
             def __init__(self):
