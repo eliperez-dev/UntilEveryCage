@@ -6,43 +6,38 @@
   import { LAND_ANIMALS_2024, poolsForIndividuals } from './comparisons';
   let { mapHref = '#/map' }: { mapHref?: string } = $props();
   const text = $derived(storyMessages($language));
+  const humanStatement = $derived(text.humanLandText.split('{emphasis}'));
+  const timeStatement = $derived(text.oneSecondText.split('{emphasis}'));
+  const waterStatement = $derived(text.dripCondition.split('{emphasis}'));
   const pools = Math.round(poolsForIndividuals(LAND_ANIMALS_2024));
 </script>
 
-<section class="scale-story" id="landing-scale-story" aria-labelledby="scale-story-title" tabindex="-1">
-  <header class="story-intro">
-    <h2 id="scale-story-title">{text.introTitle}</h2>
-    <p>{text.introExplanation}</p>
-    <div class="introductions">
-      <figure><svg viewBox="0 0 40 58" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="20" cy="8" r="5" fill="currentColor" stroke="none" /><path d="M20 16v20M9 23h22M12 53l8-17 8 17" /></svg><figcaption>{text.oneHuman}</figcaption></figure>
-      <figure><span class="intro-dot" aria-hidden="true"></span><figcaption>{text.oneAnimal}</figcaption></figure>
-    </div>
-  </header>
-  <section class="story-chapter line-chapter" aria-labelledby="line-chapter-title">
-    <h3 id="line-chapter-title">{text.humansSentence}</h3>
-    <p class="continuation">{text.chickenSentence}</p>
+<section class="scale-story" id="landing-scale-story" aria-label={text.introTitle} tabindex="-1">
+  <section class="line-chapter" aria-labelledby="line-claim-title">
+    <h3 id="line-claim-title">{text.lineClaim}</h3>
     <MortalityComparison {mapHref} />
   </section>
   <section class="story-chapter land-chapter" aria-labelledby="land-chapter-title">
     <h3 id="land-chapter-title">{text.landSentence}</h3>
-    <p class="continuation">{text.landContinuation}</p>
     <ThroughputCanvas population="land" {mapHref} />
     <p class="annual">{text.landAnnual}</p>
+    <div class="comparisons">
+      <div class="comparison"><p class="comparison-statement">{humanStatement[0]}<strong class="comparison-emphasis">{text.humanLandValue}</strong>{humanStatement[1]}</p><small>{text.humanBenchmark}</small></div>
+    </div>
   </section>
   <section class="story-chapter fish-chapter" aria-labelledby="fish-chapter-title">
     <h3 id="fish-chapter-title">{text.fishSentence}</h3>
-    <p class="continuation">{text.fishContinuation}</p>
     <ThroughputCanvas population="fish" {mapHref} />
   </section>
-  <div class="comparisons">
-    <div class="comparison"><p class="comparison-number">{text.humanLandValue}</p><div><p>{text.humanLandText}</p><small>{text.humanBenchmark}</small></div></div>
-    <div class="comparison"><p class="comparison-number">{text.oneSecondValue}</p><div><p>{text.oneSecondText}</p></div></div>
-    <div class="water-comparison"><p class="comparison-condition">{text.dripCondition}</p><div class="comparison"><p class="comparison-number">{text.waterLandValue}</p><div><p>{text.waterLandText}</p><small>{text.dripCaption}</small></div></div>
-      <div class="pool-scale" aria-hidden="true">{#each Array(pools) as _}<span></span>{/each}</div>
-    </div>
-  </div>
   <details class="methods"><summary>{text.sources}<span aria-hidden="true">+</span></summary>
-    <div><p>{text.previewEdition}</p><p>{text.humanMethod}</p><p>{text.chickenMethod}</p><p>{text.landMethod}</p><p>{text.fishMethod}</p><p>{text.fishScope}</p><p>{text.motionMethod}</p><p>{text.comparisonMethod}</p>
+    <div>
+      <div class="secondary-comparisons">
+        <div class="comparison"><p class="comparison-statement">{timeStatement[0]}<strong class="comparison-emphasis">{text.oneSecondValue}</strong>{timeStatement[1]}</p></div>
+        <div class="water-comparison"><div class="comparison"><p class="comparison-statement">{waterStatement[0]}<strong class="comparison-emphasis">{text.waterLandValue}</strong>{waterStatement[1]}</p><div class="comparison-details"><p>{text.waterLandText}</p><small>{text.dripCaption}</small></div></div>
+          <div class="pool-scale" aria-hidden="true">{#each Array(pools) as _}<span></span>{/each}</div>
+        </div>
+      </div>
+      <p>{text.previewEdition}</p><p>{text.humanMethod}</p><p>{text.chickenMethod}</p><p>{text.landMethod}</p><p>{text.fishMethod}</p><p>{text.fishScope}</p><p>{text.motionMethod}</p><p>{text.comparisonMethod}</p>
       <ul>
         <li><a href="https://www.census.gov/library/stories/2024/12/new-year-population.html" target="_blank" rel="noreferrer">{text.humanSource} ↗</a></li>
         <li><a href="https://foodprint.org/blog/line-speeds/" target="_blank" rel="noreferrer">{text.foodprintSource} ↗</a></li>
@@ -59,10 +54,10 @@
 </section>
 
 <style>
-  .scale-story{--story-bg:#141414;--story-ink:#f2f0e8;--story-muted:#b1b0aa;--story-line:#393936;background:var(--story-bg);color:var(--story-ink);padding:77px 48px 42px;outline:none;scroll-margin-top:24px;font:14px/1.5 system-ui,sans-serif}
+  .scale-story{--story-bg:#141414;--story-ink:#f2f0e8;--story-muted:#b1b0aa;--story-line:#393936;background:var(--story-bg);color:var(--story-ink);padding:32px max(48px,calc((100% - 1100px)/2)) 24px;outline:none;scroll-margin-top:24px;font:14px/1.5 system-ui,sans-serif}
   :global(:root[data-theme="light"]) .scale-story{--story-bg:#f2f0e8;--story-ink:#141414;--story-muted:#5c5d57;--story-line:#c7c7bf}
-  h2,h3,p{margin:0}h2,h3{font:500 clamp(35px,4.6vw,66px)/1.07 system-ui,sans-serif;letter-spacing:-.05em;max-width:1050px}.story-intro>p,.continuation{font-size:20px;line-height:1.5;color:var(--story-muted);margin-top:23px;max-width:55ch}.story-intro>p{font-size:17px}.introductions{display:grid;grid-template-columns:1fr 1fr;gap:60px;min-height:240px;align-items:center;background:#141414;color:#f2f0e8;margin-top:32px;border-bottom:1px solid var(--story-line)}figure{margin:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:25px;min-height:210px}figure svg{width:28px;height:43px}.intro-dot{width:18px;height:18px;margin:12px 0 13px;background:#f2f0e8;border-radius:50%}figcaption{font-size:14px}.story-chapter{margin-top:86px}.continuation{max-width:49ch}.annual{font:400 clamp(21px,2.7vw,36px)/1.3 Georgia,serif;letter-spacing:-.025em;margin-top:28px;max-width:850px}
-  .comparisons{margin:72px 0 32px}.comparison{display:grid;grid-template-columns:1.1fr 1fr;gap:35px;align-items:center;padding:29px 0;border-top:1px solid var(--story-line)}.comparison-number{font:400 clamp(29px,4vw,56px)/1.1 Georgia,serif;letter-spacing:-.04em}.comparison>div>p{font-size:17px;max-width:30ch;line-height:1.45}.comparison small{display:block;font-size:12px;color:var(--story-muted);line-height:1.6;margin-top:13px}.comparison-condition{font-size:16px;padding:31px 0 0;border-top:1px solid var(--story-line)}.water-comparison .comparison{border:0;padding-top:20px}.pool-scale{display:flex;flex-wrap:wrap;gap:6px;padding:0 0 20px}.pool-scale>span{display:block;width:26px;height:12px;border:1px solid var(--story-ink);background:var(--story-ink)}
-  .methods{border-top:1px solid var(--story-line)}summary{list-style:none;cursor:pointer;min-height:55px;display:flex;justify-content:space-between;align-items:center;font-size:12px}summary::-webkit-details-marker{display:none}summary>span{font-size:21px;color:var(--story-muted)}.methods>div{max-width:820px;padding:5px 0 16px;font-size:12px;color:var(--story-muted)}.methods p+p{margin-top:15px}.methods ul{padding-left:17px;line-height:1.7}.methods a{display:inline-flex;align-items:center;min-height:44px;color:var(--story-ink);text-underline-offset:4px}summary:focus-visible,a:focus-visible{outline:2px solid #d74749;outline-offset:4px}
-  @media(max-width:700px){.scale-story{padding:47px 24px 26px}h2,h3{font-size:clamp(31px,8.3vw,47px)}.story-intro>p{font-size:15px;max-width:30ch}.introductions{gap:22px;min-height:220px;margin-top:28px}figure{min-height:210px}figcaption{font-size:13px}.story-chapter{margin-top:62px}.continuation{font-size:17px;margin-top:20px;max-width:29ch}.annual{font-size:25px}.comparisons{margin-top:55px}.comparison{grid-template-columns:minmax(0,1fr);gap:20px;padding:26px 0}.comparison-number{font-size:36px}.comparison>div>p{font-size:16px;max-width:29ch}.pool-scale{gap:5px}.pool-scale>span{width:20px;height:10px}}
+  h3,p{margin:0}h3{font:400 29px/1.25 Georgia,serif;letter-spacing:-.025em;max-width:1050px}.line-chapter>h3{margin-bottom:20px}.story-chapter{margin-top:48px}.annual{font:400 clamp(21px,2.7vw,36px)/1.3 Georgia,serif;letter-spacing:-.025em;margin-top:18px;max-width:850px}
+  .comparisons{margin:18px 0 0}.comparison{padding:20px 0;border-top:1px solid var(--story-line)}.comparison-statement{font-size:22px;line-height:1.5;max-width:66ch}.comparison-emphasis{font-size:inherit;font-weight:700;text-transform:none}.comparison-details{margin-top:8px}.comparison-details>p{font-size:15px;max-width:55ch;line-height:1.5}.comparison small{display:block;font-size:12px;color:var(--story-muted);line-height:1.6;margin-top:8px}.pool-scale{display:flex;flex-wrap:wrap;gap:6px;padding:0 0 12px}.pool-scale>span{display:block;width:26px;height:12px;border:1px solid var(--story-ink);background:var(--story-ink)}
+  .methods{border-top:1px solid var(--story-line);margin-top:16px}summary{list-style:none;cursor:pointer;min-height:48px;display:flex;justify-content:space-between;align-items:center;font-size:12px}summary::-webkit-details-marker{display:none}summary>span{font-size:21px;color:var(--story-muted)}.methods>div{max-width:820px;padding:5px 0 12px;font-size:12px;color:var(--story-muted)}.methods .comparison{padding:16px 0}.methods .comparison-statement{font-size:18px;color:var(--story-ink)}.methods p+p{margin-top:10px}.methods ul{padding-left:17px;line-height:1.7}.methods a{display:inline-flex;align-items:center;min-height:44px;color:var(--story-ink);text-underline-offset:4px}summary:focus-visible,a:focus-visible{outline:2px solid #d74749;outline-offset:4px}
+  @media(max-width:700px){.scale-story{padding:28px 20px 20px}h3{font-size:26px}.story-chapter{margin-top:34px}.annual{font-size:25px}.comparison{padding:18px 0}.comparison-statement{font-size:19px}.comparison-details>p{font-size:15px}.pool-scale{gap:5px}.pool-scale>span{width:20px;height:10px}}
 </style>

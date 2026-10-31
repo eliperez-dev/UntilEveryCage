@@ -77,7 +77,7 @@
     const releaseId = $publicReleaseManifestIdentity?.releaseId;
     if (!dataActive || mode !== 'public-release' || !releaseId) return null;
     const result = await publicLocationRepository.detail(id, 'official', signal, releaseId);
-    return { name: result.location.name, categoryKey: result.location.taxonomy?.displayCategory ?? 'unclassified' };
+    return { name: result.location.name, ...(result.location.nameProvided === undefined ? {} : { nameProvided: result.location.nameProvided }), categoryKey: result.location.taxonomy?.displayCategory ?? 'unclassified' };
   });
   const pinHoverContext = $derived(dataActive && mode === 'public-release' && $publicReleaseManifestIdentity
     && $publicReleaseManifestIdentity.releaseId === $publicReleaseId
@@ -95,7 +95,7 @@
     if (detailStatus === 'ready' && detailRecord?.id === id && observedSelection === `${$publicReleaseIdentity}:${id}`) loaded = detailRecord;
     if (!loaded && $dataStatus === 'ready' && !listRefreshing && !pageLoading
       && apiRecordsIdentity === $publicReleaseIdentity && apiRecordsSearchKey === JSON.stringify(publicSearchFilters(labState))) loaded = apiRecords.find(record => record.id === id);
-    if (loaded) return pinHoverLabels.remember(id, { name: loaded.name, categoryKey: loaded.taxonomy?.displayCategory ?? 'unclassified' }, token);
+    if (loaded) return pinHoverLabels.remember(id, { name: loaded.name, ...(loaded.nameProvided === undefined ? {} : { nameProvided: loaded.nameProvided }), categoryKey: loaded.taxonomy?.displayCategory ?? 'unclassified' }, token);
     return pinHoverLabels.peek(id) ?? pinHoverLabels.resolve(id, signal);
   };
   const V0_ARCHIVE_RELEASE_ID = 'v0-candidate-2026-10-04-r3';
@@ -119,6 +119,7 @@
     return {
       id: location.id,
       name: location.name,
+      ...(location.nameProvided === undefined ? {} : { nameProvided: location.nameProvided }),
       category: CATEGORY_PRESENTATIONS[location.taxonomy?.displayCategory ?? 'unclassified'].label,
       country: location.countryCode ?? location.region,
       locality: location.region,

@@ -13,7 +13,7 @@ from pathlib import Path
 import psycopg
 from psycopg.types.json import Jsonb
 
-from pipeline.common.release_geometry import geometry_rows_sql, RELEASE_GATE_METRICS_SQL, PROVIDER_CONFIDENCE_SQL
+from pipeline.common.release_geometry import geometry_rows_sql, RELEASE_GATE_METRICS_SQL, PROVIDER_CONFIDENCE_SQL, UK_POSTCODE_REFERENCE_SQL
 
 
 ROOT = Path(__file__).parents[1].parent
@@ -67,6 +67,33 @@ class PublicGeometryPostgresTests(unittest.TestCase):
                     actual = connection.execute(
                         "SELECT COALESCE(" + PROVIDER_CONFIDENCE_SQL + ",false) FROM (SELECT %s::jsonb AS evidence) input",
                         (Jsonb({"display_location": metadata}),),
+                    ).fetchone()[0]
+                    self.assertEqual(actual, expected)
+
+            postcode = {"provider": "locationiq", "method": "locationiq_forward",
+                        "evidence_kind": "provider_derived", "provider_status": "accepted",
+                        "precision": "provider_locality_approximate",
+                        "coordinate_review_status": "approximate_provider_locality_private_display",
+                        "confidence": None, "confidence_band": None}
+            cases = [("fsa_approved_establishments", "GB", postcode, True),
+                     ("fss_approved_establishments", "GB", postcode, True),
+                     ("unrelated.source", "GB", postcode, False),
+                     ("fsa_approved_establishments", "FR", postcode, False)]
+            for field, value in (("provider", "unknown"), ("method", "unknown"),
+                                 ("evidence_kind", "source_coordinates"),
+                                 ("provider_status", "review_required"),
+                                 ("precision", "provider_address_point_high_confidence"),
+                                 ("coordinate_review_status", "pending"),
+                                 ("confidence", 0.99), ("confidence_band", "high")):
+                cases.append(("fsa_approved_establishments", "GB", {**postcode, field: value}, False))
+            cases.append(("fsa_approved_establishments", "GB",
+                          {key: value for key, value in postcode.items() if key != "confidence"}, False))
+            for index, (source, country, metadata, expected) in enumerate(cases):
+                with self.subTest(postcode_case=index):
+                    actual = connection.execute(
+                        "SELECT COALESCE(" + UK_POSTCODE_REFERENCE_SQL + ",false) "
+                        "FROM (SELECT %s::jsonb AS evidence,%s::text AS source_id,%s::text AS country_code) input",
+                        (Jsonb({"display_location": metadata}), source, country),
                     ).fetchone()[0]
                     self.assertEqual(actual, expected)
 

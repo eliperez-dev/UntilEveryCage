@@ -4,6 +4,7 @@
   import type { Location } from '../../domain/location';
   import { categoryPresentation } from '../../features/locations/categoryPresentation';
   import { language, tr } from '../language';
+  import { recordNamePresentation } from '../../features/locations/recordNamePresentation';
   import { parseRecordReference } from '../recordReference';
   let { value = $bindable(''), label = 'Facility', id = 'contribution-record', error = '', releaseId }: { value?: string; label?: string; id?: string; error?: string; releaseId?: string | undefined } = $props();
   const repository = new LocalLocationRepository();
@@ -40,7 +41,7 @@
   <label for={id}>{tr(label, $language)} <span aria-hidden="true">*</span></label>
   {#if reference}
     <div class="selected-record">
-      <div><strong>{selected?.name ?? tr('Linked record', $language)}</strong><small>{selected ? `${tr(categoryPresentation(selected.taxonomy?.displayCategory ?? selected.category).label, $language)} · ${selected.region}` : tr(searchState === 'loading' ? 'Loading record details…' : 'Record link ready. Public details are unavailable.', $language)}</small></div>
+      <div><strong>{selected ? recordNamePresentation(selected, label => tr(label, $language)) : tr('Linked record', $language)}</strong><small>{selected ? `${tr(categoryPresentation(selected.taxonomy?.displayCategory ?? selected.category).label, $language)} · ${selected.region}` : tr(searchState === 'loading' ? 'Loading record details…' : 'Record link ready. Public details are unavailable.', $language)}</small></div>
       <button type="button" onclick={clear}>{tr('Change', $language)}</button>
     </div>
     <input type="hidden" id={id} value={reference} />
@@ -50,7 +51,7 @@
     {#if searchState === 'loading'}<p class="search-state" role="status">{tr('Searching…', $language)}</p>
     {:else if searchState === 'failed'}<p class="search-state" role="status">{tr('Search is unavailable. You can paste a record link.', $language)} <button class="retry" type="button" onclick={() => retry += 1}>{tr('Retry', $language)}</button></p>
     {:else if searchState === 'ready' && !results.length}<p class="search-state" role="status">{tr('No matching facilities. Try another name or paste a record link.', $language)}</p>{/if}
-    {#if results.length}<ul aria-label={tr('Matching facilities', $language)}>{#each results as record (record.id)}{@const category = categoryPresentation(record.taxonomy?.displayCategory ?? record.category)}<li><button type="button" onclick={() => value = record.id}><span class="category-mark" style:background={category.color} aria-hidden="true"></span><span><strong>{record.name}</strong><small>{tr(category.label, $language)} · {record.region}</small></span><span aria-hidden="true">↗</span></button></li>{/each}</ul>{/if}
+    {#if results.length}<ul aria-label={tr('Matching facilities', $language)}>{#each results as record (record.id)}{@const category = categoryPresentation(record.taxonomy?.displayCategory ?? record.category)}<li><button type="button" onclick={() => value = record.id}><span class="category-mark" style:background={category.color} aria-hidden="true"></span><span><strong>{recordNamePresentation(record, label => tr(label, $language))}</strong><small>{tr(category.label, $language)} · {record.region}</small></span><span aria-hidden="true">↗</span></button></li>{/each}</ul>{/if}
   {/if}
   {#if error}<p id={`${id}-error`} class="field-error" role="alert">{tr(error, $language)}</p>{/if}
 </div>

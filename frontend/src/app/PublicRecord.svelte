@@ -12,6 +12,7 @@
   import { affirmativeSourceEntries } from '../features/locations/classificationSummary';
   import LocationPreview from './LocationPreview.svelte';
   import { locationPreviewZoom } from '../features/locations/locationPreview';
+  import { recordNamePresentation } from '../features/locations/recordNamePresentation';
   let copyFeedback = $state<'copied' | 'failed' | ''>('');
   let copyResetTimer: ReturnType<typeof setTimeout> | undefined;
   let copyAttempt = 0;
@@ -30,6 +31,9 @@
     return () => controller.abort();
   });
   const precision = $derived(precisionPresentation(record?.evidence?.displayPrecision));
+  const directSourceUrl = $derived(safeHttps(record?.evidence?.sourceUrl));
+  const sourceObserved = $derived(record?.observed && record.observed !== 'unknown' ? record.observed : null);
+  const sourceDate = $derived(sourceObserved ?? (record?.evidence?.retrievedAt || null));
   const humanLabel = (value: string) => value.replaceAll(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/\b(nrte|rte)\b/gi, acronym => acronym.toUpperCase()).replace(/^./, letter => letter.toLocaleUpperCase());
   const translatedGenerated = (value: string) => tr(humanLabel(value), $language);
   const geocodingConfidence = (location: Location) => {
@@ -42,6 +46,17 @@
     const method = location.evidence?.geometryProvenance?.method;
     return method && !/^(?:source[_ -])?(?:method[_ -])?unknown$/i.test(method) ? translatedGenerated(method) : null;
   };
+  const sourcePrecisionDetail = $derived(record?.evidence?.geometryProvenance?.source_precision && !['source-provided', 'source_reported', 'source_provided_unverified'].includes(record.evidence.geometryProvenance.source_precision) ? translatedGenerated(record.evidence.geometryProvenance.source_precision) : null);
+  const coordinateReviewDetail = $derived(record?.evidence?.geometryProvenance?.coordinate_review_status && record.evidence.geometryProvenance.coordinate_review_status !== 'source_confirmed' ? translatedGenerated(record.evidence.geometryProvenance.coordinate_review_status) : null);
+  function safeHttps(raw: string | null | undefined): string | null {
+    if (!raw) return null;
+    try { const url = new URL(raw); return url.protocol === 'https:' && !url.username && !url.password ? url.href : null; }
+    catch { return null; }
+  }
+  function shortDate(raw: string): string {
+    const date = new Date(raw);
+    return Number.isNaN(date.getTime()) ? raw : new Intl.DateTimeFormat($language, { day:'numeric', month:'short', year:'numeric', timeZone:'UTC' }).format(date);
+  }
   const sourceFlag = (value: string | boolean) => value === true ? tr('Yes', $language) : typeof value === 'string' ? translatedGenerated(value) : null;
   const sourceFlagLabel = (key: string) => translatedGenerated(key);
   const affirmativeEntries = affirmativeSourceEntries;
@@ -76,26 +91,33 @@
     copyResetTimer = setTimeout(() => { if (attempt === copyAttempt) copyFeedback = ''; copyResetTimer = undefined; }, copied ? 1500 : 2500);
   }
 </script>
-<svelte:head><title>{record?.name ?? tr('Record', $language)} · Until Every Cage</title></svelte:head>
+<svelte:head><title>{record ? recordNamePresentation(record, label => tr(label, $language)) : tr('Record', $language)} · Until Every Cage</title></svelte:head>
 <section class="public-record" aria-label={tr('Public record', $language)}>
   {#if profile === 'community'}<p class="warning"><strong>{tr("Unreviewed community claim: not verified by Until Every Cage.", $language)}</strong> {tr("Privacy screening is not factual review or project approval. Community counts are separate.", $language)}</p>{/if}
-  {#if busy}<p role="status">{tr('Loading record…', $language)}</p>{:else if error}<h1>{tr("Record unavailable", $language)}</h1><p role="alert">{tr(error, $language)}</p><button type="button" onclick={() => retry += 1}>{tr("Retry", $language)}</button><p><a href="#/database">{tr("Browse records", $language)}</a></p>{:else if record}<h1>{record.name} <button class="share" type="button" aria-label={tr('Copy facility link', $language)} title={tr('Copy facility link', $language)} onclick={copyRecordLink}><svg aria-hidden="true" viewBox="0 0 24 24">{#if copyFeedback === 'copied'}<path d="m5 12 4 4L19 6"/>{:else if copyFeedback === 'failed'}<path d="M6 6l12 12M18 6 6 18"/>{:else}<path d="M10 13a5 5 0 0 0 7.1 0l3-3A5 5 0 0 0 13 2.9l-1.7 1.7m2.7 6.4a5 5 0 0 0-7.1 0l-3 3A5 5 0 0 0 11 21.1l1.7-1.7"/>{/if}</svg></button><span class="sr-only" role="status" aria-live="polite">{copyFeedback === 'copied' ? tr('Link copied', $language) : copyFeedback === 'failed' ? tr('Could not copy facility link', $language) : ''}</span></h1>
+  {#if busy}<p role="status">{tr('Loading record…', $language)}</p>{:else if error}<h1>{tr("Record unavailable", $language)}</h1><p role="alert">{tr(error, $language)}</p><button type="button" onclick={() => retry += 1}>{tr("Retry", $language)}</button><p><a href="#/database">{tr("Browse records", $language)}</a></p>{:else if record}<h1>{recordNamePresentation(record, label => tr(label, $language))} <button class="share" type="button" aria-label={tr('Copy facility link', $language)} title={tr('Copy facility link', $language)} onclick={copyRecordLink}><svg aria-hidden="true" viewBox="0 0 24 24">{#if copyFeedback === 'copied'}<path d="m5 12 4 4L19 6"/>{:else if copyFeedback === 'failed'}<path d="M6 6l12 12M18 6 6 18"/>{:else}<path d="M10 13a5 5 0 0 0 7.1 0l3-3A5 5 0 0 0 13 2.9l-1.7 1.7m2.7 6.4a5 5 0 0 0-7.1 0l-3 3A5 5 0 0 0 11 21.1l1.7-1.7"/>{/if}</svg></button><span class="sr-only" role="status" aria-live="polite">{copyFeedback === 'copied' ? tr('Link copied', $language) : copyFeedback === 'failed' ? tr('Could not copy facility link', $language) : ''}</span></h1>
     <section class="classification-overview" aria-labelledby="activities-heading">
       <h2 id="activities-heading" class="sr-only">{tr('Activities and classification', $language)}</h2>
       <div class="record-category"><CategoryBadge {record} /></div>
       <ClassificationSummary {record} />
       {#if slaughterRangeText}<section class="slaughter-estimate" aria-label={tr('Estimated animals slaughtered (last 360 days)', $language)}><p>{tr('Estimated animals slaughtered (last 360 days)', $language)}</p><strong>{slaughterRangeText}</strong>{#each slaughterCodebooks as href}<a href={href} target="_blank" rel="noopener noreferrer">{tr('Source codebook', $language)}</a>{/each}</section>{/if}
     </section>
+    {#if record.source || directSourceUrl || sourceDate}<p class="compact-source">{#if directSourceUrl}<a class="direct-source" href={directSourceUrl} target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer"><span>{record.source || tr('Source', $language)}</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6m0-6L10 14M10 4H4v16h16v-6"/></svg><span class="sr-only"> ({tr('opens in a new tab', $language)})</span></a>{:else if record.source}<span>{record.source}</span>{/if}{#if sourceDate}<span>{record.source || directSourceUrl ? ' · ' : ''}{tr(sourceObserved ? 'Observed' : 'Retrieved', $language)} <time datetime={sourceDate} title={sourceDate}>{shortDate(sourceDate)}</time></span>{/if}</p>{/if}
     <section aria-labelledby="location-heading">
       <h2 id="location-heading">{tr('Location', $language)}</h2>
       <dl>
         <div><dt>{tr('Locality', $language)}</dt><dd>{[record.region, record.countryCode].filter(Boolean).join(', ')}</dd></div>
-        {#if record.lat !== null && record.lon !== null}<div><dt>{tr('Coordinates', $language)}</dt><dd>{coordinate(record.lat)}, {coordinate(record.lon)}</dd></div>{/if}
         <div><dt>{tr('Precision', $language)}</dt><dd>{tr(precision, $language)}</dd></div>
-        {#if locationMethod(record)}<div><dt>{tr('Location method', $language)}</dt><dd>{locationMethod(record)}</dd></div>{/if}
-        {#if record.evidence?.geometryProvenance?.provider}<div><dt>{tr('Geocoding provider', $language)}</dt><dd>{record.evidence.geometryProvenance.provider}</dd></div>{/if}
-        {#if geocodingConfidence(record) !== null || record.evidence?.geometryProvenance?.confidence_band}<div><dt>{tr('Geocoding confidence', $language)}</dt><dd>{#if geocodingConfidence(record) !== null}{geocodingConfidence(record)} ({tr('provider score', $language)}){/if}{#if record.evidence?.geometryProvenance?.confidence_band}{geocodingConfidence(record) !== null ? ' · ' : ''}{translatedGenerated(record.evidence.geometryProvenance.confidence_band)}{/if}</dd></div>{/if}
       </dl>
+      {#if record.lat !== null && record.lon !== null || sourcePrecisionDetail || coordinateReviewDetail || locationMethod(record) || record.evidence?.geometryProvenance?.provider || geocodingConfidence(record) !== null || record.evidence?.geometryProvenance?.confidence_band}
+        <details class="location-details"><summary>{tr('Location details', $language)}</summary><dl>
+          {#if record.lat !== null && record.lon !== null}<div><dt>{tr('Coordinates', $language)}</dt><dd>{coordinate(record.lat)}, {coordinate(record.lon)}</dd></div>{/if}
+          {#if sourcePrecisionDetail}<div><dt>{tr('Source precision', $language)}</dt><dd>{sourcePrecisionDetail}</dd></div>{/if}
+          {#if coordinateReviewDetail}<div><dt>{tr('Coordinate review', $language)}</dt><dd>{coordinateReviewDetail}</dd></div>{/if}
+          {#if locationMethod(record)}<div><dt>{tr('Location method', $language)}</dt><dd>{locationMethod(record)}</dd></div>{/if}
+          {#if record.evidence?.geometryProvenance?.provider}<div><dt>{tr('Geocoding provider', $language)}</dt><dd>{record.evidence.geometryProvenance.provider}</dd></div>{/if}
+          {#if geocodingConfidence(record) !== null || record.evidence?.geometryProvenance?.confidence_band}<div><dt>{tr('Geocoding confidence', $language)}</dt><dd>{#if geocodingConfidence(record) !== null}{geocodingConfidence(record)} ({tr('provider score', $language)}){/if}{#if record.evidence?.geometryProvenance?.confidence_band}{geocodingConfidence(record) !== null ? ' · ' : ''}{translatedGenerated(record.evidence.geometryProvenance.confidence_band)}{/if}</dd></div>{/if}
+        </dl></details>
+      {/if}
       {#if openMapHref}<p class="map-action"><a href={openMapHref}><svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/><path d="M12 2v4m0 12v4M2 12h4m12 0h4"/></svg>{tr('Open in Map', $language)}</a></p>{/if}
     </section>
     {#if record.lat !== null && record.lon !== null}<LocationPreview latitude={record.lat} longitude={record.lon} precision={record.evidence?.displayPrecision ?? 'unmapped'} category={record.taxonomy?.primaryCategories[0] ?? record.category} />{/if}
@@ -116,7 +138,7 @@
     <RecordConnections facilityId={record.id} releaseId={currentRelease} {profile} sourceId={record.sourceId} sourceFacts={record.sourceFacts} />
     <section aria-labelledby="source-heading">
       <h2 id="source-heading">{tr('Source and review', $language)}</h2>
-      <dl><div><dt>{tr('Source', $language)}</dt><dd>{record.source} {#if record.evidence?.sourceUrl}<a href={record.evidence.sourceUrl} target="_blank" rel="noreferrer">{tr('Open source', $language)}</a>{/if}</dd></div><div><dt>{tr('Source origin', $language)}</dt><dd>{record.evidence?.sourceType === 'user_submitted' ? tr('Community-submitted', $language) : record.evidence?.sourceType === 'secondary' ? tr('Secondary source', $language) : tr('Government-sourced', $language)}</dd></div>{#if record.observed !== 'unknown'}<div><dt>{tr('Observed', $language)}</dt><dd>{record.observed}</dd></div>{/if}{#if record.evidence?.retrievedAt}<div><dt>{tr('Retrieved', $language)}</dt><dd>{record.evidence.retrievedAt}</dd></div>{/if}<div><dt>{tr('Publication', $language)}</dt><dd>{tr(profile === 'official' ? 'Curated records' : profile === 'community' ? 'Community submissions' : 'Secondary sources', $language)} · {publicReleaseLabel(currentRelease)}</dd></div></dl>
+      <dl><div><dt>{tr('Source', $language)}</dt><dd>{record.source} {#if directSourceUrl}<a href={directSourceUrl} target="_blank" rel="noopener noreferrer">{tr('Open source', $language)}</a>{/if}</dd></div><div><dt>{tr('Source origin', $language)}</dt><dd>{record.evidence?.sourceType === 'user_submitted' ? tr('Community-submitted', $language) : record.evidence?.sourceType === 'secondary' ? tr('Secondary source', $language) : tr('Government-sourced', $language)}</dd></div>{#if record.observed !== 'unknown'}<div><dt>{tr('Observed', $language)}</dt><dd>{record.observed}</dd></div>{/if}{#if record.evidence?.retrievedAt}<div><dt>{tr('Retrieved', $language)}</dt><dd>{record.evidence.retrievedAt}</dd></div>{/if}<div><dt>{tr('Publication', $language)}</dt><dd>{tr(profile === 'official' ? 'Curated records' : profile === 'community' ? 'Community submissions' : 'Secondary sources', $language)} · {publicReleaseLabel(currentRelease)}</dd></div></dl>
     </section>
     <nav aria-label={tr('Record contribution actions', $language)}>{#each [['evidence','Add evidence'],['correction','Suggest a correction'],['privacy-removal','Privacy or removal']] as [type,label]}<a href={`#/contribute/${type}?target=${encodeURIComponent(record.id)}`}>{tr(label ?? '', $language)}</a>{/each}</nav>
   {/if}
@@ -130,6 +152,13 @@
   h1 { margin: 0 0 .75rem; font: 500 2rem/1.2 Georgia, serif; overflow-wrap: anywhere; }
   h2 { margin: 1.5rem 0 0; font: 600 1.05rem/1.3 Georgia, serif; }
   p { color: #c6d0c5; }
+  .compact-source { display:flex;flex-wrap:wrap;align-items:center;column-gap:.3rem;color:#b8c1b6;font-size:.75rem;line-height:1.5;margin:.3rem 0 .8rem;overflow-wrap:anywhere; }
+  .direct-source { display:inline-flex;align-items:center;gap:.35rem;min-width:0;max-width:100%;min-height:44px;padding:.25rem 0; }
+  .direct-source > span:first-child { min-width:0;overflow-wrap:anywhere; }
+  .direct-source svg { width:.9rem;height:.9rem;flex:none;fill:none;stroke:currentColor;stroke-width:1.5; }
+  .location-details { margin:.35rem 0; }
+  .location-details > summary { min-height:44px;padding:.65rem 0;cursor:pointer;font-size:.85rem; }
+  .location-details > dl { margin:0 0 .6rem; }
   .map-action a { display:inline-flex;align-items:center;gap:.5rem;min-height:2.75rem; }.map-action svg { width:1rem;height:1rem;flex:none;fill:none;stroke:currentColor;stroke-width:1.5; }
   .record-category { margin: .25rem 0; }
   dl { margin: 1.25rem 0; }

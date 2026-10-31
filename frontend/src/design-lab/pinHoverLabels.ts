@@ -8,7 +8,8 @@ function displayLabel(value: PinHoverLabel | null): PinHoverLabel | null {
     || value.name.length > 512 || !isTaxonomyPrimaryKey(value.categoryKey)) return null;
   // Keep text as text. Svelte's normal text interpolation performs escaping;
   // this helper never creates HTML or carries source/detail fields into a label.
-  return Object.freeze({ name: value.name.trim(), categoryKey: value.categoryKey });
+  return Object.freeze({ name: value.name.trim(), categoryKey: value.categoryKey,
+    ...(typeof value.nameProvided === 'boolean' ? { nameProvided: value.nameProvided } : {}) });
 }
 
 /** Only tiny public display labels live here, never detail payloads or disk data. */

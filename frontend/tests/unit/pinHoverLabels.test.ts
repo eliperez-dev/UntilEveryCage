@@ -8,6 +8,13 @@ const other = '550e8400-e29b-41d4-a716-446655440001';
 const label = { name: 'Synthetic public name', categoryKey: 'slaughter' };
 const signal = () => new AbortController().signal;
 describe('public pin hover labels', () => {
+  it('keeps missing-name provenance in cached labels without storing translated text', async () => {
+    const read = vi.fn(async () => ({ ...label, name: 'Name not provided', nameProvided: false }));
+    const cache = createPinHoverLabels(read); cache.setContext('synthetic-release');
+    await cache.resolve(id, signal());
+    expect(await cache.resolve(id, signal())).toMatchObject({ name: 'Name not provided', nameProvided: false });
+    expect(read).toHaveBeenCalledTimes(1);
+  });
   it('requires an active verified context and individual UUID before any read', async () => {
     const read = vi.fn(async () => label), cache = createPinHoverLabels(read);
     expect(await cache.resolve(id, signal())).toBeNull();

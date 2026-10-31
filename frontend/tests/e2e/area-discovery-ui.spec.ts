@@ -144,9 +144,40 @@ for (const width of [320,390,1440]) test(`Places has a bounded unfilled chevron 
   await expect(places.locator('li:visible')).toHaveCount(1);
   await expand.click(); await expect(expand).toHaveAttribute('aria-expanded','true'); await expect(places.locator('li:visible')).toHaveCount(5);
   await expect(places.locator('li:visible').first().getByRole('button')).toHaveCount(2);
+  const nearby = places.locator('li:visible').first().locator('.nearby-search');
+  await expect(nearby.locator('.nearby-label')).toBeVisible();
+  await expect(nearby).toContainText('In der Nähe suchen');
+  await expect(nearby).toContainText('16 Meilen');
+  expect((await nearby.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  expect(await nearby.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
   await expand.click(); await expect(expand).toHaveAttribute('aria-expanded','false'); await expect(places.locator('li:visible')).toHaveCount(1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
   if(process.env.UEC_AREA_CAPTURE_DIR) await page.screenshot({path:`${process.env.UEC_AREA_CAPTURE_DIR}/places-${width}.png`});
+});
+
+for (const width of [320,1440]) test(`place nearby action keeps its displayed distance when applied at ${width}px`, async ({page}) => {
+  await page.setViewportSize({width,height:900});
+  const calls = await install(page); await open(page);
+  if(width <= 640) { await page.locator('.mobile-sheet-handle').click(); await page.locator('.mobile-sheet-handle').focus(); await page.keyboard.press('End'); }
+  await page.locator('#field-search').fill('San');
+  const places = page.locator('.place-suggestions');
+  const picker = places.locator('.radius-choice select');
+  await expect(picker.locator('option:checked')).toHaveText('16 miles');
+  await expect(places.locator('.nearby-search').first().locator('.nearby-distance')).toHaveText('16 miles');
+  await picker.selectOption('50');
+  await expect(picker.locator('option:checked')).toHaveText('31 miles');
+  const nearby = places.locator('.nearby-search').first();
+  await expect(nearby.locator('.nearby-label')).toBeVisible();
+  await expect(nearby.locator('.nearby-label')).toHaveText('Search nearby');
+  await expect(nearby.locator('.nearby-distance')).toHaveText('31 miles');
+  await expect(nearby).toHaveAttribute('aria-label', /Search nearby: .+, 31 miles/);
+  await nearby.click();
+  await expect(page.locator('.scope-radius')).toHaveText('31 mile radius');
+  await expect(page.locator('#field-search')).toHaveValue('');
+  await expect.poll(() => calls.filter(call => call.path === '/api/v2/locations').at(-1)?.params.radius_km).toBe('50');
+  expect(calls.filter(call => call.path === '/api/v2/locations').at(-1)?.params.q).toBeUndefined();
+  await expect(page.locator('.scope-chip')).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
 });
 
 for(const [width,height] of [[320,568],[390,844],[1280,620]]) test(`scoped search opens readable rows and paginates through the outer scroll at ${width}×${height}`,async({page})=>{

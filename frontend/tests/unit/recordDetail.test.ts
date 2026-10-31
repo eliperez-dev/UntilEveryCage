@@ -32,8 +32,8 @@ describe('private preview record detail surface', () => {
     expect(component).not.toContain('Privacy screening');
     expect(component).not.toContain('Project approval');
     expect(component).toContain("raw.replace(/[_-]+/g, ' ')");
-    expect(component).toContain('{displayGeneratedValue(coordinateStatus)}');
-    expect(component).toContain('{displayGeneratedValue(record.coordinatePrecision)}');
+    expect(component).toContain('displayGeneratedValue(coordinateStatus)');
+    expect(component).toContain('displayGeneratedValue(record.coordinatePrecision)');
   });
 
   it('accepts only HTTPS source links and offers a stable record URL copy action', () => {

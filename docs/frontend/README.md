@@ -45,26 +45,51 @@ API schemas own supported fields. They are not additional roadmaps.
   imagery, cream map-preview section and direct `Open the map` links to `#/map`.
   Use the same shared four-link header, theme control and More tools as the other pages;
   landing does not mark a navigation destination active.
-  Its still-image motion has pause/resume and a static reduced-motion fallback.
+  Its still-image motion keeps a static reduced-motion fallback; landing pause
+  buttons are removed from the hero and story graphics.
+  Keep the photo hero compact and content-sized, with shorter copy padding and
+  section gaps throughout the landing. All actions remain visible with 44px
+  targets; long translations grow naturally without clipping.
   `See the scale` scrolls to the integrated outreach story without replacing the
-  hash route or release context. Four conversational chapters appear in natural
-  scroll order: introduce one human glyph and one animal dot; compare worldwide
-  human all-cause mortality with a single U.S. chicken slaughter line; show the
-  land-animal funnel; then add the separately dated fish funnel. There is no
+  hash route or release context. Above the first two labelled columns, the claim
+  reads: `One U.S. chicken slaughter line can kill more birds per second than people
+  die worldwide from all causes.` It is localized across all seven story languages.
+  There is no additional introductory paragraph. Modest comparison
+  numerals use readable full-word units, with smaller scope labels directly above
+  the dots. Equal-sized dots compare worldwide human all-cause mortality with a single U.S. chicken
+  slaughter line, followed in natural scroll order by the worldwide land-animal
+  funnel with one human-population benchmark, then the separately dated fish
+  funnel leading into documented map coverage. Each
+  funnel explains its dot unit and red outcome before the animation; comparison
+  lane headings identify worldwide people versus one U.S. chicken line. There is no
   population tab required to discover either funnel. The chicken example uses
   140 birds per minute, with grey human outcomes and red chicken outcomes at
   labelled lines; it does not describe every plant's measured throughput.
   Land-animal slaughter (2024), estimated finfish capture/slaughter (2019) and
   the human mortality benchmark (January 2025) retain their distinct scopes and
   dates. They are not a single contemporary total, release totals or counts
-  attributed to mapped facilities. Each human/chicken glyph and animal dot
-  represents one individual. Each visible animation uses active time: pause,
-  hidden tabs and offscreen sections do not accumulate animation time. Reduced
-  motion shows a static equivalent. Funnel remains the default, with an optional
-  snaking batch grid in each throughput chapter.
+  attributed to mapped facilities. Each dot represents one individual. Restrained
+  funnel chapter headings preserve the approved A visual direction; both funnels
+  use the same moderate numeral scale and readable full-word units, with no
+  fish-specific shrinkage or giant rate/tiny-unit pairing;
+  do not duplicate each rate in a second headline or introductory stage.
+  Each visible animation uses active time: hidden tabs and offscreen sections do
+  not accumulate animation time. Reduced
+  motion shows a static equivalent. Funnel remains the default: evenly spaced
+  source rows feed a broad white grid, individual dots peel from its lower edge,
+  and the same dots turn red at the widened throat before dispersing. The guide
+  walls follow the actual particle opening on desktop and phone. Geometry
+  and source-window duration adapt to the viewport and dated rate without
+  subsampling individuals. Funnel is the sole public throughput visualization;
+  there is no separate Grid view or visualization mode picker.
   Sources, conversion assumptions and ranges are available in the collapsed
-  methodology. Population and conditional drip/pool comparisons illustrate
-  counts; the water analogy does not describe resource use.
+  methodology. Each comparison is a complete direct statement with its key
+  duration or count in bold, with natural capitalization, within the sentence. Localized templates
+  place the emphasized phrase naturally; avoid quiz questions and detached
+  answer figures. The five-week human-population benchmark sits beside land;
+  attention-duration and conditional drip/pool comparisons stay available inside
+  the collapsed methodology, so they do not restart the visible story after fish.
+  These comparisons illustrate counts; the water analogy does not describe resource use.
   This locally implemented story uses a private-validated statistics edition;
   publication approval remains governed by the
   [aggregate statistics specification](../statistics/aggregate-statistics-spec.md).
@@ -73,7 +98,9 @@ API schemas own supported fields. They are not additional roadmaps.
   opens the map and searches within 50 miles; reloads and links never replay it.
   The discovery section shows current release totals, mapped records and public
   source counts from validated public aggregates, with activity links into map
-  results. Distinguish unavailable totals from zero; do not add animal-death or
+  results. Discovery copy names documented source-country coverage; initial
+  search summaries explicitly count matching/loaded records rather than animals.
+  Distinguish unavailable totals from zero; do not add animal-death or
   other unsupported estimates to this section.
   Check the manifest before requesting live aggregates. Publish records,
   mapped locations and sources after their release/restriction identity check;
@@ -212,6 +239,29 @@ API schemas own supported fields. They are not additional roadmaps.
   On selection/inspection, show a red geographic area 500 metres across
   (250-metre radius), not a fixed-pixel circle or invented confidence interval.
   Use supported source extent where available. No permanent approximation legend.
+- Shared public map points retain their individual records and gain a count badge
+  when unclustered. Clicking opens concentric rings with at most twelve pins per ring.
+  Partly filled outer rings are balanced and evenly spaced. All members belong to
+  one compact, fixed layout with a short outward expansion and no ring pan,
+  zoom or offset controls. Selection and keyboard focus never shift the rings.
+  Groups that cannot fit use a bounded scrollable member list, preserving access
+  to every record without moving the map or shrinking touch targets. Small
+  phones retain the compact group-reopen action when the details sheet leaves
+  too little space.
+  Warm names for displayed ring members and visible list rows with bounded
+  requests; cancel them when the group closes. Hover labels wait for an actual
+  name rather than flashing numbered record placeholders.
+  Nearby overlapping pins use the same temporary layout with connectors to each
+  original point. No coordinates are changed and proximity never merges records.
+  Selecting a member opens the existing facility panel without flying the camera;
+  PNG/dot mode, category colors and size settings remain shared with the map.
+  A geographically coincident native cluster opens the ring directly; ordinary
+  clusters retain their existing expansion. Escape, background clicks, camera
+  movement and context changes dismiss it. Membership and count badges use only
+  the current filtered public feed and clear on release, restrictions or search
+  changes; private reference-member endpoints are never used for these records.
+  Grouping and badges are built once per changed collection, without modifying
+  the persisted clustering source or scanning the full viewport on every idle.
 - The Street/Satellite switch and adjacent 2D/3D toggle live in the map toolbar,
   with accessible camera-gesture help. Do not duplicate them in More tools.
   Keep the map navigation toolbar in the map column, above mobile sheets
@@ -248,7 +298,11 @@ API schemas own supported fields. They are not additional roadmaps.
   failed requests offer Retry. Unmapped matches remain in the results.
 - Search supports removable filter chips, keyboard facet suggestions, country
   phrases such as `slaughterhouses in Spain`, a fixed Search this area snapshot,
-  and city navigation with an explicit nearby-radius search. A city centre is
+  and city navigation with an explicit nearby-radius search. City navigation stays
+  separate from the nearby action, whose verb stays visible on phones. The place
+  radius picker, action and applied summary consistently display rounded miles;
+  the existing kilometre search extents and API values remain unchanged.
+  A city centre is
   never presented as a facility location. Panning does not silently change an
   area search. Free text and spatial scopes stay out of public URLs/history.
   Saved searches are removed. Do not load or write old saved-search storage,
@@ -281,6 +335,10 @@ API schemas own supported fields. They are not additional roadmaps.
   category and classification overview; Location facts; single-record map;
   remaining facts. The map panel uses the same overview before Location,
   with Open facility page at the bottom of the map detail.
+  A compact source/date line near the title links directly to the already
+  eligible HTTPS source-record URL when available, otherwise the source URL.
+  Public full pages use their available validated source URL. Missing links
+  stay plain text; complete Source and review and source filtering remain.
   No separate copy-record-ID button or repeated Record Evidence heading.
 - Public source-reported and exact facility points also offer `Open in maps`
   in Location. It sends only the public destination to the external map, never
@@ -306,6 +364,10 @@ API schemas own supported fields. They are not additional roadmaps.
   definitions, including six broad fallbacks and specific activities and APHIS
   classes. Use one or two sentences, selecting specific definitions only from
   recognised structured keys, source-native classes or affirmative facts.
+  Where supplied, name the slaughter species and processed products together,
+  or explain a second supported activity. Narrative flags accept only explicit
+  true/yes/y/1; unknown values and conflicting or candidate classifications do
+  not establish an activity. Product processing does not imply on-site slaughter.
   Category-level process descriptions must not assert a facility's particular
   slaughter method. Preserve exact source classification and all supporting
   activities in labeled detail. APHIS registration classes take precedence
@@ -313,14 +375,20 @@ API schemas own supported fields. They are not additional roadmaps.
   an assertion about operations at the displayed location. Class T describes
   animal carriers, not laboratory-only transport. Legacy G/V explanations require
   their full source-native designation. A valid exact-matched research report
-  may add its fiscal year and total across reported species, never a death count.
+  may add its fiscal year, total and up to three named species counts with an
+  accurate remainder, never a death count. Mixed research classes may add this
+  dated fact as a third sentence. Ambiguous reports and duplicate species aliases
+  cannot supply a narrative total. Keep existing verified 360-day volume ranges
+  separate; do not annualise them or duplicate them in the summary.
   Definitions and source links remain available in collapsed Classification details.
   Format underscores and
   technical activity labels; retain original values in data. Show all
   affirmative species/activities and supported slaughter/product estimates.
   Use `animals`, not `head`, in presentation.
-- Group available address/locality, coordinates, source method/provider and
-  recorded confidence in Location. Label native points
+- Keep available address/locality, basic precision and relevant outside-map or
+  mailing-locality context visible in Location. Coordinates, source precision,
+  coordinate review, method/provider and provider scores stay inspectable inside
+  a collapsed Location details disclosure in rail and full pages. Label native points
   `Source-provided coordinates`; do not invent confidence or validation.
 - Hide unknown lifecycle and internal taxonomy/crosswalk versions from UI.
   Do not hide useful original classifications or source evidence.
@@ -482,7 +550,8 @@ and usable narrow/zoomed layouts. Test the actual public built route and real
 approved data where available; synthetic unit/negative tests supplement, not
 replace, real-data acceptance.
 
-English, Spanish, French, German, Dutch and Danish are available from the
+English, Spanish, French, German, Dutch, Danish and Simplified Chinese (简体中文)
+are available from the
 language button between the theme control and Tools. The popover shows native
 language names, closes with Escape or an outside click, and returns keyboard
 focus to its button. Opening it closes Tools and vice versa. English is the
@@ -494,7 +563,10 @@ release, filters and selection. Public About and methodology, filter labels and
 normalized options, Data/download copy, records and contribution flows use the
 shared dictionaries. Country display names and formatted dates/numbers use the
 selected locale. Source names, identifiers, unknown source facts and user content
-retain their original language. Generated Swagger references and operator/debug
+retain their original language. Missing-name placeholders and unmapped result
+labels are localized. Client-only name-presence metadata distinguishes a generated
+placeholder from an identical source-provided name; cached hover labels retain
+that metadata and translate only when rendered. Generated Swagger references and operator/debug
 strings may remain English. Extend the existing dictionary rather than
 creating another localization path or rewriting approved English copy.
 

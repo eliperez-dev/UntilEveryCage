@@ -5,6 +5,7 @@ export const LANGUAGE_OPTIONS = [
   { code: 'en', name: 'English' }, { code: 'es', name: 'Español' },
   { code: 'fr', name: 'Français' }, { code: 'de', name: 'Deutsch' },
   { code: 'nl', name: 'Nederlands' }, { code: 'da', name: 'Dansk' },
+  { code: 'zh-Hans', name: '简体中文' },
 ] as const;
 export type Language = typeof LANGUAGE_OPTIONS[number]['code'];
 export const isLanguage = (value: unknown): value is Language => LANGUAGE_OPTIONS.some(option => option.code === value);
@@ -23,6 +24,7 @@ const dictionaryUrls = {
   de: new URL('./locales/de.json', import.meta.url).href,
   nl: new URL('./locales/nl.json', import.meta.url).href,
   da: new URL('./locales/da.json', import.meta.url).href,
+  'zh-Hans': new URL('./locales/zh-Hans.json', import.meta.url).href,
 };
 const failedLoads = new Set<Language>();
 async function loadDictionary(value: keyof typeof dictionaryUrls): Promise<LocaleMessages> {

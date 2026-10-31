@@ -24,6 +24,21 @@ PROVIDER_CONFIDENCE_SQL = """(
         AND evidence #> '{display_location,confidence}'='null'::jsonb)
 )"""
 
+# These UK postcode references passed the source-bound replay in migration
+# 110. They have no numeric confidence and are locality points, not addresses.
+UK_POSTCODE_REFERENCE_SQL = """(
+    source_id IN ('fsa_approved_establishments','fss_approved_establishments')
+    AND country_code='GB'
+    AND lower(evidence #>> '{display_location,provider}')='locationiq'
+    AND evidence #>> '{display_location,method}'='locationiq_forward'
+    AND evidence #>> '{display_location,evidence_kind}'='provider_derived'
+    AND evidence #>> '{display_location,provider_status}'='accepted'
+    AND evidence #>> '{display_location,precision}'='provider_locality_approximate'
+    AND evidence #>> '{display_location,coordinate_review_status}'='approximate_provider_locality_private_display'
+    AND evidence #> '{display_location,confidence}'='null'::jsonb
+    AND evidence #> '{display_location,confidence_band}'='null'::jsonb
+)"""
+
 
 # The query returns one row per release member, including unmapped members.
 # The first bind parameter is always release_id (used by the cohort CTE).
@@ -98,13 +113,14 @@ GEOMETRY_MEMBERS_CTE = APPROVED_GEOMETRY_MEMBERS_CTE + """
                   AND evidence #>> '{display_location,evidence_id}' IS NOT NULL)
               OR (geometry_evidence_kind='provider_derived'
                   AND evidence #>> '{display_location,provider_status}'='accepted'
-                  AND evidence #>> '{display_location,confidence_band}'='high'
                   AND NULLIF(btrim(evidence #>> '{display_location,provider}'),'') IS NOT NULL
                   AND NULLIF(btrim(evidence #>> '{display_location,provider_queried_at}'),'') IS NOT NULL
                   AND NULLIF(btrim(evidence #>> '{display_location,method}'),'') IS NOT NULL
                   AND NULLIF(btrim(evidence #>> '{display_location,precision}'),'') IS NOT NULL
                   AND NULLIF(btrim(evidence #>> '{display_location,evidence_id}'),'') IS NOT NULL
-                  AND """ + PROVIDER_CONFIDENCE_SQL + """))
+                  AND ((evidence #>> '{display_location,confidence_band}'='high'
+                        AND """ + PROVIDER_CONFIDENCE_SQL + """)
+                       OR """ + UK_POSTCODE_REFERENCE_SQL + """)))
              AND coordinate IS NOT NULL
              AND coordinate_review_status IS DISTINCT FROM 'country-coordinate-mismatch'
              AND (ST_X(coordinate::geometry)<>0 OR ST_Y(coordinate::geometry)<>0)

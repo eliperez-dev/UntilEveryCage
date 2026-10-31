@@ -484,6 +484,13 @@
     if ($filterDisclosure) $filterDisclosure.open = false;
     dispatch({ type: 'list', value: false });
   }
+  function revealOverlapGroup() {
+    // Make room for the existing ring without changing selection or camera.
+    if (state.selectedId) {
+      detailMapPreview.set(true);
+      detailSheetSnap.set('collapsed');
+    } else collapseMobileSearch();
+  }
   async function showSelectedOnMap() {
     if (!selected || selected.latitude === null || selected.longitude === null) return;
     const record = selected;
@@ -612,6 +619,9 @@
   const suggestionIndex = writable(-1);
   const scopeError = writable("");
   const nearbyRadius = writable(25);
+  function nearbyRadiusLabel(km: number) {
+    return tr('{count} miles', $language).replace('{count}', new Intl.NumberFormat($language).format(Math.round(km / 1.609344)));
+  }
   const searchMode = writable<'box' | 'radius'>('box');
   const radiusMiles = writable(50);
   const filterDisclosure = writable<HTMLDetailsElement | undefined>(undefined);
@@ -782,6 +792,7 @@
         referenceLoading={aggregateLoading}
         onmaptiming={(timing) => onMapTiming?.(timing)}
         onselect={selectRecord}
+        onrevealoverlap={revealOverlapGroup}
         onaggregate={(ids) => dispatch({ type: "aggregate", value: ids })}
         onreference={(key, sourceId) => onMapReference?.(key, sourceId)}
         onbasemap={(value) => dispatch({ type: "basemap", value })}
@@ -867,7 +878,7 @@
             </div>
           </details>
           {#if state.searchScope}<button class="scope-chip" type="button" aria-label={`${tr('Remove filter', $language)}: ${tr('This map area', $language)}`} onclick={clearMapArea}><span>{tr('This map area', $language)}</span><span aria-hidden="true">×</span></button>{/if}
-          <div class="result-status"><strong class="sr-only">{tr(aggregateOpen ? 'Members' : 'Facility records', $language)}</strong><span role="status" aria-live="polite">{!aggregateOpen && listRefreshing ? tr(resultCount ? 'Searching · showing previous results' : 'Searching…', $language) : !aggregateOpen && (dataStatus === 'error' || dataStatus === 'unauthorized') && resultCount ? tr('Search unavailable · showing previous results', $language) : !aggregateOpen && (mode === 'candidate-preview' || mode === 'public-release') && candidateTotalCount !== null ? tr('{count} matching · {shown} shown', $language).replace('{count}', new Intl.NumberFormat($language).format(candidateTotalCount)).replace('{shown}', new Intl.NumberFormat($language).format(resultCount)) : tr('{count} loaded', $language).replace('{count}', new Intl.NumberFormat($language).format(resultCount))}</span></div>
+          <div class="result-status"><strong class="sr-only">{tr(aggregateOpen ? 'Members' : 'Facility records', $language)}</strong><span role="status" aria-live="polite">{!aggregateOpen && listRefreshing ? tr(resultCount ? 'Searching · showing previous results' : 'Searching…', $language) : !aggregateOpen && (dataStatus === 'error' || dataStatus === 'unauthorized') && resultCount ? tr('Search unavailable · showing previous results', $language) : !aggregateOpen && (mode === 'candidate-preview' || mode === 'public-release') && candidateTotalCount !== null ? tr('{count} matching records · {shown} shown', $language).replace('{count}', new Intl.NumberFormat($language).format(candidateTotalCount)).replace('{shown}', new Intl.NumberFormat($language).format(resultCount)) : tr('{count} records loaded', $language).replace('{count}', new Intl.NumberFormat($language).format(resultCount))}</span></div>
           </div>
         </div>
       {#if $scopeError}<p class="search-error" hidden={Boolean(state.selectedId) || !workspaceOpen} role="alert">{$scopeError}</p>{/if}
@@ -928,13 +939,13 @@
       </details>{/if}
         {#if $placeSuggestions.length > 0}
           <section class="place-suggestions" aria-label={tr('Places', $language)}>
-            <div class="results-heading"><strong>{tr('Places', $language)}</strong><label class="radius-choice">{tr('Radius', $language)} <select bind:value={$nearbyRadius}>{#each [5,25,50,100] as km}<option value={km}>{km} km</option>{/each}</select></label>{#if $placeSuggestions.length > 1}<button class="places-expand" type="button" aria-label={tr('Places', $language)} aria-expanded={$placesExpanded} onclick={() => placesExpanded.update(value => !value)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d={$placesExpanded ? 'm6 15 6-6 6 6' : 'm6 9 6 6 6-6'}/></svg></button>{/if}</div>
+            <div class="results-heading"><strong>{tr('Places', $language)}</strong><label class="radius-choice">{tr('Radius', $language)} <select bind:value={$nearbyRadius}>{#each [5,25,50,100] as km}<option value={km}>{nearbyRadiusLabel(km)}</option>{/each}</select></label>{#if $placeSuggestions.length > 1}<button class="places-expand" type="button" aria-label={tr('Places', $language)} aria-expanded={$placesExpanded} onclick={() => placesExpanded.update(value => !value)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d={$placesExpanded ? 'm6 15 6-6 6 6' : 'm6 9 6 6 6-6'}/></svg></button>{/if}</div>
             <ol>
               {#each $placeSuggestions as place, index (place.id)}
-                <li class:extra-place={index > 0 && !$placesExpanded}><button type="button" onclick={(event) => { event.stopPropagation(); selectPlace(place); }}>
+                <li class:extra-place={index > 0 && !$placesExpanded} class:with-nearby={mode === 'public-release'}><button type="button" onclick={(event) => { event.stopPropagation(); selectPlace(place); }}>
                   <strong>{place.label}</strong>
                   <small>{tr('Navigate to city centre · Natural Earth, not a facility location', $language)}</small>
-                </button>{#if mode === 'public-release'}<button type="button" class="nearby-search" aria-label={`${tr('Search nearby', $language)}: ${place.label}, ${$nearbyRadius} km`} onclick={() => searchNear(place)}><span class="nearby-label">{tr('Search nearby', $language)} · </span>{$nearbyRadius} km</button>{/if}</li>
+                </button>{#if mode === 'public-release'}<button type="button" class="nearby-search" aria-label={`${tr('Search nearby', $language)}: ${place.label}, ${nearbyRadiusLabel($nearbyRadius)}`} onclick={() => searchNear(place)}><span class="nearby-label">{tr('Search nearby', $language)}</span><span class="nearby-distance">{nearbyRadiusLabel($nearbyRadius)}</span></button>{/if}</li>
               {/each}
             </ol>
           </section>
@@ -1163,7 +1174,8 @@
   .place-suggestions li > button { min-width:0;min-height:44px;overflow-wrap:anywhere; }
   .radius-choice { display:flex;align-items:center;gap:.35rem;min-width:0;margin-left:auto;color:var(--muted);font-size:.6875rem; }
   .radius-choice select { width:5.25rem;max-width:100%;min-height:44px;padding:.25rem;border:1px solid var(--line);border-radius:0;color:var(--ink);background:var(--panel);font:inherit; }
-  .place-suggestions .nearby-search { min-height: 2.75rem; padding-top: .25rem; color: var(--muted); font-size: .6875rem; text-decoration: underline; text-underline-offset: .2rem; }
+  .place-suggestions .nearby-search { display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:.15rem .35rem;min-height:2.75rem;padding-top:.25rem;color:var(--muted);font-size:.6875rem;line-height:1.4;text-decoration:underline;text-underline-offset:.2rem; }
+  .nearby-distance { white-space:nowrap; }
   @media (max-width: 60rem) {
     .search-toolbar { flex-wrap: wrap; gap: 0 .25rem; }
     .result-status { flex: 1 1 5rem; }
@@ -1195,12 +1207,13 @@
     .place-suggestions .results-heading { min-height: 2.75rem; gap: .4rem; padding: 0 .65rem; }
     .radius-choice { margin-left: auto; }
     .radius-choice select { min-height: 2.75rem; }
-    .place-suggestions li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+    .place-suggestions li { display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center; }
+    .place-suggestions li.with-nearby { grid-template-columns:minmax(0,1fr) minmax(7rem,42%); }
     .place-suggestions li > button { min-width: 0; min-height: 2.75rem; padding: .45rem .65rem; }
     .place-suggestions strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .place-suggestions small { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
-    .place-suggestions .nearby-search { padding: .45rem .65rem; }
-    .nearby-label { display: none; }
+    .place-suggestions .nearby-search { flex-direction:column;align-items:flex-end;justify-content:center;gap:.15rem;width:100%;padding:.45rem .65rem;text-align:right; }
+    .nearby-label { display:block;max-width:100%;overflow-wrap:normal; }
     .workspace .dossier-header { padding-top: .35rem; }
     .filter-chips button { min-height:2.75rem;font-size:.75rem; }
     .result-status { font-size:.75rem; }

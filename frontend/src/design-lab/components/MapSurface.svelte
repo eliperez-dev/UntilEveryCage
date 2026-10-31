@@ -79,12 +79,15 @@
   import { CLUSTERING_POPULATION_THRESHOLD, clusterFilteredPopulation, maskPublicMapMatches, representedMappedCount, resizeWorkspaceMap } from './mapWorkspace';
   import { categoryPresentation } from '../../features/locations/categoryPresentation';
   import { individualHoverPin } from '../pinHoverLabels';
+  import { recordNamePresentation } from '../../features/locations/recordNamePresentation';
   import { pinHoverVisual } from '../pinHoverVisual';
   import { applyFacilityPinScale, DEFAULT_FACILITY_PIN_SCALE } from './facilityPinScale';
   import { mergeMapDisplaySettings } from './mapDisplaySettings';
   import { emptyAreaSummary, summarizeMappedArea } from '../../features/search/areaSummary';
   import { publicSearchFilters } from '../../features/search/powerSearch';
   import { nearbyCameraBounds } from '../../features/search/nearbySearch';
+  import PublicPinRing from './PublicPinRing.svelte';
+  import { collectPublicOverlap, createPublicOverlapIndex, OVERLAP_BADGE_LAYER, OVERLAP_BADGE_SOURCE, OVERLAP_LAYERS, publicOverlapMember, type OverlapMember, type PublicOverlapIndex, type RingBounds, type ScreenPoint } from './publicPinOverlap';
 
   let {
     active = true,
@@ -125,6 +128,7 @@
     onviewport,
     onbounds,
     resolvePinHover,
+    onrevealoverlap,
     displaySettingsRequest = null,
     onDisplaySettingsChange,
     onAreaSummary,
@@ -174,6 +178,7 @@
     onviewport(value: Viewport): void;
     onbounds?(bounds: ViewportBounds): void;
     resolvePinHover?: PinHoverResolver;
+    onrevealoverlap?: (() => void) | undefined;
     displaySettingsRequest?: MapDisplaySettingsRequest | null;
     onDisplaySettingsChange?(settings: MapDisplaySettings): void;
     onAreaSummary?(summary: AreaSummary): void;
@@ -192,7 +197,7 @@
     hoverPin = null; hoverLabel = null; hoverMark = null;
   }
   function updatePinHover(event: maplibregl.MapMouseEvent) {
-    if (!active || mode !== 'public-release' || !resolvePinHover || !map || map.isMoving()
+    if (overlapRing || !active || mode !== 'public-release' || !resolvePinHover || !map || map.isMoving()
       || activeFlight || mapMatchesStatus === 'loading' || mapMatchesStatus === 'error'
       || !matchMedia('(hover: hover) and (pointer: fine)').matches) {
       clearPinHover(); return;
@@ -272,6 +277,148 @@
   let appliedMatchesStatus: typeof mapMatchesStatus | undefined;
   let appliedNativeClustering: boolean | undefined;
   let visibleNativeCollection: JsonMapCollection | undefined;
+  let overlapIndexCollection: JsonMapCollection | undefined;
+  let overlapIndex: PublicOverlapIndex | undefined;
+  let overlapGeneration = 0;
+  let overlapBadgeSignature = '';
+  let overlapBadgeIndex: PublicOverlapIndex | undefined;
+  let overlapLayoutObserver: ResizeObserver | undefined;
+  let overlapLayoutFrame: number | undefined;
+  let overlapRing = $state.raw<{ members: readonly OverlapMember[]; anchor: ScreenPoint; anchors: ReadonlyMap<string, ScreenPoint>; bounds: RingBounds } | null>(null);
+  const overlapHandledEvents = new WeakSet<Event>();
+  function closeOverlapRing() {
+    overlapGeneration++; overlapRing = null;
+    overlapLayoutObserver?.disconnect(); overlapLayoutObserver = undefined;
+    if (overlapLayoutFrame !== undefined) cancelAnimationFrame(overlapLayoutFrame);
+    overlapLayoutFrame = undefined;
+  }
+  function invalidateOverlap() {
+    closeOverlapRing(); overlapIndexCollection = undefined; overlapIndex = undefined; overlapBadgeSignature = ''; overlapBadgeIndex = undefined;
+    (map?.getSource(OVERLAP_BADGE_SOURCE) as GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features: [] });
+  }
+  function currentOverlapIndex(): PublicOverlapIndex | undefined {
+    if (!active || mode !== 'public-release' || !visibleNativeCollection || mapMatchesStatus === 'loading' || mapMatchesStatus === 'error') return;
+    if (overlapIndexCollection !== visibleNativeCollection) {
+      overlapIndexCollection = visibleNativeCollection;
+      overlapIndex = createPublicOverlapIndex(visibleNativeCollection);
+    }
+    return overlapIndex;
+  }
+  function projectOverlap(coordinates: [number, number]): ScreenPoint {
+    const longitude = coordinates[0] + Math.round((map!.getCenter().lng - coordinates[0]) / 360) * 360;
+    return map!.project([longitude, coordinates[1]]);
+  }
+  function overlapBounds(): RingBounds {
+    const rect = host.getBoundingClientRect();
+    const bounds = { left: 12, top: 12, right: host.clientWidth - 12, bottom: host.clientHeight - 12 };
+    const workspace = host.closest('.workspace');
+    const toolbar = workspace?.querySelector<HTMLElement>('.map-toolbar');
+    const panel = workspace?.querySelector<HTMLElement>('.results');
+    if (toolbar?.getClientRects().length && getComputedStyle(toolbar).visibility !== 'hidden') bounds.top = Math.max(bounds.top, toolbar.getBoundingClientRect().bottom - rect.top + 12);
+    if (panel?.getClientRects().length) {
+      const panelRect = panel.getBoundingClientRect();
+      if (matchMedia('(max-width:40rem)').matches) bounds.bottom = Math.min(bounds.bottom, panelRect.top - rect.top - 10);
+      else bounds.left = Math.max(bounds.left, panelRect.right - rect.left + 12);
+    }
+    const attribution = host.querySelector<HTMLElement>('.maplibregl-ctrl-attrib');
+    if (attribution?.getClientRects().length) bounds.bottom = Math.min(bounds.bottom, attribution.getBoundingClientRect().top - rect.top - 10);
+    return bounds;
+  }
+  function refreshOverlapLayout() {
+    if (!overlapRing || !map) return;
+    const bounds = overlapBounds(), previous = overlapRing.bounds;
+    if (bounds.left !== previous.left || bounds.right !== previous.right || bounds.top !== previous.top || bounds.bottom !== previous.bottom)
+      overlapRing = { ...overlapRing, bounds };
+  }
+  function observeOverlapLayout() {
+    overlapLayoutObserver?.disconnect();
+    const workspace = host.closest('.workspace');
+    overlapLayoutObserver = new ResizeObserver(() => {
+      if (overlapLayoutFrame !== undefined || !overlapRing) return;
+      overlapLayoutFrame = requestAnimationFrame(() => {
+        overlapLayoutFrame = undefined;
+        refreshOverlapLayout();
+      });
+    });
+    // These nodes are persistent across sheet snap and selected-record changes.
+    // No collection or native-feature query occurs when their size changes.
+    for (const target of [workspace?.querySelector('.results'), workspace?.querySelector('.map-toolbar'), host.querySelector('.maplibregl-ctrl-attrib')])
+      if (target) overlapLayoutObserver.observe(target);
+  }
+  async function revealOverlap() {
+    if (!overlapRing || !onrevealoverlap) return;
+    onrevealoverlap();
+    await tick();
+    refreshOverlapLayout();
+  }
+  function openOverlap(members: readonly OverlapMember[], anchor: ScreenPoint): boolean {
+    if (members.length < 2 || !map) return false;
+    closeOverlapRing(); clearPinHover();
+    const anchors = new Map(members.map(member => [member.id, projectOverlap(member.coordinates)]));
+    overlapRing = { members, anchor, anchors, bounds: overlapBounds() };
+    observeOverlapLayout();
+    return true;
+  }
+  function interceptPublicOverlap(event: any): boolean {
+    if (mode !== 'public-release' || !map || !event.point) return false;
+    if (event.originalEvent && overlapHandledEvents.has(event.originalEvent)) return true;
+    const index = currentOverlapIndex();
+    if (!index) return false;
+    const layers = OVERLAP_LAYERS.filter(id => !!map?.getLayer(id));
+    const point = event.point;
+    const rendered = map.queryRenderedFeatures([[point.x - 20, point.y - 20], [point.x + 20, point.y + 20]], { layers });
+    const first = publicOverlapMember(event.features?.[0], true);
+    const firstMember = first && index.byId.get(first.id);
+    // A pin's pointed bottom and its click body differ by up to 32 pixels.
+    const center = firstMember ? projectOverlap(firstMember.coordinates) : point;
+    const members = collectPublicOverlap(index, [...(event.features ?? []), ...rendered], center, projectOverlap, useV1Pins ? 36 * pinScale + 8 : coordinateRadius * 2 + 8);
+    if (!openOverlap(members, center)) return false;
+    if (event.originalEvent) overlapHandledEvents.add(event.originalEvent);
+    return true;
+  }
+  function selectOverlapMember(member: OverlapMember) {
+    if (!currentOverlapIndex()?.byId.has(member.id)) { closeOverlapRing(); return; }
+    const precision = member.feature.properties.precision;
+    selectedReferenceKey = precision === 'approximate' || precision === 'city' || precision === 'city_reference_approximate' ? member.id : null;
+    selectionFocus = { id: member.id, center: member.coordinates };
+    pendingSelectionFocus = null;
+    updateVisualSettings(); onselect(member.id);
+    void tick().then(refreshOverlapLayout);
+  }
+  function refreshOverlapBadges(instance: MapLibreMap) {
+    if (mode !== 'public-release' || !active || instance.isMoving() || !instance.getSource('locations')) return;
+    const index = currentOverlapIndex();
+    if (!index) return;
+    const minzoom = appliedNativeClustering
+      ? Math.ceil(clusterMaxZoom) - (useRoundedClusterTiles(clusterMaxZoom) && roundedClusterTilesAvailable ? .5 : 0) : 0;
+    const signature = `${useV1Pins}:${pinScale}:${coordinateRadius}:${minzoom}`;
+    if (!instance.getSource(OVERLAP_BADGE_SOURCE)) {
+      instance.addSource(OVERLAP_BADGE_SOURCE, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      overlapBadgeIndex = undefined;
+    }
+    if (!instance.getLayer(OVERLAP_BADGE_LAYER)) instance.addLayer({ id: OVERLAP_BADGE_LAYER, type: 'symbol', source: OVERLAP_BADGE_SOURCE,
+      layout: { 'text-field': ['to-string', ['get', 'count']], 'text-font': ['Open Sans Bold'], 'text-size': 11,
+        'text-allow-overlap': true, 'text-ignore-placement': true },
+      paint: { 'text-color': '#f2f0e8', 'text-halo-color': '#1c1c1c', 'text-halo-width': 4, 'text-halo-blur': .5 } } as any);
+    if (signature !== overlapBadgeSignature) {
+      overlapBadgeSignature = signature;
+      instance.setLayerZoomRange(OVERLAP_BADGE_LAYER, minzoom, 24);
+      instance.setLayoutProperty(OVERLAP_BADGE_LAYER, 'text-offset', useV1Pins ? [1, -2.8 * pinScale] : [1.2, -1]);
+    }
+    if (overlapBadgeIndex === index) return;
+    overlapBadgeIndex = index;
+    // Native viewport culling handles these small count-only points. There is
+    // no full-viewport feature query on pan, zoom, or animation frames.
+    (instance.getSource(OVERLAP_BADGE_SOURCE) as GeoJSONSource).setData({ type: 'FeatureCollection', features: index.sharedGroups().map(group => ({
+      type: 'Feature', geometry: { type: 'Point', coordinates: group[0]!.coordinates }, properties: { key: group[0]!.id, count: group.length },
+    })) });
+  }
+  const overlapContext = $derived(JSON.stringify([active, mode, publicReleaseId, publicReleaseIdentity,
+    publicReleaseManifestIdentity?.suppressionGeneration, mapState.sourceId, mapState.query, mapState.filters, mapMatchesStatus]));
+  $effect(() => {
+    overlapContext; mapMatchingIds;
+    untrack(invalidateOverlap);
+  });
   const matchingIdSet = $derived(mapMatchingIds === null ? null : new Set(mapMatchingIds));
   let handledFitResultsRequest = 0;
   let handledDeviceScope: SearchScope = null;
@@ -958,7 +1105,7 @@
     // A verified feed can arrive through resume without passing addLayers.
     // Symbols must be registered before their source reaches worker placement.
     loadClusterImages();
-    visibleNativeCollection = data;
+    invalidateOverlap(); visibleNativeCollection = data;
     filteredMappedCount = representedMappedCount(data);
     const enabled = clusterFilteredPopulation(data, clusterEnabledOverride);
     if (hasRealPreviewMapLayers(instance)) {
@@ -1251,7 +1398,7 @@
     nativeIndexStartedAt = performance.now();
     startupStage = "indexing";
     const visible = filteredNativeCollection(nativeFullCollection);
-    visibleNativeCollection = visible;
+    invalidateOverlap(); visibleNativeCollection = visible;
     filteredMappedCount = representedMappedCount(visible);
     updateNativeClustering(map, clusterFilteredPopulation(visible, clusterEnabledOverride));
     nativeIndexUpdates++;
@@ -1276,7 +1423,7 @@
           requestedPublicReleaseIdentity = publicReleaseIdentity;
           requestedFeedSourceId = undefined;
           nativeFullCollection = undefined;
-          visibleNativeCollection = undefined;
+          invalidateOverlap(); visibleNativeCollection = undefined;
           appliedNativeSourceId = undefined;
           if (instance.getSource("locations")) { nativeMotionController?.invalidate(); nativeIndexUpdates++; setRealPreviewMapData(instance, { type: "FeatureCollection", features: [] }); }
           syncSelectedApproximateArea(instance);
@@ -1301,7 +1448,7 @@
     await clearClusterIndexCache();
     const removed = publicReleaseId ? (await clearPublicMapCache(), 1) : mode === "candidate-preview" ? await clearTestReleaseMapCache() : await clearRealPreviewMapCache();
     feedGeneration++; feedAbort?.abort(); feedAbort = undefined;
-    nativeFullCollection = undefined; visibleNativeCollection = undefined;
+    nativeFullCollection = undefined; invalidateOverlap(); visibleNativeCollection = undefined;
     requestedFeedSourceId = undefined; appliedNativeFilterSignature = undefined;
     appliedNativeSourceId = undefined; appliedNativeClustering = undefined;
     appliedMatchingIds = undefined; appliedMatchesStatus = undefined;
@@ -1634,16 +1781,39 @@
       }
       return;
     }
-    map.on("click", "clusters", (event: any) => {
+    map.on('click', OVERLAP_BADGE_LAYER, (event: any) => {
+      if (activeFlight || mode !== 'public-release') return;
+      const key = event.features?.[0]?.properties?.key;
+      const group = typeof key === 'string' ? currentOverlapIndex()?.group(key) : undefined;
+      if (group && group.length > 1 && openOverlap(group, projectOverlap(group[0]!.coordinates)) && event.originalEvent) overlapHandledEvents.add(event.originalEvent);
+    });
+    map.on("click", "clusters", async (event: any) => {
       if (activeFlight) return;
       const feature = event.features?.[0],
         clusterId = feature?.properties?.cluster_id;
       if (typeof clusterId !== "number") return;
+      if (mode === 'public-release') {
+        const ticket = overlapGeneration;
+        const collection = visibleNativeCollection;
+        const index = currentOverlapIndex();
+        try {
+          // One leaf identifies a wholly co-located cluster without enumerating descendants.
+          const leaves = await (map?.getSource('locations') as GeoJSONSource | undefined)?.getClusterLeaves(clusterId, 1, 0);
+          if (!map || ticket !== overlapGeneration || collection !== visibleNativeCollection) return;
+          const first = publicOverlapMember(leaves?.[0]);
+          const group = first && index?.group(first.id);
+          if (group && group.length > 1 && group.length === Number(feature.properties.point_count)
+            && openOverlap(group, projectOverlap(group[0]!.coordinates))) return;
+        } catch { if (ticket !== overlapGeneration) return; }
+      }
       if (mode === "synthetic") jsonMotionController?.playExpansion(feature, clusterId);
+      const expansionTicket = overlapGeneration;
+      const expansionCollection = visibleNativeCollection;
       (map?.getSource("locations") as GeoJSONSource | undefined)
         ?.getClusterExpansionZoom(clusterId)
         .then((zoom) => {
           if (!map) return;
+          if (mode === 'public-release' && (expansionTicket !== overlapGeneration || expansionCollection !== visibleNativeCollection)) return;
           if (mode === "synthetic") jsonMotionController?.armExpansion(map);
           map.easeTo({
             center: feature.geometry.coordinates,
@@ -1652,13 +1822,14 @@
             easing: (t) => 1 - Math.pow(1 - t, 3),
             essential: false,
           });
-        });
+        }).catch(() => { /* A changed source can retire this cluster before its camera action. */ });
     });
     for (const layer of isNativeMap()
       ? ["source-coordinate-points", "v1-source-pins"]
       : ["exact-pins", "approximate-points", "source-coordinate-points"])
       map.on("click", layer, (event: any) => {
         if (activeFlight) return;
+        if (interceptPublicOverlap(event)) return;
         const properties = event.features?.[0]?.properties;
         const id = isRealPreview() ? properties?.key : properties?.id;
         if (typeof id === "string") {
@@ -1705,6 +1876,7 @@
         return;
       }
       if (mode === "public-release") {
+        if (layer !== 'aggregate-outer' && interceptPublicOverlap(event)) return;
         const properties = event.features?.[0]?.properties;
         const id = properties?.key ?? properties?.id;
         if (typeof id === "string") {
@@ -1740,7 +1912,7 @@
     if (isNativeMap())
       map.on("click", "approx-reference-points", (event: any) => handleReferenceClick(event, "approx-reference-points"));
     for (const layer of isNativeMap()
-      ? ["clusters", "source-coordinate-points", "v1-source-pins", "aggregate-outer", "approx-reference-pins", "approx-reference-circles", "approx-reference-points"]
+      ? ["clusters", "source-coordinate-points", "v1-source-pins", "aggregate-outer", "approx-reference-pins", "approx-reference-circles", "approx-reference-points", OVERLAP_BADGE_LAYER]
       : ["clusters", "exact-pins", "approximate-points", "source-coordinate-points", "aggregate-outer"]) {
       map.on("mouseenter", layer, () => {
         if (map) map.getCanvas().style.cursor = "pointer";
@@ -1824,8 +1996,9 @@
     map = instance;
     instance.on('mousemove', updatePinHover);
     host.addEventListener('pointerleave', clearPinHover);
-    instance.on('click', clearPinHover);
+    instance.on('click', () => { clearPinHover(); closeOverlapRing(); });
     const dismissHover = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && overlapRing) { event.preventDefault(); event.stopImmediatePropagation(); closeOverlapRing(); instance.getCanvas().focus({ preventScroll: true }); return; }
       if (event.key !== 'Escape' || !hoverPin) return;
       event.preventDefault(); event.stopPropagation(); clearPinHover();
     };
@@ -1840,6 +2013,7 @@
         const width = host.clientWidth, height = host.clientHeight;
         if (!active || !width || !height || (width === previousWidth && height === previousHeight)) return;
         previousWidth = width; previousHeight = height;
+        refreshOverlapLayout();
         nativeMotionController?.cancel();
         if (resumePending) { instance.resize(); return; }
         resizeWorkspaceMap(instance, selectionFocus?.id === mapState.selectedId ? selectionFocus.center : null, activeFlight);
@@ -1860,6 +2034,7 @@
         "Record map. Select a cluster, source coordinate, or approximate area reference.",
       );
     instance.on('styledataloading', () => {
+      invalidateOverlap();
       clearPinHover();
       nativeStyleReady = false;
       onMapControlsReady?.(false);
@@ -1922,6 +2097,7 @@
       }
     });
     instance.on("movestart", (event: any) => {
+      closeOverlapRing();
       clearPinHover();
       nativeMotionController?.onMoveStart();
       if (event?.originalEvent) { pendingSelectionFocus = null; selectionFocus = null; }
@@ -1956,6 +2132,7 @@
     });
     instance.on("idle", () => {
       settlePendingSelectionFocus();
+      refreshOverlapBadges(instance);
       if (isNativeMap()) {
         updateVisibleApproximateCount(instance);
         if (startupStage === "rendering" && instance.isSourceLoaded("locations")) startupStage = "ready";
@@ -2006,6 +2183,7 @@
     instance.on("pitch", () => updateCameraPitch(instance.getPitch()));
     instance.on("pitchend", () => { if (active && instance.getPitch() > 0.5) setTerrain(true); });
     return () => {
+      closeOverlapRing();
       clearPinHover(); window.removeEventListener('keydown', dismissHover, true); host.removeEventListener('pointerleave', clearPinHover);
       unsubscribeTiles(); unsubscribeWorld(); cancelWorldBaselineWarmup(); indexCacheChannel?.close(); indexCacheChannel = undefined;
       setTileCachePersistenceAllowed(true);
@@ -2205,11 +2383,16 @@
   aria-label={tr('Map showing records', $language)}
 >
   <div class="map-host" bind:this={host}></div>
+  {#if overlapRing}
+    <PublicPinRing members={overlapRing.members} anchor={overlapRing.anchor} anchors={overlapRing.anchors} bounds={overlapRing.bounds}
+      optimized={!useV1Pins} {pinScale} {coordinateRadius} selectedId={mapState.selectedId} resolveLabel={resolvePinHover}
+      onreveal={onrevealoverlap ? revealOverlap : undefined} onselect={selectOverlapMember} onclose={closeOverlapRing} />
+  {/if}
   {#if hoverMark}<div class="pin-hover-halo" class:dot={hoverVisual.kind === 'dot'} data-kind={hoverVisual.kind} aria-hidden="true" style:left={`${hoverMark.x}px`} style:top={`${hoverMark.y}px`} style:width={`${hoverVisual.width}px`} style:height={`${hoverVisual.height}px`} style:transform={hoverVisual.transform}>
     <span style:mask-image={hoverVisual.maskUrl ? `url("${hoverVisual.maskUrl}")` : 'none'}></span>
   </div>{/if}
   {#if hoverLabel}<div class="pin-hover-label" class:below={hoverLabel.below} role="tooltip" style:left={`${hoverLabel.x}px`} style:top={`${hoverLabel.y}px`} style:--hover-pin-height={`${useV1Pins ? 41 * pinScale + 3 : coordinateRadius + 5}px`}>
-    <strong>{hoverLabel.name}</strong>
+    <strong>{recordNamePresentation(hoverLabel, label => tr(label, $language))}</strong>
     <span>{tr(categoryPresentation(hoverLabel.categoryKey).label, $language)}</span>
   </div>{/if}
   {#if rendererUnavailable}<p class="map-status" role="alert">{tr('Map unavailable in this browser.', $language)}</p>{/if}

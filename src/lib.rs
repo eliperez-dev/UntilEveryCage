@@ -4619,7 +4619,7 @@ pub async fn get_v2_facets_handler(
             json!(
                 counts
                     .into_iter()
-                    .take(20)
+                    .take(if name == "country_code" { 249 } else { 20 })
                     .map(|(value, count)| json!({"value":value,"count":count}))
                     .collect::<Vec<_>>()
             ),

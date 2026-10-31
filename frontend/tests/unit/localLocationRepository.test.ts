@@ -52,6 +52,14 @@ describe('LocalLocationRepository query contract', () => {
     expect(viewportRequest.searchParams.has('q')).toBe(false);
     expect(['min_lon', 'min_lat', 'max_lon', 'max_lat'].every(key => viewportRequest.searchParams.has(key))).toBe(true);
   });
+  it('distinguishes a generated name placeholder from an identical source-provided name', async () => {
+    const body = { ...envelope(), data: [{ ...row, canonical_name: null }, { ...row, facility_id: '550e8400-e29b-41d4-a716-446655440001', canonical_name: 'Name not provided' }] };
+    const result = await new LocalLocationRepository(vi.fn().mockResolvedValue(response(body))).list();
+    expect(result.locations).toMatchObject([
+      { name: 'Name not provided', nameProvided: false },
+      { name: 'Name not provided', nameProvided: true },
+    ]);
+  });
 });
 
 describe('current V2 wire edge cases', () => {

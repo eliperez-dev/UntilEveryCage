@@ -7,7 +7,7 @@ export type Basemap = 'vector' | 'muted' | 'satellite';
 export type LabFilters = Readonly<{ categories: readonly string[]; precisions: readonly Precision[]; countries: readonly string[]; sources: readonly string[]; activities: readonly string[] }>;
 
 export type LabRecord = Readonly<{
-  id: string; name: string; category: string; country: string; locality: string;
+  id: string; name: string; nameProvided?: boolean; category: string; country: string; locality: string;
   precision: Precision; latitude: number | null; longitude: number | null;
   sourceId?: string; reviewStatus?: string; previewLabel?: string; coordinatePrecision?: string | null; coordinateProvenance?: string | null;
   facilityAddress?: string | null; coordinateMethod?: string | null; coordinateProvider?: string | null;
@@ -68,7 +68,7 @@ export type LabAction =
   | { type: 'search'; value: { query: string; filters: LabFilters } }
   | { type: 'results' } | { type: 'close-workspace' } | { type: 'explore-map' };
 
-export type PinHoverLabel = Readonly<{ name: string; categoryKey: string }>;
+export type PinHoverLabel = Readonly<{ name: string; nameProvided?: boolean; categoryKey: string }>;
 export type PinHoverResolver = (id: string, signal: AbortSignal) => PinHoverLabel | null | Promise<PinHoverLabel | null>;
 export type MapDisplaySettings = Readonly<{ clusterMode: 'auto' | 'on' | 'off'; pinScale: number; optimizedPins: boolean; coordinateRadius: number }>;
 export type MapDisplaySettingsRequest = Readonly<{ id: number; patch: Partial<MapDisplaySettings> }>;

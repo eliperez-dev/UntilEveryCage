@@ -60,7 +60,7 @@ export const mapWireLocation = (r: WireLocation | WireDetailLocation): Location 
     ...(native.native_activity_label ? { nativeActivityLabel: native.native_activity_label } : {}),
   };
   return {
-  id: r.facility_id, name: r.canonical_name ?? 'Name not provided', region: r.city ?? r.country_code, category: r.category,
+  id: r.facility_id, name: r.canonical_name ?? 'Name not provided', nameProvided: r.canonical_name !== null, region: r.city ?? r.country_code, category: r.category,
   sourceId: r.provenance_source_id, countryCode: r.country_code,
   taxonomy: {
     displayCategory: category as TaxonomyPrimaryKey,
