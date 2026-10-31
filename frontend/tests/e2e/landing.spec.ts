@@ -12,7 +12,7 @@ async function installLandingSummary(page: Page) {
 test.beforeEach(async ({ page }) => installLandingSummary(page));
 const onlySummaryRequests = (requests: readonly string[]) => requests.every(url => ['/api/v2/releases/manifest', '/api/v2/discovery/facets'].includes(new URL(url).pathname));
 
-test('landing stays separate from the map and its media can be paused', async ({ page }) => {
+test('landing stays separate from the map with unobstructed background media', async ({ page }) => {
   const apiRequests: string[] = [];
   page.on('request', request => { if (new URL(request.url()).pathname.startsWith('/api/')) apiRequests.push(request.url()); });
   await page.goto('./');
@@ -25,9 +25,7 @@ test('landing stays separate from the map and its media can be paused', async ({
   await expect.poll(() => page.locator('.hero-photo').evaluateAll(images => images.every(image => (image as HTMLImageElement).complete && (image as HTMLImageElement).naturalWidth > 0))).toBe(true);
   await expect(page.locator('.maplibregl-map')).toHaveCount(0);
   expect(onlySummaryRequests(apiRequests)).toBe(true);
-  await page.getByRole('button', { name: 'Pause background animation' }).click();
-  await expect.poll(() => page.locator('.cow').evaluate(image => image.getAnimations().map(animation => animation.playState))).toEqual(['paused', 'paused']);
-  await page.getByRole('button', { name: 'Resume background animation' }).click();
+  await expect(page.locator('.motion-toggle')).toHaveCount(0);
   await expect.poll(() => page.locator('.cow').evaluate(image => image.getAnimations().map(animation => animation.playState))).toEqual(['running', 'running']);
   await page.getByRole('link', { name: 'Open the map', exact: true }).first().click();
   await expect.poll(() => new URL(page.url()).hash.split('?')[0]).toBe('#/map');

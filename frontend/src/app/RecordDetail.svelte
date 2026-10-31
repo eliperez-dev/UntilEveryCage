@@ -4,6 +4,7 @@
   import RecordConnections from './RecordConnections.svelte';
   import LocationPreview from './LocationPreview.svelte';
   import { externalMapLink } from '../features/locations/externalMapLink';
+  import { recordNamePresentation } from '../features/locations/recordNamePresentation';
   import { serializeRoute } from './routeState';
   import type { LabRecord } from '../design-lab/contract';
   import CategoryBadge from '../features/locations/CategoryBadge.svelte';
@@ -123,7 +124,7 @@
   );
   const name = $derived(nameWithheld
     ? 'Name not shown'
-    : safeDisplayName ?? value(record.name) ?? 'Name not provided');
+    : safeDisplayName ?? recordNamePresentation({ name: value(record.name), nameProvided: record.nameProvided }, label => tr(label, $language)));
   const activity = $derived(
     value(
       'activityLabel' in record ? record.activityLabel : null,
@@ -157,6 +158,8 @@
       ),
     ),
   );
+  const directSourceUrl = $derived(sourceRecordUrl ?? sourceUrl);
+  const directSourceLabel = $derived(sourceName ?? tr(sourceRecordUrl ? 'Source record' : 'Source', $language));
   const precision = $derived(
     value(
       record.precision,
@@ -183,6 +186,8 @@
   const facilityAddress = $derived(value(record.facilityAddress));
   const hasCoordinates = $derived(typeof record.latitude === 'number' && Number.isFinite(record.latitude) && typeof record.longitude === 'number' && Number.isFinite(record.longitude));
   const coordinateConfidence = $derived(typeof record.coordinateConfidence === 'number' && Number.isFinite(record.coordinateConfidence) && record.coordinateConfidence >= 0 && record.coordinateConfidence <= 1 ? record.coordinateConfidence : null);
+  const sourcePrecisionDetail = $derived(record.coordinatePrecision && !['source-provided', 'source_reported', 'source_provided_unverified'].includes(record.coordinatePrecision) ? displayGeneratedValue(record.coordinatePrecision) : null);
+  const coordinateReviewDetail = $derived(coordinateStatus && !sameLabel(coordinateStatus, 'source_confirmed') ? displayGeneratedValue(coordinateStatus) : null);
   const defaultMapScope = $derived(
     'defaultMapScope' in record ? record.defaultMapScope : 'default_map_scope' in record ? record.default_map_scope : null,
   );
@@ -358,7 +363,7 @@
     <ClassificationSummary record={classificationRecord} presentation={presentation === 'rail' ? 'summary' : 'all'} />
     {#if slaughterRangeText}<section class="slaughter-estimate" aria-label={tr('Estimated animals slaughtered (last 360 days)', $language)}><p>{tr('Estimated animals slaughtered (last 360 days)', $language)}</p><strong>{slaughterRangeText}</strong>{#each slaughterCodebooks as href}<a href={href} target="_blank" rel="noopener noreferrer">{tr('Source codebook', $language)}</a>{/each}</section>{/if}
   </section>
-  {#if presentation === 'rail' && (sourceName || observed || retrieved)}<p class="compact-source">{#if sourceName}<span>{sourceName}</span>{/if}{#if observed || retrieved}<span>{sourceName ? ' · ' : ''}{tr(observed ? 'Observed' : 'Retrieved', $language)} <time datetime={observed ?? retrieved ?? undefined} title={observed ?? retrieved ?? undefined}>{shortDate(observed ?? retrieved ?? '')}</time></span>{/if}</p>{/if}
+  {#if sourceName || directSourceUrl || observed || retrieved}<p class="compact-source">{#if directSourceUrl}<a class="direct-source" href={directSourceUrl} target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer"><span>{directSourceLabel}</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6m0-6L10 14M10 4H4v16h16v-6"/></svg><span class="sr-only"> ({tr('opens in a new tab', $language)})</span></a>{:else if sourceName}<span>{sourceName}</span>{/if}{#if observed || retrieved}<span>{sourceName || directSourceUrl ? ' · ' : ''}{tr(observed ? 'Observed' : 'Retrieved', $language)} <time datetime={observed ?? retrieved ?? undefined} title={observed ?? retrieved ?? undefined}>{shortDate(observed ?? retrieved ?? '')}</time></span>{/if}</p>{/if}
   {#if presentation === 'page' && import.meta.env.VITE_COMMUNITY_PILOT === 'true' && id}
     <p class="contribution-actions">{#each [['evidence','Add evidence'],['correction','Suggest a correction'],['privacy-removal','Privacy or removal']] as [type, label]}<a class="evidence-link" href={`#/contribute/${type}?target=${encodeURIComponent(id)}&map=${encodeURIComponent('#/map?f1a=field')}`}>{tr(label ?? '', $language)}</a>{/each}</p>
   {/if}
@@ -370,15 +375,20 @@
     <dl>
       {#if facilityAddress}<div><dt>{tr('Address', $language)}</dt><dd>{facilityAddress}</dd></div>{/if}
       <div><dt>{tr('Locality', $language)}</dt><dd>{locationText}</dd></div>
-      {#if hasCoordinates}<div><dt>{tr('Coordinates', $language)}</dt><dd>{coordinate(record.latitude)}, {coordinate(record.longitude)}</dd></div>{/if}
       <div><dt>{tr('Precision', $language)}</dt><dd>{precisionLabel || tr(precision, $language)}</dd></div>
-      {#if record.coordinatePrecision && !['source-provided', 'source_reported', 'source_provided_unverified'].includes(record.coordinatePrecision)}<div><dt>{tr('Source precision', $language)}</dt><dd>{displayGeneratedValue(record.coordinatePrecision)}</dd></div>{/if}
-      {#if coordinateStatus && !sameLabel(coordinateStatus, 'source_confirmed')}<div><dt>{tr('Coordinate review', $language)}</dt><dd>{displayGeneratedValue(coordinateStatus)}</dd></div>{/if}
-      {#if coordinateMethod}<div><dt>{tr('Location method', $language)}</dt><dd>{displayGeneratedValue(coordinateMethod)}</dd></div>{/if}
-      {#if coordinateProvider}<div><dt>{tr('Geocoding provider', $language)}</dt><dd>{coordinateProvider}</dd></div>{/if}
-      {#if coordinateConfidence !== null || record.coordinateConfidenceBand}<div><dt>{tr('Geocoding confidence', $language)}</dt><dd>{#if coordinateConfidence !== null}{coordinateConfidence} ({tr('provider score', $language)}){/if}{#if record.coordinateConfidenceBand}{coordinateConfidence !== null ? ' · ' : ''}{displayGeneratedValue(record.coordinateConfidenceBand)}{/if}</dd></div>{/if}
       {#if defaultMapScope === false}<div><dt>{tr('Map scope', $language)}</dt><dd>{tr('Outside the default map', $language)}{#if mapScopeReason} · {displayGeneratedValue(mapScopeReason)}{/if}</dd></div>{/if}
+      {#if sourceLocationRole === 'aphis_mailing_locality'}<div><dt>{tr('Location role', $language)}</dt><dd>{tr('APHIS mailing locality: approximate locality, not an operating-site location', $language)}</dd></div>{/if}
     </dl>
+    {#if hasCoordinates || sourcePrecisionDetail || coordinateReviewDetail || coordinateMethod || coordinateProvider || coordinateConfidence !== null || record.coordinateConfidenceBand}
+      <details class="location-details"><summary>{tr('Location details', $language)}</summary><dl>
+        {#if hasCoordinates}<div><dt>{tr('Coordinates', $language)}</dt><dd>{coordinate(record.latitude)}, {coordinate(record.longitude)}</dd></div>{/if}
+        {#if sourcePrecisionDetail}<div><dt>{tr('Source precision', $language)}</dt><dd>{sourcePrecisionDetail}</dd></div>{/if}
+        {#if coordinateReviewDetail}<div><dt>{tr('Coordinate review', $language)}</dt><dd>{coordinateReviewDetail}</dd></div>{/if}
+        {#if coordinateMethod}<div><dt>{tr('Location method', $language)}</dt><dd>{displayGeneratedValue(coordinateMethod)}</dd></div>{/if}
+        {#if coordinateProvider}<div><dt>{tr('Geocoding provider', $language)}</dt><dd>{coordinateProvider}</dd></div>{/if}
+        {#if coordinateConfidence !== null || record.coordinateConfidenceBand}<div><dt>{tr('Geocoding confidence', $language)}</dt><dd>{#if coordinateConfidence !== null}{coordinateConfidence} ({tr('provider score', $language)}){/if}{#if record.coordinateConfidenceBand}{coordinateConfidence !== null ? ' · ' : ''}{displayGeneratedValue(record.coordinateConfidenceBand)}{/if}</dd></div>{/if}
+      </dl></details>
+    {/if}
     <div class="location-actions">{#if presentation === 'rail' && hasCoordinates && onshowmap}<button class="show-on-map" type="button" onclick={onshowmap}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/><path d="M12 2v4m0 12v4M2 12h4m12 0h4"/></svg>{tr('Show on map', $language)}</button>{/if}{#if mapsHref}<a class="open-in-maps" href={mapsHref} target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">{tr('Open in maps', $language)}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6m0-6L10 14M10 4H4v16h16v-6"/></svg></a>{/if}</div>
   </section>
 
@@ -427,7 +437,7 @@
   {#if presentation === 'rail' && fullRecordHref}<a class="open-facility" href={fullRecordHref}><span>{tr('Open facility page', $language)}</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg></a>{/if}
 
   <footer>
-    {#if presentation !== 'page'}<span class="record-id">Record ID · {id || 'Unavailable'}</span>{/if}
+    {#if presentation !== 'page'}<span class="record-id">{tr('Record ID', $language)} · {id || tr('Unavailable', $language)}</span>{/if}
   </footer>
 </article>
 
@@ -444,7 +454,13 @@
   #record-title .share { flex:0 0 auto;align-self:flex-start; }
   .connection-state { margin-left:.6rem;color:var(--muted);font-size:.75rem;font-weight:400; }
   .classification-disclosure { margin-top:1rem;border-top:1px solid var(--line); }
-  .compact-source { color:var(--ui-muted,var(--muted));font-size:.75rem;line-height:1.5;margin:.5rem 0 1rem;overflow-wrap:anywhere; }
+  .compact-source { display:flex;flex-wrap:wrap;align-items:center;column-gap:.3rem;color:var(--ui-muted,var(--muted));font-size:.75rem;line-height:1.5;margin:.3rem 0 .8rem;overflow-wrap:anywhere; }
+  .direct-source { display:inline-flex;align-items:center;gap:.35rem;min-width:0;max-width:100%;min-height:44px;padding:.25rem 0; }
+  .direct-source > span:first-child { min-width:0;overflow-wrap:anywhere; }
+  .direct-source svg { width:.9rem;height:.9rem;flex:none;fill:none;stroke:currentColor;stroke-width:1.5; }
+  .location-details { margin:.35rem 0; }
+  .location-details > summary { display:list-item;min-height:44px;padding:.65rem 0;cursor:pointer;font-size:.8125rem; }
+  .location-details > dl { margin:0 0 .6rem; }
   .detail:not(.page) .show-on-map { display:inline-flex;align-items:center;gap:.45rem;min-height:44px;margin:.45rem 0 0;padding:0;border:0;background:transparent;color:var(--ink);font:inherit;font-size:.75rem;text-decoration:none; }
   .detail:not(.page) details.source-facts-section,.detail:not(.page) details.evidence-section,.detail:not(.page) details.connections-disclosure { border-top:1px solid var(--line);margin-top:1rem; }
   .detail:not(.page) details > summary { min-height:48px;padding:.75rem 0;cursor:pointer;font-size:.8125rem; }

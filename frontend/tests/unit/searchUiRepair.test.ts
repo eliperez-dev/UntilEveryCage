@@ -8,7 +8,7 @@ const designLab = readFileSync(resolve(process.cwd(), 'src/design-lab/DesignLab.
 describe('search UI repair contract', () => {
   it('communicates the complete candidate match count separately from the loaded page', () => {
     expect(field).toContain('candidateTotalCount?: number | null');
-    expect(field).toContain("tr('{count} matching · {shown} shown', $language)");
+    expect(field).toContain("tr('{count} matching records · {shown} shown', $language)");
     expect(field).toContain("replace('{count}', new Intl.NumberFormat($language).format(candidateTotalCount))");
     expect(field).toContain("replace('{shown}', new Intl.NumberFormat($language).format(resultCount))");
     expect(field).toContain('`Load more (${resultCount} of ${candidateTotalCount})`');

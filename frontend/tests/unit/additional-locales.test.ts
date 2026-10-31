@@ -5,14 +5,15 @@ import fr from '../../src/app/locales/fr';
 import de from '../../src/app/locales/de';
 import nl from '../../src/app/locales/nl';
 import da from '../../src/app/locales/da';
-const dictionaries = { fr, de, nl, da };
+import zhHans from '../../src/app/locales/zh-Hans';
+const dictionaries = { fr, de, nl, da, 'zh-Hans': zhHans };
 const response = (dictionary: unknown) => ({ ok: true, json: async () => dictionary });
 let fetcher: ReturnType<typeof vi.fn>;
 
 describe('additional interface locales', () => {
   beforeEach(() => {
     vi.resetModules(); vi.restoreAllMocks(); localStorage.clear();
-    fetcher = vi.fn(async (input: string) => response(dictionaries[/\/(fr|de|nl|da)\.json$/.exec(input)![1] as keyof typeof dictionaries]));
+    fetcher = vi.fn(async (input: string) => response(dictionaries[/\/(fr|de|nl|da|zh-Hans)\.json$/.exec(input)![1] as keyof typeof dictionaries]));
     vi.stubGlobal('fetch', fetcher);
   });
   afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
@@ -21,12 +22,13 @@ describe('additional interface locales', () => {
     for (const dictionary of Object.values(dictionaries)) {
       expect(Object.keys(dictionary).sort()).toEqual(keys);
       for (const value of Object.values(dictionary)) expect(value.trim().length).toBeGreaterThan(0);
+      for (const source of keys) expect((dictionary as Record<string, string>)[source]!.match(/\{[^{}]+\}/g)?.sort() ?? []).toEqual(source.match(/\{[^{}]+\}/g)?.sort() ?? []);
       for (const source of ['Map', 'Search map', 'Add a facility', 'Clear area search', 'Save this link. You cannot access your submission again without it.'] as const) expect(dictionary[source]).not.toBe(source);
     }
   });
   it('loads every new locale and keeps unknown source identifiers unchanged', async () => {
     const { selectLanguage, language, tr } = await import('../../src/app/language');
-    for (const locale of ['fr', 'de', 'nl', 'da'] as const) {
+    for (const locale of ['fr', 'de', 'nl', 'da', 'zh-Hans'] as const) {
       expect(await selectLanguage(locale)).toBe(true);
       expect(get(language)).toBe(locale); expect(document.documentElement.lang).toBe(locale);
       expect(localStorage.getItem('uec-language')).toBe(locale); expect(tr('us.fsis', locale)).toBe('us.fsis');
@@ -38,6 +40,18 @@ describe('additional interface locales', () => {
     const { language, languageReady, tr } = await import('../../src/app/language');
     expect(localStorage.getItem('uec-language')).toBe('fr');
     await languageReady; expect(get(language)).toBe('fr'); expect(tr('Map', 'fr')).toBe('Carte');
+  });
+  it('restores Simplified Chinese and translates generated summaries and review terminology', async () => {
+    localStorage.setItem('uec-language', 'zh-Hans');
+    const { language, languageReady, tr } = await import('../../src/app/language');
+    await languageReady;
+    expect(get(language)).toBe('zh-Hans');
+    expect(document.documentElement.lang).toBe('zh-Hans');
+    for (const source of ['Source-provided coordinates', 'Inferred', 'APHIS Class T carriers transport regulated animals for hire, including by road, air, rail or sea.', 'Save this link. You cannot access your submission again without it.'] as const) {
+      expect(tr(source, 'zh-Hans')).toBe((zhHans as Record<string, string>)[source]);
+      expect(tr(source, 'zh-Hans')).not.toBe(source);
+    }
+    expect(tr('us.fsis', 'zh-Hans')).toBe('us.fsis');
   });
   it('keeps the active locale on failure and Retry refetches and recovers', async () => {
     fetcher.mockRejectedValueOnce(new Error('Synthetic unavailable asset'));

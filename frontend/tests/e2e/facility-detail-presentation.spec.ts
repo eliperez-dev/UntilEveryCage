@@ -1,4 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+const de: Record<string,string> = JSON.parse(readFileSync(new URL('../../src/app/locales/de.json', import.meta.url), 'utf8'));
 
 // Entirely synthetic public projections; no source rows are retained here.
 const id = '550e8400-e29b-41d4-a716-446655440000';
@@ -32,6 +34,64 @@ const facts = {
     verification_state: 'source_codebook_verified' }],
 };
 const meta = { release_id: release, ruleset_version: 'synthetic-rules', profile: 'official', release_created_at: observed };
+
+for (const [width, canonicalName] of [[320, null], [1440, null], [320, 'Name not provided']] as const) test(`unmapped name presentation preserves source text at ${width}px (${canonicalName === null ? 'missing' : 'provided'})`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 900 });
+  await page.addInitScript(() => localStorage.setItem('uec-language', 'de'));
+  await mockPublicRecord(page, { canonical_name: canonicalName, display_precision: 'unmapped', latitude: null, longitude: null });
+  await page.goto(`./#/map?release_id=${release}&list=open`);
+  const name = canonicalName ?? de['Name not provided'];
+  const result = page.locator(`[data-record-id="${id}"]`);
+  await expect(result.locator(':scope > strong')).toHaveText(name);
+  await expect(result).toContainText(de['Unmapped · no public point']);
+  await result.click();
+  const panel = page.locator('.reading-sheet');
+  await expect(panel.locator('.record-name')).toHaveText(name);
+  await expect(panel.getByRole('link', { name: de['Open in maps'], exact: true })).toHaveCount(0);
+  await panel.getByRole('link', { name: de['Open facility page'], exact: true }).click();
+  await expect(page.locator('.public-record > h1')).toContainText(name);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+for (const width of [1440, 375]) test(`direct evidence access and optional location mechanics work at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 900 });
+  await mockPublicRecord(page, { display_precision: 'approximate', geometry_provenance: {
+    origin: 'provider_derived', method: 'geoapify_rooftop', provider: 'Geoapify', confidence: '0.8', confidence_band: 'medium',
+  } });
+  await page.goto(`./#/map?selected=${id}&release_id=${release}`);
+  const panel = page.locator('.reading-sheet[aria-label="Record evidence"]');
+  await expect(panel.locator('.compact-source .direct-source')).toHaveAttribute('href', row.provenance_source_url);
+  await expect(panel.locator('.compact-source .direct-source')).toBeVisible();
+  await expect(panel.locator('.compact-source .direct-source')).toHaveAttribute('rel', /noopener.*noreferrer/);
+  await expect(panel.locator('.evidence-section')).not.toHaveAttribute('open');
+  await expect(panel.getByText('Precision', { exact: true })).toBeVisible();
+  await expect(panel.locator('.location-details')).not.toHaveAttribute('open');
+  await expect(panel.getByText('Geocoding provider', { exact: true })).toBeHidden();
+  await panel.locator('.location-details > summary').focus(); await page.keyboard.press('Enter');
+  await expect(panel.locator('.location-details')).toHaveAttribute('open', '');
+  await expect(panel.getByText('Geoapify', { exact: true })).toBeVisible();
+  await expect(panel.locator('.location-details')).toContainText('provider score');
+  await expect(panel.getByRole('link', { name: 'Open in maps', exact: true })).toHaveCount(0);
+  await panel.getByRole('link', { name: 'Open facility page', exact: true }).click();
+  const full = page.locator('.public-record');
+  await expect(full.locator('.compact-source .direct-source')).toHaveAttribute('href', row.provenance_source_url);
+  await expect(full.locator('.compact-source .direct-source')).toBeVisible();
+  await expect(full.getByText('Precision', { exact: true })).toBeVisible();
+  await expect(full.locator('.location-details')).not.toHaveAttribute('open');
+  await expect(full.getByText('Geocoding provider', { exact: true })).toBeHidden();
+  await full.locator('.location-details > summary').click();
+  await expect(full.getByText('Geoapify', { exact: true })).toBeVisible();
+  await expect(full.locator('.location-details')).toContainText('provider score');
+  await expect(full.getByRole('link', { name: 'Open in Map', exact: true })).toHaveAttribute('href', new RegExp(`release_id=${release}`));
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test('search summary names filtered matches as records and distinguishes the shown page', async ({ page }) => {
+  await mockPublicRecord(page);
+  await page.goto(`./#/map?list=open&release_id=${release}`);
+  await expect(page.locator('.result-status')).toContainText('1 matching records');
+  await expect(page.locator('.result-status')).toContainText('1 shown');
+});
 
 for(const [bounds,lower,upper,text] of [['exclusive_upper',null,1000,'Less than 1,000 animals'],['inclusive_lower_exclusive_upper',1000,10000,'1,000 to less than 10,000 animals'],['inclusive_lower_unbounded',100000,null,'100,000 or more animals']] as const) test(`verified slaughter estimate preserves exact 360-day ${bounds} bounds in map and full record`,async({page})=>{
     await mockPublicRecord(page,{derived_source_volume_ranges:[{...facts.derived_source_volume_ranges[0],bounds,lower,upper},facts.derived_source_volume_ranges[1]]});
@@ -100,13 +160,15 @@ test('map detail shows one category and each activity, preserves facts, and open
   expect(drawerOrder).toBe(true);
   await expect(panel.getByText('Processing and preparation', { exact: true })).toHaveCount(1);
   const overview = panel.locator('.classification-summary .summary');
-  await expect(overview).toHaveText('Poultry processing prepares meat from birds for sale or further manufacture.');
+  await expect(overview).toHaveText('Poultry processing prepares meat from birds for sale or further manufacture. The source lists slaughter of poultry and processing of chicken meat.');
   await expect(overview).not.toContainText('Separate activity');
   await panel.locator('.classification-summary summary').click();
   await expect(panel.locator('.classification-summary details')).toContainText('Meat cutting');
   await expect(panel.locator('.classification-summary details')).toContainText('NRTE chicken processing');
   await expect(panel).not.toContainText(/synthetic-taxonomy-version|Taxonomy version|Primary categories|Classification provenance|not independently|Source confirmed/);
   await expect(panel.getByText('Source-provided coordinates', { exact: true })).toBeVisible();
+  await expect(panel.locator('.location-details')).not.toHaveAttribute('open');
+  await panel.locator('.location-details > summary').click();
   await expect(panel.getByText('55.123457, 10.123457', { exact: true })).toBeVisible();
   await expect(panel.getByText('Location method', { exact: true })).toHaveCount(0);
   await panel.locator('.source-facts-section > summary').click();

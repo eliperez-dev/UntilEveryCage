@@ -64,32 +64,89 @@ export function lineParticles(seconds: number, rate: number, width: number, heig
   return count;
 }
 
-/** A finite analytic age window. Every emitted identity in that window is visited. */
-export function funnelParticles(seconds: number, rate: number, width: number, height: number, visit: ParticleVisitor) {
-  const first = Math.max(1, Math.floor((seconds - FUNNEL_RED_SECONDS) * rate));
-  const last = Math.floor((seconds + FUNNEL_QUEUE_SECONDS) * rate);
-  const throat = height * .53;
-  let count = 0;
-  for (let id = first; id <= last; id++) {
-    const age = seconds - id / rate;
-    const side = seed(id, 23) * 2 - 1;
-    let x: number, y: number;
-    if (age < 0) {
-      // Whole quarter-second chunks enter the queue together, then narrow.
-      const birth = Math.floor((id / rate) / .25) * .25 - .95;
-      if (seconds < birth) continue;
-      const queue = Math.min(1, -age / FUNNEL_QUEUE_SECONDS);
-      x = width / 2 + side * width * (.014 + .44 * Math.pow(queue, 1.45));
-      y = throat - Math.pow(queue, .78) * (throat - 13);
-    } else {
-      const lifetime = .63 + seed(id, 71) * .37;
-      if (age > lifetime) continue;
-      x = width / 2 + side * width * 1.25 * age / lifetime;
-      y = throat + height * (.57 + seed(id, 53) * .48) * age / lifetime + height * .22 * age * age;
-    }
-    if (x < -3 || x > width + 3 || y < -3 || y > height + 3) continue;
-    visit(id, x, y, age >= 0); count++;
+export interface FunnelLayout {
+  width: number; height: number; columns: number; step: number; spacing: number;
+  left: number; right: number; top: number; front: number; throat: number;
+  rowSeconds: number; feedSpeed: number; pullSeconds: number; queueSeconds: number;
+  exitSpeed: number; redSeconds: number; throatHalfWidth: number;
+}
+
+function gcd(a: number, b: number): number { while (b) { const next = a % b; a = b; b = next; } return a; }
+
+/** Geometry and durations adapt to density, never to a reduced individual rate. */
+export function funnelLayout(rate: number, width: number, height: number): FunnelLayout {
+  const mobile = width < 500, gridWidth = width * (mobile ? .84 : .74);
+  const top = height * .045, front = height * .43, throat = height * .70;
+  const targetPitch = rate > 10000 ? (mobile ? 2.5 : 2.8) : (mobile ? 8.4 : 10.8);
+  const columns = Math.max(1, Math.min(Math.floor(gridWidth / targetPitch) + 1,
+    Math.floor(Math.sqrt(rate * .7 * gridWidth / (front - top)))));
+  const spacing = columns > 1 ? gridWidth / (columns - 1) : (front - top) / (rate * .7);
+  const rowSeconds = columns / rate, feedSpeed = spacing / rowSeconds;
+  const pullSeconds = Math.min(.5, (throat - front) * .9 / feedSpeed);
+  const queueSeconds = Math.min(FUNNEL_QUEUE_SECONDS, (front - top) / feedSpeed + pullSeconds);
+  const exitSpeed = (throat - front) / pullSeconds;
+  const redSeconds = Math.min(FUNNEL_RED_SECONDS, (height + 3 - throat) * 1.5 / exitSpeed);
+  const throatHalfWidth = columns > 1 ? Math.min(gridWidth / 2, Math.max(14, Math.min(28, width * .028))) : 0;
+  let step = Math.max(1, Math.floor(columns * .618));
+  while (gcd(step, columns) !== 1) step++;
+  return { width, height, columns, step, spacing, left: (width - gridWidth) / 2,
+    right: (width + gridWidth) / 2, top, front, throat, rowSeconds, feedSpeed,
+    pullSeconds, queueSeconds, exitSpeed, redSeconds, throatHalfWidth };
+}
+
+/** A bijection visits every lattice column once, without a left-to-right wipe. */
+export function funnelColumn(id: number, layout: FunnelLayout) {
+  const row = Math.floor((id - 1) / layout.columns), offset = (id - 1) % layout.columns;
+  return (offset * layout.step + (row % layout.columns) * 13) % layout.columns;
+}
+
+function cubic(a: number, b: number, c: number, d: number, t: number) {
+  const u = 1 - t; return u * u * u * a + 3 * u * u * t * b + 3 * u * t * t * c + t * t * t * d;
+}
+
+/** One analytic identity; release and throat share their position and tangent. */
+export function funnelParticle(id: number, seconds: number, rate: number, layout: FunnelLayout, visit: ParticleVisitor) {
+  const age = seconds - id / rate;
+  if (id < 1 || age > layout.redSeconds) return false;
+  const row = Math.floor((id - 1) / layout.columns), offset = (id - 1) % layout.columns;
+  const column = funnelColumn(id, layout);
+  const side = layout.columns === 1 ? 0 : column / (layout.columns - 1) * 2 - 1;
+  const startX = layout.columns === 1 ? layout.width / 2 : layout.left + column * layout.spacing;
+  const endX = layout.width / 2 + side * layout.throatHalfWidth;
+  const startY = layout.front + offset / rate * layout.feedSpeed;
+  let x: number, y: number;
+  if (age < -layout.pullSeconds) {
+    const rowRelease = (row * layout.columns + 1) / rate - layout.pullSeconds;
+    x = startX; y = layout.front + (seconds - rowRelease) * layout.feedSpeed;
+  } else if (age < 0) {
+    const p = 1 + age / layout.pullSeconds;
+    // Individual departures loosen the strands without moving the source or
+    // changing either endpoint's position/tangent. A single-column low-rate
+    // comparison retains its straight path.
+    const envelope = 16 * p * p * (1 - p) * (1 - p);
+    const lateral = layout.columns > 1 ? (seed(id, 113) * 2 - 1) * Math.min(layout.spacing * .75, layout.width * .06) : 0;
+    x = cubic(startX, startX, endX, endX, p) + lateral * envelope;
+    y = cubic(startY, startY + layout.feedSpeed * layout.pullSeconds / 3,
+      layout.throat - layout.exitSpeed * layout.pullSeconds / 3, layout.throat, p);
+  } else {
+    const p = age / layout.redSeconds;
+    const fan = side * layout.width * .95 + (seed(id, 71) - .5) * layout.width * .12;
+    x = cubic(endX, endX, layout.width / 2 + fan * .42, layout.width / 2 + fan, p);
+    y = cubic(layout.throat, layout.throat + layout.exitSpeed * layout.redSeconds / 3,
+      layout.height - (layout.height - layout.throat) * .2, layout.height + 3, p);
   }
+  if (x < -3 || x > layout.width + 3 || y < layout.top || y > layout.height + 3) return false;
+  visit(id, x, y, age >= 0); return true;
+}
+
+/** Complete, bounded age window; no sampling, recycling or per-point allocation. */
+export function funnelParticles(seconds: number, rate: number, width: number, height: number, visit: ParticleVisitor, layout = funnelLayout(rate, width, height)) {
+  const first = Math.max(1, Math.floor((seconds - layout.redSeconds) * rate));
+  // Include the entire leading row. Ordinal clipping halfway through that row
+  // would make holes at the upper edge even though its common y is visible.
+  const last = Math.floor((seconds + layout.queueSeconds) * rate) + layout.columns;
+  let count = 0;
+  for (let id = first; id <= last; id++) if (funnelParticle(id, seconds, rate, layout, visit)) count++;
   return count;
 }
 
