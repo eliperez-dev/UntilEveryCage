@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 import unittest
 
-from pipeline.geocoding.first_pass import structured_query, normalize_query, provider_query, partition_groups, select_input_mode, validate_provider_interval, defer_explicit_no_number, reopen_local_input_rejections
+from pipeline.geocoding.first_pass import structured_query, normalize_query, provider_query, partition_groups, select_input_mode, validate_provider_interval, defer_explicit_no_number, reopen_local_input_rejections, refresh_statistics
 
 
 class FirstPassInputTests(unittest.TestCase):
@@ -78,7 +78,9 @@ class FirstPassInputTests(unittest.TestCase):
 
     def test_provider_interval_rejects_excessive_or_nonfinite_rates(self):
         self.assertEqual(validate_provider_interval("geoapify", .25), .25)
-        self.assertEqual(validate_provider_interval("locationiq", .55), .55)
+        self.assertEqual(validate_provider_interval("locationiq", 1.05), 1.05)
+        with self.assertRaises(ValueError):
+            validate_provider_interval("locationiq", .55)
         for provider in ("geoapify", "locationiq"):
             for interval in (.1, float("nan"), float("inf"), -1):
                 with self.assertRaises(ValueError):
@@ -107,8 +109,9 @@ class FirstPassInputTests(unittest.TestCase):
                     raise AssertionError("must not write")
                 return self
             def fetchone(self): return ("different_database",)
-        with self.assertRaisesRegex(ValueError, "wrong_source_test_database"):
-            reopen_local_input_rejections(Connection())
+        for operation in (reopen_local_input_rejections, refresh_statistics):
+            with self.assertRaisesRegex(ValueError, "wrong_source_test_database"):
+                operation(Connection())
 
 
 if __name__=="__main__":

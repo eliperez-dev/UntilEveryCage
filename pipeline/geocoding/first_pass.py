@@ -121,7 +121,8 @@ def select_input_mode(groups, input_mode="standard", seed=None):
 
 
 def validate_provider_interval(provider, interval):
-    minimum = .25 if provider == "geoapify" else .55
+    # Match the worker's guard before staging any jobs.
+    minimum = .25 if provider == "geoapify" else 1.05
     if not math.isfinite(interval) or interval < minimum:
         raise ValueError("provider_interval_below_supported_rate")
     return interval
@@ -134,6 +135,25 @@ def defer_explicit_no_number(groups, *, include_no_number=False):
     selected = [g for g in groups if g["source"] != "es.locations"
                 or input_kind(json.loads(g["query"])["address"]) != "explicit_no_number"]
     return selected, len(groups)-len(selected)
+
+
+def refresh_statistics(connection):
+    """Keep bulk enrichment from leaving the next queue/read plan stale."""
+    if connection.execute("SELECT current_database()").fetchone()[0] != DATABASE:
+        raise ValueError("wrong_source_test_database")
+    with connection.transaction():
+        if not connection.execute("SELECT pg_try_advisory_xact_lock(hashtext('country-geocode-statistics'))").fetchone()[0]:
+            return {"status": "another_worker_refreshing"}
+        connection.execute("SET LOCAL lock_timeout='2s'")
+        connection.execute("SET LOCAL statement_timeout='30s'")
+        tables = ("real_preview.geocode_targets", "real_preview.candidates",
+                  "real_preview.candidate_private_location_evidence", "real_preview.private_geocoding_source_profiles",
+                  "real_preview.source_preview_runs", "uec.geocode_jobs", "uec.geocode_job_events",
+                  "uec.geocode_results", "uec.source_records", "uec.geocode_request_reservations",
+                  "real_preview.geocode_display_evidence")
+        for table in tables:
+            connection.execute("ANALYZE " + table)
+    return {"status": "refreshed", "tables": len(tables)}
 
 
 def reopen_local_input_rejections(connection):
@@ -492,7 +512,14 @@ def main():
         if (observed.get("acceptance") in {"authentication_rejected","provider_rate_limited"}
                 or observed.get("error") in {"authentication_rejected","provider_rate_limited"}):
             break
-    print(json.dumps({"stage":"first_pass_finished","provider":args.provider,"account":args.account,"input_mode":args.input_mode,"processed":processed,"accepted":accepted,"local_only":True,"deployed":False}),flush=True)
+    statistics = {"status": "small_batch_no_refresh"}
+    if processed >= 100:
+        try:
+            with psycopg.connect(url) as connection:
+                statistics = refresh_statistics(connection)
+        except psycopg.Error as error:
+            statistics = {"status": "deferred", "sqlstate": error.sqlstate}
+    print(json.dumps({"stage":"first_pass_finished","provider":args.provider,"account":args.account,"input_mode":args.input_mode,"processed":processed,"accepted":accepted,"statistics":statistics,"local_only":True,"deployed":False}),flush=True)
 
 
 if __name__ == "__main__":

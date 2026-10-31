@@ -45,8 +45,30 @@ class SpanishAddressTests(unittest.TestCase):
         self.assertEqual(s.provider_address("Industrial estate, C/ Example, 12, Nave 3"), "calle example 12")
         ambiguous = "Calle Example 12, Calle Other 14"
         self.assertEqual(s.provider_address(ambiguous), ambiguous)
-        for source in ("Industrial estate, Plot 12", "Calle Example s/n", "Calle Example 12 Unknown Tail"):
+        for source in ("Industrial estate, Plot 12", "Calle Example s/n", "Calle Example 12 Unknown Tail",
+                       "PG Example 4", "Carretera Example km 4"):
             self.assertEqual(s.provider_address(source), source)
+
+    def test_nonbreaking_postal_spaces_are_separators_not_name_changes(self):
+        for space in ("\u00a0", "\u202f", "\u2007"):
+            self.assertTrue(s.street_matches(f"Example{space}4", "Calle Example", "4"))
+            self.assertTrue(s.street_matches(f"Calle Example 4{space}A", "Calle Example", "4A"))
+            self.assertFalse(s.street_matches(f"Example{space}5", "Calle Example", "4"))
+
+    def test_omitted_type_accepts_exact_name_and_number_but_never_conflicting_types(self):
+        for source in ("Example 4", "4 Example", "Example, 4"):
+            self.assertTrue(s.street_matches(source, "Calle Example", "4"))
+        for source in ("Avenida Example 4", "CR Example 4", "PG Example 4", "Ronda Example 4",
+                       "Example Other 4", "Example 5", "Example 4A", "De Example 4",
+                       "Nave 4", "Parcela 4", "Calle 4"):
+            self.assertFalse(s.street_matches(source, "Calle Example", "4"))
+        for prefix in ("Nave", "Parcela", "Calle", "Edificio"):
+            self.assertFalse(s.street_matches(f"{prefix} 4", f"Calle {prefix}", "4"))
+        self.assertFalse(s.street_matches("Calle Example 4", "Example", "4"))
+        factory = fixtures.LocationIqFirstPassTests().make
+        adapter, _ = factory([candidate(), candidate(place_id=43,
+            address={**candidate()["address"], "road": "Avenida Example"})])
+        self.assertEqual(adapter.geocode(query("Example 4")).acceptance, "ambiguous_multiple_viable_results")
 
     def test_input_classification_keeps_complex_addresses_eligible_but_separate(self):
         cases = {"Calle de Example 4": "simple_numbered_road", "C/ Example, 4A": "simple_numbered_road",

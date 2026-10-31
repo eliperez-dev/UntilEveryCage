@@ -167,15 +167,57 @@ def reconcile(database_url: str, *, limit: int, apply: bool = False) -> dict:
             "matched_records_by_source": by_source, "provider_calls": 0, "parent_results_modified": 0}
 
 
+def reproject_geoapify(connection, *, limit: int, apply=False):
+    """Rebuild only missing display evidence from unchanged stored results."""
+    if connection.execute("SELECT current_database()").fetchone()[0] != DATABASE:
+        raise ValueError("wrong_source_test_database")
+    if type(limit) is not int or not 1 <= limit <= 10000:
+        raise ValueError("finite_limit_required")
+    rows = connection.execute("""SELECT DISTINCT result.geocode_result_id
+        FROM uec.geocode_results result JOIN uec.geocode_jobs job
+          ON job.source_record_id=result.source_record_id AND job.provider_id=result.provider_id AND job.query=result.query
+        JOIN real_preview.geocode_targets target USING(job_id)
+        JOIN real_preview.candidates candidate USING(candidate_id,snapshot_sha256,source_id)
+        WHERE result.provider_id='geoapify' AND result.status='accepted'
+          AND result.match_method='geoapify_forward' AND result.precision='geoapify_address_point'
+          AND candidate.source_id='es.locations' AND candidate.country_code='ES' AND candidate.default_map_scope
+          AND candidate.snapshot_sha256=(SELECT snapshot_sha256 FROM real_preview.source_preview_runs
+            WHERE source_id='es.locations' ORDER BY created_at DESC,run_id DESC LIMIT 1)
+          AND NOT EXISTS(SELECT 1 FROM real_preview.geocode_display_evidence evidence
+            WHERE evidence.geocode_result_id=result.geocode_result_id)
+        ORDER BY result.geocode_result_id LIMIT %s""", (limit,)).fetchall()
+    projected = added = 0
+    if apply:
+        for result_id, in rows:
+            connection.execute("SELECT count(*) FROM real_preview.project_spain_geoapify_result(%s)", (result_id,))
+            count = connection.execute("SELECT count(*) FROM real_preview.geocode_display_evidence WHERE geocode_result_id=%s",
+                                       (result_id,)).fetchone()[0]
+            projected += int(count > 0)
+            added += count
+    return {"ruleset": RULESET, "mode": "apply" if apply else "preview", "selected_results": len(rows),
+            "projected_results": projected, "display_evidence_added": added,
+            "provider_calls": 0, "results_appended": 0, "parent_results_modified": 0}
+
+
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--limit", type=int, required=True)
     parser.add_argument("--apply", action="store_true")
+    parser.add_argument("--reproject-geoapify", action="store_true")
     args = parser.parse_args()
     try:
-        print(json.dumps(reconcile(os.environ.get("UEC_DATABASE_URL", ""),
-                                   limit=args.limit, apply=args.apply), sort_keys=True))
+        url = os.environ.get("UEC_DATABASE_URL", "")
+        if args.reproject_geoapify:
+            validate_database_url(url)
+            with psycopg.connect(url, options="-c statement_timeout=30000") as connection:
+                contract = load_contract(ROOT / "pipeline/contracts/development-baseline.json")
+                verify_connection(connection, contract)
+                report = reproject_geoapify(connection, limit=args.limit, apply=args.apply)
+                verify_connection(connection, contract)
+        else:
+            report = reconcile(url, limit=args.limit, apply=args.apply)
+        print(json.dumps(report, sort_keys=True))
     except Exception as error:
         print(json.dumps({"status": "failed", "error_type": type(error).__name__}, sort_keys=True))
         raise SystemExit(1)

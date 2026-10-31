@@ -55,6 +55,8 @@ After creating a clone or bulk import, update planner statistics with targeted
 `ANALYZE` on the affected tables before timing queries or geocoding workers.
 Missing clone statistics can make an indexed queue claim take minutes; this
 maintenance changes statistics, not source records or release membership.
+The country first-pass CLI refreshes its source/queue statistics after batches
+of at least 100 requests, with bounded locks and one refreshing worker at a time.
 
 All new data-backed integration and feature acceptance tests must run against
 v0 copies. Keep synthetic unit and adversarial fixtures where needed to test

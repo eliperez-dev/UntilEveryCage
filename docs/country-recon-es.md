@@ -74,9 +74,19 @@ links the [IGN reuse licence](https://www.ign.es/resources/licencia/Condiciones_
 The [schema](https://api-features.idee.es/collections/address/schema?f=json)
 includes municipality, province, postcode, road, house number, provider and
 point geometry. Municipality-level reference downloads could support local
-address comparisons without sending facility addresses. Only metadata and
-one-feature catalogue probes have been checked; no reference matching or
-coordinate-import bridge is implemented. A full national download is not
-needed for a bounded trial. Current research outcomes belong in the inventory.
+address comparisons without sending facility addresses. The bounded
+[reference helper](../pipeline/geocoding/spanish_address_reference.py) downloads
+checkpointed municipality pages and compares unique street/house/town/province
+matches locally, including any supplied postcode. It limits records, pages
+and response sizes and requires complete, duplicate-free pagination before
+comparing a municipality. The live trial retained a partial page before
+timeouts; no complete comparison or coordinate import has run.
+
+The [official provincial catalogue](https://centrodedescargas.cnig.es/CentroDescargas/cartociudad)
+also lists GeoPackage archives with a `portalpk_publi` layer containing portals
+and kilometre points. A provincial archive is the next reference option to
+inspect. Its actual schema, point types, dates and CRS must be checked before
+local matching; no archive has been downloaded. Current outcomes and counts
+belong in the inventory.
 
 MAPA SILUM/SANDACH and other regional registers have distinct sector scopes and terms. They require independent verification and source IDs; none may be silently unioned with AESAN or Catalonia. `Old CSVs/spain-data.csv` remains a reconciliation-only V1 baseline, not an acquisition source.

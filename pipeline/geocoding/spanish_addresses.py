@@ -6,9 +6,26 @@ import unicodedata
 
 from pipeline.sources.spain_rgseaa.location_enrichment import official_province_key
 
-RULESET = "spanish-address-format-v3"
+RULESET = "spanish-address-format-v5"
 HOUSE = r"[0-9]+(?:[ -]?[a-z])?(?:\s*[-/]\s*[0-9]+[a-z]?)?"
 UNIT = r"(?:nave|nau|local|piso|planta|puerta|baixos|bajo|bajos|edificio|edifici|bloque)"
+ROAD_TYPES = frozenset({"street", "avenue", "road", "path", "promenade", "square"})
+# An unfamiliar/ambiguous road or estate abbreviation is not an omitted type.
+EXPLICIT_PREFIXES = ROAD_TYPES | frozenset({
+    "cr", "cm", "ps", "pz", "tr", "pj", "pg", "pol", "poligono", "poligon",
+    "pasaje", "travesia", "ronda", "rambla", "urbanizacion", "urb", "plg",
+    "lugar", "lg", "barrio", "bo", "poblado", "pb", "rua", "estrada", "ct",
+    "glorieta", "gta", "rot", "rotonda", "prolongacion", "prol", "via", "vial",
+    "vr", "partida", "pra", "praza", "pza",
+    "calle", "carrer", "cl", "c", "avenida", "avinguda", "avda", "av", "carretera", "ctra",
+    "camino", "cami", "paseo", "passeig", "plaza", "placa", "pl",
+    "nave", "nau", "local", "piso", "planta", "puerta", "baixos", "bajo", "bajos",
+    "edificio", "edifici", "bloque", "parcela", "parc", "plot", "km", "kilometro", "kilometros",
+})
+
+
+def _postal_spaces(value: str) -> str:
+    return value.translate({0xA0: " ", 0x202F: " ", 0x2007: " "})
 
 # Province membership verified against the retained IGN 2026 PROVINCIAS.csv.
 # Region spellings include the provider's Spanish/English names and ISO codes.
@@ -61,7 +78,7 @@ def road_key(value: object) -> str:
 def house_key(value: object) -> str:
     if not isinstance(value, (str, int)) or isinstance(value, bool):
         return ""
-    raw = str(value).strip().casefold()
+    raw = _postal_spaces(str(value)).strip().casefold()
     if re.fullmatch(HOUSE, raw) is None:
         return ""
     raw = re.sub(r"\s+", "", raw)
@@ -72,7 +89,7 @@ def address_parts(source: str) -> set[tuple[str, str]]:
     """Parse number-first/last, including a comma before the house number."""
     if not isinstance(source, str) or not source.strip() or len(source) > 1200:
         return set()
-    fragments = [part.strip().casefold() for part in re.split(r"[,;]", source) if part.strip()]
+    fragments = [part.strip().casefold() for part in re.split(r"[,;]", _postal_spaces(source)) if part.strip()]
     candidates = fragments + [f"{left} {right}" for left, right in zip(fragments, fragments[1:])]
     found = set()
     for part in candidates:
@@ -92,9 +109,19 @@ def address_parts(source: str) -> set[tuple[str, str]]:
     return found
 
 
+def road_keys_match(source_key: str, returned_key: str) -> bool:
+    if source_key == returned_key:
+        return bool(source_key)
+    prefix, _, name = returned_key.partition(" ")
+    return (prefix in ROAD_TYPES and bool(name) and source_key == name
+            and source_key.partition(" ")[0] not in EXPLICIT_PREFIXES)
+
+
 def street_matches(source: str, road: object, house: object) -> bool:
-    pair = (road_key(road), house_key(house))
-    return bool(all(pair) and pair in address_parts(source))
+    wanted_road, wanted_house = road_key(road), house_key(house)
+    return bool(wanted_road and wanted_house and any(
+        number == wanted_house and road_keys_match(source_road, wanted_road)
+        for source_road, number in address_parts(source)))
 
 
 def provider_address(source: str) -> str:
@@ -103,15 +130,11 @@ def provider_address(source: str) -> str:
     Keep the original structured query in storage. This changes only the text
     sent to the provider; two different roads never produce an arbitrary choice.
     """
-    road_types = {"street": "calle", "avenue": "avenida", "road": "carretera",
-                  "path": "camino", "promenade": "paseo", "square": "plaza"}
-    numbered = {(road, house) for road, house in address_parts(source)
-                if road.partition(" ")[0] in road_types}
-    if len(numbered) != 1:
+    components = structured_components(source)
+    if components is None:
         return source
-    road, house = next(iter(numbered))
-    prefix, _, name = road.partition(" ")
-    return f"{road_types[prefix]} {name} {house}"
+    street, house = components
+    return f"{street} {house}"
 
 
 def input_kind(source: object) -> str:

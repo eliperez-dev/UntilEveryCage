@@ -60,6 +60,10 @@ class SpanishRetainedPostgisTests(unittest.TestCase):
         for source in ("C/ Example, 4", "Calle Example 4 Nave 2", "4 Calle Example",
                        "Calle de Example 4", "Calle D Example 4", "Calle de La Example 4",
                        "Calle Puente de Example 4", "Avenida de Example 4",
+                       "Example 4", "4 Example", "CR Example 4", "PG Example 4",
+                       "Ronda Example 4", "Example Other 4", "Example 5",
+                       "Example\u00a04", "Example\u202f4", "Example\u20074",
+                       "Nave 4", "Parcela 4", "Calle 4",
                        "Calle Example", "Calle Other 4", "Avenida Example 4",
                        "Calle Example 4-6", "Calle Example 4A"):
             expected = s.street_matches(source, "Calle Example", "4")

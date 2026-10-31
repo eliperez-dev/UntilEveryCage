@@ -103,6 +103,15 @@ class SpanishStructuredGeoapifyTests(unittest.TestCase):
                          "ambiguous_multiple_viable_results")
         self.assertNotEqual(evaluate([feature()], query("Calle Example"))[0].status, "accepted")
 
+    def test_omitted_road_type_keeps_confidence_context_and_uniqueness_requirements(self):
+        self.assertEqual(evaluate([feature()], query("Example 4"))[0].status, "accepted")
+        low = feature(); low["properties"]["rank"]["confidence"] = .89
+        self.assertNotEqual(evaluate([low], query("Example 4"))[0].status, "accepted")
+        other = feature(); other["properties"]["street"] = "Avenida Example"
+        self.assertEqual(evaluate([feature(), other], query("Example 4"))[0].acceptance,
+                         "ambiguous_multiple_viable_results")
+        self.assertNotEqual(evaluate([feature()], query("CR Example 4"))[0].status, "accepted")
+
     def test_invalid_context_does_not_call_provider(self):
         for value in ('{"schema_version":"wrong"}', query("Calle Example 4", locality=""),
                       query("Calle Example 4", country="GB")):
@@ -115,6 +124,58 @@ class SpanishStructuredGeoapifyTests(unittest.TestCase):
 @unittest.skipUnless(os.environ.get("UEC_SPAIN_STRUCTURED_SQL_TESTS") == "1",
                      "assigned retained Spain database required")
 class SpanishStructuredGeoapifyPostgisTests(unittest.TestCase):
+    def test_retained_projection_replay_uses_stored_rows_without_another_request(self):
+        with psycopg.connect(os.environ["UEC_DATABASE_URL"], options="-c statement_timeout=30000") as connection:
+            self.assertEqual(connection.execute("SELECT current_database()").fetchone()[0],
+                             "uec_launch_sources_test_20261025")
+            row = connection.execute("""SELECT DISTINCT result.geocode_result_id,
+                    EXISTS(SELECT 1 FROM real_preview.geocode_display_evidence evidence
+                           WHERE evidence.geocode_result_id=result.geocode_result_id) AS mapped
+                FROM uec.geocode_results result JOIN uec.geocode_jobs job
+                  ON job.source_record_id=result.source_record_id AND job.provider_id=result.provider_id AND job.query=result.query
+                JOIN real_preview.geocode_targets target USING(job_id)
+                WHERE target.source_id='es.locations' AND result.provider_id='geoapify'
+                  AND result.status='accepted' AND result.match_method='geoapify_forward'
+                  AND CASE WHEN result.query LIKE '{%' THEN real_preview.spanish_geoapify_address_matches(
+                    result.response->'features'->coalesce((result.response->>'_uec_selected_feature_index')::integer,0),
+                    result.query::jsonb->>'address',result.query::jsonb->>'locality',
+                    result.query::jsonb->>'postcode',result.query::jsonb->>'region') ELSE false END
+                ORDER BY mapped,result.geocode_result_id LIMIT 1""").fetchone()
+            self.assertIsNotNone(row, "retained matching Spanish result required")
+            result_id = row[0]
+            def counts():
+                return connection.execute("""SELECT
+                    (SELECT count(*) FROM real_preview.geocode_display_evidence WHERE geocode_result_id=%s),
+                    (SELECT count(*) FROM uec.geocode_results r JOIN uec.geocode_results original
+                       ON original.geocode_result_id=%s AND r.source_record_id=original.source_record_id
+                         AND r.provider_id=original.provider_id AND r.query=original.query),
+                    (SELECT count(*) FROM uec.geocode_request_reservations reservation JOIN uec.geocode_jobs job USING(job_id)
+                       JOIN uec.geocode_results original ON original.geocode_result_id=%s
+                         AND original.source_record_id=job.source_record_id AND original.provider_id=job.provider_id
+                         AND original.query=job.query)""", (result_id,result_id,result_id)).fetchone()
+            before = counts()
+            with connection.transaction(force_rollback=True):
+                connection.execute("SELECT count(*) FROM real_preview.project_spain_geoapify_result(%s)", (result_id,))
+                after = counts()
+                self.assertGreaterEqual(after[0], 1)
+                self.assertEqual(after[1:], before[1:])
+                connection.execute("SELECT count(*) FROM real_preview.project_spain_geoapify_result(%s)", (result_id,))
+                self.assertEqual(counts(), after)
+                connection.execute("SELECT count(*) FROM real_preview.project_spain_geoapify_result(%s)",
+                                   ("00000000-0000-0000-0000-000000000000",))
+                self.assertEqual(counts(), after)
+                with connection.transaction(force_rollback=True):
+                    fresh = connection.execute("""INSERT INTO uec.geocode_results(source_record_id,provider_id,
+                        provider_version,query,provider_address_id,result,precision,match_method,status,
+                        attempt_number,retryable,response,queried_at)
+                        SELECT source_record_id,provider_id,'projection-wrapper-rollback',query,provider_address_id,
+                          result,precision,match_method,status,attempt_number,retryable,response,queried_at
+                        FROM uec.geocode_results WHERE geocode_result_id=%s RETURNING geocode_result_id""", (result_id,)).fetchone()[0]
+                    self.assertGreaterEqual(connection.execute("SELECT count(*) FROM real_preview.geocode_display_evidence WHERE geocode_result_id=%s",
+                                                               (fresh,)).fetchone()[0], 1)
+                self.assertEqual(counts(), after)
+            self.assertEqual(counts(), before)
+
     def test_real_retained_match_and_rejection_guards_rollback(self):
         from pipeline.scripts.release_baseline import load_contract, verify_connection, _migration_checksums
         with psycopg.connect(os.environ["UEC_DATABASE_URL"]) as connection:
