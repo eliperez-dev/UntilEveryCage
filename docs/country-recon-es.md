@@ -107,5 +107,9 @@ matcher can parse and a verified town. This is checked before creating jobs or
 reserving credits. Broad source planning and local reference research still keep
 unnumbered, kilometre and incomplete inputs; blocking a precise-address request
 does not remove the source record or its available approximate location.
+Explicit house markers followed by labeled industrial-estate, building or floor
+details are parsed separately; those details must not hide an available number.
+The Python and SQL matchers share this behavior. Plot/unit numbers, ambiguous
+later numbers and unknown trailing descriptions are not relabeled as houses.
 
 MAPA SILUM/SANDACH and other regional registers have distinct sector scopes and terms. They require independent verification and source IDs; none may be silently unioned with AESAN or Catalonia. `Old CSVs/spain-data.csv` remains a reconciliation-only V1 baseline, not an acquisition source.

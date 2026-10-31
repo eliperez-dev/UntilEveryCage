@@ -10,6 +10,21 @@ candidate, query = fixtures.candidate, fixtures.query
 
 
 class SpanishAddressTests(unittest.TestCase):
+    def test_explicit_house_number_before_labeled_estate_and_floor_details(self):
+        for source in ('Calle Example Nº4 P.I. Example', 'Calle Example Nº 4 Pol. Ind. Example',
+                       'Calle Example, número: 4 P.I. Example', 'Calle Example Nº4 1º planta',
+                       'Example Nº4 P.I. Example', 'C/ Example Nº4 bj'):
+            self.assertTrue(s.street_matches(source,'Calle Example','4'),source)
+        for source in ('Poligono Example Nº4 P.I. Example','Parcela Nº4','Nave Nº4',
+                       'Calle Example Nº4 P.I. Calle Other 8', 'Calle Example Nº4 P.I. C/ Other 8',
+                       'Calle Example Nº4 Unknown Description', 'Calle Example Nº4-6 P.I. Example',
+                       'Calle Example s/n, Nº4 P.I. Example', 'P.I. Example Nº4'):
+            self.assertFalse(s.street_matches(source,'Calle Example','4'),source)
+        self.assertTrue(s.street_matches('Calle Example Nº4A P.I. Example','Calle Example','4A'))
+        self.assertFalse(s.street_matches('Calle Example Nº4A P.I. Example','Calle Example','4'))
+        for source in ('Example 1ª planta Nº4', 'Calle Example Nº8 Detail Nº4 P.I. Example'):
+            self.assertFalse(s._explicit_number_parts(source))
+
     def test_punctuation_abbreviations_and_explicit_units(self):
         for address in ("Calle Example, 12", "C/ Example 12", "C. Example, 12",
                         "Carrer Example 12 Nave 3", "Calle Example 12, Local 5",

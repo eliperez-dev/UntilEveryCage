@@ -6,7 +6,7 @@ import unicodedata
 
 from pipeline.sources.spain_rgseaa.location_enrichment import official_province_key
 
-RULESET = "spanish-address-format-v6"
+RULESET = "spanish-address-format-v7"
 HOUSE = r"[0-9]+(?:[ -]?[a-z])?(?:\s*[-/]\s*[0-9]+[a-z]?)?"
 UNIT = r"(?:nave|nau|local|piso|planta|puerta|baixos|bajo|bajos|edificio|edifici|bloque)"
 ROAD_TYPES = frozenset({"street", "avenue", "road", "path", "promenade", "square"})
@@ -106,6 +106,40 @@ def address_parts(source: str) -> set[tuple[str, str]]:
         road, house = road_key(road), house_key(house)
         if road and house:
             found.add((road, house))
+    found.update(_explicit_number_parts(source))
+    return found
+
+
+def _explicit_number_parts(source: str) -> set[tuple[str, str]]:
+    """Read explicit house markers before labeled estate/building details.
+
+    Keep numeric plots, kilometres, unlabelled tails and conflicting roads out.
+    The complete source remains unchanged; this returns comparison keys only.
+    """
+    if re.search(r"\b(?:s\s*[/.-]\s*n|sin\s+n[uú]mero)\b", source, re.I):
+        return set()
+    fragments = [p.strip() for p in re.split(r"[,;]", _postal_spaces(source)) if p.strip()]
+    candidates = fragments + [a+" "+b for a,b in zip(fragments,fragments[1:])]
+    descriptors = (r"(?:p\.?\s*i\.?\b|pol\.?\b|pol[ií]gono\b|pol[ií]gon\b|"+
+                   UNIT+r"\b|bj\b|[0-9]+[ºª°]\s*(?:piso|planta)\b)")
+    found = set()
+    for part in candidates:
+        match = re.fullmatch(r"(.+?)\s+(?:n[º°o]\s*|n[uú]m(?:ero)?\.?\s*:?\s*)("+
+                             HOUSE+r")(\s+"+descriptors+r".*)?", part, re.I)
+        if not match:
+            continue
+        road, house, tail = match.groups()
+        if re.search(r"(?:n[º°o]|n[uú]m(?:ero)?\.?)\s*:?\s*[0-9]|[0-9]+[ºª°]\s*(?:piso|planta)\b", road, re.I):
+            continue  # A later unit/floor number must not become the house.
+        key = road_key(road)
+        if key.partition(" ")[0] in EXPLICIT_PREFIXES and key.partition(" ")[0] not in ROAD_TYPES:
+            continue
+        if re.match(r"^p\.?\s*i\b", road, re.I):
+            continue
+        if tail and re.search(r"\b(?:calle|carrer|cl|avenida|avinguda|avda|av|carretera|ctra|camino|cami|paseo|passeig|plaza|placa)\b|c/", tail, re.I):
+            continue
+        if key and house_key(house):
+            found.add((key, house_key(house)))
     return found
 
 

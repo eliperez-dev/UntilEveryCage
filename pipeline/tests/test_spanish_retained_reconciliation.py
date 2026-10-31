@@ -65,7 +65,12 @@ class SpanishRetainedPostgisTests(unittest.TestCase):
                        "Example\u00a04", "Example\u202f4", "Example\u20074",
                        "Nave 4", "Parcela 4", "Calle 4",
                        "Calle Example", "Calle Other 4", "Avenida Example 4",
-                       "Calle Example 4-6", "Calle Example 4A"):
+                       "Calle Example 4-6", "Calle Example 4A",
+                       "Calle Example Nº4 P.I. Example", "Calle Example Nº4 1º planta",
+                       "Example Nº4 P.I. Example", "C/ Example Nº4 bj",
+                       "Calle Example Nº4A P.I. Example", "Calle Example Nº4-6 P.I. Example",
+                       "Calle Example Nº4 P.I. Calle Other 8", "Calle Example Nº4 P.I. C/ Other 8",
+                       "Poligono Example Nº4 P.I. Example", "Calle Example Nº4 Unknown Description"):
             expected = s.street_matches(source, "Calle Example", "4")
             actual = self.connection.execute("SELECT real_preview.spanish_street_matches(%s,%s,%s)",
                 (source, "Calle Example", "4")).fetchone()[0]
