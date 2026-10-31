@@ -4,9 +4,30 @@ from pathlib import Path
 import unittest
 
 from pipeline.geocoding.first_pass import structured_query, normalize_query, provider_query, partition_groups, select_input_mode, validate_provider_interval, defer_explicit_no_number, reopen_local_input_rejections, refresh_statistics
+from pipeline.geocoding.first_pass import spanish_precise_input_blockers,select_precise_inputs,stage
 
 
 class FirstPassInputTests(unittest.TestCase):
+    def test_precise_spanish_requests_require_a_possible_match_before_any_db_access(self):
+        class NoDatabaseAccess:
+            def execute(self,*args,**kwargs):
+                raise AssertionError('must stop before jobs, reservations or external work')
+        groups=[{'source':'es.locations','query':structured_query('es.locations',
+            {'address':address,'country_code':'ES','region':'Madrid'},municipality=town)}
+            for address,town in [('Calle Example s/n','Town'),('Example Estate','Town'),
+                                 ('Calle Example 4',''),('Calle Example 4','Town')]]
+        self.assertEqual(spanish_precise_input_blockers(groups[0]),('parseable_street_house_pair',))
+        self.assertEqual(spanish_precise_input_blockers(groups[2]),('verified_town',))
+        self.assertEqual(spanish_precise_input_blockers({**groups[0],'source':'es.cat.feed-sandach'}),('parseable_street_house_pair',))
+        self.assertEqual(select_precise_inputs(groups),(groups[3:],3))
+        for group in groups[:3]:
+            for provider in ('locationiq','geoapify'):
+                with self.assertRaisesRegex(ValueError,'spanish_precise_matcher_input_missing'):
+                    stage(NoDatabaseAccess(),group,provider)
+        # Other country profiles and the broad source planner keep their scope.
+        self.assertEqual(spanish_precise_input_blockers({'source':'nz.locations','query':'unused'}),())
+        self.assertEqual(len(groups),4)
+
     def test_comma_in_single_site_nz_address_is_not_a_request_blocker(self):
         location = {"address":"Unit 2, 12 Example Road", "city":"Example Town",
                     "country_code":"NZ", "location_count":1, "number_of_locations":"1"}

@@ -146,6 +146,29 @@ def defer_explicit_no_number(groups, *, include_no_number=False):
     return selected, len(groups)-len(selected)
 
 
+def spanish_precise_input_blockers(group):
+    """Necessary matcher inputs, not a prediction of provider coverage.
+
+    Preserve broad source planning for local street/km reference research.
+    Commercial precise-address work must have a possible acceptance path.
+    """
+    if group["source"] not in {"es.locations", "es.cat.feed-sandach"}:
+        return ()
+    from .spanish_addresses import address_parts
+    query = json.loads(group["query"])
+    missing = []
+    if not query.get("locality", "").strip():
+        missing.append("verified_town")
+    if not address_parts(query.get("address", "")):
+        missing.append("parseable_street_house_pair")
+    return tuple(missing)
+
+
+def select_precise_inputs(groups):
+    selected = [group for group in groups if not spanish_precise_input_blockers(group)]
+    return selected, len(groups)-len(selected)
+
+
 def refresh_statistics(connection):
     """Keep bulk enrichment from leaving the next queue/read plan stale."""
     if connection.execute("SELECT current_database()").fetchone()[0] != DATABASE:
@@ -364,6 +387,11 @@ def provider_query(group, provider):
 
 
 def stage(connection, group, provider="locationiq"):
+    # Enforce this at the shared staging boundary too: private operators must
+    # not bypass the CLI filter and spend credits on mathematically impossible
+    # precise-address matches. No job, event or reservation has been created yet.
+    if spanish_precise_input_blockers(group):
+        raise ValueError("spanish_precise_matcher_input_missing")
     source, query = group["source"], group["query"]
     profile = profile_for_source(source, provider_id=provider)
     if not profile or (provider == "locationiq" and profile.get("query_kind") != "source_address_first_pass"):
@@ -476,8 +504,9 @@ def main():
         groups = [group for group in groups if json.loads(group["query"])["locality"].strip()]
     groups.sort(key=lambda g:(SOURCES.index(g["source"]),g["query"]))
     groups, deferred_formats = select_input_mode(groups, args.input_mode, args.seed)
+    groups, impossible_precise_inputs = select_precise_inputs(groups)
     groups = groups[:min(args.limit,remaining)]
-    print(json.dumps({"stage":"first_pass_plan","sources":summary,"provider":args.provider,"account":args.account,"selected_requests":len(groups),"provider_input_blocked_requests":blocked_context,"deferred_no_street_number":deferred_no_number,"deferred_input_formats":deferred_formats,"input_mode":args.input_mode,"reopened_pre_call_jobs":repair["reopened_pre_call_jobs"],"remaining_account_ledger":remaining,"provider_calls":0}),flush=True)
+    print(json.dumps({"stage":"first_pass_plan","sources":summary,"provider":args.provider,"account":args.account,"selected_requests":len(groups),"provider_input_blocked_requests":blocked_context,"deferred_no_street_number":deferred_no_number,"deferred_input_formats":deferred_formats,"missing_precise_matcher_inputs":impossible_precise_inputs,"input_mode":args.input_mode,"reopened_pre_call_jobs":repair["reopened_pre_call_jobs"],"remaining_account_ledger":remaining,"provider_calls":0}),flush=True)
     if not args.run or not groups:
         return
     spec=importlib.util.spec_from_file_location("first_pass_worker",ROOT/"pipeline/scripts/stages/geocode-worker.py")

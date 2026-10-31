@@ -102,4 +102,10 @@ bindings before updating the private display cache. Kilometre comparisons stay
 separate, approximate research results; they are not imported as facility points.
 Current provincial coverage, outcomes and remaining work belong in the inventory.
 
+Commercial precise-address staging requires a source street/house pair that the
+matcher can parse and a verified town. This is checked before creating jobs or
+reserving credits. Broad source planning and local reference research still keep
+unnumbered, kilometre and incomplete inputs; blocking a precise-address request
+does not remove the source record or its available approximate location.
+
 MAPA SILUM/SANDACH and other regional registers have distinct sector scopes and terms. They require independent verification and source IDs; none may be silently unioned with AESAN or Catalonia. `Old CSVs/spain-data.csv` remains a reconciliation-only V1 baseline, not an acquisition source.
