@@ -80,6 +80,23 @@ class D7GraphConvergenceTests(unittest.TestCase):
             self.assertEqual(list(names_generated), [], name)
             self.assertEqual(list(site_generated), [], name)
 
+    def test_spanish_generic_labels_and_missing_names_are_not_shared_businesses(self):
+        for name in ("Rastro municipal", "MATANZA DE GANADO", "Carnicería",
+                     "Matanza de ganado y aves sin nombre", "Servicios sin denominación",
+                     "S.A. de C.V.", "Productos cárnicos", "Elaboración de embutidos"):
+            with self.subTest(name=name):
+                rows = [observed("mx.locations", key, facility, name=name,
+                                 name_assertions=[{"value": name, "source_field": "business_name", "role": "business"}])
+                        for key, facility in (("synthetic-one", "SYN-1"), ("synthetic-two", "SYN-2"))]
+                generated, _ = iter_shared_business_name_candidates(rows)
+                self.assertEqual(list(generated), [])
+        distinctive = "Rastro Sierra Sintética, S.A. de C.V."
+        rows = [observed("mx.locations", key, facility, name=distinctive,
+                         name_assertions=[{"value": distinctive, "source_field": "business_name", "role": "business"}])
+                for key, facility in (("synthetic-one", "SYN-1"), ("synthetic-two", "SYN-2"))]
+        generated, _ = iter_shared_business_name_candidates(rows)
+        self.assertEqual(len(list(generated)), 1)
+
     def test_mailing_addresses_and_city_only_context_are_not_site_anchors(self):
         left = observed("au.npi.facilities", "a", "A", name="River Foods",
                         location_role="mailing", address="8 Dock Street", postal="3000")

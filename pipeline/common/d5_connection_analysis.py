@@ -32,6 +32,7 @@ from pipeline.common.graph_edges import (EntityRef, SourceRef, build_connection_
 REPORT_VERSION = "d7-real-graph-analysis-v1"
 RULESET_VERSION = "d7-multi-signal-candidates-v3"
 SHARED_BUSINESS_NAME_RULESET_VERSION = "d7-shared-business-name-v3"
+SHARED_BUSINESS_NAME_FILTER_VERSION = "spanish-generic-business-labels-v1"
 EVIDENCE_SOURCE_IDS = frozenset({"us.aphis", "us.inspections"})
 FACILITY_ID_KEYS = frozenset({
     "establishment_id", "establishment_number", "approval_number",
@@ -721,6 +722,20 @@ _GENERIC_BUSINESS_NAME_TOKENS = frozenset({
     "slaughterhouse", "beef", "chicken", "dairy", "fish", "lamb", "pork", "seafood",
     "turkey", "veal", "inspection", "inspected", "retail", "wholesale", "import",
     "export", "custom", "exempt",
+    # Spanish activity labels and legal-form tokens are not distinctive names.
+    "rastro", "rastros", "municipal", "municipales", "matadero", "mataderos",
+    "matanza", "sacrificio", "ganado", "animales", "aves", "bovino", "bovinos",
+    "porcino", "porcinos", "carne", "carnes", "carniceria", "carnicería",
+    "carnicerias", "carnicerías", "obrador", "tocineria", "tocinería",
+    "frigorifico", "frigorífico", "procesamiento", "elaboracion", "elaboración",
+    "carnitas", "polleria", "pollería", "pollo", "pollos", "cerdo", "cerdos",
+    "puerco", "res", "reses", "ovino", "ovinos", "caprino", "caprinos",
+    "embutido", "embutidos", "tocino", "chicharron", "chicharrón", "chicharrones",
+    "productos", "alimentos", "alimenticios", "carnicos", "cárnicos",
+    "preparacion", "preparación", "venta", "expendio", "distribucion", "distribución",
+    "empacadora", "procesadora", "comercializadora", "industrial", "corte", "despiece",
+    "de", "del", "el", "la", "los", "las", "y",
+    "sin", "nombre", "denominacion", "denominación",
 })
 _PLACEHOLDER_BUSINESS_NAME_KEYS = frozenset({
     "n a", "not applicable", "not available", "not known", "not listed", "not on file",
@@ -728,6 +743,8 @@ _PLACEHOLDER_BUSINESS_NAME_KEYS = frozenset({
     "see above", "no dba", "no dba name", "no dba names", "no alternate name",
     "no alternate names", "dba name", "dba names", "dba name s", "doing business as",
     "alternate name", "alternate names", "alternate name s", "custom exempt",
+    "sin nombre", "sin denominacion", "sin denominación", "no disponible",
+    "no especificado", "desconocido", "s n", "sn",
 })
 
 
@@ -739,8 +756,10 @@ def _shared_business_name_key(value: Any) -> str | None:
     normalized = re.sub(r"(?<=[\w])'s\b", "", normalized)
     tokens = [token for token in re.findall(r"[^\W_]+", normalized, flags=re.UNICODE) if token]
     key = " ".join(tokens)
-    semantic_tokens = [token for token in tokens if any(character.isalpha() for character in token)]
+    substantive_key = re.sub(r"(?:^|\s)(?:s a(?: de c v)?|s de r l(?: de c v)?)$", "", key)
+    semantic_tokens = [token for token in substantive_key.split() if any(character.isalpha() for character in token)]
     if (not semantic_tokens or key in _PLACEHOLDER_BUSINESS_NAME_KEYS
+            or re.search(r"\bsin (?:nombre|denominaci[oó]n)\b", key)
             or all(token in _GENERIC_BUSINESS_NAME_TOKENS for token in semantic_tokens)):
         return None
     return key

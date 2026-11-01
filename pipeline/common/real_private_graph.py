@@ -22,7 +22,7 @@ import psycopg
 from pipeline.common.d5_connection_analysis import (_iter_probabilistic_candidates,
     iter_shared_business_name_candidates, _observed_from_json, _observed_from_row, _observed_json)
 from pipeline.common.d5_connection_analysis import RULESET_VERSION as D5_MATCHER_VERSION
-from pipeline.common.d5_connection_analysis import SHARED_BUSINESS_NAME_RULESET_VERSION
+from pipeline.common.d5_connection_analysis import SHARED_BUSINESS_NAME_RULESET_VERSION, SHARED_BUSINESS_NAME_FILTER_VERSION
 from pipeline.common.graph_edges import RULESET_VERSION as D6_EDGE_RULESET_VERSION
 from pipeline.common.graph_persistence import (ConnectionEdgeBuilder, import_evidence_events,
     completed_edge_materialization, import_graph_candidates, iter_graph_candidate_handoff,
@@ -37,6 +37,7 @@ GRAPH_CONTEXT_PERSISTENCE_VERSION = "private-graph-context-persistence-v3"
 GRAPH_MATERIALIZATION_FINGERPRINT = hashlib.sha256(
     "|".join((GRAPH_EDGE_MATERIALIZATION_VERSION, D5_MATCHER_VERSION,
               D6_EDGE_RULESET_VERSION, SHARED_BUSINESS_NAME_RULESET_VERSION,
+              SHARED_BUSINESS_NAME_FILTER_VERSION,
               NATIVE_ENDPOINT_CONTRACT_VERSION,
               GRAPH_CONTEXT_PERSISTENCE_VERSION)).encode("utf-8")
 ).hexdigest()
