@@ -1110,6 +1110,9 @@ def _backfill_graph_edge_support_record_ids(connection: Any, run_id: uuid.UUID,
     The key is retained for private provenance; the ID resolves its artifact
     version. Other-source refs are left untouched and must already carry IDs
     before they can pass the public release support gate.
+
+    Expand JSON references before resolving records. Without that boundary,
+    PostgreSQL can rescan the entire run for every edge's lateral JSON array.
     """
     cursor = connection.execute(
         """
@@ -1125,21 +1128,24 @@ def _backfill_graph_edge_support_record_ids(connection: Any, run_id: uuid.UUID,
             WHERE item.ingest_run_id=%s AND item.source_id=%s
               AND item.status='inserted' AND item.item_kind='facility_candidate'
         ),
-        edge_refs AS MATERIALIZED (
+        expanded_refs AS MATERIALIZED (
             SELECT edge.connection_edge_id, edge.connection_type,
                    jsonb_array_length(edge.supporting_source_refs) AS ref_count,
-                   refs.ordinality, refs.value,
-                   record.source_record_id AS resolved_record_id
+                   refs.ordinality, refs.value
             FROM uec.graph_connection_edges edge
             CROSS JOIN LATERAL jsonb_array_elements(edge.supporting_source_refs)
                 WITH ORDINALITY AS refs(value, ordinality)
+        WHERE (edge.from_source_id=%s OR edge.to_source_id=%s)
+          AND edge.storage_state='private'
+          AND edge.publication_status='not_eligible'
+        ),
+        edge_refs AS MATERIALIZED (
+            SELECT refs.*, record.source_record_id AS resolved_record_id
+            FROM expanded_refs refs
             LEFT JOIN run_records record
               ON record.source_id=refs.value->>'source_id'
              AND record.source_record_key=refs.value->>'source_record_key'
              AND record.artifact_sha256=lower(refs.value->>'artifact_sha256')
-        WHERE (edge.from_source_id=%s OR edge.to_source_id=%s)
-          AND edge.storage_state='private'
-          AND edge.publication_status='not_eligible'
         ),
         rebuilt AS MATERIALIZED (
             SELECT connection_edge_id,
