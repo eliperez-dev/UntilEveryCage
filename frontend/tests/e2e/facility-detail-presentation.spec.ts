@@ -86,6 +86,23 @@ for (const width of [1440, 375]) test(`direct evidence access and optional locat
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
+test('long reference-provider attributions remain readable in mobile list and details', async ({page}) => {
+  const provider='Synthetic official reference citation; '.repeat(12).slice(0,324);
+  await page.setViewportSize({width:320,height:760});
+  await mockPublicRecord(page,{display_precision:'approximate',geometry_provenance:{origin:'verified_coarse_reference',provider,reference_source_id:'synthetic-reference'}});
+  await page.goto(`./#/map?release_id=${release}&list=open`);
+  await page.locator(`[data-record-id="${id}"]`).click();
+  const panel=page.locator('.reading-sheet');
+  await expect(panel.locator('.record-name')).toHaveText(row.canonical_name);
+  await panel.locator('.location-details > summary').click();
+  await expect(panel.getByText(provider,{exact:true})).toBeVisible();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await panel.getByRole('link',{name:'Open facility page',exact:true}).click();
+  const full=page.locator('.public-record');await full.locator('.location-details > summary').click();
+  await expect(full.getByText(provider,{exact:true})).toBeVisible();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});
+
 test('search summary names filtered matches as records and distinguishes the shown page', async ({ page }) => {
   await mockPublicRecord(page);
   await page.goto(`./#/map?list=open&release_id=${release}`);

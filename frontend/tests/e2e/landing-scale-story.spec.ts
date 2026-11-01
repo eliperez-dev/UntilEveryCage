@@ -12,6 +12,45 @@ async function installAggregates(page: Page) {
 }
 test.beforeEach(async ({ page }) => installAggregates(page));
 
+test('since-open totals share document time across navigation and reset on refresh', async ({page}) => {
+  await page.emulateMedia({reducedMotion:'reduce'});
+  await page.addInitScript(() => {
+    let milliseconds = 0;
+    Object.defineProperty(performance,'now',{configurable:true,value:()=>milliseconds});
+    (window as any).__counterTime = (value:number) => milliseconds=value;
+  });
+  await page.goto('./');
+  const total = (population:string) => page.locator(`[data-counter="${population}"]`);
+  for(const population of ['human','chicken','land','fish']) await expect(total(population)).toHaveAttribute('data-total','0');
+  await page.evaluate(() => (window as any).__counterTime(1000));
+  for(const [population,count] of [['human','2'],['chicken','2'],['land','2779'],['fish','65671']]) await expect(total(population!)).toHaveAttribute('data-total',count!);
+  await page.getByRole('navigation',{name:'Primary'}).getByRole('link',{name:'About',exact:true}).click();
+  await page.evaluate(() => (window as any).__counterTime(5000));
+  await page.getByRole('link',{name:'Until Every Cage home',exact:true}).click();
+  await expect(total('land')).toHaveAttribute('data-total','13895');
+  await expect(total('fish')).toHaveAttribute('data-total','328355');
+  await page.reload();
+  for(const population of ['human','chicken','land','fish']) await expect(total(population)).toHaveAttribute('data-total','0');
+});
+
+test('optional physics preserves complete emission and starts disabled after a fresh load', async ({page}) => {
+  await page.setViewportSize({width:390,height:844}); await page.goto('./');
+  for(const population of ['land','fish']) {
+    const section=page.locator(`.throughput[data-population="${population}"]`),canvas=section.locator('canvas');
+    const checkbox=section.getByRole('checkbox',{name:'Enable physics',exact:true});
+    await expect(checkbox).not.toBeChecked();
+    await canvas.scrollIntoViewIfNeeded();await expect(canvas).toHaveAttribute('data-physics','disabled');
+    await checkbox.check();await canvas.scrollIntoViewIfNeeded();
+    await expect(canvas).toHaveAttribute('data-physics','enabled');
+    await expect.poll(()=>canvas.evaluate(node=>Number(node.dataset.physicsAlive))).toBeGreaterThan(0);
+    await expect.poll(()=>canvas.evaluate(node=>Number(node.dataset.physicsEmitted)===Number(node.dataset.emitted))).toBe(true);
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    await checkbox.uncheck();await expect(canvas).toHaveAttribute('data-physics','disabled');
+  }
+  await page.reload();
+  for(const checkbox of await page.getByRole('checkbox',{name:'Enable physics',exact:true}).all()) await expect(checkbox).not.toBeChecked();
+});
+
 function comparisonStatements(text: StoryMessages) {
   return [[text.humanLandText, text.humanLandValue], [text.oneSecondText, text.oneSecondValue], [text.dripCondition, text.waterLandValue]]
     .map(([template, emphasis]) => { expect(template!.split('{emphasis}')).toHaveLength(2); return template!.replace('{emphasis}', emphasis!); });

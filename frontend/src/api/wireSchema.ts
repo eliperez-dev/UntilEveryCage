@@ -14,7 +14,8 @@ const geometryProvenanceSchema = z.object({
   origin: z.enum(['source_coordinates', 'provider_derived', 'verified_coarse_reference', 'provider_geocode', 'city_reference', 'unmapped']),
   method: z.string().max(120).optional(),
   source_precision: z.string().max(120).optional(),
-  provider: z.string().max(160).optional(),
+  // Published provider metadata may include a full source-reference attribution.
+  provider: z.string().max(500).optional(),
   provider_status: z.string().max(80).optional(),
   provider_queried_at: z.string().datetime({ offset: true }).optional(),
   confidence: z.string().max(40).optional(),
