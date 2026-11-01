@@ -169,6 +169,7 @@ class ReleaseServingPackageTests(unittest.TestCase):
         for omissions in (serving.LEGACY_SERVING_SCHEMA_OMISSIONS,
                           serving.PRE_COUNTRY_SERVING_SCHEMA_OMISSIONS,
                           serving.PRE_REFERENCE_SERVING_SCHEMA_OMISSIONS,
+                          serving.PRE_FIRST_PASS_SERVING_SCHEMA_OMISSIONS,
                           serving.SERVING_SCHEMA_OMISSIONS):
             with self.subTest(count=len(omissions)):
                 manifest = serving.package_manifest(**common, schema_omissions=list(omissions))
@@ -178,7 +179,8 @@ class ReleaseServingPackageTests(unittest.TestCase):
                 )
                 self.assertEqual(manifest["package_sha256"], reconstructed["package_sha256"])
         self.assertEqual(len(serving.PRE_REFERENCE_SERVING_SCHEMA_OMISSIONS), 9)
-        self.assertEqual(len(serving.SERVING_SCHEMA_OMISSIONS), 10)
+        self.assertEqual(len(serving.PRE_FIRST_PASS_SERVING_SCHEMA_OMISSIONS), 10)
+        self.assertEqual(len(serving.SERVING_SCHEMA_OMISSIONS), 13)
         migration_root = Path(__file__).parents[1] / "migrations"
         for filename, trigger in (
             ("090_spain_private_geocoding_profile.sql", "geocode_results_spain_geoapify_private_display"),
@@ -191,6 +193,16 @@ class ReleaseServingPackageTests(unittest.TestCase):
             self.assertIn("CREATE TRIGGER " + trigger, migration)
             self.assertIn("AFTER INSERT ON uec.geocode_results", migration)
             self.assertTrue(any("." + trigger + ":" in item for item in serving.SERVING_SCHEMA_OMISSIONS))
+        for filename, trigger, timing in (
+            ("108_locationiq_structured_first_pass.sql", "geocode_results_locationiq_first_pass_private_display", "AFTER"),
+            ("110_locationiq_postcode_reference.sql", "geocode_results_locationiq_uk_postcode_reference", "AFTER"),
+            ("111_spanish_retained_address_replay.sql", "geocode_results_spanish_retained_guard", "BEFORE"),
+        ):
+            migration = (migration_root / filename).read_text(encoding="utf-8")
+            self.assertIn("CREATE TRIGGER " + trigger, migration)
+            self.assertIn(timing + " INSERT ON uec.geocode_results", migration)
+            self.assertTrue(any("." + trigger + ":" in item for item in serving.SERVING_SCHEMA_OMISSIONS))
+        self.assertIn("uec.geocode_results", serving.FORBIDDEN_DATA_RELATIONS)
         with self.assertRaisesRegex(ValueError, "schema omissions"):
             serving.package_manifest(
                 **common,
