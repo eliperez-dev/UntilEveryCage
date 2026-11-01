@@ -37,6 +37,7 @@ class RealPrivateGraphTests(unittest.TestCase):
             real_private_graph.D5_MATCHER_VERSION,
             real_private_graph.D6_EDGE_RULESET_VERSION,
             real_private_graph.SHARED_BUSINESS_NAME_RULESET_VERSION,
+            real_private_graph.SHARED_BUSINESS_NAME_FILTER_VERSION,
             real_private_graph.NATIVE_ENDPOINT_CONTRACT_VERSION,
             "private-graph-context-persistence-v3",
         )).encode("utf-8")).hexdigest()
