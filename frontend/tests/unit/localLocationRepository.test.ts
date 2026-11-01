@@ -63,6 +63,20 @@ describe('LocalLocationRepository query contract', () => {
 });
 
 describe('current V2 wire edge cases', () => {
+  const detailMeta = { release_id: 'rel-1', ruleset_version: 'rules-1', release_created_at: '2026-01-01T00:00:00Z', profile: 'official' };
+  for (const length of [248, 324]) it(`preserves a ${length}-character provider attribution in list and detail`, async () => {
+    const provider = 'Synthetic source reference attribution; '.repeat(12).slice(0, length);
+    const record = { ...row, geometry_provenance: { origin: 'verified_coarse_reference', provider, reference_source_id: 'synthetic-reference' } };
+    const list = await new LocalLocationRepository(vi.fn().mockResolvedValue(response(envelope([record])))).list();
+    expect(list.locations[0]?.evidence?.geometryProvenance?.provider).toBe(provider);
+    const detail = await new LocalLocationRepository(vi.fn().mockResolvedValue(response({ api_version: 'v2', meta: detailMeta, data: record }))).detail(row.facility_id, 'official');
+    expect(detail.location.evidence?.geometryProvenance?.provider).toBe(provider);
+  });
+  it('keeps provider attribution bounded at 500 characters in list and detail', async () => {
+    const record = { ...row, geometry_provenance: { origin: 'verified_coarse_reference', provider: 'x'.repeat(501) } };
+    await expect(new LocalLocationRepository(vi.fn().mockResolvedValue(response(envelope([record])))).list()).rejects.toMatchObject({ kind: 'invalid-contract' });
+    await expect(new LocalLocationRepository(vi.fn().mockResolvedValue(response({ api_version: 'v2', meta: detailMeta, data: record }))).detail(row.facility_id, 'official')).rejects.toMatchObject({ kind: 'invalid-contract' });
+  });
   it('accepts five geometry precision states, preserves allowlisted provenance, and rejects unexpected payload fields', async () => {
     const provenance = { origin: 'provider_derived', method: 'provider_geocode', source_precision: 'municipality', provider: 'Example', provider_status: 'accepted', confidence_band: 'high', evidence_id: 'evidence-1' };
     const reported = await new LocalLocationRepository(vi.fn().mockResolvedValue(response(envelope([{ ...row, display_precision: 'source_reported', geometry_provenance: { ...provenance, origin: 'source_coordinates' } }])))).list();

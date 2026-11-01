@@ -73,6 +73,17 @@ API schemas own supported fields. They are not additional roadmaps.
   use the same moderate numeral scale and readable full-word units, with no
   fish-specific shrinkage or giant rate/tiny-unit pairing;
   do not duplicate each rate in a second headline or introductory stage.
+  Small approximate since-open totals accompany the human/chicken lanes and
+  both funnels. They use the existing dated rates and one document clock,
+  update at 30 Hz (1 Hz with reduced motion), retain elapsed time across SPA
+  navigation, and reset on document refresh. Hidden tabs stop rendering updates
+  and catch up on return. These estimates do not use the animation's active clock
+  or combine the separately dated land/fish populations.
+  Each funnel has an `Enable physics` checkbox, off on a fresh mount. The optional
+  red outflow uses seeded trajectories, gravity, drag and bounded local pressure/
+  velocity interactions, preserving every crossing identity at the full rate.
+  The white source and default fan-out remain unchanged. This is visual particle
+  physics, with bounded recent-state reconstruction on seeks and resize.
   Each visible animation uses active time: hidden tabs and offscreen sections do
   not accumulate animation time. Reduced
   motion shows a static equivalent. Funnel remains the default: evenly spaced
@@ -569,6 +580,11 @@ placeholder from an identical source-provided name; cached hover labels retain
 that metadata and translate only when rendered. Generated Swagger references and operator/debug
 strings may remain English. Extend the existing dictionary rather than
 creating another localization path or rewriting approved English copy.
+
+The actual map search entry has a thin theme-ink outline, white in dark mode and
+dark in light mode, with its stronger focus outline retained. Public geometry
+provider metadata accepts source-reference attributions up to 500 characters;
+all other provenance bounds and the closed field allowlist remain in force.
 
 The square theme button immediately left of the language button shows a moon in Dark and a
 sun in Light, indicating the current mode; clicking switches modes. Theme
