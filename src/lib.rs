@@ -4691,6 +4691,22 @@ pub async fn get_v2_facets_handler(
         entry.1 += row.get::<_, i64>(6) as usize;
     }
     dimensions.insert("source_id".into(), json!(sources.into_iter().map(|(value, (label, count))| json!({"value":value,"label":label,"count":count})).collect::<Vec<_>>()));
+    if cacheable {
+        // Use the same DISTINCT facility representatives as the main totals.
+        // Separate precision queries can select different observations.
+        let mut mapped_countries = std::collections::BTreeMap::<String, i64>::new();
+        for row in &rows {
+            let precision: String = row.get(2);
+            if matches!(precision.as_str(), "exact" | "source_reported" | "approximate") {
+                *mapped_countries.entry(row.get(0)).or_default() += row.get::<_, i64>(6);
+            }
+        }
+        // Presence promises completeness; never publish a truncated union.
+        if mapped_countries.len() <= 249 {
+            dimensions.insert("mapped_country_code".into(), json!(mapped_countries.into_iter()
+                .map(|(value, count)| json!({"value":value,"count":count})).collect::<Vec<_>>()));
+        }
+    }
     if transaction.commit().await.is_err() {
         return v2_error(
             StatusCode::SERVICE_UNAVAILABLE,

@@ -146,6 +146,7 @@ class SuppressionLifecycleE2ETests(unittest.TestCase):
     def test_0_radius_matches_and_facet_cache_before_suppression(self):
         _, facets = self.get_json("/api/v2/discovery/facets")
         self.assertEqual(sum(row["count"] for row in facets["dimensions"]["country_code"]), 1)
+        self.assertEqual(facets["dimensions"]["mapped_country_code"], [{"value": "DK", "count": 1}])
         _, matches = self.get_json("/api/v2/map/matches?release_id=e2e-suppression-old&latitude=55&longitude=10&radius_km=500")
         self.assertEqual(matches["data"]["facility_ids"], [str(self.facility_id)])
 
@@ -382,8 +383,10 @@ class SuppressionLifecycleE2ETests(unittest.TestCase):
         status, facets = self.get_json("/api/v2/discovery/facets?category=slaughter")
         self.assertEqual(status, 200)
         self.assertEqual(facets["dimensions"]["category"], [])
+        self.assertNotIn("mapped_country_code", facets["dimensions"])
         _, cached_facets = self.get_json("/api/v2/discovery/facets")
         self.assertEqual(cached_facets["dimensions"]["country_code"], [])
+        self.assertEqual(cached_facets["dimensions"]["mapped_country_code"], [])
         _, radius_matches = self.get_json("/api/v2/map/matches?release_id=e2e-suppression-old&latitude=55&longitude=10&radius_km=500")
         self.assertEqual(radius_matches["data"]["facility_ids"], [])
         _, csv_body = self.get_csv()

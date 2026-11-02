@@ -450,7 +450,7 @@
       "get": {
         "operationId": "getDiscoveryFacets",
         "summary": "Count public filter values",
-        "description": "Counts eligible facility projection rows after suppression, not animals or story-wide totals. Selected eligible release/profile. Country and public source facets are computed from the same suppressed public projection. q, category_keys, spatial and pagination are not applied to facets.",
+        "description": "Counts facilities in the selected eligible release/profile. Unfiltered responses also include exhaustive mapped_country_code counts for exact, source_reported and approximate representatives from the same facility snapshot; these sum to the mapped precision total. Country and source facets follow current suppression. q, category_keys, spatial and pagination are not applied to facets.",
         "tags": [
           "Discovery"
         ],
@@ -1532,6 +1532,10 @@
             ],
             "properties": {
               "country_code": {
+                "$ref": "#/components/schemas/CountryFacetValues"
+              },
+              "mapped_country_code": {
+                "description": "Optional on unfiltered responses. Complete country counts from the same DISTINCT facility representatives as the main totals, limited to exact, source_reported and approximate precision. Omitted rather than truncated if the country bound is exceeded.",
                 "$ref": "#/components/schemas/CountryFacetValues"
               },
               "source_id": {

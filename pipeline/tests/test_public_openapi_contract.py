@@ -234,6 +234,8 @@ class PublicOpenApiContractTests(unittest.TestCase):
         self.assertEqual(self.spec["components"]["schemas"]["CountryFacetValues"]["maxItems"], 249)
         dimensions = self.spec["components"]["schemas"]["Facets"]["properties"]["dimensions"]
         self.assertEqual(dimensions["properties"]["country_code"]["$ref"], "#/components/schemas/CountryFacetValues")
+        self.assertEqual(dimensions["properties"]["mapped_country_code"]["$ref"], "#/components/schemas/CountryFacetValues")
+        self.assertNotIn("mapped_country_code", dimensions["required"])
         self.assertEqual(dimensions["properties"]["source_id"]["$ref"], "#/components/schemas/SourceFacetValues")
         self.assertIn("source_id", dimensions["required"])
         self.assertIn('.take(if name == "country_code" { 249 } else { 20 })',
