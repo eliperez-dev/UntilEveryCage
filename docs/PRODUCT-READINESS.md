@@ -22,9 +22,9 @@ The current dataset is **October 31, 2026**, `release-2026-10-31`.
 | Graph | 83,067 connections: 23,874 exact and 59,193 inferred; 1,024 APHIS evidence references |
 | Historical dataset | October 18 remains accessible, including all 69,526 original graph edges |
 | V0 | Retired from production at the maintainer's request; seven old projection copies removed, reclaiming 521,412,608 bytes. The local development baseline and source evidence remain |
-| Application | `8af08707d819aeafa7f2db4b0d66ba63cb2e39ab` on `eli/v2`; reviewed frontend checkpoint `dd6fb2ce` is included |
-| CI | All seven jobs passed in [run 41487954693](https://github.com/eliperez-dev/UntilEveryCage/actions/runs/41487954693) |
-| Render | Deployment `dep-dbkclf8m7kps739f1lfg`, serving database `uec_serving_country_20261031`; Auto-Deploy remains off |
+| Application | `5a671e5ba7745ea109eaa56fc1fc9314961403f7` on `eli/v2`; reviewed frontend checkpoint `3c0879d5` is included |
+| CI | All seven jobs passed in [run 41498281549](https://github.com/eliperez-dev/UntilEveryCage/actions/runs/41498281549) |
+| Render | Deployment `dep-dbkdk33l550s73bpunq0`, serving database `uec_serving_country_20261031`; Auto-Deploy remains off |
 | Contributions | Existing intake and bug-report capabilities remain enabled; community data was not moved or modified |
 
 The country first pass is complete. Germany, national Spain, Catalonia, France,
@@ -56,6 +56,11 @@ source inventory. Source rows are not a globally deduplicated premises census.
 - A live mobile WebKit location/filter flow also passed without server errors;
   100 results loaded and the landing-page checkpoint was confirmed. A wider,
   category-filtered radius query still took 7.2 seconds in that flow.
+- Landing country totals now come from the same cached aggregate as the other
+  totals. A fresh live mobile WebKit load completed all four totals in 1.4 seconds,
+  versus 15.9 seconds before, using one facet request and no precision partitions.
+  Current and historical aggregate comparisons, suppression tests and the public
+  API contract checks passed; existing counts are unchanged.
 
 The aggregate completion receipt is retained locally in ignored
 `data/staging/country-release-20261031/acceptance.json`. Its component receipts
