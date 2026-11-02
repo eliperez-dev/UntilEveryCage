@@ -134,7 +134,8 @@ class PublicOpenApiContractTests(unittest.TestCase):
         self.assertIn("get_v2_locations_response(state, params, true)", matches)
         self.assertEqual(self.query_names("/api/v2/map/matches"), location_queries - {"limit", "offset", "cursor"})
         facets = self.handler(self.rust, "get_v2_facets_handler")
-        applied = set(re.findall(r"params\s*\.\s*(\w+)", facets))
+        # Helper methods on the parameter object are not query parameters.
+        applied = set(re.findall(r"params\s*\.\s*(\w+)\b(?!\s*\()", facets))
         self.assertEqual(self.query_names("/api/v2/discovery/facets"), applied)
         self.assertTrue({"q", "category_keys", "limit", "radius_km"}.isdisjoint(applied))
         for path, name in [
