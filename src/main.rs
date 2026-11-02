@@ -1068,15 +1068,23 @@ async fn main() {
         let release_id: String = release.get(0);
         drop(client);
         let _ = uec_api::get_v2_public_map_feed_handler(
-            State(warm_state),
+            State(warm_state.clone()),
             HeaderMap::new(),
             Query(uec_api::PublicMapFeedParams {
                 profile: Some("official".into()),
-                release_id: Some(release_id),
+                release_id: Some(release_id.clone()),
                 format: Some("compact".into()),
             }),
         )
         .await;
+        let _ = uec_api::get_v2_facets_handler(
+            State(warm_state),
+            Query(uec_api::V2LocationParams {
+                profile: Some("official".into()),
+                release_id: Some(release_id),
+                ..Default::default()
+            }),
+        ).await;
     });
     let result = axum::serve(
         listener,

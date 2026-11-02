@@ -195,15 +195,16 @@ class E2EEnvironment:
             print(f"[e2e] applying {migration.name}", flush=True)
             result = subprocess.run(
                 self.command("exec", "-T", "postgres", "psql", "-1", "-v", "ON_ERROR_STOP=1", "-U", "uec", "-d", "uec"),
-                input=migration.read_text(encoding="utf-8"),
+                # Text-mode stdin rewrites LF to CRLF on Windows, changing
+                # stored function bodies and breaking guarded migrations.
+                input=migration.read_bytes(),
                 cwd=ROOT,
                 capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
                 check=False,
                 env=self.compose_env(),
             )
+            result.stdout = result.stdout.decode("utf-8", errors="replace")
+            result.stderr = result.stderr.decode("utf-8", errors="replace")
             if result.stdout:
                 print(result.stdout, end="", flush=True)
             if result.stderr:

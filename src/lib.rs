@@ -4487,6 +4487,39 @@ pub async fn get_v2_filter_metadata_handler() -> impl IntoResponse {
     }, "spatial":{"bbox":["min_lon","min_lat","max_lon","max_lat"],"radius":["latitude","longitude","radius_km"]}, "search":{"parameter":"q","fields":["canonical_name","city","country_code","category","source_name"]}, "pagination":{"limit_max":1000,"cursor":"facility_id"}, "privacy":"Filters operate only on eligible records in the selected promoted release; filters never override suppression or publication review."})).into_response()
 }
 
+const PUBLIC_FACETS_CACHE_MAX_ENTRIES: usize = 8;
+#[derive(Default)]
+struct PublicFacetsCache {
+    entries: HashMap<String, (Arc<str>, u64)>,
+    clock: u64,
+}
+impl PublicFacetsCache {
+    fn get(&mut self, key: &str) -> Option<Arc<str>> {
+        self.clock = self.clock.wrapping_add(1);
+        let clock = self.clock;
+        self.entries.get_mut(key).map(|(body, used)| { *used = clock; body.clone() })
+    }
+    fn put(&mut self, key: String, body: Arc<str>) {
+        self.clock = self.clock.wrapping_add(1);
+        self.entries.insert(key, (body, self.clock));
+        if self.entries.len() > PUBLIC_FACETS_CACHE_MAX_ENTRIES {
+            if let Some(oldest) = self.entries.iter().min_by_key(|(_, (_, used))| *used).map(|(key, _)| key.clone()) {
+                self.entries.remove(&oldest);
+            }
+        }
+    }
+}
+static PUBLIC_FACETS_CACHE: Lazy<StdMutex<PublicFacetsCache>> = Lazy::new(|| StdMutex::new(PublicFacetsCache::default()));
+// Acquire before opening a transaction so cold waiters do not occupy pool slots.
+static PUBLIC_FACETS_BUILD_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
+fn public_facets_response(body: Arc<str>) -> Response<axum::body::Body> {
+    Response::builder()
+        .header(axum::http::header::CONTENT_TYPE, "application/json")
+        .header(axum::http::header::CACHE_CONTROL, "no-store")
+        .body(axum::body::Body::from(body.to_string()))
+        .expect("facet response is valid")
+}
+
 pub async fn get_v2_facets_handler(
     State(state): State<ApiState>,
     Query(params): Query<V2LocationParams>,
@@ -4537,6 +4570,8 @@ pub async fn get_v2_facets_handler(
             "V2 database is not configured",
         );
     };
+    let cacheable = params.facets_are_unfiltered();
+    let _build_guard = if cacheable { Some(PUBLIC_FACETS_BUILD_LOCK.lock().await) } else { None };
     let mut client = match pool.get().await {
         Ok(c) => c,
         Err(_) => {
@@ -4593,6 +4628,30 @@ pub async fn get_v2_facets_handler(
     } else {
         "uec.public_discovery_api_read_model"
     };
+    let cache_key = if cacheable {
+        let identity = match transaction.query_one(
+            "SELECT current_database(),inet_server_addr()::text,inet_server_port(),current_user,manifest.manifest_sha256,model.content_sha256,generation.generation FROM uec.release_manifests manifest JOIN uec.public_discovery_read_models model USING(release_id) CROSS JOIN uec.public_suppression_generation generation WHERE manifest.release_id=$1",
+            &[&release_id],
+        ).await {
+            Ok(row) => row,
+            Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "facets_identity_unavailable", "public facets unavailable"),
+        };
+        let key = format!("{:x}", Sha256::digest(canonical_json(&json!({
+            "database": identity.get::<_, String>(0), "server": identity.get::<_, Option<String>>(1),
+            "port": identity.get::<_, Option<i32>>(2), "role": identity.get::<_, String>(3),
+            "profile": profile, "release_id": release_id, "ruleset": ruleset_version,
+            "manifest": identity.get::<_, String>(4), "content": identity.get::<_, String>(5),
+            "suppression_generation": identity.get::<_, i64>(6)
+        })).as_bytes()));
+        let cached = PUBLIC_FACETS_CACHE.lock().expect("facet cache lock is not poisoned").get(&key);
+        if let Some(body) = cached {
+            if transaction.commit().await.is_err() {
+                return v2_error(StatusCode::SERVICE_UNAVAILABLE, "database_transaction_failed", "V2 database transaction failed");
+            }
+            return public_facets_response(body);
+        }
+        Some(key)
+    } else { None };
     let rows = match transaction.query(&format!("SELECT country_code, classification_category, display_precision, lifecycle_status, provenance_origin_type, city, count(*)::bigint, provenance_source_id, provenance_source_name FROM (SELECT DISTINCT ON (facility_id) facility_id, country_code, classification_category, display_precision, lifecycle_status, provenance_origin_type, city, provenance_source_id, provenance_source_name FROM {public_read_model} WHERE release_id=$1 AND ($2::text IS NULL OR country_code=$2) AND ($3::text IS NULL OR classification_category=$3) AND ($4::text IS NULL OR provenance_origin_type=$4) AND ($5::text IS NULL OR display_precision=$5) AND ($6::text IS NULL OR lifecycle_status=$6) AND ($7::text IS NULL OR city=$7) ORDER BY facility_id, observation_id) public_facilities GROUP BY country_code, classification_category, display_precision, lifecycle_status, provenance_origin_type, city, provenance_source_id, provenance_source_name"), &[&release_id, &params.country_code, &params.category, &params.source_type, &params.display_precision, &params.lifecycle_status, &params.region]).await { Ok(rows) => rows, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "facets_query_failed", "public facets unavailable") };
     let mut dimensions = serde_json::Map::new();
     for (name, column) in [
@@ -4639,10 +4698,14 @@ pub async fn get_v2_facets_handler(
             "V2 database transaction failed",
         );
     }
-    Json(json!({"api_version":"v2", "meta":{"profile":profile,"release_id":release_id,"ruleset_version":ruleset_version,"release_created_at":release_created_at,"coverage_scope":"selected_promoted_release_public_facilities","count_semantics":"Counts are eligible public facility projection rows after current suppression; they are not story-wide or animal counts.","filters":{"country_code":params.country_code,"region":params.region,"category":params.category,"source_type":params.source_type,"display_precision":params.display_precision,"lifecycle_status":params.lifecycle_status}}, "dimensions":dimensions})).into_response()
+    let body: Arc<str> = Arc::from(json!({"api_version":"v2", "meta":{"profile":profile,"release_id":release_id,"ruleset_version":ruleset_version,"release_created_at":release_created_at,"coverage_scope":"selected_promoted_release_public_facilities","count_semantics":"Counts are eligible public facility projection rows after current suppression; they are not story-wide or animal counts.","filters":{"country_code":params.country_code,"region":params.region,"category":params.category,"source_type":params.source_type,"display_precision":params.display_precision,"lifecycle_status":params.lifecycle_status}}, "dimensions":dimensions}).to_string());
+    if let Some(key) = cache_key {
+        PUBLIC_FACETS_CACHE.lock().expect("facet cache lock is not poisoned").put(key, body.clone());
+    }
+    public_facets_response(body)
 }
 
-#[derive(Deserialize)]
+#[derive(Default, Deserialize)]
 pub struct V2LocationParams {
     pub country_code: Option<String>,
     /// Comma-separated public provenance source IDs; OR within this dimension.
@@ -4668,6 +4731,16 @@ pub struct V2LocationParams {
     pub limit: Option<String>,
     pub offset: Option<String>,
     pub cursor: Option<String>,
+}
+
+impl V2LocationParams {
+    fn facets_are_unfiltered(&self) -> bool {
+        self.country_code.is_none() && self.source_id.is_none() && self.region.is_none()
+            && self.category.is_none() && self.category_keys.is_none() && self.source_type.is_none()
+            && self.display_precision.is_none() && self.lifecycle_status.is_none() && self.q.is_none()
+            && self.min_lon.is_none() && self.min_lat.is_none() && self.max_lon.is_none() && self.max_lat.is_none()
+            && self.radius_km.is_none() && self.latitude.is_none() && self.longitude.is_none()
+    }
 }
 
 /// Query shape for the authenticated, configured candidate release only.
@@ -4770,6 +4843,19 @@ fn v2_public_search_matches_cte(public_read_model: &str, search_parameter: &str)
               )
             )
         )"#)
+}
+
+/// Select radius candidates through the stored geography index, then let the
+/// caller recheck every candidate against the live public view and geometry.
+fn v2_public_radius_matches_cte(radius: &str, longitude: &str, latitude: &str, search: &str) -> String {
+    format!(r#"spatial_matches AS MATERIALIZED (
+        SELECT stored.facility_id, stored.observation_id
+        FROM uec.public_discovery_read_model_rows stored
+        WHERE stored.release_id = $1 AND {search}::text IS NULL
+          AND ST_DWithin(stored.display_location,
+              ST_SetSRID(ST_Point({longitude}, {latitude}),4326)::geography,
+              {radius}::double precision * 1000)
+    )"#)
 }
 
 pub async fn get_v2_locations_handler(
@@ -5122,9 +5208,13 @@ async fn get_v2_locations_response(
     let taxonomy_filters_requested = category_keys.is_some();
     let search_matches_cte = if search_text.is_some() {
         v2_public_search_matches_cte(public_read_model, "$8")
+    } else if radius_km.is_some() {
+        v2_public_radius_matches_cte("$13", "$14", "$15", "$8")
     } else {
         String::new()
     };
+    let indexed_matches = search_text.is_some() || radius_km.is_some();
+    let matches_relation = if search_text.is_some() { "search_matches" } else { "spatial_matches" };
     // Apply taxonomy before DISTINCT ON for a map mask, just as the taxonomy
     // list path does. Filtering only the chosen observation afterwards could
     // miss a facility whose other eligible observation matches the category.
@@ -5140,12 +5230,12 @@ async fn get_v2_locations_response(
     } else { "" };
     // Viewport boxes are planar longitude/latitude bounds. Casting a global
     // envelope to geography can be invalid or select the opposite hemisphere.
-    let ordinary_filtered_ctes = if search_text.is_some() {
+    let ordinary_filtered_ctes = if indexed_matches {
         format!(r#"
         {search_matches_cte}, filtered AS MATERIALIZED (
           SELECT DISTINCT ON (history.facility_id) history.facility_id, history.observation_id,
                  (history.display_location IS NOT NULL AND history.display_precision <> 'unmapped') AS mapped
-          FROM search_matches matches
+          FROM {matches_relation} matches
           JOIN LATERAL (
             SELECT candidate.facility_id, candidate.observation_id, candidate.provenance_source_id,
                    candidate.country_code, candidate.city, candidate.classification_category,
@@ -5251,7 +5341,7 @@ async fn get_v2_locations_response(
     // eligible-facility set used to choose the page below.
     let taxonomy_total_count: Option<i64> = if !taxonomy_filters_requested {
         None
-    } else if search_text.is_none() { match transaction.query_one(&format!(r#"
+    } else if !indexed_matches { match transaction.query_one(&format!(r#"
         SELECT count(DISTINCT history.facility_id)::bigint
         FROM {public_read_model} AS history
         WHERE history.release_id = $1
@@ -5274,7 +5364,7 @@ async fn get_v2_locations_response(
     }} else { match transaction.query_one(&format!(r#"
         WITH {search_matches_cte}
         SELECT count(DISTINCT history.facility_id)::bigint
-        FROM search_matches matches
+        FROM {matches_relation} matches
         JOIN LATERAL (
           SELECT candidate.facility_id, candidate.observation_id, candidate.provenance_source_id,
                  candidate.country_code, candidate.city, candidate.classification_category,
@@ -5307,12 +5397,14 @@ async fn get_v2_locations_response(
     }};
     let taxonomy_search_matches_cte = if search_text.is_some() {
         format!("WITH {}", v2_public_search_matches_cte(public_read_model, "$9"))
+    } else if radius_km.is_some() {
+        format!("WITH {}", v2_public_radius_matches_cte("$14", "$15", "$16", "$9"))
     } else {
         String::new()
     };
-    let taxonomy_search_from = if search_text.is_some() {
+    let taxonomy_search_from = if indexed_matches {
         format!(r#"
-        FROM search_matches matches
+        FROM {matches_relation} matches
         JOIN LATERAL (
           SELECT candidate.*
           FROM {public_read_model} AS candidate
@@ -5731,6 +5823,35 @@ mod v2_api_tests {
     };
     use tokio_postgres::NoTls;
     use tower::ServiceExt;
+
+    #[test]
+    fn facet_cache_only_accepts_unfiltered_requests() {
+        let defaults: V2LocationParams = serde_json::from_value(json!({
+            "release_id":"synthetic-release", "profile":"official"
+        })).unwrap();
+        assert!(defaults.facets_are_unfiltered());
+        for field in ["country_code", "source_id", "region", "category", "category_keys", "source_type",
+                      "display_precision", "lifecycle_status", "q", "min_lon", "min_lat", "max_lon",
+                      "max_lat", "radius_km", "latitude", "longitude"] {
+            let mut query = json!({"release_id":"synthetic-release", "profile":"official"});
+            query[field] = json!("synthetic-filter");
+            let filtered: V2LocationParams = serde_json::from_value(query).unwrap();
+            assert!(!filtered.facets_are_unfiltered(), "filtered dimension {field} cannot reuse global counts");
+        }
+    }
+
+    #[test]
+    fn facet_cache_is_bounded_and_keeps_recent_entries() {
+        let mut cache = PublicFacetsCache::default();
+        for index in 0..PUBLIC_FACETS_CACHE_MAX_ENTRIES {
+            cache.put(index.to_string(), Arc::from("synthetic body"));
+        }
+        assert!(cache.get("0").is_some());
+        cache.put("next".into(), Arc::from("next body"));
+        assert_eq!(cache.entries.len(), PUBLIC_FACETS_CACHE_MAX_ENTRIES);
+        assert!(cache.get("0").is_some());
+        assert!(cache.get("1").is_none());
+    }
 
     #[test]
     fn private_reference_lookup_accepts_provider_feed_keys_and_preserves_boundaries() {
@@ -6883,7 +7004,7 @@ mod v2_api_tests {
             .nth(1)
             .expect("public locations handler");
         let no_search_total = handler
-            .split("} else if search_text.is_none() { match transaction.query_one")
+            .split("} else if !indexed_matches { match transaction.query_one")
             .nth(1)
             .and_then(|rest| rest.split("} else { match transaction.query_one").next())
             .expect("taxonomy total without search");
@@ -6934,7 +7055,8 @@ mod v2_api_tests {
 
         assert!(handler.contains("if search_text.is_some()"));
         assert!(handler.contains("v2_public_search_matches_cte(public_read_model, \"$9\")"));
-        assert!(handler.contains("FROM search_matches matches"));
+        assert!(handler.contains("if search_text.is_some() { \"search_matches\" }"));
+        assert!(handler.contains("FROM {matches_relation} matches"));
         assert!(handler.contains("assignment.primary_key = ANY($16::text[])"));
         assert!(search_match_builder.contains("search_matches AS MATERIALIZED"));
         assert!(search_match_builder.contains("stored.public_search_text <> ''"));
