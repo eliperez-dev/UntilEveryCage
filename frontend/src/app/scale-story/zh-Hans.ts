@@ -1,7 +1,6 @@
 import type { StoryMessages } from './messages';
 
 export const chineseStoryMessages: StoryMessages = {
-  seeScale: '看看规模有多大',
   startWithOne: '先从一个生命开始。',
   oneAnimal: '一只动物。',
   alive: '活着。',
@@ -25,7 +24,6 @@ export const chineseStoryMessages: StoryMessages = {
   sinceOpened: "（打开页面以来）",
   killedSinceOpened: "只被杀死（打开页面以来）",
   fishSinceOpened: "条被捕捞或屠宰（打开页面以来）",
-  enablePhysics: "启用物理效果",
   living: '活着',
   caughtSlaughtered: '被捕捞 / 屠宰',
   staticView: '静态展示 · 减少动态效果',

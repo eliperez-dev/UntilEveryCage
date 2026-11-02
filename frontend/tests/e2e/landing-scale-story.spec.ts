@@ -29,26 +29,25 @@ test('since-open totals share document time across navigation and reset on refre
   await page.getByRole('link',{name:'Until Every Cage home',exact:true}).click();
   await expect(total('land')).toHaveAttribute('data-total','13895');
   await expect(total('fish')).toHaveAttribute('data-total','328355');
+  await expect(total('land')).toHaveText('≈ 13,895 killed since you opened this page');
+  await expect(total('fish')).toHaveText('≈ 328,355 caught or slaughtered since you opened this page');
   await page.reload();
   for(const population of ['human','chicken','land','fish']) await expect(total(population)).toHaveAttribute('data-total','0');
 });
 
-test('optional physics preserves complete emission and starts disabled after a fresh load', async ({page}) => {
+test('physics is the default outflow and preserves complete emission after reload', async ({page}) => {
   await page.setViewportSize({width:390,height:844}); await page.goto('./');
   for(const population of ['land','fish']) {
     const section=page.locator(`.throughput[data-population="${population}"]`),canvas=section.locator('canvas');
-    const checkbox=section.getByRole('checkbox',{name:'Enable physics',exact:true});
-    await expect(checkbox).not.toBeChecked();
-    await canvas.scrollIntoViewIfNeeded();await expect(canvas).toHaveAttribute('data-physics','disabled');
-    await checkbox.check();await canvas.scrollIntoViewIfNeeded();
+    await expect(section.getByRole('checkbox')).toHaveCount(0);
+    await canvas.scrollIntoViewIfNeeded();
     await expect(canvas).toHaveAttribute('data-physics','enabled');
     await expect.poll(()=>canvas.evaluate(node=>Number(node.dataset.physicsAlive))).toBeGreaterThan(0);
     await expect.poll(()=>canvas.evaluate(node=>Number(node.dataset.physicsEmitted)===Number(node.dataset.emitted))).toBe(true);
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
-    await checkbox.uncheck();await expect(canvas).toHaveAttribute('data-physics','disabled');
   }
   await page.reload();
-  for(const checkbox of await page.getByRole('checkbox',{name:'Enable physics',exact:true}).all()) await expect(checkbox).not.toBeChecked();
+  for(const canvas of await page.locator('.throughput canvas').all()) await expect(canvas).toHaveAttribute('data-physics','enabled');
 });
 
 function comparisonStatements(text: StoryMessages) {
@@ -61,8 +60,8 @@ test('direct dot comparison leads into both funnels while preserving the route, 
   await expect(page.getByRole('navigation', { name: 'Primary' }).getByRole('link')).toHaveText(['Map', 'Data', 'Contribute', 'About']);
   await expect(page.getByRole('button', { name: 'Find locations near me', exact: true })).toBeVisible();
   expect((await page.locator('.hero').boundingBox())!.height).toBeLessThan(600);
-  await page.getByRole('button', { name: 'See the scale', exact: true }).click(); expect(page.url()).toBe(route);
-  const story = page.locator('.scale-story'); await expect(story).toBeFocused();
+  await expect(page.getByRole('button', { name: 'See the scale', exact: true })).toHaveCount(0);
+  const story = page.locator('.scale-story'); await story.scrollIntoViewIfNeeded(); expect(page.url()).toBe(route);
   await expect(story.locator('.story-intro')).toHaveCount(0);
   await expect(story.locator('.line-chapter > h3')).toHaveText(englishStoryMessages.lineClaim);
   await expect(story.getByText(englishStoryMessages.humans, { exact: true })).toBeVisible();

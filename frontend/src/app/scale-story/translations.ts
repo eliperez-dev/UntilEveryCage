@@ -4,7 +4,6 @@ import { chineseStoryMessages } from './zh-Hans';
 export const storyTranslations: Record<'es' | 'fr' | 'de' | 'nl' | 'da' | 'zh-Hans', StoryMessages> = {
   'zh-Hans': chineseStoryMessages,
   es: {
-    seeScale: 'Ve la magnitud',
     startWithOne: 'Empieza por uno.',
     oneAnimal: 'Un animal.',
     alive: 'Vivo.',
@@ -28,7 +27,6 @@ export const storyTranslations: Record<'es' | 'fr' | 'de' | 'nl' | 'da' | 'zh-Ha
     sinceOpened: "desde que abriste esta página",
     killedSinceOpened: "sacrificados desde que abriste esta página",
     fishSinceOpened: "capturados o sacrificados desde que abriste esta página",
-    enablePhysics: "Activar física",
     living: 'Vivos',
     caughtSlaughtered: 'Capturados / sacrificados',
     staticView: 'Vista estática · movimiento reducido',
@@ -94,7 +92,6 @@ export const storyTranslations: Record<'es' | 'fr' | 'de' | 'nl' | 'da' | 'zh-Ha
     usdaSource: "USDA: Propuesta sobre la velocidad de las líneas de sacrificio avícola, 2026",
   },
   fr: {
-    seeScale: 'Voir l’ampleur',
     startWithOne: 'Commençons par un.',
     oneAnimal: 'Un animal.',
     alive: 'Vivant.',
@@ -118,7 +115,6 @@ export const storyTranslations: Record<'es' | 'fr' | 'de' | 'nl' | 'da' | 'zh-Ha
     sinceOpened: "depuis l’ouverture de cette page",
     killedSinceOpened: "tués depuis l’ouverture de cette page",
     fishSinceOpened: "pêchés ou abattus depuis l’ouverture de cette page",
-    enablePhysics: "Activer la physique",
     living: 'Vivants',
     caughtSlaughtered: 'Pêchés / abattus',
     staticView: 'Vue fixe · animations réduites',
@@ -184,7 +180,6 @@ export const storyTranslations: Record<'es' | 'fr' | 'de' | 'nl' | 'da' | 'zh-Ha
     usdaSource: "USDA : proposition sur la vitesse des chaînes d’abattage de volailles, 2026",
   },
   de: {
-    seeScale: 'Das Ausmaß sehen',
     startWithOne: 'Beginnen wir mit einem.',
     oneAnimal: 'Ein Tier.',
     alive: 'Lebendig.',
@@ -208,7 +203,6 @@ export const storyTranslations: Record<'es' | 'fr' | 'de' | 'nl' | 'da' | 'zh-Ha
     sinceOpened: "seit dem Öffnen dieser Seite",
     killedSinceOpened: "getötet seit dem Öffnen dieser Seite",
     fishSinceOpened: "gefangen oder geschlachtet seit dem Öffnen dieser Seite",
-    enablePhysics: "Physik aktivieren",
     living: 'Lebend',
     caughtSlaughtered: 'Gefangen / geschlachtet',
     staticView: 'Statische Ansicht · reduzierte Bewegung',
@@ -274,7 +268,6 @@ export const storyTranslations: Record<'es' | 'fr' | 'de' | 'nl' | 'da' | 'zh-Ha
     usdaSource: "USDA: Vorschlag zur Geschwindigkeit von Geflügelschlachtlinien, 2026",
   },
   nl: {
-    seeScale: 'Zie de omvang',
     startWithOne: 'Begin met één.',
     oneAnimal: 'Eén dier.',
     alive: 'Levend.',
@@ -298,7 +291,6 @@ export const storyTranslations: Record<'es' | 'fr' | 'de' | 'nl' | 'da' | 'zh-Ha
     sinceOpened: "sinds je deze pagina opende",
     killedSinceOpened: "gedood sinds je deze pagina opende",
     fishSinceOpened: "gevangen of geslacht sinds je deze pagina opende",
-    enablePhysics: "Fysica inschakelen",
     living: 'Levend',
     caughtSlaughtered: 'Gevangen / geslacht',
     staticView: 'Statische weergave · minder beweging',
@@ -364,7 +356,6 @@ export const storyTranslations: Record<'es' | 'fr' | 'de' | 'nl' | 'da' | 'zh-Ha
     usdaSource: "USDA: Voorstel over de snelheid van pluimveeslachtlijnen, 2026",
   },
   da: {
-    seeScale: 'Se omfanget',
     startWithOne: 'Begynd med ét.',
     oneAnimal: 'Ét dyr.',
     alive: 'Levende.',
@@ -388,7 +379,6 @@ export const storyTranslations: Record<'es' | 'fr' | 'de' | 'nl' | 'da' | 'zh-Ha
     sinceOpened: "siden du åbnede denne side",
     killedSinceOpened: "dræbt siden du åbnede denne side",
     fishSinceOpened: "fanget eller slagtet siden du åbnede denne side",
-    enablePhysics: "Aktivér fysik",
     living: 'Levende',
     caughtSlaughtered: 'Fanget / slagtet',
     staticView: 'Statisk visning · reduceret bevægelse',
