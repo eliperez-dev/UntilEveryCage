@@ -7,7 +7,7 @@ function gate() {
 }
 async function install(page: Page) {
   const releaseId = 'synthetic-landing-cache';
-  const state = { generation: 1, status: 200, manifestGate: null as ReturnType<typeof gate> | null,
+  const state = { generation: 1, status: 200, completeCountries: false, countryRequests: 0, manifestGate: null as ReturnType<typeof gate> | null,
     facetsGate: null as ReturnType<typeof gate> | null, countryGate: null as ReturnType<typeof gate> | null, requests: [] as string[] };
   await page.route('https://**/*', route => route.abort());
   await page.route('**/api/v2/**', async route => {
@@ -21,13 +21,14 @@ async function install(page: Page) {
     }
     if (url.pathname === '/api/v2/discovery/facets') {
       expect(url.searchParams.get('release_id')).toBe(releaseId);
-      if (precision) await state.countryGate?.promise; else await state.facetsGate?.promise;
+      if (precision) { state.countryRequests++; await state.countryGate?.promise; } else await state.facetsGate?.promise;
       const dimensions = precision ? {
         display_precision: [{ value: precision, count: precision === 'source_reported' ? 5 : 2 }],
         country_code: precision === 'source_reported' ? [{ value: 'DK', count: 4 }, { value: 'US', count: 1 }] : [{ value: 'DK', count: 2 }],
       } : {
         display_precision: [{ value: 'source_reported', count: 5 }, { value: 'approximate', count: 2 }, { value: 'city', count: 3 }, { value: 'unmapped', count: 1 }],
         source_id: [{ value: 'synthetic-a', count: 7 }, { value: 'synthetic-b', count: 4 }],
+        ...(state.completeCountries ? {mapped_country_code:[{value:'DK',count:6},{value:'US',count:1}]} : {}),
       };
       return route.fulfill({ json: { api_version: 'v2', meta: { profile: 'official', release_id: releaseId, ruleset_version: 'synthetic-rules',
         release_created_at: '2026-01-01T00:00:00Z', coverage_scope: 'Synthetic public aggregate', count_semantics: 'Synthetic records',
@@ -39,6 +40,19 @@ async function install(page: Page) {
 }
 const stored = (page: Page) => page.evaluate(key => localStorage.getItem(key), LANDING_SUMMARY_CACHE_KEY);
 const facetsRequests = (state: Awaited<ReturnType<typeof install>>) => state.requests.filter(path => path.endsWith('/facets')).length;
+
+test('cold landing gets every total from the cached global snapshot without waiting on precision queries', async ({page}) => {
+  await page.setViewportSize({width:390,height:844});
+  const state=await install(page);state.completeCountries=true;state.countryGate=gate();
+  try {
+    await page.goto('./');
+    await expect(page.locator('.release-totals dd')).toHaveText(['11','7','2','2']);
+    expect(facetsRequests(state)).toBe(1);expect(state.countryRequests).toBe(0);
+    await expect.poll(()=>stored(page)).not.toBeNull();
+    expect(state.requests.filter(path=>path.endsWith('/manifest'))).toHaveLength(2);
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  } finally {state.countryGate.release();}
+});
 
 test('landing persists complete aggregates across reload, checks eligibility before paint and skips warm facets', async ({ page }) => {
   const state = await install(page); state.countryGate = gate();

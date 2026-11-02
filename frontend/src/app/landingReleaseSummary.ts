@@ -7,7 +7,7 @@ export type LandingReleaseSummary = Readonly<{ releaseId: string; records: numbe
 const precisions = new Set(['exact', 'source_reported', 'approximate', 'city', 'coarse', 'unmapped']);
 const mappedPrecisions = new Set(['exact', 'source_reported', 'approximate']);
 
-/** Precision is a complete, mutually exclusive dimension. Country facets are capped;
+/** Precision is a complete, mutually exclusive dimension. Ordinary country facets are capped;
  * legacy category facets are not the public taxonomy and cannot supply these totals. */
 export function landingReleaseSummary(facets: FacetResponse): LandingReleaseSummary {
   const locations = facets.dimensions.display_precision;
@@ -18,9 +18,17 @@ export function landingReleaseSummary(facets: FacetResponse): LandingReleaseSumm
   const records = locations.reduce((sum, facet) => sum + facet.count, 0);
   const sourceRecords = sources.reduce((sum, facet) => sum + facet.count, 0);
   if (!Number.isSafeInteger(records) || records !== sourceRecords) throw new Error('Inconsistent release totals');
-  return { releaseId: facets.releaseId, records,
-    mapped: locations.filter(facet => mappedPrecisions.has(facet.value)).reduce((sum, facet) => sum + facet.count, 0),
-    sources: sources.filter(facet => facet.count > 0).length, countries: null };
+  const mapped = locations.filter(facet => mappedPrecisions.has(facet.value)).reduce((sum, facet) => sum + facet.count, 0);
+  // This dimension uses the same selected facility rows as the precision total.
+  // Never substitute the overall country dimension, which includes unmapped rows.
+  const countries = facets.dimensions.mapped_country_code;
+  const completeCountries = countries !== undefined
+    && countries.every(facet => /^[A-Z]{2}$/.test(facet.value) && Number.isSafeInteger(facet.count) && facet.count >= 0)
+    && new Set(countries.map(facet => facet.value)).size === countries.length
+    && countries.reduce((sum, facet) => sum + facet.count, 0) === mapped;
+  return { releaseId: facets.releaseId, records, mapped,
+    sources: sources.filter(facet => facet.count > 0).length,
+    countries: completeCountries ? countries!.filter(facet => facet.count > 0).length : null };
 }
 
 /** Country facets are capped. A count is usable only when every mapped precision
@@ -44,7 +52,8 @@ export function mappedCountryCount(facets: FacetResponse, mapped: readonly Facet
   return countries.size;
 }
 
-/** Publish the main totals after their identity check; country partitions finish independently.
+/** Complete mapped-country facets avoid additional scans. Older APIs publish the
+ * main totals after their identity check while country partitions finish independently.
  * Both publications are checked against the same release and current restrictions. */
 export async function loadLandingReleaseSummary(
   signal: AbortSignal, releaseId?: string, fetcher: typeof fetch = globalThis.fetch,
@@ -78,6 +87,12 @@ export async function loadLandingReleaseSummary(
       if (!checked || checked.releaseId !== identity.releaseId || checked.manifestSha256 !== identity.manifestSha256
         || checked.suppressionGeneration !== identity.suppressionGeneration) throw new Error('Release totals changed');
     };
+    if (facets.dimensions.mapped_country_code !== undefined) {
+      await checkIdentity();
+      signal.throwIfAborted();
+      writeLandingSummaryCache(storage, identity, summary, now());
+      return summary;
+    }
     if (onTotals) {
       // Validate before starting the heavier country queries: on a busy service
       // those queries can otherwise delay this small identity check as well.
