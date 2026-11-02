@@ -50,8 +50,10 @@ API schemas own supported fields. They are not additional roadmaps.
   Keep the photo hero compact and content-sized, with shorter copy padding and
   section gaps throughout the landing. All actions remain visible with 44px
   targets; long translations grow naturally without clipping.
-  `See the scale` scrolls to the integrated outreach story without replacing the
-  hash route or release context. Above the first two labelled columns, the claim
+  The hero keeps only the map and nearby actions; there is no `See the scale`
+  button. Story and release statistics use spacing rather than repeated horizontal
+  separators; retain the source disclosure boundary and the comparison's labelled
+  outcome lines. Above the first two labelled columns, the claim
   reads: `One U.S. chicken slaughter line can kill more birds per second than people
   die worldwide from all causes.` It is localized across all seven story languages.
   There is no additional introductory paragraph. Modest comparison
@@ -74,15 +76,16 @@ API schemas own supported fields. They are not additional roadmaps.
   fish-specific shrinkage or giant rate/tiny-unit pairing;
   do not duplicate each rate in a second headline or introductory stage.
   Small approximate since-open totals accompany the human/chicken lanes and
-  both funnels. They use the existing dated rates and one document clock,
+  both funnels. Show full locale-formatted integers, without compact K/M
+  abbreviations. They use the existing dated rates and one document clock,
   update at 30 Hz (1 Hz with reduced motion), retain elapsed time across SPA
   navigation, and reset on document refresh. Hidden tabs stop rendering updates
   and catch up on return. These estimates do not use the animation's active clock
   or combine the separately dated land/fish populations.
-  Each funnel has an `Enable physics` checkbox, off on a fresh mount. The optional
+  Both funnels always use particle physics, without a public toggle. The
   red outflow uses seeded trajectories, gravity, drag and bounded local pressure/
   velocity interactions, preserving every crossing identity at the full rate.
-  The white source and default fan-out remain unchanged. This is visual particle
+  The white source remains unchanged. This is visual particle
   physics, with bounded recent-state reconstruction on seeks and resize.
   Each visible animation uses active time: hidden tabs and offscreen sections do
   not accumulate animation time. Reduced

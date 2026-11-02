@@ -2,7 +2,6 @@ import type { Language } from '../language';
 import { storyTranslations } from './translations';
 
 export const englishStoryMessages = {
-  seeScale: 'See the scale',
   startWithOne: 'Start with one.',
   oneAnimal: 'One animal.',
   alive: 'Alive.',
@@ -26,7 +25,6 @@ export const englishStoryMessages = {
   sinceOpened: "since you opened this page",
   killedSinceOpened: "killed since you opened this page",
   fishSinceOpened: "caught or slaughtered since you opened this page",
-  enablePhysics: "Enable physics",
   living: 'Living',
   caughtSlaughtered: 'Caught / slaughtered',
   staticView: 'Static view · reduced motion',

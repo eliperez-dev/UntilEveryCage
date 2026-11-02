@@ -7,13 +7,10 @@
   import { ActiveStoryClock, funnelLayout, funnelParticles, STORY_RATES, type FunnelLayout, type StoryPopulation } from './engine';
   let { population, mapHref }: { population: StoryPopulation; mapHref: string } = $props();
   const text = $derived(storyMessages($language));
-  const counterFormat = $derived(new Intl.NumberFormat($language, { notation: 'compact', maximumFractionDigits: 1 }));
+  const counterFormat = $derived(new Intl.NumberFormat($language, { maximumFractionDigits: 0 }));
   const sinceOpenTotal = $derived(estimateSinceDocumentOpen(STORY_RATES[population], $documentElapsedMilliseconds));
   let reduced = $state(true);
-  let physicsEnabled = $state(false);
   let canvas: HTMLCanvasElement;
-  let redraw: (() => void) | null = null;
-  function changePhysics(event: Event) { physicsEnabled = (event.currentTarget as HTMLInputElement).checked; redraw?.(); }
 
   onMount(() => {
     const context = canvas.getContext('2d'); if (!context) return;
@@ -23,7 +20,7 @@
     let frame = 0, disposed = false, lastDiagnostic = 0;
     let pixelImage: ImageData | null = null, pixels: Uint32Array | null = null;
     let physics: ReturnType<typeof createFunnelOutflowPhysics> | null = null;
-    let usingPhysics = false, lastPhysicsSeconds = -Infinity;
+    let lastPhysicsSeconds = -Infinity;
     let layout: FunnelLayout = funnelLayout(STORY_RATES[population], width, height);
     const visit = (_id: number, x: number, y: number, dead: boolean) => {
       const buffer = dead ? reds : whites, index = dead ? redCount++ : whiteCount++;
@@ -49,17 +46,12 @@
       if (disposed) return;
       context!.clearRect(0, 0, width, height); whiteCount = 0; redCount = 0;
       const seconds = reduced ? 1.68 : clock.elapsed;
-      if (physicsEnabled) {
-        physics ??= createFunnelOutflowPhysics(STORY_RATES[population]);
-        if (!usingPhysics || seconds < lastPhysicsSeconds) physics.reset();
-        physics.advance(seconds, layout);
-        funnelParticles(seconds, STORY_RATES[population], width, height, visitWhite, layout);
-        physics.visit(visit);
-        lastPhysicsSeconds = seconds;
-      } else {
-        funnelParticles(seconds, STORY_RATES[population], width, height, visit, layout);
-      }
-      usingPhysics = physicsEnabled;
+      physics ??= createFunnelOutflowPhysics(STORY_RATES[population]);
+      if (seconds < lastPhysicsSeconds) physics.reset();
+      physics.advance(seconds, layout);
+      funnelParticles(seconds, STORY_RATES[population], width, height, visitWhite, layout);
+      physics.visit(visit);
+      lastPhysicsSeconds = seconds;
       if (population === 'fish' && pixelImage && pixels) {
         pixels.fill(0); pixelDots(whites, whiteCount, 0xffe8f0f2); pixelDots(reds, redCount, 0xff4947d7); context!.putImageData(pixelImage, 0, 0);
       } else { circles(whites, whiteCount, '#f2f0e8'); circles(reds, redCount, '#d74749'); }
@@ -89,8 +81,8 @@
       canvas.dataset.emitted = String(clock.emitted(STORY_RATES[population]));
       canvas.dataset.points = String(whiteCount + redCount);
       canvas.dataset.columns = String(layout.columns);
-      canvas.dataset.physics = physicsEnabled ? 'enabled' : 'disabled';
-      if (physicsEnabled && physics) {
+      canvas.dataset.physics = 'enabled';
+      if (physics) {
         const stats = physics.stats();
         canvas.dataset.physicsEmitted = String(stats.emitted);
         canvas.dataset.physicsAlive = String(stats.alive);
@@ -110,8 +102,8 @@
     const observer = new IntersectionObserver(entries => { visible = entries[0]?.isIntersecting ?? false; sync(); });
     const resizeObserver = new ResizeObserver(resize);
     observer.observe(canvas); resizeObserver.observe(canvas); preference.addEventListener('change', preferenceChanged); document.addEventListener('visibilitychange', sync);
-    redraw = () => { render(); publish(); }; resize(); preferenceChanged();
-    return () => { disposed = true; redraw = null; cancelAnimationFrame(frame); observer.disconnect(); resizeObserver.disconnect(); preference.removeEventListener('change', preferenceChanged); document.removeEventListener('visibilitychange', sync); clock.setRunning(false, performance.now()); canvas.width = 1; canvas.height = 1; pixelImage = null; pixels = null; };
+    resize(); preferenceChanged();
+    return () => { disposed = true; cancelAnimationFrame(frame); observer.disconnect(); resizeObserver.disconnect(); preference.removeEventListener('change', preferenceChanged); document.removeEventListener('visibilitychange', sync); clock.setRunning(false, performance.now()); canvas.width = 1; canvas.height = 1; pixelImage = null; pixels = null; };
   });
 </script>
 
@@ -121,15 +113,13 @@
   <p class="unit">{population === 'land' ? text.oneDotAnimal : text.oneDotFish}</p>
   <div class="canvas-wrap" data-mode="funnel" role="img" aria-label={population === 'land' ? text.landCanvas : text.fishCanvas}><canvas bind:this={canvas} aria-hidden="true"></canvas></div>
   <div class="controls">
-    <label class="physics-toggle"><input type="checkbox" checked={physicsEnabled} onchange={changePhysics} />{text.enablePhysics}</label>
     {#if reduced}<span class="static-label">{text.staticView}</span>{/if}
     <a class="map-link" href={mapHref}>{text.openMap}<span aria-hidden="true">↗</span></a>
   </div>
 </div>
 
 <style>
-  .physics-toggle{display:inline-flex;align-items:center;gap:8px;min-height:44px;cursor:pointer}.physics-toggle input{width:15px;height:15px;margin:0;accent-color:var(--story-ink)}.physics-toggle input:focus-visible{outline:2px solid #d74749;outline-offset:3px}
-  .since-open{margin:8px 0 0;font-size:12px;line-height:1.5;color:var(--story-muted);font-variant-numeric:tabular-nums}
-  .throughput{margin-top:20px}.rate-row{border-top:1px solid var(--story-line);padding-top:16px}.rate{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 20px;font:400 48px/1.15 Georgia,serif;letter-spacing:-.025em;margin:0}.rate span{font:20px/1.5 system-ui,sans-serif;letter-spacing:0}.date,.flow-caption{font-size:12px;color:var(--story-muted);line-height:1.6;margin:10px 0 14px}.flow-caption{margin-top:-4px}.canvas-wrap{height:500px;background:#141414;overflow:hidden}canvas{display:block;width:100%;height:100%}.controls{display:flex;align-items:center;flex-wrap:wrap;gap:6px 23px;border-bottom:1px solid var(--story-line);padding:6px 0;font-size:12px}.unit{margin:0 0 8px;color:var(--story-muted);font-size:12px;line-height:1.5}a{font:inherit;color:inherit}.map-link{display:inline-flex;align-items:center;gap:22px;min-height:44px;margin-left:auto;border-bottom:1px solid var(--story-muted);text-decoration:none}.map-link:hover{text-decoration:underline}.static-label{color:var(--story-muted)}a:focus-visible{outline:2px solid #d74749;outline-offset:3px}
+  .since-open{margin:8px 0 0;font-size:12px;line-height:1.5;color:var(--story-muted);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+  .throughput{margin-top:20px}.rate-row{padding-top:16px}.rate{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 20px;font:400 48px/1.15 Georgia,serif;letter-spacing:-.025em;margin:0}.rate span{font:20px/1.5 system-ui,sans-serif;letter-spacing:0}.date,.flow-caption{font-size:12px;color:var(--story-muted);line-height:1.6;margin:10px 0 14px}.flow-caption{margin-top:-4px}.canvas-wrap{height:500px;background:#141414;overflow:hidden}canvas{display:block;width:100%;height:100%}.controls{display:flex;align-items:center;flex-wrap:wrap;gap:6px 23px;padding:6px 0;font-size:12px}.unit{margin:0 0 8px;color:var(--story-muted);font-size:12px;line-height:1.5}a{font:inherit;color:inherit}.map-link{display:inline-flex;align-items:center;gap:22px;min-height:44px;margin-left:auto;border-bottom:1px solid var(--story-muted);text-decoration:none}.map-link:hover{text-decoration:underline}.static-label{color:var(--story-muted)}a:focus-visible{outline:2px solid #d74749;outline-offset:3px}
   @media(max-width:700px){.throughput{margin-top:18px}.rate{font-size:32px;gap:6px 16px}.rate span{font-size:16px;flex-basis:100%}.date{max-width:34ch}.canvas-wrap{height:430px}.controls{gap:3px 15px}.map-link{gap:10px}.static-label{font-size:11px}.controls>.static-label{max-width:110px}}
 </style>
