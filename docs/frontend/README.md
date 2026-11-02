@@ -116,18 +116,24 @@ API schemas own supported fields. They are not additional roadmaps.
   search summaries explicitly count matching/loaded records rather than animals.
   Distinguish unavailable totals from zero; do not add animal-death or
   other unsupported estimates to this section.
-  Check the manifest before requesting live aggregates. Publish records,
-  mapped locations and sources after their release/restriction identity check;
-  countries finish separately. Recheck identity after the country queries and
-  discard the summary on a mismatch. Do not reuse unchecked totals from storage.
+  Check the manifest before requesting live aggregates. The cached global facets
+  include exhaustive `mapped_country_code` counts from the same selected facility
+  rows as the precision totals. Validate unique country codes and that their counts
+  sum to the mapped total, then publish all four statistics after the closing
+  release/restriction identity check. No separate precision queries run on this path.
+  Older APIs without that dimension retain the partition fallback: publish base
+  totals first, finish countries separately and recheck identity after those queries.
+  A present but inconsistent country dimension leaves countries unavailable without
+  extra scans. Discard the summary on an identity mismatch. Do not reuse unchecked totals from storage.
   One aggregate-only localStorage entry (at most 2 KiB, 24-hour lifetime) may
   reuse complete checked totals after a fresh no-store manifest confirms the
   same official profile, release, manifest hash and restriction generation.
   Never display it offline or before validation. Identity changes, unavailable
   releases, errors and invalid entries clear it; blocked storage falls back to
   live aggregates. Cache hits skip the heavier facet/country queries.
-  Countries mapped is the union of countries in source-reported, approximate and
-  exact precision partitions. Each release/ruleset-bound country facet must sum
+  Countries mapped counts countries represented by source-reported, approximate and
+  exact locations, excluding unmapped-only countries. In the older-API fallback,
+  each release/ruleset-bound country facet must sum
   to that precision's complete count; truncated, duplicate, invalid or failed
   partitions make this stat unavailable without removing other totals. Never
   count unmapped-only countries or fetch the full map or records for these stats.

@@ -34,6 +34,50 @@ describe('landing release aggregates', () => {
   it('rejects missing, duplicate, inconsistent and unknown dimensions rather than making up totals', () => {
     for (const value of [ {}, { ...dimensions, source_id: [] }, { ...dimensions, display_precision: [...dimensions.display_precision, dimensions.display_precision[0]!] }, { ...dimensions, display_precision: [{ value: 'unsupported', count: 11 }] }, { ...dimensions, source_id: [{ value: 'same', count: 5 }, { value: 'same', count: 6 }] } ]) expect(() => landingReleaseSummary(facets(value))).toThrow();
   });
+  it('uses exhaustive mapped countries from the same snapshot without counting unmapped-only countries', () => {
+    expect(landingReleaseSummary(facets({ ...dimensions,
+      country_code: [{value:'DK',count:6},{value:'US',count:1},{value:'FR',count:4}],
+      mapped_country_code: [{value:'DK',count:6},{value:'US',count:1}],
+    }))).toMatchObject({records:11,mapped:7,countries:2});
+    expect(landingReleaseSummary(facets({display_precision:[],source_id:[],mapped_country_code:[]}))).toMatchObject({records:0,mapped:0,countries:0});
+  });
+  it('does not invent a country count from truncated, duplicate, invalid or inconsistent mapped facets', () => {
+    for(const rows of [[], [{value:'DK',count:6}], [{value:'DK',count:3},{value:'DK',count:4}],
+      [{value:'unknown',count:7}], [{value:'DK',count:-1},{value:'US',count:8}],
+      [{value:'DK',count:Number.MAX_SAFE_INTEGER + 1}], [{value:'DK',count:7.5}],
+    ]) expect(landingReleaseSummary(facets({...dimensions,mapped_country_code:rows}))).toMatchObject({records:11,mapped:7,countries:null});
+  });
+  it('finishes all four totals with one facet request and a closing identity check', async () => {
+    const closing = deferred<Response>(); let checks=0;
+    const fetcher=aggregateFetcher(url => url.pathname.endsWith('/manifest')
+      ? (++checks===2 ? closing.promise : Promise.resolve(response(manifest())))
+      : Promise.resolve(response({...wireFacets,dimensions:{...dimensions,mapped_country_code:[{value:'DK',count:6},{value:'US',count:1}]}})));
+    const progress=vi.fn();
+    const loading=loadLandingReleaseSummary(signal(),undefined,fetcher,progress);
+    await vi.waitFor(()=>expect(checks).toBe(2));
+    expect(progress).not.toHaveBeenCalled();
+    expect(localStorage.getItem(LANDING_SUMMARY_CACHE_KEY)).toBeNull();
+    closing.resolve(response(manifest()));
+    await expect(loading).resolves.toEqual({releaseId:'synthetic-release',records:11,mapped:7,sources:2,countries:2});
+    expect(fetcher.mock.calls).toHaveLength(3);
+    expect(fetcher.mock.calls.some(([input])=>new URL(String(input),'https://example.test').searchParams.has('display_precision'))).toBe(false);
+    expect(JSON.parse(localStorage.getItem(LANDING_SUMMARY_CACHE_KEY)!)).toMatchObject({summary:{countries:2}});
+  });
+  it('rejects changed restrictions on the complete-facet path before storing totals', async () => {
+    let checks=0;
+    const fetcher=aggregateFetcher(url=>url.pathname.endsWith('/manifest')
+      ? Promise.resolve(response(manifest(++checks===2?2:1)))
+      : Promise.resolve(response({...wireFacets,dimensions:{...dimensions,mapped_country_code:[{value:'DK',count:7}]}})));
+    await expect(loadLandingReleaseSummary(signal(),undefined,fetcher)).rejects.toThrow('Release totals changed');
+    expect(localStorage.getItem(LANDING_SUMMARY_CACHE_KEY)).toBeNull();
+  });
+  it('keeps valid base totals without retrying slow partitions when mapped country facets are incomplete', async () => {
+    const fetcher=aggregateFetcher(url=>url.pathname.endsWith('/facets')
+      ? Promise.resolve(response({...wireFacets,dimensions:{...dimensions,mapped_country_code:[{value:'DK',count:1}]}})):undefined);
+    await expect(loadLandingReleaseSummary(signal(),undefined,fetcher)).resolves.toMatchObject({records:11,mapped:7,sources:2,countries:null});
+    expect(fetcher.mock.calls).toHaveLength(3);
+    expect(localStorage.getItem(LANDING_SUMMARY_CACHE_KEY)).toBeNull();
+  });
   it('pins release and revalidates current restriction identity around facets without loading map points', async () => {
     const fetcher = vi.fn().mockResolvedValueOnce(response(manifest())).mockResolvedValueOnce(response(wireFacets)).mockResolvedValueOnce(response(wireMapped('source_reported',5,sourceCountries))).mockResolvedValueOnce(response(wireMapped('approximate',2,approximateCountries))).mockResolvedValueOnce(response(manifest()));
     const signal = new AbortController().signal;
