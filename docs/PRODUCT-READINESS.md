@@ -2,218 +2,86 @@
 
 **Canonical authority:** this document is the sole product-level readiness and overall V2 roadmap authority.
 
-**Owner:** project maintainer. **Updated:** 2026-10-30, Pacific.
-This is the only product roadmap. Source readiness belongs in
-[source-status.json](source-status.json); current frontend instructions belong
-in [frontend/README.md](frontend/README.md). [ETHICS.md](ETHICS.md) governs data work.
+**Owner:** project maintainer. **Updated:** 2026-11-01, Pacific.
+Source readiness belongs in [source-status.json](source-status.json), frontend
+behavior in [the frontend guide](frontend/README.md), and data policy in
+[ETHICS.md](ETHICS.md). Update these owners rather than adding sprint reports.
 
-V2 is the product. Application version `2.0.0` comes from the Rust crate.
-Datasets use release dates, not application versions. Earlier v0/v1 names refer
-to datasets; legacy V1 refers to the original website.
+V2 is the product. Its `2.0.0` version comes from the Rust crate. Datasets use
+release dates. The original website has not been replaced and its domain has
+not been changed.
 
-## Current state
+## Live deployment
 
-The product is running at <https://untileverycage.onrender.com/>.
-The original website has not been replaced. Existing dataset approvals are
-complete; do not request another generic approval stamp.
+The integrated application is live at <https://untileverycage.onrender.com/>.
+The current dataset is **October 31, 2026**, `release-2026-10-31`.
 
-The backend country release remains local and held. Spanish town recovery,
-retained-response matching repairs and the corrected numbered-address batches
-have passed local checks. Remaining address formats need further work; the
-country first pass is not complete. Addresses explicitly lacking a street
-number remain approximate where possible and stay unattempted in the queue.
-Current counts and evidence belong in [the source inventory](source-status.json).
-This work has not changed the hosted dataset or frontend.
-
-| Area | Last verified state |
+| Area | Verified state |
 | --- | --- |
-| Current dataset | `release-2026-10-18`: 69,220 records, 53,107 mapped, 16,113 unmapped, 14 sources |
-| Historical v0 | Still accessible; current restrictions leave 63,421 records and 48,576 mapped locations |
-| Map and database | Clustering, category PNG pins, approximate locations, search/filters, full facility pages, CSV and paginated API |
-| Map views | Street/Satellite and native 2D/3D terrain; camera and release context survive navigation |
-| Public graph | Selected serving projection has 60,263 connections: 23,874 exact and 36,389 inferred; 1,420 cross-source edges across 14 endpoint sources |
-| Real graph check | Known FSIS/Tyson case returns 38 distinct neighbors; bounded hosted API acceptance passed, not a complete graph crawl |
-| Contributions | Five record-contribution forms and separate bug-report intake implemented; final operating/retention handoff remains part of cutover |
-| Frontend repair | Requested navigation, concise copy, About counter, control alignment, full-record links and empty Connections state deployed |
-| Languages and themes | English/Spanish primary UI and persistent light/dark preferences implemented; some secondary community/operator and generated API text remains English |
-| Cluster persistence | Implemented in the reviewed integration: identity-bound worker-index reuse, bounded tile caching and local world baselines; hosted verification belongs to the integration receipt below |
+| Dataset | 149,091 records; 116,840 mapped and 32,251 unmapped; 22 facility sources across 33 countries, with points in 32 |
+| Graph | 83,067 connections: 23,874 exact and 59,193 inferred; 1,024 APHIS evidence references |
+| Historical dataset | October 18 remains accessible, including all 69,526 original graph edges |
+| V0 | Retired from production at the maintainer's request; seven old projection copies removed, reclaiming 521,412,608 bytes. The local development baseline and source evidence remain |
+| Application | `52d0e4742b820e497cc11eb87f99e42b65836244` on `eli/v2`; reviewed frontend checkpoint `075e6026` is included |
+| CI | All seven jobs passed in [run 41261561005](https://github.com/eliperez-dev/UntilEveryCage/actions/runs/41261561005) |
+| Render | Deployment `dep-dbk22jijnfac739c80mg`, serving database `uec_serving_country_20261031`; Auto-Deploy remains off |
+| Contributions | Existing intake and bug-report capabilities remain enabled; community data was not moved or modified |
 
-The table describes integrated product behavior. Hosting uses the existing
-Render service and manual deployment from `eli/v2` after CI. The latest UI
-consistency and source-readiness work does not change dataset membership, the serving
-database or the domain. Exact CI/deployment identifiers and hosted acceptance
-are recorded with the aggregate acceptance receipt below.
+The country first pass is complete. Germany, national Spain, Catalonia, France,
+Mexico, the UK, New Zealand, EEA livestock, Norway aquaculture and Poland GIW
+are included. Unresolved geocoding attempts remain recorded for a later pass.
+Do not restart failure retries or source expansion as part of this closeout.
+Detailed source coverage, precision and remaining source work belong in the
+source inventory. Source rows are not a globally deduplicated premises census.
 
-Aggregate acceptance is retained locally in ignored
-`data/staging/launch-fidelity-20261024/acceptance.json`.
-The current UI/source acceptance is retained in ignored
-`data/staging/launch-ui-source-readiness-20261025/acceptance.json`.
-The subsequent country/compact-UI integration, CI and hosted verification are
-recorded in ignored `data/staging/launch-country-polish-20261025/acceptance.json`;
-read its actual CI/deploy state rather than assuming local verification is hosted.
-The consolidated frontend, contribution redesign and persistent-map integration
-uses ignored `data/staging/frontend-render-integration-20261026/acceptance.json`.
-The encrypted inbox remains development-only; production activation and email
-are not part of that deployment. Dataset membership and database controls are unchanged.
-The source inventory owns graph package/runtime details and source-specific evidence.
+## Acceptance
 
-The reviewed frontend delivery is merged with the country-release backend
-checkpoint. It includes the mobile workspace, additional languages, map tools,
-area search, raster handoff and cold-navigation fixes. Application revision
-`b43c96ec` passed all seven jobs in required CI run `40585848047` and is live on
-Render as deployment `dep-dbgho5bl550s738e4beg`. Bounded hosted checks passed
-for current and historical manifests, lists, maps, facility detail, exact and
-inferred connections, and contribution capabilities. The hosted dataset and
-serving database are unchanged. Exact revisions, results and hosted UI review
-are retained in ignored `data/staging/app-review-20261027/acceptance.json`.
+- 129 local real-data API checks and 132 production-mode checks against the
+  isolated Render copy passed. They cover source lists/search/detail, complete
+  map membership, country facets, graph samples and retained history.
+- Four real APHIS cases returned pre-2025 links: 21 annual-report links and
+  38 inspection links in the samples. This is sample coverage, not an archive audit.
+- 22 read-only requests passed at the public Render origin. Post-cleanup
+  checks confirmed readiness, the new default release, October 18 and contribution
+  capabilities. V0 now returns 404/410.
+- Runtime TLS, read-only serving-role permissions, constraints and restriction
+  replay passed. Source payloads, private graph evidence and credentials are
+  excluded from the public serving package.
 
-## Launch gates
+The aggregate completion receipt is retained locally in ignored
+`data/staging/country-release-20261031/acceptance.json`. Its component receipts
+record the exact checks, package digest and V0 cleanup. Earlier prepared
+October 27 snapshots were never published and are not the current release.
 
-All items below remain required before replacing the original website.
+## Remaining before replacing the original website
 
-| Work | State | Done when |
-| --- | --- | --- |
-| Documentation consolidation | Complete | 46 obsolete/duplicate documents removed; one current roadmap/source inventory/frontend guide; local links and 28 documentation-contract checks passed; no application code changed |
-| Persistent cluster index | Implemented; local current-release and V0 browser checks passed, with final CI/hosted state in the integration receipt | Reload reuses the built index, with release/profile/manifest/restriction invalidation; cached point bytes alone do not qualify |
-| Languages | Generated Spanish facility labels and activities repaired; hosted verification belongs to the current acceptance receipt | Preserve source names, original classifications and attribution. Remaining German, French, Italian, Dutch and Danish use the same system; routes, filters and selection survive switching. Secondary API/community text is not fully translated |
-| Light/dark interface and map controls | FAQ, zoom-9 default and Tools relocation deployed. Public approximate-pin centering fix shipped after four focused cases, green CI and a real hosted pin check | Preserve readable English/Spanish copy, theme behavior and Tools controls. Exact and approximate pins must select and center with Search map collapsed or expanded |
-| France, broader Spain, Germany, Mexico | France and Spain private map checks passed; Germany first-pass geocoding retained; Mexico national capture and private database/API checks passed | Use the source inventory to prepare the new dated dataset. These private cohorts have not changed public dataset membership |
-| United Kingdom and New Zealand | Eligible first-pass address queues completed locally; UK retained responses also supply explicitly approximate postcode references without new requests. Final assembly is pending | Include the updated cohorts in the final dated dataset. NZ export automation remains unverified; programme rows are not a premises census. The source inventory owns current enrichment counts |
-| APHIS history | Reliability and on-demand historical recovery implemented | Six real endpoint cases passed locally: two eligible facilities return pre-2025 annual and inspection links, sampled PDFs open, and the original no-report case returns an empty page; sample history reaches 2014, not a complete archive audit |
-| New default dated dataset | Earlier prepared snapshot is held; its isolated Render checks passed, but the country first pass is still incomplete. Public dataset unchanged | Finish every eligible first-pass address, reassemble with the new outcomes, then pass affected release checks, final-revision CI, cutover and public-origin checks |
-| Final cutover | Not started | Maintainer frontend/data acceptance; verified monitoring, recovery and contribution operations; domain/canonical/redirect checks and rollback |
+1. Complete the maintainer's final frontend pass using the live Render build.
+   The frontend lane owns wording, layout and interaction changes; the backend
+   lane owns data and API changes. Preserve the reviewed UI without redesigns.
+2. Finish the operating handoff for monitoring, recovery, contribution review
+   and retention using [production operations](deployment/production-operations.md).
+3. Perform the separately agreed domain, canonical URL and redirect cutover.
 
-Country implementation and UI features may run in independent lanes. Do not
-start another general backend overhaul or graph-expansion sprint in place of
-these launch requirements.
+## Measured backend follow-ups
 
-The maintainer added three source targets on October 28: EEA livestock-only
-sites, Norway aquaculture and Poland GIW approved-food establishments. Complete
-their end-to-end integration before the next dataset release, or at latest
-before final website deployment. Start with EEA; Norway and Poland follow.
-Measure overlap rather than treating source rows as net-new physical sites.
-Source-specific progress and acceptance belong in the source inventory.
+- Full filter counts remain slow: about 14 seconds warm and 27 seconds cold
+  in the isolated cloud check; 13.8 seconds at the public origin. Cache or
+  precompute these counts with release and restriction-generation invalidation.
+- Generalize the exact canonical graph-alias rebinding used for reused private
+  handoffs in this release. Original identifiers and evidence must remain intact.
+- Apply the human-readable French ICPE source label in the next source projection.
 
-## Coverage: what the recent work did not deliver
-
-The latest Catalonia work made a fresh refresh/import plus separate locality
-enrichment and private map acceptance repeatable. It did not add broader
-Spanish coverage or publish more locations. Its resulting candidate count is
-not an additive increase to the existing dataset. Follow the exact run and
-counts in [the source inventory](source-status.json), not copied sprint totals.
-
-France transforms source-declared coordinate systems. National Spain separately
-joins AESAN registration/province evidence to official IGN municipality points;
-those points remain approximate. Germany validates address, postcode and locality
-context before displaying provider points. Its usable unqueried address cohort
-has completed a first pass; unmatched attempts remain recorded in the existing queue for a later
-release. The agreed launch gate is one attempt for every eligible address in
-the selected countries, not successful matching of every address. Failed
-matches are retained and must not be retried in this sprint. The BLtU reuse licence is identified in the official federal catalogue,
-with attribution evidence retained. Mexico now has a scoped national DENUE
-capture with 5,377 source-coordinate records. New Zealand's supplied MPI export
-has passed private staging, but supplies programme records rather than a
-one-row-per-premises census and contains no coordinates. Both passed local
-database/API acceptance; NZ enrichment and release integration remain. The source inventory owns
-measured counts and unresolved cases.
-
-The backend-only country sprint preserves the frontend branch and public API
-contracts. A fresh Spain refresh, importer replay, enrichment replay and exact
-map-feed membership checks passed. The shared-runner acquisition/import run-ID
-mismatch, stale private enrichment states and German display-cache disagreement
-were repaired. Source business labels are retained for the release bridge.
-The older German private candidate cache is still unnamed; its retained handoff
-contains the business labels. The measured row-free release input inventory is
-retained at `D:/UntilEveryCage-Operations/release-preparation/country-coverage-20261027/candidate-inventory-uk-geocoded.json`
-(digest `39849bc852183d668ad2367ef49b54018193a0520f0ddb8e1e81f8b1098f1504`).
-It is preparation evidence, not a frozen or promoted release.
-
-Country-release assembly completed on an isolated copy of the current
-release. The corrected private candidate `release-2026-10-27-r2` has 124,264
-members, 114,919 named records and 93,058 coordinate points across 19 sources.
-Maintainer-authorized source, field-exposure and location checks are complete;
-the release is promoted only in the isolated local database. Twenty French
-out-of-scope points remain searchable but unmapped; their source evidence is
-retained. Existing candidates and public releases were not rewritten.
-UK enrichment queried 714 addresses and retained 32 audited matches;
-682 unmatched attempts remain available for later work. Provider allowances
-must be checked for the current day, not inferred from that historical run.
-The seven source cohorts passed read-only handoff and
-taxonomy checks. Their input selection and retained raw
-artifact hashes are frozen locally; public dataset membership is unchanged.
-The new release projection has 162,281 connections and 1,024 report references.
-All original 60,263 October 18 connection IDs remain available in its rebuilt
-historical projection. V0 manifests, record counts and map counts are preserved.
-Nineteen bounded connection API requests, all source-scoped list/detail checks,
-the complete 93,058-point map feed and conditional cache response passed locally.
-Real APHIS samples return annual and inspection links predating 2025, reaching
-2014 in the sampled history. These are bounded checks, not a full report audit.
-The selected serving package is restored in a new isolated Render database.
-The read-only runtime passed 84 source/map/history requests, 19 graph requests
-and four real APHIS history cases. The APHIS lookup initially timed out;
-migration 107 replaces release-wide eligibility materialization with keyed
-probes, preserving all 2,048 current/historical reference rows and the existing
-publication gates. The local full-reference comparison fell from 29.2 seconds
-to 1.05 seconds; this is not a hosted-browser timing. Required CI passed on
-revision `aaa20c4e` (all seven jobs). This prepared snapshot is held, not ready
-for cutover: it predates completion of the agreed country first pass.
-The public service and its existing databases are unchanged. Finish all eligible
-never-attempted country addresses in source staging, include their outcomes in
-a new assembled snapshot, and rerun the affected release checks before cutover.
-Do not use a provider batch limit as the sprint completion boundary. The
-separate frontend story is not part of this backend deployment.
-
-## Roadmap
-
-1. Documentation cleanup is complete.
-2. Retain the implemented UI consistency, current-mode theme
-   toggle and copy feedback without redesigning the interface. Keep APHIS
-   recovery and Spanish support. Persistent cluster reuse and additional
-   languages are implemented in the reviewed integration; hosted acceptance
-   remains required.
-   Keep the deployed Swagger/FAQ contrast and generated Spanish record-label
-   translations, Tools map controls, and exact/approximate pin centering.
-   The cluster cutoff defaults to camera zoom 9.0 with radius 50 px.
-   Use focused visual/translation checks for these nits, not repeated full
-   integration suites after each small edit.
-3. Deliver missing country coverage through source-specific lanes using the
-   existing shared runner and separate enrichment jobs. Complete Spain address
-   matching and scale its verified municipality enrichment. Carry Germany's
-   completed first pass into release preparation without repeating failed
-   matches. Drain eligible unattempted addresses across the available authorized
-   providers and accounts, including the national and Catalonia Spain sources.
-   Do not exclude usable addresses merely because they contain commas or lack
-   a house number; exact-point acceptance remains a separate evidence check.
-   Mexico capture is complete. UK and New Zealand
-   must also pass fresh end-to-end source/map checks and be included in the final
-   launch dataset. Extend languages through the same system.
-4. Build the new dated launch dataset; preserve current and historical releases.
-5. Complete the maintainer pass and production handoff, then switch the domain.
-
-Countries and source coverage are not guaranteed merely by registration.
-Do not add a country by publishing unverified geometry or calling a small
-regional source national coverage. No percentage-complete estimate is used.
+These are tracked follow-ups, not reasons to repeat the completed country
+geocoding pass or begin another broad backend redesign.
 
 ## After launch
 
-Preserve these ideas without treating them as current implementation:
-
-- More countries and source families through the shared adapter/refresh path.
-- Improved accessible pin artwork; category palette changes only with approval.
-- Heatmaps, activity/coverage layers, globe view and map-drawn relationship edges.
-- Richer graph visualization and multi-hop exploration.
-- Historical imagery and optional panorama providers where available.
-- Broader evidence/event/organization pages, source documents and record timelines.
-- Community dataset publication and contributor accounts if actual use warrants
-  them; intake alone does not publish submissions.
-- Scale-story experiments and deeper performance work when measurements justify them.
-
-## Evidence and update rules
-
-Update current facts in place with the relevant integrated change. Link a
-commit, aggregate receipt or test result for completion claims; distinguish
-local implementation, hosted behavior and published data. Do not append sprint
-history or reopen completed approvals. Past plans and checkpoints are in Git.
+Keep future country/source additions, accessible pin artwork, coverage layers,
+graph visualization, record timelines, historical imagery and community accounts
+separate from the launch closeout. Category colours require maintainer agreement.
+Further translations use the existing language system. The current reviewed
+interface has seven locales; some secondary operator and generated API text is
+still English. Publication of community data is separate from contribution intake.
 
 ### D6.2 — Backend architecture closure and contract freeze
 
