@@ -22,9 +22,9 @@ The current dataset is **October 31, 2026**, `release-2026-10-31`.
 | Graph | 83,067 connections: 23,874 exact and 59,193 inferred; 1,024 APHIS evidence references |
 | Historical dataset | October 18 remains accessible, including all 69,526 original graph edges |
 | V0 | Retired from production at the maintainer's request; seven old projection copies removed, reclaiming 521,412,608 bytes. The local development baseline and source evidence remain |
-| Application | `c0f4ac55ef32d50bb51d69e06449e9767e2add15` on `eli/v2` |
-| CI | All seven jobs passed in [run 41583086130](https://github.com/eliperez-dev/UntilEveryCage/actions/runs/41583086130) |
-| Render | Deployment `dep-dbkncbei0phs73apdmh0`, serving database `uec_serving_country_20261031`; Auto-Deploy remains off |
+| Application | `a4d41dcc0ca3278c65652c81e332ec4753f23653` on `eli/v2` |
+| CI | All seven jobs passed in [run 41587419415](https://github.com/eliperez-dev/UntilEveryCage/actions/runs/41587419415) |
+| Render | Deployment `dep-dbko10ugekts73en8dtg`, serving database `uec_serving_country_20261031`; Auto-Deploy remains off |
 | Contributions | Existing intake and bug-report capabilities remain enabled; community data was not moved or modified |
 
 The country first pass is complete. Germany, national Spain, Catalonia, France,
@@ -65,11 +65,13 @@ source inventory. Source rows are not a globally deduplicated premises census.
   dates and source links retained; focused browser checks and live inspection passed.
 - Landing totals now use one authoritative facet response; offscreen story
   canvases defer setup until visible. Local contract/suppression tests, current
-  and historical aggregate equality, and seven live API checks passed. A controlled
+  and historical aggregate equality, and six final live API checks passed. A controlled
   mobile-sized test with 6x CPU slowdown and 500 ms API latency completed totals
-  in 2.4 seconds; this is not a physical-phone measurement. The first facet request
-  after deployment still took 8.4 seconds, versus 0.65 seconds on a later request.
-  Live totals and deferred canvases were verified; cold-service loading remains open.
+  in 2.4 seconds; this is not a physical-phone measurement. Production now builds
+  the current facet cache before accepting traffic: Render warmed it in 12.2 seconds,
+  then the first checked public facet request took 0.36 seconds. A fresh local
+  production process returned its first HTTP facets in 0.25 seconds; unavailable
+  data stopped startup before bind. Live totals and deferred canvases were verified.
 
 The aggregate completion receipt is retained locally in ignored
 `data/staging/country-release-20261031/acceptance.json`. Its component receipts
@@ -89,8 +91,6 @@ October 27 snapshots were never published and are not the current release.
 
 - Initial unfiltered record browsing, filtered facet queries and wide-area
   category-filtered map matches still need performance work.
-- Reduce first-request facet latency after a service restart; the current warmup
-  builds the compact map feed before warming facets.
 - Generalize the exact canonical graph-alias rebinding used for reused private
   handoffs in this release. Original identifiers and evidence must remain intact.
 - Apply the human-readable French ICPE source label in the next source projection.
