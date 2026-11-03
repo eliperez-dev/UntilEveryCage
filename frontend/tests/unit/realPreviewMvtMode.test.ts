@@ -40,7 +40,7 @@ describe('real private preview map projection', () => {
     expect(designLab).toContain('publicReleaseLabel($activePublicReleaseId)');
     expect(designLab).toContain("verifiedActivation = -1; resumeStatus = 'error';");
     expect(field).toContain('selectedReleaseId={mode === "public-release" ? selectedPublicReleaseId : null}');
-    expect(field).toContain('mode === "public-release" && dataStatus === "error"');
+    // Search-error map retention/retry is exercised in area-discovery-ui.spec.ts.
     expect(masthead).toContain('Selected release unavailable');
     expect(designLab).toContain('refreshPinnedPublicRelease?.();');
     expect(field).toContain('publicReleaseManifestIdentity = null,');
