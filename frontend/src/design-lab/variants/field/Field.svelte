@@ -56,6 +56,7 @@
     mapMatchesError = "",
     mapMatchesSearchKey = null,
     onRetryMapMatches,
+    onRetrySearch,
     resolvePinHover,
     mapDiagnostics,
     onMapTiming,
@@ -757,7 +758,7 @@
         role="alert"
       >
         {tr('Records unavailable. No live fallback was attempted.', $language)}
-      </div>{:else if mode === "public-release" && dataStatus === "error" && records.length === 0}<div class="status" role="alert">{dataError}</div>{:else}<MapSurface
+      </div>{:else}<MapSurface
         {active}
         records={mapped}
         {state}
@@ -800,6 +801,7 @@
         onviewport={(value) => dispatch({ type: "viewport", value })}
         onbounds={(bounds) => { currentBounds.set(bounds); onViewportBounds?.(bounds); }}
       />{/if}
+    {#if mode === 'public-release' && dataStatus === 'error' && !workspaceOpen && !state.selectedId}<div class="search-recovery" role="alert"><span>{tr('Search unavailable', $language)}</span>{#if onRetrySearch}<button type="button" disabled={listRefreshing} onclick={onRetrySearch}>{tr('Retry', $language)}</button>{/if}</div>{/if}
     {#if (mode === "synthetic" && (state.scenario === "empty" || (state.scenario !== "loading" && state.scenario !== "error" && records.length === 0))) || (mode !== "synthetic" && dataStatus === "empty")}<div
         class="status"
         role="status"
@@ -882,7 +884,7 @@
           </div>
         </div>
       {#if $scopeError}<p class="search-error" hidden={Boolean(state.selectedId) || !workspaceOpen} role="alert">{$scopeError}</p>{/if}
-      {#if mapMatchesStatus === 'error'}<p class="search-error" hidden={Boolean(state.selectedId) || !workspaceOpen} role="alert">{mapMatchesError} {#if onRetryMapMatches}<button type="button" onclick={() => onRetryMapMatches?.()}>{tr('Retry', $language)}</button>{/if}</p>{/if}
+      {#if mapMatchesStatus === 'error' && dataStatus !== 'error'}<p class="search-error" hidden={Boolean(state.selectedId) || !workspaceOpen} role="alert">{mapMatchesError} {#if onRetryMapMatches}<button type="button" onclick={() => onRetryMapMatches?.()}>{tr('Retry', $language)}</button>{/if}</p>{/if}
       <div class="workspace-body" id="field-detail-content">
         <div class="list-content" hidden={Boolean(state.selectedId) || !workspaceOpen}>
         {#if mode === 'public-release' && state.searchScope && !aggregateOpen}<AreaSummary summary={$areaSummary} selectedCategories={state.filters.categories} nearby={state.searchScope.kind === 'radius' && Boolean(state.searchScope.deviceDerived)} radiusKm={state.searchScope.kind === 'radius' ? state.searchScope.radiusKm : null} oncategory={summaryCategory} />{/if}
@@ -988,7 +990,7 @@
             role="alert"
             class="search-error"
           >
-            {dataError}
+            {tr(dataError, $language)} {#if onRetrySearch}<button type="button" disabled={listRefreshing} onclick={onRetrySearch}>{tr('Retry', $language)}</button>{/if}
           </p>{/if}
         </div>
     {#if active && state.selectedId && mode !== "synthetic" && detailStatus === "loading"}<section
@@ -1017,6 +1019,9 @@
 </section>
 
 <style>
+  .search-recovery { position:absolute;z-index:5;left:50%;bottom:calc(var(--mobile-sheet-height, 0px) + 12px);transform:translateX(-50%);display:flex;align-items:center;gap:12px;max-width:calc(100% - 32px);padding:0 10px 0 14px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font-size:.8125rem; }
+  .search-recovery button,.search-error button { min-height:44px;min-width:44px;padding:8px;border:0;background:transparent;color:inherit;font:inherit;text-decoration:underline;cursor:pointer; }
+  .search-recovery button:focus-visible,.search-error button:focus-visible { outline:2px solid var(--focus,var(--ink));outline-offset:-2px; }
   .field-view {
     --mobile-toolbar-inset: .4rem;
     --mobile-toolbar-gap: .4rem;

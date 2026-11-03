@@ -290,7 +290,11 @@
     } catch (error) {
       if (controller.signal.aborted) return;
       $dataStatus = errorState(error);
-      $dataError = error instanceof Error ? error.message : mode === 'public-release' ? 'Public release records could not be loaded.' : 'The private real-data preview could not be loaded.';
+      $dataError = mode === 'public-release' ? 'Search unavailable' : error instanceof Error ? error.message : 'The private real-data preview could not be loaded.';
+      if (mode === 'public-release' && error && typeof error === 'object' && 'kind' in error
+        && ['restricted', 'invalid-contract'].includes(String(error.kind))) {
+        verifiedActivation = -1; resumeStatus = 'checking'; refreshPinnedPublicRelease?.();
+      }
     } finally {
       if (listAbort === controller) {
         pageLoading = false;
@@ -552,7 +556,7 @@
     {#if active && !mapReadyToShow}<main class="resume-status" aria-live="polite">{#if resumeStatus === 'error'}<p role="alert">{tr('The public release could not be checked.', $language)}</p><button type="button" onclick={() => refreshPinnedPublicRelease?.()}>{tr('Retry', $language)}</button>{:else}<p role="status">{tr('Preparing the map…', $language)}</p>{/if}</main>{/if}
     <div class="retained-map-content" hidden={!mapReadyToShow} inert={!mapReadyToShow}>
     <Field active={dataActive} state={labState} {coverageOpen} records={mode !== 'synthetic' ? apiRecords : model.listRecords} mapRecords={mode !== 'synthetic' ? [] : model.mapRecords} {mode} publicReleaseId={$publicReleaseId} selectedPublicReleaseId={$publicReleaseId ?? $pinnedPublicReleaseId ?? null} publicReleaseIdentity={$publicReleaseIdentity} publicReleaseManifestIdentity={$publicReleaseManifestIdentity} publicMapMeta={$publicMapMeta} releaseOptions={publicReleaseOptions} onreleasechange={selectPublicRelease} onMapFeedMeta={(meta) => { $publicMapMeta = meta; }}
-      dataStatus={$dataStatus} dataError={$dataError} {listRefreshing} {mapMatchingIds} {mapMatchesStatus} {mapMatchesError} {mapMatchesSearchKey} {mapMatchesTotalCount} {mapMatchesMappedCount} onRetryMapMatches={() => mapMatchesAttempt += 1}
+      dataStatus={$dataStatus} dataError={$dataError} {listRefreshing} {mapMatchingIds} {mapMatchesStatus} {mapMatchesError} {mapMatchesSearchKey} {mapMatchesTotalCount} {mapMatchesMappedCount} onRetryMapMatches={() => mapMatchesAttempt += 1} onRetrySearch={() => { listRefreshing = true; if (mapMatchesStatus === 'error') mapMatchesAttempt += 1; void loadPage(labState.query, true); }}
       {detailRecord} {detailStatus} {detailError} {nextCursor} {pageLoading} {resolvePinHover}
       {facets} {facetsStatus} {candidateFacets} {candidateTotalCount} {mapDiagnostics} {aggregateMemberRecords} {aggregateNextCursor} {aggregateLoading} {aggregateError} onMapTiming={timing=>{sourceMaterializeMs=timing.sourceMaterializeMs;clusterReadyMs=timing.clusterReadyMs;if(timing.zoomSettleMs!==undefined)zoomSettleMs=timing.zoomSettleMs;}} onLoadMore={() => void loadPage(labState.query, false)} onMapReference={(key, refSourceId) => void loadReference(key, true, refSourceId)} onLoadMoreAggregate={() => { if (aggregateReferenceKey) void loadReference(aggregateReferenceKey, false); }} {dispatch}/>
     </div>
