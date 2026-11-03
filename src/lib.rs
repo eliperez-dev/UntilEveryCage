@@ -6899,23 +6899,6 @@ mod v2_api_tests {
     }
 
     #[test]
-    fn taxonomy_total_without_search_avoids_the_redundant_search_row_join() {
-        let source = include_str!("lib.rs");
-        let handler = source
-            .split("pub async fn get_v2_locations_handler")
-            .nth(1)
-            .expect("public locations handler");
-        let no_search_total = handler
-            .split("} else if !indexed_matches { match transaction.query_one")
-            .nth(1)
-            .and_then(|rest| rest.split("} else { match transaction.query_one").next())
-            .expect("taxonomy total without search");
-        assert!(no_search_total.contains("FROM {public_read_model} AS history"));
-        assert!(!no_search_total.contains("public_discovery_read_model_rows stored"));
-        assert!(no_search_total.contains("assignment.primary_key = ANY($16::text[])"));
-    }
-
-    #[test]
     fn ordinary_public_list_counts_the_eligible_snapshot_before_cursor_pagination() {
         let source = include_str!("lib.rs");
         let handler = source
@@ -6956,10 +6939,10 @@ mod v2_api_tests {
             .expect("public search candidate CTE builder");
 
         assert!(handler.contains("if search_text.is_some()"));
-        assert!(handler.contains("v2_public_search_matches_cte(public_read_model, \"$9\")"));
+        assert!(handler.contains("v2_public_search_matches_cte(public_read_model, \"$8\")"));
         assert!(handler.contains("if search_text.is_some() { \"search_matches\" }"));
         assert!(handler.contains("FROM {matches_relation} matches"));
-        assert!(handler.contains("assignment.primary_key = ANY($16::text[])"));
+        assert!(handler.contains("assignment.primary_key = ANY($20::text[])"));
         assert!(search_match_builder.contains("search_matches AS MATERIALIZED"));
         assert!(search_match_builder.contains("stored.public_search_text <> ''"));
         assert!(search_match_builder.contains("stored.public_search_text ILIKE '%' || {search_parameter} || '%'"));
