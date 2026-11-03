@@ -65,6 +65,8 @@ Clients can discover the current controlled vocabularies at `GET /api/v2/discove
 
 `GET /api/v2/discovery/facets` counts facilities in the selected eligible release and profile. Effective filters are country, region, legacy category, source type, precision and lifecycle status; `q`, `category_keys`, spatial filters and pagination are not applied. Country values are bounded at 249, source values include every source, and other dimensions are capped at 20. Unfiltered responses also provide optional `mapped_country_code`: exhaustive country counts for the same DISTINCT facility representatives whose precision is `exact`, `source_reported` or `approximate`. Their sum equals the mapped precision total, so clients can count mapped countries without separate precision queries. The field is omitted rather than truncated if its country bound is exceeded. All counts follow current suppression; the server cache checks release, content and restriction identity before reuse.
 
+Unfiltered responses also carry paired `meta.manifest_sha256` and `meta.suppression_generation` fields from the same repeatable-read snapshot as the counts. Canonical manifest integrity is checked before cache lookup. This fresh, no-store response can supply authoritative release-bound totals in one request; older APIs may omit both identity fields.
+
 Adding `format=compact` to the map-feed request returns `application/json`
 with `data.format=compact-v1`, repeated-value dictionaries and seven-element
 point tuples. The tuple is `[UUID, longitude, latitude, source index,

@@ -15,6 +15,11 @@ process may start without a database so that static UI work remains possible,
 but `/health/ready` and database-backed APIs remain unavailable; this is an
 intentional degraded state, not a publication fallback.
 
+Production also warms the current official release's authoritative facet cache
+before opening the HTTP listener. A failed warmup stops startup; the compact map
+feed warms in the background afterward. The `startup_facets_warmup` event records
+the outcome and duration without record data.
+
 ## Configuration preflight
 
 Set secrets through the deployment platform's secret store or an equivalent

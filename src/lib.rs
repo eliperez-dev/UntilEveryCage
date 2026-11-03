@@ -4628,20 +4628,31 @@ pub async fn get_v2_facets_handler(
     } else {
         "uec.public_discovery_api_read_model"
     };
-    let cache_key = if cacheable {
+    let cache_identity = if cacheable {
         let identity = match transaction.query_one(
-            "SELECT current_database(),inet_server_addr()::text,inet_server_port(),current_user,manifest.manifest_sha256,model.content_sha256,generation.generation FROM uec.release_manifests manifest JOIN uec.public_discovery_read_models model USING(release_id) CROSS JOIN uec.public_suppression_generation generation WHERE manifest.release_id=$1",
+            "SELECT current_database(),inet_server_addr()::text,inet_server_port(),current_user,manifest.manifest_sha256,model.content_sha256,generation.generation,manifest.manifest::text FROM uec.release_manifests manifest JOIN uec.public_discovery_read_models model USING(release_id) CROSS JOIN uec.public_suppression_generation generation WHERE manifest.release_id=$1",
             &[&release_id],
         ).await {
             Ok(row) => row,
             Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "facets_identity_unavailable", "public facets unavailable"),
         };
+        let manifest_sha256: String = identity.get(4);
+        let suppression_generation: i64 = identity.get(6);
+        let manifest: Value = match serde_json::from_str(&identity.get::<_, String>(7)) {
+            Ok(value) => value,
+            Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "release_manifest_invalid", "release manifest integrity check failed"),
+        };
+        // Validate even on cache hits: this response can replace the separate
+        // manifest requests used by clients to establish a current snapshot.
+        if !manifest.is_object() || format!("{:x}", Sha256::digest(canonical_json(&manifest).as_bytes())) != manifest_sha256 {
+            return v2_error(StatusCode::SERVICE_UNAVAILABLE, "release_manifest_invalid", "release manifest integrity check failed");
+        }
         let key = format!("{:x}", Sha256::digest(canonical_json(&json!({
             "database": identity.get::<_, String>(0), "server": identity.get::<_, Option<String>>(1),
             "port": identity.get::<_, Option<i32>>(2), "role": identity.get::<_, String>(3),
             "profile": profile, "release_id": release_id, "ruleset": ruleset_version,
-            "manifest": identity.get::<_, String>(4), "content": identity.get::<_, String>(5),
-            "suppression_generation": identity.get::<_, i64>(6)
+            "manifest": manifest_sha256, "content": identity.get::<_, String>(5),
+            "suppression_generation": suppression_generation
         })).as_bytes()));
         let cached = PUBLIC_FACETS_CACHE.lock().expect("facet cache lock is not poisoned").get(&key);
         if let Some(body) = cached {
@@ -4650,7 +4661,7 @@ pub async fn get_v2_facets_handler(
             }
             return public_facets_response(body);
         }
-        Some(key)
+        Some((key, manifest_sha256, suppression_generation))
     } else { None };
     let rows = match transaction.query(&format!("SELECT country_code, classification_category, display_precision, lifecycle_status, provenance_origin_type, city, count(*)::bigint, provenance_source_id, provenance_source_name FROM (SELECT DISTINCT ON (facility_id) facility_id, country_code, classification_category, display_precision, lifecycle_status, provenance_origin_type, city, provenance_source_id, provenance_source_name FROM {public_read_model} WHERE release_id=$1 AND ($2::text IS NULL OR country_code=$2) AND ($3::text IS NULL OR classification_category=$3) AND ($4::text IS NULL OR provenance_origin_type=$4) AND ($5::text IS NULL OR display_precision=$5) AND ($6::text IS NULL OR lifecycle_status=$6) AND ($7::text IS NULL OR city=$7) ORDER BY facility_id, observation_id) public_facilities GROUP BY country_code, classification_category, display_precision, lifecycle_status, provenance_origin_type, city, provenance_source_id, provenance_source_name"), &[&release_id, &params.country_code, &params.category, &params.source_type, &params.display_precision, &params.lifecycle_status, &params.region]).await { Ok(rows) => rows, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "facets_query_failed", "public facets unavailable") };
     let mut dimensions = serde_json::Map::new();
@@ -4714,8 +4725,13 @@ pub async fn get_v2_facets_handler(
             "V2 database transaction failed",
         );
     }
-    let body: Arc<str> = Arc::from(json!({"api_version":"v2", "meta":{"profile":profile,"release_id":release_id,"ruleset_version":ruleset_version,"release_created_at":release_created_at,"coverage_scope":"selected_promoted_release_public_facilities","count_semantics":"Counts are eligible public facility projection rows after current suppression; they are not story-wide or animal counts.","filters":{"country_code":params.country_code,"region":params.region,"category":params.category,"source_type":params.source_type,"display_precision":params.display_precision,"lifecycle_status":params.lifecycle_status}}, "dimensions":dimensions}).to_string());
-    if let Some(key) = cache_key {
+    let mut payload = json!({"api_version":"v2", "meta":{"profile":profile,"release_id":release_id,"ruleset_version":ruleset_version,"release_created_at":release_created_at,"coverage_scope":"selected_promoted_release_public_facilities","count_semantics":"Counts are eligible public facility projection rows after current suppression; they are not story-wide or animal counts.","filters":{"country_code":params.country_code,"region":params.region,"category":params.category,"source_type":params.source_type,"display_precision":params.display_precision,"lifecycle_status":params.lifecycle_status}}, "dimensions":dimensions});
+    if let Some((_, digest, generation)) = &cache_identity {
+        payload["meta"]["manifest_sha256"] = json!(digest);
+        payload["meta"]["suppression_generation"] = json!(generation);
+    }
+    let body: Arc<str> = Arc::from(payload.to_string());
+    if let Some((key, _, _)) = cache_identity {
         PUBLIC_FACETS_CACHE.lock().expect("facet cache lock is not poisoned").put(key, body.clone());
     }
     public_facets_response(body)

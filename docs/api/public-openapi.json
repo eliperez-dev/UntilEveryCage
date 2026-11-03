@@ -450,7 +450,7 @@
       "get": {
         "operationId": "getDiscoveryFacets",
         "summary": "Count public filter values",
-        "description": "Counts facilities in the selected eligible release/profile. Unfiltered responses also include exhaustive mapped_country_code counts for exact, source_reported and approximate representatives from the same facility snapshot; these sum to the mapped precision total. Country and source facets follow current suppression. q, category_keys, spatial and pagination are not applied to facets.",
+        "description": "Counts facilities in the selected eligible release/profile. Unfiltered responses include exhaustive mapped_country_code counts and a paired manifest_sha256/suppression_generation identity from the same repeatable-read snapshot. The manifest digest is validated before cache reuse, so clients can obtain current release-bound totals in one no-store request. Older API versions may omit both identity fields. q, category_keys, spatial and pagination are not applied to facets.",
         "tags": [
           "Discovery"
         ],
@@ -1511,7 +1511,21 @@
                 "required": [
                   "filters"
                 ],
+                "dependentRequired": {
+                  "manifest_sha256": ["suppression_generation"],
+                  "suppression_generation": ["manifest_sha256"]
+                },
                 "properties": {
+                  "manifest_sha256": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$",
+                    "description": "Optional paired identity on unfiltered responses; canonical manifest integrity is verified before cache lookup."
+                  },
+                  "suppression_generation": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "Current restriction generation from the same snapshot as the counts and manifest identity."
+                  },
                   "filters": {
                     "$ref": "#/components/schemas/QueryFilters"
                   }

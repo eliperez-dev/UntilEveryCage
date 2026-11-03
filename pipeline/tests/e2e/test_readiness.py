@@ -1,10 +1,13 @@
 """Disposable readiness checks for incomplete and fully migrated databases."""
+import hashlib
 import json
 import os
+import socket
+import subprocess
 import unittest
 import urllib.error
 import urllib.request
-from .fixture import E2EEnvironment, ROOT
+from .fixture import E2EEnvironment, ROOT, free_port
 
 
 @unittest.skipUnless(os.environ.get("UEC_RUN_E2E") == "1", "set UEC_RUN_E2E=1 to run Docker-backed E2E tests")
@@ -43,6 +46,33 @@ class ReadinessE2ETests(unittest.TestCase):
                 self.assertEqual(diagnostics["privacy"]["diagnostic_identifiers"], "excluded")
                 self.assertNotIn("database_url", json.dumps(diagnostics))
                 self.assertNotIn("forwarded", json.dumps(diagnostics).lower())
+            # A migrated database alone is insufficient in production: the
+            # current release's authoritative totals must be ready before bind.
+            digest = lambda value: hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+            ledger = {"schema_version": 1, "revision": "synthetic-startup", "active_restrictions": []}
+            ledger["ledger_sha256"] = digest(ledger)
+            snapshot = {"ledger_revision": ledger["revision"], "ledger_sha256": ledger["ledger_sha256"], "active_restrictions": []}
+            manifest = {"manifest_version": "v1", "release_id": "synthetic-startup", "profile": "official", "ruleset_version": "synthetic-v1"}
+            for name, value in (("ledger", ledger), ("snapshot", snapshot), ("manifest", manifest)):
+                (env.cargo_target_dir / f"{name}.json").write_text(json.dumps(value), encoding="utf-8")
+            production_port = free_port()
+            production_env = {key: value for key, value in os.environ.items() if not key.startswith("UEC_")}
+            production_env.update({"UEC_RUNTIME_MODE": "production", "UEC_DATABASE_URL": env.database_url,
+                "UEC_BIND_HOST": "127.0.0.1", "PORT": str(production_port), "UEC_TRUST_PROXY": "false",
+                "UEC_CORS_ORIGINS": "https://example.test",
+                "UEC_RESTRICTION_LEDGER_PATH": str(env.cargo_target_dir / "ledger.json"),
+                "UEC_RESTORED_RESTRICTION_SNAPSHOT_PATH": str(env.cargo_target_dir / "snapshot.json"),
+                "UEC_RELEASE_MANIFEST_PATH": str(env.cargo_target_dir / "manifest.json"),
+                "UEC_RELEASE_MANIFEST_SHA256": digest(manifest)})
+            result = subprocess.run([env.backend.args[0]], cwd=ROOT, env=production_env,
+                capture_output=True, text=True, timeout=20)
+            self.assertEqual(result.returncode, 2)
+            events = [json.loads(line) for line in result.stdout.splitlines() if line.startswith("{")]
+            warmup = next(event for event in events if event.get("event") == "startup_facets_warmup")
+            self.assertFalse(warmup["success"])
+            self.assertEqual(warmup["status"], 404)
+            with socket.socket() as probe:
+                self.assertNotEqual(probe.connect_ex(("127.0.0.1", production_port)), 0)
         finally:
             env.stop()
 

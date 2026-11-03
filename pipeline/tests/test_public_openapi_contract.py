@@ -236,6 +236,13 @@ class PublicOpenApiContractTests(unittest.TestCase):
         self.assertEqual(dimensions["properties"]["country_code"]["$ref"], "#/components/schemas/CountryFacetValues")
         self.assertEqual(dimensions["properties"]["mapped_country_code"]["$ref"], "#/components/schemas/CountryFacetValues")
         self.assertNotIn("mapped_country_code", dimensions["required"])
+        facet_meta = self.spec["components"]["schemas"]["Facets"]["properties"]["meta"]["allOf"][1]
+        self.assertNotIn("manifest_sha256", facet_meta["required"])
+        self.assertNotIn("suppression_generation", facet_meta["required"])
+        self.assertEqual(facet_meta["dependentRequired"], {
+            "manifest_sha256": ["suppression_generation"],
+            "suppression_generation": ["manifest_sha256"],
+        })
         self.assertEqual(dimensions["properties"]["source_id"]["$ref"], "#/components/schemas/SourceFacetValues")
         self.assertIn("source_id", dimensions["required"])
         self.assertIn('.take(if name == "country_code" { 249 } else { 20 })',

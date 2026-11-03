@@ -1034,6 +1034,31 @@ async fn main() {
         }
     };
 
+    let state = uec_api::ApiState {
+        database,
+        community_database,
+        dev_preview_token,
+        dev_test_release_id,
+        dev_test_release_token,
+    };
+    if mode == "production" {
+        let started = Instant::now();
+        let response = uec_api::get_v2_facets_handler(
+            State(state.clone()),
+            Query(uec_api::V2LocationParams {
+                profile: Some("official".into()),
+                ..Default::default()
+            }),
+        ).await.into_response();
+        let success = response.status().is_success();
+        println!("{}", serde_json::json!({
+            "event": "startup_facets_warmup", "success": success,
+            "status": response.status().as_u16(), "elapsed_ms": started.elapsed().as_millis()
+        }));
+        if !success {
+            std::process::exit(2);
+        }
+    }
     let listener = match tokio::net::TcpListener::bind(addr).await {
         Ok(listener) => listener,
         Err(_) => {
@@ -1044,14 +1069,8 @@ async fn main() {
             std::process::exit(1);
         }
     };
-    let state = uec_api::ApiState {
-        database,
-        community_database,
-        dev_preview_token,
-        dev_test_release_id,
-        dev_test_release_token,
-    };
     let warm_state = state.clone();
+    let warm_development_facets = mode == "development";
     tokio::spawn(async move {
         let Some(pool) = warm_state.database.clone() else {
             return;
@@ -1077,14 +1096,16 @@ async fn main() {
             }),
         )
         .await;
-        let _ = uec_api::get_v2_facets_handler(
-            State(warm_state),
-            Query(uec_api::V2LocationParams {
-                profile: Some("official".into()),
-                release_id: Some(release_id),
-                ..Default::default()
-            }),
-        ).await;
+        if warm_development_facets {
+            let _ = uec_api::get_v2_facets_handler(
+                State(warm_state),
+                Query(uec_api::V2LocationParams {
+                    profile: Some("official".into()),
+                    release_id: Some(release_id),
+                    ..Default::default()
+                }),
+            ).await;
+        }
     });
     let result = axum::serve(
         listener,

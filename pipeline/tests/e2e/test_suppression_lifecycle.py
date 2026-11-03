@@ -15,6 +15,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import psycopg
+from psycopg.types.json import Jsonb
 from pipeline.geocoding.base import GeocodeOutcome
 
 try:
@@ -79,9 +80,10 @@ class SuppressionLifecycleE2ETests(unittest.TestCase):
                     "source_ids": ["e2e.suppression"],
                 }
                 encoded = json.dumps(manifest, sort_keys=True, separators=(",", ":"))
+                cls.manifest_sha256 = hashlib.sha256(encoded.encode()).hexdigest()
                 db.execute(
                     "INSERT INTO uec.release_manifests (release_id,manifest,manifest_sha256) VALUES (%s,%s::jsonb,%s)",
-                    ("e2e-suppression-old", encoded, hashlib.sha256(encoded.encode()).hexdigest()),
+                    ("e2e-suppression-old", encoded, cls.manifest_sha256),
                 )
                 db.execute(
                     "INSERT INTO uec.raw_artifacts (artifact_id,storage_key,sha256,byte_size,retrieved_at) "
@@ -147,8 +149,36 @@ class SuppressionLifecycleE2ETests(unittest.TestCase):
         _, facets = self.get_json("/api/v2/discovery/facets")
         self.assertEqual(sum(row["count"] for row in facets["dimensions"]["country_code"]), 1)
         self.assertEqual(facets["dimensions"]["mapped_country_code"], [{"value": "DK", "count": 1}])
+        self.assertEqual(facets["meta"]["manifest_sha256"], self.manifest_sha256)
+        with psycopg.connect(self.env.database_url) as db:
+            generation = db.execute("SELECT generation FROM uec.public_suppression_generation").fetchone()[0]
+        self.assertEqual(facets["meta"]["suppression_generation"], generation)
+        type(self).initial_facet_generation = generation
+        _, cached = self.get_json("/api/v2/discovery/facets")
+        self.assertEqual(cached, facets)
         _, matches = self.get_json("/api/v2/map/matches?release_id=e2e-suppression-old&latitude=55&longitude=10&radius_km=500")
         self.assertEqual(matches["data"]["facility_ids"], [str(self.facility_id)])
+
+    def test_1_cached_facets_reject_corrupt_manifest(self):
+        _, before = self.get_json("/api/v2/discovery/facets")
+        # This corruption is confined to the disposable synthetic database.
+        with psycopg.connect(self.env.database_url) as db:
+            original = db.execute("SELECT manifest FROM uec.release_manifests WHERE release_id='e2e-suppression-old'").fetchone()[0]
+            db.execute("ALTER TABLE uec.release_manifests DISABLE TRIGGER release_manifests_append_only")
+            db.execute("UPDATE uec.release_manifests SET manifest=manifest || '{\"tampered\":true}'::jsonb WHERE release_id='e2e-suppression-old'")
+            db.execute("ALTER TABLE uec.release_manifests ENABLE TRIGGER release_manifests_append_only")
+        try:
+            with self.assertRaises(urllib.error.HTTPError) as invalid:
+                self.get_json("/api/v2/discovery/facets")
+            self.assertEqual(invalid.exception.code, 503)
+            self.assertEqual(json.loads(invalid.exception.read())["error"]["code"], "release_manifest_invalid")
+        finally:
+            with psycopg.connect(self.env.database_url) as db:
+                db.execute("ALTER TABLE uec.release_manifests DISABLE TRIGGER release_manifests_append_only")
+                db.execute("UPDATE uec.release_manifests SET manifest=%s WHERE release_id='e2e-suppression-old'", (Jsonb(original),))
+                db.execute("ALTER TABLE uec.release_manifests ENABLE TRIGGER release_manifests_append_only")
+        _, restored = self.get_json("/api/v2/discovery/facets")
+        self.assertEqual(restored, before)
 
     def test_a_worker_claims_job_and_records_append_only_result(self):
         job_id = self._queue_geocode("synthetic-lease", "private lease query")
@@ -384,9 +414,13 @@ class SuppressionLifecycleE2ETests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(facets["dimensions"]["category"], [])
         self.assertNotIn("mapped_country_code", facets["dimensions"])
+        self.assertNotIn("manifest_sha256", facets["meta"])
+        self.assertNotIn("suppression_generation", facets["meta"])
         _, cached_facets = self.get_json("/api/v2/discovery/facets")
         self.assertEqual(cached_facets["dimensions"]["country_code"], [])
         self.assertEqual(cached_facets["dimensions"]["mapped_country_code"], [])
+        self.assertEqual(cached_facets["meta"]["manifest_sha256"], self.manifest_sha256)
+        self.assertGreater(cached_facets["meta"]["suppression_generation"], self.initial_facet_generation)
         _, radius_matches = self.get_json("/api/v2/map/matches?release_id=e2e-suppression-old&latitude=55&longitude=10&radius_km=500")
         self.assertEqual(radius_matches["data"]["facility_ids"], [])
         _, csv_body = self.get_csv()
