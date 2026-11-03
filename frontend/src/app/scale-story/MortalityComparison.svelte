@@ -11,15 +11,15 @@
   const chickenTotal = $derived(estimateSinceDocumentOpen(CHICKEN_LINE_RATE, $documentElapsedMilliseconds));
   let reduced = $state(true), canvas: HTMLCanvasElement;
   onMount(() => {
-    const ctx = canvas.getContext('2d'); if (!ctx) return;
+    let ctx: CanvasRenderingContext2D | null = null;
     const clock = new ActiveStoryClock(), preference = matchMedia('(prefers-reduced-motion: reduce)');
-    let width = 1, height = 1, visible = false, frame = 0, disposed = false, lastDiagnostic = 0;
+    let width = 1, height = 1, visible = false, frame = 0, disposed = false, lastDiagnostic = 0, resizePending = true, contextUnavailable = false;
     function dot(x: number, y: number, dead: boolean, outcome: string) {
       ctx!.fillStyle = dead ? outcome : '#f2f0e8';
       ctx!.beginPath(); ctx!.arc(x, y, 3, 0, Math.PI * 2); ctx!.fill();
     }
     function render() {
-      if (disposed) return;
+      if (disposed || !visible || document.hidden || !ctx) return;
       ctx!.clearRect(0, 0, width, height);
       const gap = width < 500 ? 22 : 60, lane = (width - gap) / 2, seconds = reduced ? 1.68 : clock.elapsed;
       ctx!.lineWidth = 1; ctx!.strokeStyle = '#919392'; ctx!.beginPath(); ctx!.moveTo(0, height * .48); ctx!.lineTo(lane, height * .48); ctx!.stroke();
@@ -28,18 +28,22 @@
       lineParticles(seconds, CHICKEN_LINE_RATE, lane, height, (_id, x, y, dead) => dot(x + lane + gap, y, dead, '#d74749'));
     }
     function resize() {
+      resizePending = true;
+      if (disposed || !visible || document.hidden) return;
+      ctx ??= canvas.getContext('2d');
+      if (!ctx) { contextUnavailable = true; return; }
       const rect = canvas.getBoundingClientRect(), ratio = Math.min(2, devicePixelRatio || 1);
       width = Math.max(1, rect.width); height = Math.max(1, rect.height); canvas.width = Math.round(width * ratio); canvas.height = Math.round(height * ratio);
-      ctx!.setTransform(ratio, 0, 0, ratio, 0, 0); render();
+      ctx!.setTransform(ratio, 0, 0, ratio, 0, 0); resizePending = false; render();
     }
-    const shouldRun = () => !disposed && visible && !reduced && !document.hidden;
-    function publish() { canvas.dataset.emitted = String(clock.emitted(CHICKEN_LINE_RATE)); canvas.dataset.humanEmitted = String(clock.emitted(2)); }
+    const shouldRun = () => !disposed && visible && !reduced && !document.hidden && !contextUnavailable;
+    function publish() { canvas.dataset.emitted = String(clock.emitted(CHICKEN_LINE_RATE)); canvas.dataset.humanEmitted = String(clock.emitted(2)); canvas.dataset.initialized = String(ctx !== null); }
     function tick(now: number) { frame = 0; if (!shouldRun()) return; clock.advance(now); render(); if (now - lastDiagnostic > 250) { publish(); lastDiagnostic = now; } if (shouldRun()) frame = requestAnimationFrame(tick); }
-    function sync() { clock.setRunning(shouldRun(), performance.now()); publish(); canvas.dataset.state = reduced ? 'static' : shouldRun() ? 'running' : 'offscreen'; if (shouldRun()) { if (!frame) frame = requestAnimationFrame(tick); } else { cancelAnimationFrame(frame); frame = 0; } }
-    function preferenceChanged() { reduced = preference.matches; sync(); render(); }
+    function sync() { clock.setRunning(shouldRun(), performance.now()); if (visible && !document.hidden) { if (resizePending || !ctx) resize(); else if (reduced) render(); } publish(); canvas.dataset.state = reduced ? 'static' : shouldRun() ? 'running' : 'offscreen'; if (shouldRun()) { if (!frame) frame = requestAnimationFrame(tick); } else { cancelAnimationFrame(frame); frame = 0; } }
+    function preferenceChanged() { reduced = preference.matches; sync(); }
     const observer = new IntersectionObserver(entries => { visible = entries[0]?.isIntersecting ?? false; sync(); });
     const resizeObserver = new ResizeObserver(resize); observer.observe(canvas); resizeObserver.observe(canvas);
-    preference.addEventListener('change', preferenceChanged); document.addEventListener('visibilitychange', sync); preferenceChanged(); resize();
+    preference.addEventListener('change', preferenceChanged); document.addEventListener('visibilitychange', sync); preferenceChanged();
     return () => { disposed = true; cancelAnimationFrame(frame); observer.disconnect(); resizeObserver.disconnect(); preference.removeEventListener('change', preferenceChanged); document.removeEventListener('visibilitychange', sync); clock.setRunning(false, performance.now()); canvas.width = 1; canvas.height = 1; };
   });
 </script>

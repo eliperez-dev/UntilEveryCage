@@ -12,6 +12,25 @@ async function installAggregates(page: Page) {
 }
 test.beforeEach(async ({ page }) => installAggregates(page));
 
+test('offscreen story graphics do not initialize canvas or physics before totals load', async ({page}) => {
+  await page.setViewportSize({width:390,height:844});
+  await page.addInitScript(()=>{
+    (window as any).__storyContexts=0;
+    const get=HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext=function(kind:any,...args:any[]){
+      if(kind==='2d'&&this.closest('.scale-story'))(window as any).__storyContexts++;
+      return (get as any).call(this,kind,...args);
+    } as typeof get;
+  });
+  await page.goto('./');await expect(page.locator('.release-totals')).toBeVisible();
+  for(const canvas of await page.locator('.scale-story canvas').all())await expect(canvas).toHaveAttribute('data-initialized','false');
+  expect(await page.evaluate(()=>(window as any).__storyContexts)).toBe(0);
+  const land=page.locator('.throughput[data-population="land"] canvas');await land.scrollIntoViewIfNeeded();
+  await expect(land).toHaveAttribute('data-initialized','true');await expect(land).toHaveAttribute('data-state','running');
+  await expect.poll(()=>land.evaluate(node=>Number(node.dataset.physicsAlive))).toBeGreaterThan(0);
+  await expect(page.locator('.throughput[data-population="fish"] canvas')).toHaveAttribute('data-initialized','false');
+});
+
 test('since-open totals share document time across navigation and reset on refresh', async ({page}) => {
   await page.emulateMedia({reducedMotion:'reduce'});
   await page.addInitScript(() => {
@@ -105,6 +124,7 @@ test('all chapters have static reduced-motion equivalents and mobile controls in
   await expect(story.getByRole('button', { name: 'Pause', exact: true })).toHaveCount(0);
   for (const canvas of await story.locator('.throughput canvas').all()) {
     // Both populations retain a visible source grid and red outflow in the static equivalent.
+    await canvas.scrollIntoViewIfNeeded();await expect(canvas).toHaveAttribute('data-initialized','true');
     await expect.poll(() => canvas.evaluate(node => {
       const image = (node as HTMLCanvasElement).getContext('2d')!.getImageData(0, 0, (node as HTMLCanvasElement).width, (node as HTMLCanvasElement).height);
       let white = 0, red = 0;

@@ -39,7 +39,7 @@ export function landingSummaryIdentityMatches(identity: PublicReleaseIdentity, c
   return identity.releaseId === cached.identity.releaseId && identity.manifestSha256 === cached.identity.manifestSha256
     && identity.suppressionGeneration === cached.identity.suppressionGeneration;
 }
-/** Call only after fresh before/after manifest checks. No partial totals or rows. */
+/** Call after an authoritative snapshot or legacy manifest bookends. No partial totals or rows. */
 export function writeLandingSummaryCache(storage: LandingSummaryStorage | null, identity: PublicReleaseIdentity, summary: LandingReleaseSummary, now: number): void {
   const parsed = entrySchema.safeParse({ version: 1, profile: 'official', savedAt: now,
     identity: { releaseId: identity.releaseId, manifestSha256: identity.manifestSha256, suppressionGeneration: identity.suppressionGeneration }, summary });

@@ -13,11 +13,11 @@
   let canvas: HTMLCanvasElement;
 
   onMount(() => {
-    const context = canvas.getContext('2d'); if (!context) return;
+    let context: CanvasRenderingContext2D | null = null;
     const clock = new ActiveStoryClock(), preference = matchMedia('(prefers-reduced-motion: reduce)');
-    const whites = new Float32Array(320000), reds = new Float32Array(320000);
+    let whites = new Float32Array(0), reds = new Float32Array(0);
     let whiteCount = 0, redCount = 0, width = 1, height = 1, ratio = 1, visible = false;
-    let frame = 0, disposed = false, lastDiagnostic = 0;
+    let frame = 0, disposed = false, lastDiagnostic = 0, resizePending = true, contextUnavailable = false;
     let pixelImage: ImageData | null = null, pixels: Uint32Array | null = null;
     let physics: ReturnType<typeof createFunnelOutflowPhysics> | null = null;
     let lastPhysicsSeconds = -Infinity;
@@ -43,7 +43,7 @@
       }
     }
     function render() {
-      if (disposed) return;
+      if (disposed || !visible || document.hidden || !context) return;
       context!.clearRect(0, 0, width, height); whiteCount = 0; redCount = 0;
       const seconds = reduced ? 1.68 : clock.elapsed;
       physics ??= createFunnelOutflowPhysics(STORY_RATES[population]);
@@ -69,19 +69,26 @@
       }
     }
     function resize() {
+      resizePending = true;
+      if (disposed || !visible || document.hidden) return;
+      context ??= canvas.getContext('2d');
+      if (!context) { contextUnavailable = true; return; }
+      if (!whites.length) { whites = new Float32Array(320000); reds = new Float32Array(320000); }
       const rect = canvas.getBoundingClientRect(); width = Math.max(1, rect.width); height = Math.max(1, rect.height); ratio = Math.min(2, devicePixelRatio || 1);
       layout = funnelLayout(STORY_RATES[population], width, height);
       canvas.width = Math.round(width * ratio); canvas.height = Math.round(height * ratio);
       context!.setTransform(ratio, 0, 0, ratio, 0, 0);
       if (population === 'fish') { pixelImage = context!.createImageData(canvas.width, canvas.height); pixels = new Uint32Array(pixelImage.data.buffer); }
+      resizePending = false;
       render();
     }
-    const shouldRun = () => !disposed && visible && !reduced && !document.hidden;
+    const shouldRun = () => !disposed && visible && !reduced && !document.hidden && !contextUnavailable;
     function publish() {
       canvas.dataset.emitted = String(clock.emitted(STORY_RATES[population]));
       canvas.dataset.points = String(whiteCount + redCount);
       canvas.dataset.columns = String(layout.columns);
       canvas.dataset.physics = 'enabled';
+      canvas.dataset.initialized = String(context !== null);
       if (physics) {
         const stats = physics.stats();
         canvas.dataset.physicsEmitted = String(stats.emitted);
@@ -94,15 +101,20 @@
       if (shouldRun()) frame = requestAnimationFrame(tick);
     }
     function sync() {
-      clock.setRunning(shouldRun(), performance.now()); publish();
+      clock.setRunning(shouldRun(), performance.now());
+      if (visible && !document.hidden) {
+        if (resizePending || !context) resize();
+        else if (reduced) render();
+      }
+      publish();
       canvas.dataset.state = reduced ? 'static' : shouldRun() ? 'running' : 'offscreen';
       if (shouldRun()) { if (!frame) frame = requestAnimationFrame(tick); } else { cancelAnimationFrame(frame); frame = 0; }
     }
-    function preferenceChanged() { reduced = preference.matches; sync(); render(); }
+    function preferenceChanged() { reduced = preference.matches; sync(); }
     const observer = new IntersectionObserver(entries => { visible = entries[0]?.isIntersecting ?? false; sync(); });
     const resizeObserver = new ResizeObserver(resize);
     observer.observe(canvas); resizeObserver.observe(canvas); preference.addEventListener('change', preferenceChanged); document.addEventListener('visibilitychange', sync);
-    resize(); preferenceChanged();
+    preferenceChanged();
     return () => { disposed = true; cancelAnimationFrame(frame); observer.disconnect(); resizeObserver.disconnect(); preference.removeEventListener('change', preferenceChanged); document.removeEventListener('visibilitychange', sync); clock.setRunning(false, performance.now()); canvas.width = 1; canvas.height = 1; pixelImage = null; pixels = null; };
   });
 </script>

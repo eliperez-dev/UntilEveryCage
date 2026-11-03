@@ -1,6 +1,7 @@
 import { FacetsRepository, type FacetResponse } from '../api/FacetsRepository';
 import { PublicReleaseRepository } from '../api/PublicReleaseRepository';
 import type { TaxonomyPrimaryKey } from '../domain/taxonomy';
+import type { ApiError } from '../api/errors';
 import { clearLandingSummaryCache, landingSummaryIdentityMatches, landingSummaryStorage, readLandingSummaryCache, writeLandingSummaryCache, type LandingSummaryCacheOptions } from './landingSummaryCache';
 
 export type LandingReleaseSummary = Readonly<{ releaseId: string; records: number; mapped: number; sources: number; countries: number | null }>;
@@ -52,10 +53,35 @@ export function mappedCountryCount(facets: FacetResponse, mapped: readonly Facet
   return countries.size;
 }
 
-/** Complete mapped-country facets avoid additional scans. Older APIs publish the
+/** One authoritative unfiltered snapshot carries counts and current restriction
+ * identity together. Stored counts are never painted before this fresh response. */
+export async function loadLandingReleaseSummary(
+  signal: AbortSignal, releaseId?: string, fetcher: typeof fetch = globalThis.fetch,
+  onTotals?: (summary: LandingReleaseSummary) => void,
+  cacheOptions: LandingSummaryCacheOptions = {},
+): Promise<LandingReleaseSummary | null> {
+  signal.throwIfAborted();
+  const storage = cacheOptions.storage === undefined ? landingSummaryStorage() : cacheOptions.storage;
+  try {
+    const facets = await new FacetsRepository(fetcher).get('official', {}, releaseId ? {releaseId} : {}, signal);
+    signal.throwIfAborted();
+    if (!facets.identity) return await loadLegacyLandingReleaseSummary(signal, releaseId, fetcher, onTotals, cacheOptions);
+    const summary = landingReleaseSummary(facets);
+    clearLandingSummaryCache(storage);
+    writeLandingSummaryCache(storage, facets.identity, summary, (cacheOptions.now ?? Date.now)());
+    return summary;
+  } catch (error) {
+    clearLandingSummaryCache(storage);
+    if ((error as ApiError | undefined)?.status === 404) return null;
+    throw error;
+  }
+}
+
+/** Compatibility for APIs without an authoritative facet identity. Complete
+ * mapped-country facets avoid additional scans. Older APIs publish the
  * main totals after their identity check while country partitions finish independently.
  * Both publications are checked against the same release and current restrictions. */
-export async function loadLandingReleaseSummary(
+export async function loadLegacyLandingReleaseSummary(
   signal: AbortSignal, releaseId?: string, fetcher: typeof fetch = globalThis.fetch,
   onTotals?: (summary: LandingReleaseSummary) => void,
   cacheOptions: LandingSummaryCacheOptions = {},

@@ -1,12 +1,13 @@
 import { z } from 'zod';
 import type { FetchLike, LocalProfile } from './LocalLocationRepository';
 import type { ApiError } from './errors';
+import type { PublicReleaseIdentity } from './PublicReleaseRepository';
 
 const facet = z.object({ value: z.string(), count: z.number().int().nonnegative(), label: z.string().optional() });
-const responseSchema = z.object({ api_version: z.literal('v2'), meta: z.object({ profile: z.enum(['official', 'secondary', 'community']), release_id: z.string(), ruleset_version: z.string(), release_created_at: z.string(), coverage_scope: z.string().min(1), count_semantics: z.string().min(1), filters: z.object({ country_code: z.string().nullable().optional(), region: z.string().nullable().optional(), category: z.string().nullable().optional(), source_type: z.string().nullable().optional(), display_precision: z.string().nullable().optional(), lifecycle_status: z.string().nullable().optional() }) }), dimensions: z.record(z.string(), z.array(facet)) });
+const responseSchema = z.object({ api_version: z.literal('v2'), meta: z.object({ profile: z.enum(['official', 'secondary', 'community']), release_id: z.string().min(1).max(160), ruleset_version: z.string(), release_created_at: z.string(), coverage_scope: z.string().min(1), count_semantics: z.string().min(1), manifest_sha256: z.string().regex(/^[a-f0-9]{64}$/).optional(), suppression_generation: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(), filters: z.object({ country_code: z.string().nullable().optional(), region: z.string().nullable().optional(), category: z.string().nullable().optional(), source_type: z.string().nullable().optional(), display_precision: z.string().nullable().optional(), lifecycle_status: z.string().nullable().optional() }) }).refine(meta => (meta.manifest_sha256 === undefined) === (meta.suppression_generation === undefined)), dimensions: z.record(z.string(), z.array(facet)) });
 export type Facet = Readonly<{ value: string; count: number; label?: string | undefined }>;
-export type FacetResponse = Readonly<{ profile: LocalProfile; releaseId: string; ruleset: string; coverageScope: string; countSemantics: string; dimensions: Readonly<Record<string, readonly Facet[]>> }>;
-const fail = (kind: ApiError['kind'], message: string): ApiError => Object.assign(new Error(message), { kind });
+export type FacetResponse = Readonly<{ profile: LocalProfile; releaseId: string; ruleset: string; coverageScope: string; countSemantics: string; dimensions: Readonly<Record<string, readonly Facet[]>>; identity?: PublicReleaseIdentity }>;
+const fail = (kind: ApiError['kind'], message: string, status?: number): ApiError => Object.assign(new Error(message), { kind, ...(status === undefined ? {} : {status}) });
 export type FacetFilters = Readonly<{ country_code?: string | undefined; region?: string | undefined; category?: string | undefined; source_type?: string | undefined; display_precision?: string | undefined; lifecycle_status?: string | undefined }>;
 
 const normalizedFilter = (value: string | null | undefined): string | null => {
@@ -22,7 +23,7 @@ export class FacetsRepository {
     let response: Response;
     try { const init: RequestInit = { cache: 'no-store' }; if (signal) init.signal = signal; response = await this.fetcher.call(globalThis, `${this.baseUrl}/api/v2/discovery/facets?${params}`, init); }
     catch (error) { if (error instanceof DOMException && error.name === 'AbortError') throw fail('aborted', 'Facet request was aborted.'); throw fail('network', 'Coverage summary could not connect to the V2 service.'); }
-    if (!response.ok) throw fail(response.status >= 500 ? 'unavailable' : response.status === 429 ? 'rate-limited' : 'http', `Coverage summary request failed with status ${response.status}.`);
+    if (!response.ok) throw fail(response.status >= 500 ? 'unavailable' : response.status === 429 ? 'rate-limited' : 'http', `Coverage summary request failed with status ${response.status}.`, response.status);
     let payload: unknown;
     try { payload = await response.json(); } catch { throw fail('invalid-contract', 'Coverage summary response was not valid JSON.'); }
     const parsed = responseSchema.safeParse(payload);
@@ -34,6 +35,8 @@ export class FacetsRepository {
     for (const key of ['country_code', 'region', 'category', 'source_type', 'display_precision', 'lifecycle_status'] as const) {
       if (normalizedFilter(filters[key]) !== normalizedFilter(responseFilters[key])) throw fail('invalid-contract', 'Coverage summary belongs to a different filter scope.');
     }
-    return { profile, releaseId: parsed.data.meta.release_id, ruleset: parsed.data.meta.ruleset_version, coverageScope: parsed.data.meta.coverage_scope, countSemantics: parsed.data.meta.count_semantics, dimensions: parsed.data.dimensions };
+    const meta = parsed.data.meta;
+    return { profile, releaseId: meta.release_id, ruleset: meta.ruleset_version, coverageScope: meta.coverage_scope, countSemantics: meta.count_semantics, dimensions: parsed.data.dimensions,
+      ...(meta.manifest_sha256 !== undefined && meta.suppression_generation !== undefined ? {identity:{releaseId:meta.release_id,manifestSha256:meta.manifest_sha256,suppressionGeneration:meta.suppression_generation}} : {}) };
   }
 }
