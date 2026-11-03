@@ -183,6 +183,12 @@ API schemas own supported fields. They are not additional roadmaps.
   the map remains full-size underneath it. Opening, closing or resizing the
   overlay preserves the map canvas, camera and marker positions. Search,
   filters, results and facility detail share that overlay.
+  Record-search failures never unmount the map or replace its basemap with an
+  error screen. Show a translated inline Search unavailable / Retry action,
+  including above the collapsed sheet. Retry keeps camera, filters and sheet
+  position and retries failed matching pins only when needed. Existing release,
+  suppression and invalid-contract revalidation remains effective; failed or
+  pending scope matches do not show stale pins as current results.
   Back to results restores the list and its scroll position. Mobile uses a
   bottom search sheet with collapsed, middle and expanded positions. The
   collapsed sheet is only a 56px Search map pull handle plus the safe area;

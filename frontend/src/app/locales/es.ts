@@ -678,6 +678,7 @@ export const es = {
   "Use optimized pins": "Usar pines optimizados",
   "Icon size": "Tamaño del icono",
   "Dot size": "Tamaño del punto",
+  "Search unavailable": "Búsqueda no disponible",
 } satisfies Record<string, string>;
 export type TranslationKey = keyof typeof es;
 export type LocaleMessages = Record<TranslationKey, string>;

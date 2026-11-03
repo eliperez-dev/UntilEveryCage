@@ -51,6 +51,43 @@ async function open(page:Page) {
   await expect(page.locator('.map-navigation .dimension-button')).toBeEnabled();
 }
 
+for(const width of [390,1280])test(`a failed first search retains the map and retries without resetting it at ${width}px`,async({page})=>{
+  const runtimeErrors:Error[]=[];page.on('pageerror',error=>runtimeErrors.push(error));
+  await page.setViewportSize({width,height:844});await install(page);let failList=true;
+  await page.route('**/api/v2/locations?**',route=>failList?route.fulfill({status:502,json:{}}):route.fallback());
+  await page.goto(`./#/map?release_id=${release}&list=open&category=slaughter&lat=39.25&lon=-94.45&z=8`);
+  const canvas=page.locator('.maplibregl-canvas');await expect(canvas).toBeVisible();
+  await expect(page.locator('.search-error').filter({hasText:'Search unavailable'})).toBeVisible();
+  expect(await page.locator('[data-record-id]').count()).toBe(0);
+  await canvas.evaluate(node=>(window as any).__retainedFailureCanvas=node);
+  const originalBox=await canvas.boundingBox();
+  const camera=()=>page.evaluate(()=>{const map=(window as any).__UEC_LOCAL_PREVIEW_MAP__,center=map.getCenter();return[center.lat,center.lng,map.getZoom(),map.getPitch(),map.getBearing()];});
+  const originalCamera=await camera();
+  if(width<641){const handle=page.getByRole('button',{name:'Search map',exact:true});await handle.focus();await page.keyboard.press('Home');}
+  else await page.getByRole('button',{name:'Close workspace',exact:true}).click();
+  const recovery=page.locator('.search-recovery');await expect(recovery).toBeVisible();
+  await expect(recovery.getByRole('button',{name:'Retry',exact:true})).toBeVisible();
+  failList=false;await recovery.getByRole('button',{name:'Retry',exact:true}).click();
+  await expect.poll(()=>page.locator('[data-record-id]').count()).toBe(22);
+  await expect(recovery).toHaveCount(0);expect(await canvas.evaluate(node=>node===(window as any).__retainedFailureCanvas)).toBe(true);
+  expect(await canvas.boundingBox()).toEqual(originalBox);
+  expect(await camera()).toEqual(originalCamera);
+  expect(new URL(page.url()).hash).toContain('category=slaughter');
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  expect(runtimeErrors).toHaveLength(0);
+});
+
+test('an unavailable release still hides the retained map instead of treating it as a retryable transport error',async({page})=>{
+  await page.setViewportSize({width:390,height:844});await install(page);let retired=false;
+  await page.route('**/api/v2/releases/manifest?**',route=>retired?route.fulfill({status:404,json:{}}):route.fallback());
+  await page.route('**/api/v2/locations?**',route=>retired?route.fulfill({status:404,json:{}}):route.fallback());
+  await open(page);await expect.poll(()=>page.locator('[data-record-id]').count()).toBe(100);
+  retired=true;await page.getByRole('button',{name:'Search this area',exact:true}).click();
+  await expect(page.locator('.resume-status')).toContainText('The public release could not be checked.');
+  await expect(page.locator('.retained-map-content')).toBeHidden();
+  await expect(page.locator('.maplibregl-canvas')).toBeHidden();
+});
+
 test('area overview uses the complete mapped set, category narrows both views, and update preserves query', async ({page}) => {
   await page.setViewportSize({width:1440,height:900}); const calls = await install(page); await open(page);
   const canvas = await page.locator('.map-stage').boundingBox();

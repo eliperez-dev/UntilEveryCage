@@ -98,6 +98,7 @@ export interface DirectionViewProps {
   mapMatchesStatus?: 'idle' | 'loading' | 'ready' | 'error';
   mapMatchesError?: string;
   onRetryMapMatches?(): void;
+  onRetrySearch?(): void;
   mapDiagnostics?: MapDiagnostics;
   onMapTiming?(timing: MapTiming): void;
   detailRecord?: LabRecord | null;
