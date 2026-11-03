@@ -91,7 +91,7 @@ test('direct dot comparison leads into both funnels while preserving the route, 
   await expect(story.locator('.methods .comparison-statement')).toHaveCount(2);
   expect(await story.locator('.land-chapter .comparison').evaluate(node => Boolean(node.compareDocumentPosition(document.querySelector('.fish-chapter')!) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
   await expect(story.locator('.methods')).not.toHaveAttribute('open'); await story.locator('summary').click();
-  await expect(story.locator('.methods')).toContainText('140/60'); await expect(story.locator('.methods')).toContainText('0.25 mL');
+  await expect(story.locator('.methods')).toContainText('140 ÷ 60'); await expect(story.locator('.methods')).toContainText('0.25 mL');
   await expect(page.locator('.release-totals')).toContainText('4'); await expect(page.locator('.maplibregl-map')).toHaveCount(0);
 });
 
@@ -190,6 +190,15 @@ test('direct opening and funnel chapters translate in every supported language a
     expect(heroActionsFit).toBe(true);
     const labels = await page.locator('.line-labels').boundingBox(), field = await page.locator('.line-field').boundingBox(); expect(labels!.y + labels!.height).toBeLessThanOrEqual(field!.y);
     await expect(page.locator('.fish-chapter .flow-caption')).toHaveText(text.fishFlowCaption);
+    const methods=page.locator('.methods');await methods.locator('summary').click();
+    await expect(methods.locator('.method-notes > p')).toHaveCount(5);
+    for(const note of [text.humanMethod,text.chickenMethod,text.landMethod,text.fishMethod,text.fishScope,text.motionMethod,text.comparisonMethod]) await expect(methods).toContainText(note);
+    const sourceLinks=await methods.getByRole('link').evaluateAll(links=>links.map(link=>({href:link.getAttribute('href'),rel:link.getAttribute('rel'),height:link.getBoundingClientRect().height})));
+    expect(sourceLinks).toHaveLength(8);
+    expect(new Set(sourceLinks.map(link=>link.href)).size).toBe(8);
+    expect(sourceLinks.every(link=>link.href?.startsWith('https://')&&link.rel==='noreferrer'&&link.height>=44)).toBe(true);
+    await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    await methods.locator('summary').click();
     for (const chapter of await page.locator('.throughput').all()) {
       const unit = chapter.locator('.unit');
       await expect(unit).toHaveCount(1);

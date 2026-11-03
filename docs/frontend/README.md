@@ -97,7 +97,13 @@ API schemas own supported fields. They are not additional roadmaps.
   subsampling individuals. Funnel is the sole public throughput visualization;
   there is no separate Grid view or visualization mode picker.
   Sources, conversion assumptions and ranges are available in the collapsed
-  methodology. Each comparison is a complete direct statement with its key
+  methodology. Keep it brief: four source-linked notes identify the people,
+  poultry-line, land and fish figures, their dates and simple rate calculations.
+  Retain the fish range and weight conversion, the relevant exclusions, and a
+  short explanation of the since-open counters. Put each source beside its note;
+  omit the redundant reference list, proposal commentary and stale local-preview
+  notice. The time/pool comparisons follow with concise assumptions and links.
+  Apply the same treatment in all seven locales. Each comparison is a complete direct statement with its key
   duration or count in bold, with natural capitalization, within the sentence. Localized templates
   place the emphasized phrase naturally; avoid quiz questions and detached
   answer figures. The five-week human-population benchmark sits beside land;
