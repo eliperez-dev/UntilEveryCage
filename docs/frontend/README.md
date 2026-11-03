@@ -88,7 +88,11 @@ API schemas own supported fields. They are not additional roadmaps.
   The white source remains unchanged. This is visual particle
   physics, with bounded recent-state reconstruction on seeks and resize.
   Each visible animation uses active time: hidden tabs and offscreen sections do
-  not accumulate animation time. Reduced
+  not accumulate animation time. Story canvases acquire contexts, measure their
+  frames, allocate particle/pixel buffers and initialize physics only when visible.
+  First-page totals must not wait for offscreen graphic setup. Visibility and
+  resize observers activate or resize each graphic when needed; hidden-tab and
+  offscreen resizes do no drawing or simulation work. Reduced
   motion shows a static equivalent. Funnel remains the default: evenly spaced
   source rows feed a broad white grid, individual dots peel from its lower edge,
   and the same dots turn red at the widened throat before dispersing. The guide
@@ -122,21 +126,28 @@ API schemas own supported fields. They are not additional roadmaps.
   search summaries explicitly count matching/loaded records rather than animals.
   Distinguish unavailable totals from zero; do not add animal-death or
   other unsupported estimates to this section.
-  Check the manifest before requesting live aggregates. The cached global facets
+  Fetch one fresh unfiltered facet snapshot for landing totals. Its authoritative
+  metadata carries the canonical manifest digest and current suppression generation
+  from the same server transaction as the counts; validate both fields together,
+  plus profile, requested release, filter scope and count consistency. The global facets
   include exhaustive `mapped_country_code` counts from the same selected facility
   rows as the precision totals. Validate unique country codes and that their counts
-  sum to the mapped total, then publish all four statistics after the closing
-  release/restriction identity check. No separate precision queries run on this path.
-  Older APIs without that dimension retain the partition fallback: publish base
+  sum to the mapped total, then publish all four statistics. The authoritative path
+  uses no separate manifest or precision queries, including on refresh.
+  Older APIs without the identity fields discard that first unverified response and
+  retain manifest bookends; APIs without the mapped-country dimension also retain
+  the partition fallback: publish base
   totals first, finish countries separately and recheck identity after those queries.
   A present but inconsistent country dimension leaves countries unavailable without
   extra scans. Discard the summary on an identity mismatch. Do not reuse unchecked totals from storage.
-  One aggregate-only localStorage entry (at most 2 KiB, 24-hour lifetime) may
-  reuse complete checked totals after a fresh no-store manifest confirms the
+  One aggregate-only localStorage entry (at most 2 KiB, 24-hour lifetime) stores
+  complete checked totals. The modern path always waits for the fresh authoritative
+  response and never paints that entry early or offline. In the legacy fallback,
+  a fresh no-store manifest may confirm the
   same official profile, release, manifest hash and restriction generation.
   Never display it offline or before validation. Identity changes, unavailable
   releases, errors and invalid entries clear it; blocked storage falls back to
-  live aggregates. Cache hits skip the heavier facet/country queries.
+  live aggregates. Only legacy cache hits skip the heavier facet/country queries.
   Countries mapped counts countries represented by source-reported, approximate and
   exact locations, excluding unmapped-only countries. In the older-API fallback,
   each release/ruleset-bound country facet must sum

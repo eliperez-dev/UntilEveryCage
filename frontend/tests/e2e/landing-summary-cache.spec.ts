@@ -7,7 +7,7 @@ function gate() {
 }
 async function install(page: Page) {
   const releaseId = 'synthetic-landing-cache';
-  const state = { generation: 1, status: 200, completeCountries: false, countryRequests: 0, manifestGate: null as ReturnType<typeof gate> | null,
+  const state = { generation: 1, status: 200, completeCountries: true, countryRequests: 0, manifestGate: null as ReturnType<typeof gate> | null,
     facetsGate: null as ReturnType<typeof gate> | null, countryGate: null as ReturnType<typeof gate> | null, requests: [] as string[] };
   await page.route('https://**/*', route => route.abort());
   await page.route('**/api/v2/**', async route => {
@@ -20,8 +20,9 @@ async function install(page: Page) {
       } } : {} }).catch(() => {});
     }
     if (url.pathname === '/api/v2/discovery/facets') {
-      expect(url.searchParams.get('release_id')).toBe(releaseId);
+      expect(url.searchParams.get('release_id') ?? releaseId).toBe(releaseId);
       if (precision) { state.countryRequests++; await state.countryGate?.promise; } else await state.facetsGate?.promise;
+      if(state.status!==200)return route.fulfill({status:state.status,json:{}});
       const dimensions = precision ? {
         display_precision: [{ value: precision, count: precision === 'source_reported' ? 5 : 2 }],
         country_code: precision === 'source_reported' ? [{ value: 'DK', count: 4 }, { value: 'US', count: 1 }] : [{ value: 'DK', count: 2 }],
@@ -31,6 +32,7 @@ async function install(page: Page) {
         ...(state.completeCountries ? {mapped_country_code:[{value:'DK',count:6},{value:'US',count:1}]} : {}),
       };
       return route.fulfill({ json: { api_version: 'v2', meta: { profile: 'official', release_id: releaseId, ruleset_version: 'synthetic-rules',
+        manifest_sha256:'a'.repeat(64),suppression_generation:state.generation,
         release_created_at: '2026-01-01T00:00:00Z', coverage_scope: 'Synthetic public aggregate', count_semantics: 'Synthetic records',
         filters: precision ? { display_precision: precision } : {} }, dimensions } }).catch(() => {});
     }
@@ -49,30 +51,27 @@ test('cold landing gets every total from the cached global snapshot without wait
     await expect(page.locator('.release-totals dd')).toHaveText(['11','7','2','2']);
     expect(facetsRequests(state)).toBe(1);expect(state.countryRequests).toBe(0);
     await expect.poll(()=>stored(page)).not.toBeNull();
-    expect(state.requests.filter(path=>path.endsWith('/manifest'))).toHaveLength(2);
+    expect(state.requests.filter(path=>path.endsWith('/manifest'))).toHaveLength(0);
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   } finally {state.countryGate.release();}
 });
 
-test('landing persists complete aggregates across reload, checks eligibility before paint and skips warm facets', async ({ page }) => {
-  const state = await install(page); state.countryGate = gate();
+test('landing waits for one authoritative response on both first load and refresh', async ({ page }) => {
+  const state = await install(page);
   await page.goto('./');
-  await expect(page.locator('.release-totals dd')).toHaveText(['11', '7', '2', 'Loading…']);
-  expect(await stored(page)).toBeNull();
-  state.countryGate.release();
   await expect(page.locator('.release-totals dd')).toHaveText(['11', '7', '2', '2']);
   await expect.poll(() => stored(page)).not.toBeNull();
   const before = facetsRequests(state), requestsBefore = state.requests.length;
-  state.manifestGate = gate();
+  state.facetsGate = gate();
   await page.reload({ waitUntil: 'domcontentloaded' });
   await expect(page.getByText('Loading release totals…', { exact: true })).toBeVisible();
   await expect(page.locator('.release-totals')).toHaveCount(0);
   await expect.poll(() => state.requests.length).toBe(requestsBefore + 1);
-  expect(facetsRequests(state)).toBe(before);
-  state.manifestGate.release();
+  expect(facetsRequests(state)).toBe(before + 1);
+  state.facetsGate.release();
   await expect(page.locator('.release-totals dd')).toHaveText(['11', '7', '2', '2']);
-  expect(facetsRequests(state)).toBe(before);
-  expect(state.requests.every(path => ['/api/v2/releases/manifest', '/api/v2/discovery/facets'].includes(path))).toBe(true);
+  expect(facetsRequests(state)).toBe(before + 1);
+  expect(state.requests.every(path => path === '/api/v2/discovery/facets')).toBe(true);
 });
 
 test('landing invalidates changed restrictions before new facets and clears unavailable cached releases', async ({ page }) => {
@@ -86,7 +85,6 @@ test('landing invalidates changed restrictions before new facets and clears unav
   await expect.poll(() => facetsRequests(state)).toBe(before + 1);
   await expect(page.getByText('Loading release totals…', { exact: true })).toBeVisible();
   await expect(page.locator('.release-totals')).toHaveCount(0);
-  expect(await stored(page)).toBeNull();
   state.facetsGate.release();
   await expect(page.locator('.release-totals dd')).toHaveText(['11', '7', '2', '2']);
   await expect.poll(async () => JSON.parse((await stored(page)) ?? '{}').identity?.suppressionGeneration).toBe(2);
@@ -95,5 +93,5 @@ test('landing invalidates changed restrictions before new facets and clears unav
   await page.reload({ waitUntil: 'domcontentloaded' });
   await expect(page.getByText('Release totals are unavailable.', { exact: true })).toBeVisible();
   await expect(page.locator('.release-totals')).toHaveCount(0);
-  expect(await stored(page)).toBeNull(); expect(facetsRequests(state)).toBe(checkedFacets);
+  expect(await stored(page)).toBeNull(); expect(facetsRequests(state)).toBe(checkedFacets + 1);
 });
