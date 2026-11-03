@@ -555,10 +555,12 @@
     {#if active && !mapReadyToShow}<div class="resume-error-header"><PreviewMasthead current="map" mapHref={resumeMapHref} /></div>{/if}
     {#if active && !mapReadyToShow}<main class="resume-status" aria-live="polite">{#if resumeStatus === 'error'}<p role="alert">{tr('The public release could not be checked.', $language)}</p><button type="button" onclick={() => refreshPinnedPublicRelease?.()}>{tr('Retry', $language)}</button>{:else}<p role="status">{tr('Preparing the map…', $language)}</p>{/if}</main>{/if}
     <div class="retained-map-content" hidden={!mapReadyToShow} inert={!mapReadyToShow}>
+    {#if mode !== 'public-release' || resumeStatus !== 'error'}
     <Field active={dataActive} state={labState} {coverageOpen} records={mode !== 'synthetic' ? apiRecords : model.listRecords} mapRecords={mode !== 'synthetic' ? [] : model.mapRecords} {mode} publicReleaseId={$publicReleaseId} selectedPublicReleaseId={$publicReleaseId ?? $pinnedPublicReleaseId ?? null} publicReleaseIdentity={$publicReleaseIdentity} publicReleaseManifestIdentity={$publicReleaseManifestIdentity} publicMapMeta={$publicMapMeta} releaseOptions={publicReleaseOptions} onreleasechange={selectPublicRelease} onMapFeedMeta={(meta) => { $publicMapMeta = meta; }}
       dataStatus={$dataStatus} dataError={$dataError} {listRefreshing} {mapMatchingIds} {mapMatchesStatus} {mapMatchesError} {mapMatchesSearchKey} {mapMatchesTotalCount} {mapMatchesMappedCount} onRetryMapMatches={() => mapMatchesAttempt += 1} onRetrySearch={() => { listRefreshing = true; if (mapMatchesStatus === 'error') mapMatchesAttempt += 1; void loadPage(labState.query, true); }}
       {detailRecord} {detailStatus} {detailError} {nextCursor} {pageLoading} {resolvePinHover}
       {facets} {facetsStatus} {candidateFacets} {candidateTotalCount} {mapDiagnostics} {aggregateMemberRecords} {aggregateNextCursor} {aggregateLoading} {aggregateError} onMapTiming={timing=>{sourceMaterializeMs=timing.sourceMaterializeMs;clusterReadyMs=timing.clusterReadyMs;if(timing.zoomSettleMs!==undefined)zoomSettleMs=timing.zoomSettleMs;}} onLoadMore={() => void loadPage(labState.query, false)} onMapReference={(key, refSourceId) => void loadReference(key, true, refSourceId)} onLoadMoreAggregate={() => { if (aggregateReferenceKey) void loadReference(aggregateReferenceKey, false); }} {dispatch}/>
+    {/if}
     </div>
     {#if mode === 'real-preview' && counts}
       <aside class:expanded={coverageOpen} class="private-counts" aria-label="Map information">

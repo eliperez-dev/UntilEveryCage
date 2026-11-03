@@ -183,7 +183,7 @@ API schemas own supported fields. They are not additional roadmaps.
   the map remains full-size underneath it. Opening, closing or resizing the
   overlay preserves the map canvas, camera and marker positions. Search,
   filters, results and facility detail share that overlay.
-  Record-search failures never unmount the map or replace its basemap with an
+  Temporary record-search failures never unmount the map or replace its basemap with an
   error screen. Show a translated inline Search unavailable / Retry action,
   including above the collapsed sheet. Retry keeps camera, filters and sheet
   position and retries failed matching pins only when needed. Existing release,
@@ -658,7 +658,7 @@ device-derived search views do not persist indexes, raw queries or camera data.
 Public in-app navigation keeps one hidden, inert map and its built worker index in memory.
 Returning rechecks the selected release's manifest and restriction identity
 before revealing it; changed identities replace the projection, and failed
-validation clears the retained data and offers Retry. Private preview maps
+validation clears the retained data, unmounts the map and offers Retry. Private preview maps
 are not retained. Changed matching membership or clustering options rebuild
 clusters so counts and membership match the search. Do not reopen
 map-engine selection or redesign approved visual behavior.
