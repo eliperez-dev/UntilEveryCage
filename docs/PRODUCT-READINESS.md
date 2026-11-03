@@ -22,9 +22,9 @@ The current dataset is **October 31, 2026**, `release-2026-10-31`.
 | Graph | 83,067 connections: 23,874 exact and 59,193 inferred; 1,024 APHIS evidence references |
 | Historical dataset | October 18 remains accessible, including all 69,526 original graph edges |
 | V0 | Retired from production at the maintainer's request; seven old projection copies removed, reclaiming 521,412,608 bytes. The local development baseline and source evidence remain |
-| Application | `5a671e5ba7745ea109eaa56fc1fc9314961403f7` on `eli/v2`; reviewed frontend checkpoint `3c0879d5` is included |
-| CI | All seven jobs passed in [run 41498281549](https://github.com/eliperez-dev/UntilEveryCage/actions/runs/41498281549) |
-| Render | Deployment `dep-dbkdk33l550s73bpunq0`, serving database `uec_serving_country_20261031`; Auto-Deploy remains off |
+| Application | `10a8e50c267a2df68de7be5cf90a57282877478a` on `eli/v2` |
+| CI | All seven jobs passed in [run 41555541306](https://github.com/eliperez-dev/UntilEveryCage/actions/runs/41555541306) |
+| Render | Deployment `dep-dbkj8k3bc2fs739glm50`, serving database `uec_serving_country_20261031`; Auto-Deploy remains off |
 | Contributions | Existing intake and bug-report capabilities remain enabled; community data was not moved or modified |
 
 The country first pass is complete. Germany, national Spain, Catalonia, France,
@@ -61,6 +61,8 @@ source inventory. Source rows are not a globally deduplicated premises census.
   versus 15.9 seconds before, using one facet request and no precision partitions.
   Current and historical aggregate comparisons, suppression tests and the public
   API contract checks passed; existing counts are unchanged.
+  Sources and method notes are now shorter in all seven locales, with rates,
+  dates and source links retained; focused browser checks and live inspection passed.
 
 The aggregate completion receipt is retained locally in ignored
 `data/staging/country-release-20261031/acceptance.json`. Its component receipts
