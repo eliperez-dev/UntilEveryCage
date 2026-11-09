@@ -227,7 +227,7 @@ class SuppressionLifecycleE2ETests(unittest.TestCase):
         _, restored = self.get_json("/api/v2/discovery/facets")
         self.assertEqual(restored, before)
 
-    def test_2_unfiltered_list_survives_content_identity_eviction(self):
+    def test_2_unfiltered_list_tracks_content_identity(self):
         _, expected = self.get_json("/api/v2/locations?limit=1")
         with psycopg.connect(self.env.database_url) as db:
             original = db.execute("SELECT content_sha256 FROM uec.public_discovery_read_models WHERE release_id='e2e-suppression-old'").fetchone()[0]
@@ -240,18 +240,19 @@ class SuppressionLifecycleE2ETests(unittest.TestCase):
                 db.execute("ALTER TABLE uec.public_discovery_read_models ENABLE TRIGGER public_discovery_read_models_append_only")
 
         try:
-            # Nine distinct identities evict the original from the eight-entry LRU.
-            for index in range(9):
-                set_content(hashlib.sha256(f"synthetic-component-{index}".encode()).hexdigest())
-                _, miss = self.get_json("/api/v2/locations?limit=1")
-                self.assertEqual(miss, expected)
-                self.get_json("/api/v2/discovery/facets")
-                _, hit = self.get_json("/api/v2/locations?limit=1")
-                self.assertEqual(hit, expected)
+            # LRU eviction is covered by the cache unit test. One changed
+            # identity exercises HTTP miss/rebuild/hit without exceeding the
+            # real 60-request/minute limiter on fast CI hosts.
+            set_content(hashlib.sha256(b"synthetic-component").hexdigest())
+            _, miss = self.get_json("/api/v2/locations?limit=1")
+            self.assertEqual(miss, expected)
+            self.get_json("/api/v2/discovery/facets")
+            _, hit = self.get_json("/api/v2/locations?limit=1")
+            self.assertEqual(hit, expected)
         finally:
             set_content(original)
-        _, evicted = self.get_json("/api/v2/locations?limit=1")
-        self.assertEqual(evicted, expected)
+        _, restored = self.get_json("/api/v2/locations?limit=1")
+        self.assertEqual(restored, expected)
 
     def test_a_worker_claims_job_and_records_append_only_result(self):
         job_id = self._queue_geocode("synthetic-lease", "private lease query")
