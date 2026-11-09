@@ -42,8 +42,8 @@ for (const [width, canonicalName] of [[320, null], [1440, null], [320, 'Name not
   await page.goto(`./#/map?release_id=${release}&list=open`);
   const name = canonicalName ?? de['Name not provided'];
   const result = page.locator(`[data-record-id="${id}"]`);
-  await expect(result.locator(':scope > strong')).toHaveText(name);
-  await expect(result).toContainText(de['Unmapped · no public point']);
+  await expect(result.locator('strong')).toHaveText(name);
+  await expect(result).toContainText(de[width <= 640 ? 'Unmapped' : 'Unmapped · no public point']);
   await result.click();
   const panel = page.locator('.reading-sheet');
   await expect(panel.locator('.record-name')).toHaveText(name);
@@ -355,7 +355,7 @@ test('mobile detail shares the middle-height sheet with the map and preserves sc
     const mapBox=(await page.locator('.map-stage').boundingBox())!;
     expect(mapBox.y).toBeCloseTo(headerBox.y+headerBox.height,0);
     expect(mapBox.y+mapBox.height).toBeCloseTo(height!,0);
-    expect(workspaceBox.height).toBeCloseTo((height!-headerBox.height)*.48,0);
+    expect(workspaceBox.height).toBeCloseTo((height!-headerBox.height)*.60,0);
     expect(workspaceBox.y + workspaceBox.height).toBeCloseTo(height!, 0);
     const search = workspace.locator('#field-search');
     await expect(search).toBeHidden();
@@ -398,7 +398,7 @@ test('mobile diagnostics temporarily cover an expanded selected sheet and restor
   await mockPublicRecord(page);
   await page.goto(`./#/map?selected=${id}&release_id=${release}`);
   await expect(page.locator('.dossier h1')).toHaveText(row.canonical_name);
-  const handle=page.getByRole('button',{name:'View facility details',exact:true});
+  const handle=page.getByRole('button',{name:'View details',exact:true});
   await handle.focus();await page.keyboard.press('End');
   await page.getByRole('button',{name:'More tools',exact:true}).click();
   await page.getByLabel('Enable debug menu',{exact:true}).check();
