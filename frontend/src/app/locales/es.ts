@@ -679,6 +679,18 @@ export const es = {
   "Icon size": "Tamaño del icono",
   "Dot size": "Tamaño del punto",
   "Search unavailable": "Búsqueda no disponible",
+  "Everywhere": "En todas partes",
+  "Near me": "Cerca de mí",
+  "View details": "Ver detalles",
+  "Apply filters": "Aplicar filtros",
+  "Expand search panel": "Ampliar el panel de búsqueda",
+  "Show fewer results": "Mostrar menos resultados",
+  "Expand": "Ampliar",
+  "{count} records": "{count} registros",
+  "{count} activities": "{count} actividades",
+  "{count} filters": "{count} filtros",
+  "{count} record": "{count} registro",
+  "{count} filter": "{count} filtro",
 } satisfies Record<string, string>;
 export type TranslationKey = keyof typeof es;
 export type LocaleMessages = Record<TranslationKey, string>;

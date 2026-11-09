@@ -65,7 +65,8 @@ test('retains the filtered public map and built source on a validated warm retur
   await page.getByRole('button', { name: 'Close debug menu', exact: true }).click();
   await page.getByRole('button', { name: 'Your location', exact: true }).click();
   await expect(page).not.toHaveURL(/12\.345|67\.891/);
-  await expect(page.locator('.area-total strong')).toHaveText('1');
+  if ((page.viewportSize()?.width ?? 1280) <= 640) await expect(page.locator('.mobile-results-heading strong')).toHaveText('1 record');
+  else await expect(page.locator('.area-total strong')).toHaveText('1');
   // Changing spatial membership may update the source; warm navigation must not.
   const before = await indexUpdates(page);
   await page.getByRole('button', { name: 'Close debug menu', exact: true }).click();

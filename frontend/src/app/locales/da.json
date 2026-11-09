@@ -992,5 +992,17 @@
   "Poultry slaughter kills birds and prepares their bodies for food. Typical stages include bleeding, removing feathers and removing internal organs.": "Ved fjerkræslagtning dræbes fugle, og deres kroppe klargøres til fødevarer. Typiske trin omfatter afblødning, fjernelse af fjer og udtagning af indre organer.",
   "Aquaculture is the farming of fish, shellfish or other aquatic animals.": "Akvakultur er opdræt af fisk, skaldyr eller andre vandlevende dyr.",
   "Meat establishment requirements": "Krav til kødvirksomheder",
-  "Search unavailable": "Søgning er ikke tilgængelig"
+  "Search unavailable": "Søgning er ikke tilgængelig",
+  "Everywhere": "Overalt",
+  "Near me": "I nærheden",
+  "View details": "Se detaljer",
+  "Apply filters": "Anvend filtre",
+  "Expand search panel": "Udvid søgepanelet",
+  "Show fewer results": "Vis færre resultater",
+  "Expand": "Udvid",
+  "{count} records": "{count} poster",
+  "{count} activities": "{count} aktiviteter",
+  "{count} filters": "{count} filtre",
+  "{count} record": "{count} post",
+  "{count} filter": "{count} filter"
 }

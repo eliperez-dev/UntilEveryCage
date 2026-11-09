@@ -169,8 +169,10 @@ API schemas own supported fields. They are not additional roadmaps.
   and exposes the next style in its tooltip. Search input stays in place as
   results, detail and filters open flush below the entire toolbar width.
   Resizing the panel changes both joined widths; bounds keep the controls usable
-  at narrow desktop and zoomed layouts. On mobile, tools stay centered near the map top while
-  search uses the bottom sheet. Keep 44px touch targets and native gestures.
+  at narrow desktop and zoomed layouts. On mobile, compact style, 2D/3D and
+  location controls sit near the map top. Search this area is an explicit
+  action above the exposed bottom sheet; scope and box/radius settings belong
+  in the sheet's scope control. Keep 44px touch targets and native gestures.
   The 3D view uses a 60-degree pitch; 2D looks straight down and resets bearing
   to north, preserving geographic focus and zoom. More tools contains
   release selection, clustering, icon size, optimized dots and diagnostics;
@@ -186,17 +188,22 @@ API schemas own supported fields. They are not additional roadmaps.
   Temporary record-search failures never unmount the map or replace its basemap with an
   error screen. Show a translated inline Search unavailable / Retry action,
   including above the collapsed sheet. Retry keeps camera, filters and sheet
-  position and retries failed matching pins only when needed. Existing release,
+  position and retries failed matching pins only when needed. Keep status and
+  Retry above the results scroller, identifying retained rows as previous results.
+  Existing release,
   suppression and invalid-contract revalidation remains effective; failed or
   pending scope matches do not show stale pins as current results.
   Back to results restores the list and its scroll position. Mobile uses a
   bottom search sheet with collapsed, middle and expanded positions. The
-  collapsed sheet is only a 56px Search map pull handle plus the safe area;
-  tapping, keyboard steps or dragging that handle opens it. Normal result
+  collapsed sheet is a 56px pull handle plus the safe area. Fresh search says
+  Search map; active searches retain scope/filter context. A retained selection
+  says View details with the facility name. Tapping, keyboard steps or dragging
+  that handle opens it. Normal result
   scrolling never drags the sheet. The sheet overlays the unchanged map canvas;
   its handle stays reachable even when expanded. Toolbar and attribution sit
   above the mobile sheet; the toolbar can hide when a short viewport leaves
-  no usable map strip. The middle and expanded height settings
+  no usable map strip. The middle position defaults to 60% of the remaining
+  map workspace, and expanded to 90%. The middle and expanded height settings
   are bounded, temporary controls under Layout & density in the debug menu.
   Every search action opens results. Preserve an already expanded mobile sheet;
   reopening a collapsed sheet starts at middle. Short scoped-search viewports
@@ -212,8 +219,16 @@ API schemas own supported fields. They are not additional roadmaps.
   results position and list context. Show on map
   collapses the sheet while retaining the selection; View facility details
   returns to that record. Unmapped records have no Show on map action.
-  Below Search, keep Filters with its
-  sliders icon and the result count on one compact row. Keep detail dense and
+  On mobile, query entry and the labelled Filters button share one outlined
+  row, without a duplicate Search map heading above it. The next row shows
+  Everywhere, This map area or the named radius/Near me scope with its clear
+  action and compact category context. Panning never silently applies a scope.
+  Scope/settings menus fit the visual viewport and scroll internally on short screens.
+  A short record count and Expand action lead compact name/category/location
+  rows; pagination retains its loaded/total context below the list. Keep at
+  least three complete records visible in the middle sheet at ordinary 320px
+  and 390px phone sizes. Desktop keeps Filters and count below Search.
+  Keep detail dense and
   readable, with a white `Open facility page` action with black text at the bottom.
   Keep checkbox multi-selection, totals/pagination, evidence and relationship
   controls. Public category filters use short translated labels and existing
@@ -221,9 +236,12 @@ API schemas own supported fields. They are not additional roadmaps.
   disclosures that show their current selections. Location preserves explicit
   precision choices; Mapped expands to supported mapped precision values,
   with an indeterminate state for partial selection. Filters fill the available
-  workspace, with a scrolling options region and fixed Clear filters / Show
-  results footer. Opening filters on mobile expands the sheet; closing them
-  restores its previous results height.
+  workspace, with a scrolling options region and fixed footer. Mobile choices
+  are staged in memory: Apply filters submits them together, Clear filters
+  clears the draft, and closing cancels unsubmitted changes. Query text is
+  preserved. Desktop retains immediate checkbox changes and Show results.
+  Opening filters on mobile expands the sheet; closing them restores its
+  previous results height.
 
 ## Map
 
