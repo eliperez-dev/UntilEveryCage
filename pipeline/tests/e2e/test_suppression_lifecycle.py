@@ -163,6 +163,8 @@ class SuppressionLifecycleE2ETests(unittest.TestCase):
         return job_id
 
     def test_0_radius_matches_and_facet_cache_before_suppression(self):
+        # Before any facet request this process has no cached release total.
+        _, uncached_page = self.get_json("/api/v2/locations?limit=1")
         _, facets = self.get_json("/api/v2/discovery/facets")
         self.assertEqual(sum(row["count"] for row in facets["dimensions"]["country_code"]), 1)
         self.assertEqual(facets["dimensions"]["mapped_country_code"], [{"value": "DK", "count": 1}])
@@ -173,6 +175,17 @@ class SuppressionLifecycleE2ETests(unittest.TestCase):
         type(self).initial_facet_generation = generation
         _, cached = self.get_json("/api/v2/discovery/facets")
         self.assertEqual(cached, facets)
+        _, cached_page = self.get_json("/api/v2/locations?limit=1")
+        self.assertEqual(cached_page, uncached_page)
+        for pagination in ("offset=10", "cursor=" + str(self.facility_id)):
+            _, beyond = self.get_json("/api/v2/locations?" + pagination)
+            self.assertEqual(beyond["data"], [])
+            self.assertEqual(beyond["meta"]["total_count"], 1)
+            self.assertIsNone(beyond["meta"]["next_cursor"])
+        for filters in ("country_code=US", "q=not-a-matching-name"):
+            _, empty = self.get_json("/api/v2/locations?" + filters)
+            self.assertEqual(empty["data"], [])
+            self.assertEqual(empty["meta"]["total_count"], 0)
         _, matches = self.get_json("/api/v2/map/matches?release_id=e2e-suppression-old&latitude=55&longitude=10&radius_km=500")
         self.assertEqual(matches["data"]["facility_ids"], [str(self.facility_id)])
         for scope in ("", "&min_lon=9&min_lat=54&max_lon=13&max_lat=58",
@@ -201,10 +214,11 @@ class SuppressionLifecycleE2ETests(unittest.TestCase):
             db.execute("UPDATE uec.release_manifests SET manifest=manifest || '{\"tampered\":true}'::jsonb WHERE release_id='e2e-suppression-old'")
             db.execute("ALTER TABLE uec.release_manifests ENABLE TRIGGER release_manifests_append_only")
         try:
-            with self.assertRaises(urllib.error.HTTPError) as invalid:
-                self.get_json("/api/v2/discovery/facets")
-            self.assertEqual(invalid.exception.code, 503)
-            self.assertEqual(json.loads(invalid.exception.read())["error"]["code"], "release_manifest_invalid")
+            for route in ("/api/v2/discovery/facets", "/api/v2/locations?limit=1"):
+                with self.assertRaises(urllib.error.HTTPError) as invalid:
+                    self.get_json(route)
+                self.assertEqual(invalid.exception.code, 503)
+                self.assertEqual(json.loads(invalid.exception.read())["error"]["code"], "release_manifest_invalid")
         finally:
             with psycopg.connect(self.env.database_url) as db:
                 db.execute("ALTER TABLE uec.release_manifests DISABLE TRIGGER release_manifests_append_only")
@@ -212,6 +226,32 @@ class SuppressionLifecycleE2ETests(unittest.TestCase):
                 db.execute("ALTER TABLE uec.release_manifests ENABLE TRIGGER release_manifests_append_only")
         _, restored = self.get_json("/api/v2/discovery/facets")
         self.assertEqual(restored, before)
+
+    def test_2_unfiltered_list_survives_content_identity_eviction(self):
+        _, expected = self.get_json("/api/v2/locations?limit=1")
+        with psycopg.connect(self.env.database_url) as db:
+            original = db.execute("SELECT content_sha256 FROM uec.public_discovery_read_models WHERE release_id='e2e-suppression-old'").fetchone()[0]
+
+        def set_content(digest):
+            # Only this disposable synthetic database may change component identity.
+            with psycopg.connect(self.env.database_url) as db:
+                db.execute("ALTER TABLE uec.public_discovery_read_models DISABLE TRIGGER public_discovery_read_models_append_only")
+                db.execute("UPDATE uec.public_discovery_read_models SET content_sha256=%s WHERE release_id='e2e-suppression-old'", (digest,))
+                db.execute("ALTER TABLE uec.public_discovery_read_models ENABLE TRIGGER public_discovery_read_models_append_only")
+
+        try:
+            # Nine distinct identities evict the original from the eight-entry LRU.
+            for index in range(9):
+                set_content(hashlib.sha256(f"synthetic-component-{index}".encode()).hexdigest())
+                _, miss = self.get_json("/api/v2/locations?limit=1")
+                self.assertEqual(miss, expected)
+                self.get_json("/api/v2/discovery/facets")
+                _, hit = self.get_json("/api/v2/locations?limit=1")
+                self.assertEqual(hit, expected)
+        finally:
+            set_content(original)
+        _, evicted = self.get_json("/api/v2/locations?limit=1")
+        self.assertEqual(evicted, expected)
 
     def test_a_worker_claims_job_and_records_append_only_result(self):
         job_id = self._queue_geocode("synthetic-lease", "private lease query")
@@ -440,6 +480,12 @@ class SuppressionLifecycleE2ETests(unittest.TestCase):
         status, body = self.get_json("/api/v2/locations?limit=100")
         self.assertEqual(status, 200)
         self.assertEqual(body["data"], [])
+        self.assertEqual(body["meta"]["total_count"], 0)
+        # Once the new suppression identity is warm, the zero-count shortcut
+        # must still return the same empty page and exact metadata.
+        self.get_json("/api/v2/discovery/facets")
+        _, cached_empty = self.get_json("/api/v2/locations?limit=100")
+        self.assertEqual(cached_empty, body)
         with self.assertRaises(urllib.error.HTTPError) as detail_error:
             self.get_json(f"/api/v2/locations/{self.facility_id}")
         self.assertEqual(detail_error.exception.code, 404)

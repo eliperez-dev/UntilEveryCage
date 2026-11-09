@@ -1,6 +1,6 @@
 # V2 public projection read-path decision
 
-## Current implementation (2026-11-03)
+## Current implementation (2026-11-09)
 
 The approved v0 repair supersedes the earlier no-request-cache decision below.
 Public map reads use the manifest-bound discovery read model and a prepared,
@@ -48,6 +48,22 @@ the selected matching observation. Map membership, exact totals and pagination
 use the same filtered set. `meta.total_count` is independent of cursor/page size.
 These queries do not cache result membership; broad categories can still cost
 more than a small area query.
+
+Unfiltered lists reuse the exact facility total from the existing global facet
+cache. The list's repeatable-read transaction validates the canonical manifest
+and the same database, server, role, profile, release, ruleset, content checksum
+and suppression generation before looking up that total. Its indexed page still
+passes the live public view before deduplication, cursor, limit and offset;
+only that bounded page receives detail enrichment. Counts, DTOs and cursors are
+unchanged. Filtered lists retain the full eligible-set count.
+
+The facet cache holds eight identities with LRU eviction and has no time-based
+expiry. A missing or evicted identity uses the existing exact-count list path;
+the list does not populate the facet cache. A later facet request rebuilds it.
+Identity changes also miss; invalid manifests fail rather than reuse cached
+counts. Production's existing pre-listen facet warmup prepares the current
+release, so its first HTTP list can use the total. Cold historical/profile
+requests and requests after invalidation can still pay for a full recount.
 
 The 2026-10-10 repair filters taxonomy through the release-bound assignment
 indexes before assembling row detail. Migration 070 separates the candidate

@@ -95,7 +95,7 @@ class PublicDiscoveryQueryContractTests(unittest.TestCase):
     def test_taxonomy_filter_count_uses_assignment_existence_not_json_aggregation(self):
         source = _source()
         start = source.index("pub async fn get_v2_locations_handler")
-        locations = source[start:source.index("let rows = match transaction.query", start)]
+        locations = source[start:source.index("let list_query =", start)]
         self.assertIn("assignment.primary_key = ANY($20::text[])", locations)
         self.assertNotIn("taxonomy.primary_categories && $20", locations)
         self.assertNotIn("jsonb_agg(DISTINCT jsonb_build_object", locations)

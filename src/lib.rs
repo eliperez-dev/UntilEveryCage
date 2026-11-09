@@ -4520,6 +4520,41 @@ fn public_facets_response(body: Arc<str>) -> Response<axum::body::Body> {
         .expect("facet response is valid")
 }
 
+async fn public_facets_cache_identity(
+    transaction: &tokio_postgres::Transaction<'_>, release_id: &str, profile: &str, ruleset: &str,
+) -> Result<(String, String, i64), Response<axum::body::Body>> {
+    let identity = transaction.query_one(
+        "SELECT current_database(),inet_server_addr()::text,inet_server_port(),current_user,manifest.manifest_sha256,model.content_sha256,generation.generation,manifest.manifest::text FROM uec.release_manifests manifest JOIN uec.public_discovery_read_models model USING(release_id) CROSS JOIN uec.public_suppression_generation generation WHERE manifest.release_id=$1",
+        &[&release_id],
+    ).await.map_err(|_| v2_error(StatusCode::SERVICE_UNAVAILABLE, "facets_identity_unavailable", "public facets unavailable"))?;
+    let manifest_sha256: String = identity.get(4);
+    let generation: i64 = identity.get(6);
+    let manifest: Value = serde_json::from_str(&identity.get::<_, String>(7))
+        .map_err(|_| v2_error(StatusCode::SERVICE_UNAVAILABLE, "release_manifest_invalid", "release manifest integrity check failed"))?;
+    // Validate the canonical manifest even on a cache hit, in the caller's snapshot.
+    if !manifest.is_object() || format!("{:x}", Sha256::digest(canonical_json(&manifest).as_bytes())) != manifest_sha256 {
+        return Err(v2_error(StatusCode::SERVICE_UNAVAILABLE, "release_manifest_invalid", "release manifest integrity check failed"));
+    }
+    let key = format!("{:x}", Sha256::digest(canonical_json(&json!({
+        "database": identity.get::<_, String>(0), "server": identity.get::<_, Option<String>>(1),
+        "port": identity.get::<_, Option<i32>>(2), "role": identity.get::<_, String>(3),
+        "profile": profile, "release_id": release_id, "ruleset": ruleset,
+        "manifest": manifest_sha256, "content": identity.get::<_, String>(5),
+        "suppression_generation": generation
+    })).as_bytes()));
+    Ok((key, manifest_sha256, generation))
+}
+
+fn cached_public_facility_total(key: &str) -> Option<i64> {
+    let body = PUBLIC_FACETS_CACHE.lock().expect("facet cache lock is not poisoned").get(key)?;
+    let payload: Value = serde_json::from_str(&body).ok()?;
+    payload.pointer("/dimensions/display_precision")?.as_array()?.iter().try_fold(0i64, |total, row| {
+        let count = row.get("count")?.as_i64()?;
+        (count >= 0).then_some(())?;
+        total.checked_add(count)
+    })
+}
+
 pub async fn get_v2_facets_handler(
     State(state): State<ApiState>,
     Query(params): Query<V2LocationParams>,
@@ -4629,31 +4664,11 @@ pub async fn get_v2_facets_handler(
         "uec.public_discovery_api_read_model"
     };
     let cache_identity = if cacheable {
-        let identity = match transaction.query_one(
-            "SELECT current_database(),inet_server_addr()::text,inet_server_port(),current_user,manifest.manifest_sha256,model.content_sha256,generation.generation,manifest.manifest::text FROM uec.release_manifests manifest JOIN uec.public_discovery_read_models model USING(release_id) CROSS JOIN uec.public_suppression_generation generation WHERE manifest.release_id=$1",
-            &[&release_id],
-        ).await {
-            Ok(row) => row,
-            Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "facets_identity_unavailable", "public facets unavailable"),
+        let (key, manifest_sha256, suppression_generation) = match
+            public_facets_cache_identity(&transaction, &release_id, profile, &ruleset_version).await {
+            Ok(identity) => identity,
+            Err(response) => return response,
         };
-        let manifest_sha256: String = identity.get(4);
-        let suppression_generation: i64 = identity.get(6);
-        let manifest: Value = match serde_json::from_str(&identity.get::<_, String>(7)) {
-            Ok(value) => value,
-            Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "release_manifest_invalid", "release manifest integrity check failed"),
-        };
-        // Validate even on cache hits: this response can replace the separate
-        // manifest requests used by clients to establish a current snapshot.
-        if !manifest.is_object() || format!("{:x}", Sha256::digest(canonical_json(&manifest).as_bytes())) != manifest_sha256 {
-            return v2_error(StatusCode::SERVICE_UNAVAILABLE, "release_manifest_invalid", "release manifest integrity check failed");
-        }
-        let key = format!("{:x}", Sha256::digest(canonical_json(&json!({
-            "database": identity.get::<_, String>(0), "server": identity.get::<_, Option<String>>(1),
-            "port": identity.get::<_, Option<i32>>(2), "role": identity.get::<_, String>(3),
-            "profile": profile, "release_id": release_id, "ruleset": ruleset_version,
-            "manifest": manifest_sha256, "content": identity.get::<_, String>(5),
-            "suppression_generation": suppression_generation
-        })).as_bytes()));
         let cached = PUBLIC_FACETS_CACHE.lock().expect("facet cache lock is not poisoned").get(&key);
         if let Some(body) = cached {
             if transaction.commit().await.is_err() {
@@ -5390,17 +5405,49 @@ async fn get_v2_locations_response(
                 "total_count": total_count, "mapped_count": facility_ids.len()}
         }))).into_response();
     }
-    // Select the matching observation and stable page before DTO enrichment.
-    // Map membership, exact totals and pagination share this same filtered set.
-    let rows = match transaction.query(&format!(r#"
-        WITH {filtered_ctes}, eligible_total AS MATERIALIZED (
+    // The global facets already count the same DISTINCT facility representatives.
+    // Reuse that total only for an unfiltered request with the same live identity
+    // in this transaction. Cache misses retain the exact-count query below.
+    let cached_total = if params.facets_are_unfiltered() {
+        let (key, _, _) = match public_facets_cache_identity(
+            &transaction, &promoted_release_id, &promoted_profile, &promoted_ruleset,
+        ).await {
+            Ok(identity) => identity,
+            Err(response) => return response,
+        };
+        cached_public_facility_total(&key)
+    } else { None };
+    let page_ctes = if let Some(total) = cached_total {
+        format!(r#"
+        eligible_total AS MATERIALIZED (
+          SELECT {total}::bigint AS total_count
+        ), page AS (
+          SELECT DISTINCT ON (stored.facility_id) stored.facility_id, stored.observation_id
+          FROM uec.public_discovery_read_model_rows stored
+          JOIN LATERAL (
+            SELECT 1 FROM {public_read_model} eligible
+            WHERE eligible.release_id = stored.release_id
+              AND eligible.facility_id = stored.facility_id
+              AND eligible.observation_id = stored.observation_id
+            LIMIT 1
+          ) live ON TRUE
+          WHERE stored.release_id = $1 AND {total} > 0
+            AND ($2::uuid IS NULL OR stored.facility_id > $2)
+          ORDER BY stored.facility_id, stored.observation_id LIMIT $3 OFFSET $4
+        )"#)
+    } else {
+        format!(r#"{filtered_ctes}, eligible_total AS MATERIALIZED (
           SELECT count(*)::bigint AS total_count FROM filtered
         ), page AS (
           SELECT facility_id, observation_id
           FROM filtered
           WHERE ($16::uuid IS NULL OR facility_id > $16)
           ORDER BY facility_id LIMIT $17 OFFSET $18
-        ), page_with_total AS (
+        )"#)
+    };
+    // Both paths enrich only the live-eligible, stable page.
+    let list_query = format!(r#"
+        WITH {page_ctes}, page_with_total AS (
           SELECT page.facility_id, page.observation_id, total.total_count
           FROM eligible_total AS total
           LEFT JOIN page ON TRUE
@@ -5438,7 +5485,13 @@ async fn get_v2_locations_response(
             AND NOT EXISTS (SELECT 1 FROM uec.observation_taxonomy_assignment_sets newer WHERE newer.observation_id=s.observation_id AND newer.taxonomy_version=s.taxonomy_version AND (newer.created_at,newer.assignment_set_id)>(s.created_at,s.assignment_set_id))
         ) taxonomy ON TRUE
         ORDER BY history.facility_id, history.observation_id
-    "#), &[&promoted_release_id, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude, &cursor, &query_limit, &effective_offset, &params.source_id, &category_keys]).await {
+    "#);
+    let result = if cached_total.is_some() {
+        transaction.query(&list_query, &[&promoted_release_id, &cursor, &query_limit, &effective_offset]).await
+    } else {
+        transaction.query(&list_query, &[&promoted_release_id, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude, &cursor, &query_limit, &effective_offset, &params.source_id, &category_keys]).await
+    };
+    let rows = match result {
         Ok(rows) => rows,
         Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "location_query_failed", "V2 location query failed"),
     };
