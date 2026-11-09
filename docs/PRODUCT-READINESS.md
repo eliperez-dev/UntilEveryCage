@@ -2,7 +2,7 @@
 
 **Canonical authority:** this document is the sole product-level readiness and overall V2 roadmap authority.
 
-**Owner:** project maintainer. **Updated:** 2026-11-03, Pacific.
+**Owner:** project maintainer. **Updated:** 2026-11-09, Pacific.
 Source readiness belongs in [source-status.json](source-status.json), frontend
 behavior in [the frontend guide](frontend/README.md), and data policy in
 [ETHICS.md](ETHICS.md). Update these owners rather than adding sprint reports.
@@ -22,9 +22,9 @@ The current dataset is **October 31, 2026**, `release-2026-10-31`.
 | Graph | 83,067 connections: 23,874 exact and 59,193 inferred; 1,024 APHIS evidence references |
 | Historical dataset | October 18 remains accessible, including all 69,526 original graph edges |
 | V0 | Retired from production at the maintainer's request; seven old projection copies removed, reclaiming 521,412,608 bytes. The local development baseline and source evidence remain |
-| Application | `a71a5d1cf748aa3a35877e7b5570b0494aaacd01` on `eli/v2` |
-| CI | All seven jobs passed in [run 41720735466](https://github.com/eliperez-dev/UntilEveryCage/actions/runs/41720735466) |
-| Render | Deployment `dep-dbl5afei0phs738hl4k0`, serving database `uec_serving_country_20261031`; Auto-Deploy remains off |
+| Application | `73f5858da3e7558947050f796e07bacb78fd70f1` on `eli/v2` |
+| CI | All seven jobs passed in [run 42659646999](https://github.com/eliperez-dev/UntilEveryCage/actions/runs/42659646999) |
+| Render | Deployment `dep-dbp0748m7kps73b3sm8g`, serving database `uec_serving_country_20261031`; Auto-Deploy remains off |
 | Contributions | Existing intake and bug-report capabilities remain enabled; community data was not moved or modified |
 
 The country first pass is complete. Germany, national Spain, Catalonia, France,
@@ -85,6 +85,19 @@ source inventory. Source rows are not a globally deduplicated premises census.
   1.1 seconds: seven rows, unchanged canvas/camera and no page errors. Its
   headless screenshot did not verify tiles or pins. A normal browser separately
   rendered street tiles and red pins without captured warnings or errors.
+- The November 9 integration adds the reviewed compact mobile search sheet,
+  staged filters and scope controls. Initial unfiltered lists reuse verified
+  facet totals; live eligibility still applies before pagination. Lower-cost
+  HTTP compression prevents large map responses from delaying record requests.
+  Identity, suppression, pagination, current/history/V0 and decoded gzip/Brotli
+  parity checks passed. Six public API checks passed: the first 100-record
+  response took 0.68 seconds, then 0.62 seconds, versus 12.4/10.8 seconds before,
+  with the full response unchanged. Counts and October 18 remain unchanged;
+  V0 still returns 410. Production warmed facets before traffic in 12.5 seconds.
+  A fresh public mobile-sized browser showed usable rows in 2.86 seconds;
+  its initial list/map transfers took 0.51/0.62 seconds. Selection, scope clearing,
+  sheet positions and map geometry passed without JavaScript exceptions.
+  A retired-V0 availability probe returned 404; one other resource error remained unattributed.
 
 The aggregate completion receipt is retained locally in ignored
 `data/staging/country-release-20261031/acceptance.json`. Its component receipts
@@ -102,9 +115,9 @@ October 27 snapshots were never published and are not the current release.
 
 ## Measured backend follow-ups
 
-- Initial unfiltered record browsing took 10.2 seconds in the live mobile flow;
-  filtered facet queries and broad concurrent category queries also need work.
-  Global Processing returned 52,941
+- Filtered facet queries and broad category queries still need work. The November 9
+  public mobile check took 8.0 seconds for the first global Slaughter list and
+  2.8 seconds on repeat; these retain the exact-count path. Global Processing returned 52,941
   matches in about 6.8 seconds locally; the reported area repair is not a claim
   that every global filter is fast.
 - A graceful service restart was observed November 3 at 12:08 PM Pacific.
@@ -112,6 +125,7 @@ October 27 snapshots were never published and are not the current release.
 - Generalize the exact canonical graph-alias rebinding used for reused private
   handoffs in this release. Original identifiers and evidence must remain intact.
 - Apply the human-readable French ICPE source label in the next source projection.
+- Remove the automatic retired-V0 archive-availability request on map entry.
 
 These are tracked follow-ups, not reasons to repeat the completed country
 geocoding pass or begin another broad backend redesign.
