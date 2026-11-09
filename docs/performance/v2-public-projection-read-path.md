@@ -8,6 +8,10 @@ serialized projection. Rust keeps at most eight projection identities in memory
 and coalesces concurrent builds. Production builds the current official facets
 before opening its listener, then warms the compact map projection in the
 background. A map-feed request can still wait if that separate warmup is unfinished.
+HTTP gzip and Brotli use the fastest compression setting: compressing a large
+cached map body at the default effort delayed unrelated list requests on the
+async runtime. This trades some transfer size for lower compression contention;
+it does not change decoded payloads or remove encoding support.
 
 Every server lookup, including conditional `304` responses, first verifies the
 current eligible release, manifest checksum and suppression generation. The

@@ -25,7 +25,7 @@ use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use tower_http::compression::CompressionLayer;
+use tower_http::compression::{CompressionLayer, CompressionLevel};
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
 use deadpool_postgres::{Config, Hook, HookError, ManagerConfig, RecyclingMethod, Runtime};
@@ -237,7 +237,9 @@ pub fn app(state: uec_api::ApiState, proxy: private_environment::ProxyConfig) ->
         )
         // Keep cached map bytes unmodified. Tower negotiates a standard
         // transport encoding per request and adds Vary: Accept-Encoding.
-        .layer(CompressionLayer::new().gzip(true).br(true))
+        // Large cached map bodies must not monopolize the async runtime while
+        // compressing and delay unrelated list requests.
+        .layer(CompressionLayer::new().gzip(true).br(true).quality(CompressionLevel::Fastest))
         .layer(axum::middleware::from_fn_with_state(
             RateLimitState {
                 limiter: Limiter::default(),
@@ -1136,7 +1138,7 @@ mod config_tests {
     use super::{
         parse_cors_origins, preview_config, request_log_payload, request_route_class,
         production_route_boundary, validate_bind_host, validate_runtime,
-        API_STATEMENT_TIMEOUT, CompressionLayer,
+        API_STATEMENT_TIMEOUT, CompressionLayer, CompressionLevel,
     };
 
     #[test]
@@ -1156,7 +1158,7 @@ mod config_tests {
                     )
                 }),
             )
-            .layer(CompressionLayer::new().gzip(true).br(true));
+            .layer(CompressionLayer::new().gzip(true).br(true).quality(CompressionLevel::Fastest));
         let response = router
             .oneshot(
                 axum::http::Request::builder()
