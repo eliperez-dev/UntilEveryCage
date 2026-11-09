@@ -4488,20 +4488,25 @@ pub async fn get_v2_filter_metadata_handler() -> impl IntoResponse {
 }
 
 const PUBLIC_FACETS_CACHE_MAX_ENTRIES: usize = 8;
+struct PublicFacetsSnapshot {
+    body: Arc<str>,
+    // One count per facility category bitmask, so OR filters never double-count.
+    category_counts: std::collections::BTreeMap<i64, i64>,
+}
 #[derive(Default)]
 struct PublicFacetsCache {
-    entries: HashMap<String, (Arc<str>, u64)>,
+    entries: HashMap<String, (Arc<PublicFacetsSnapshot>, u64)>,
     clock: u64,
 }
 impl PublicFacetsCache {
-    fn get(&mut self, key: &str) -> Option<Arc<str>> {
+    fn get(&mut self, key: &str) -> Option<Arc<PublicFacetsSnapshot>> {
         self.clock = self.clock.wrapping_add(1);
         let clock = self.clock;
         self.entries.get_mut(key).map(|(body, used)| { *used = clock; body.clone() })
     }
-    fn put(&mut self, key: String, body: Arc<str>) {
+    fn put(&mut self, key: String, body: Arc<str>, category_counts: std::collections::BTreeMap<i64, i64>) {
         self.clock = self.clock.wrapping_add(1);
-        self.entries.insert(key, (body, self.clock));
+        self.entries.insert(key, (Arc::new(PublicFacetsSnapshot { body, category_counts }), self.clock));
         if self.entries.len() > PUBLIC_FACETS_CACHE_MAX_ENTRIES {
             if let Some(oldest) = self.entries.iter().min_by_key(|(_, (_, used))| *used).map(|(key, _)| key.clone()) {
                 self.entries.remove(&oldest);
@@ -4545,9 +4550,16 @@ async fn public_facets_cache_identity(
     Ok((key, manifest_sha256, generation))
 }
 
-fn cached_public_facility_total(key: &str) -> Option<i64> {
-    let body = PUBLIC_FACETS_CACHE.lock().expect("facet cache lock is not poisoned").get(key)?;
-    let payload: Value = serde_json::from_str(&body).ok()?;
+fn public_facility_total(snapshot: &PublicFacetsSnapshot, categories: Option<&[String]>) -> Option<i64> {
+    if let Some(categories) = categories {
+        let selected = categories.iter().try_fold(0i64, |mask, category| {
+            V2_TAXONOMY_PRIMARY_CATEGORIES.iter().position(|key| *key == category.as_str())
+                .map(|bit| mask | (1i64 << bit))
+        })?;
+        return snapshot.category_counts.iter().filter(|(mask, _)| **mask & selected != 0)
+            .try_fold(0i64, |total, (_, count)| if *count >= 0 { total.checked_add(*count) } else { None });
+    }
+    let payload: Value = serde_json::from_str(&snapshot.body).ok()?;
     payload.pointer("/dimensions/display_precision")?.as_array()?.iter().try_fold(0i64, |total, row| {
         let count = row.get("count")?.as_i64()?;
         (count >= 0).then_some(())?;
@@ -4670,15 +4682,55 @@ pub async fn get_v2_facets_handler(
             Err(response) => return response,
         };
         let cached = PUBLIC_FACETS_CACHE.lock().expect("facet cache lock is not poisoned").get(&key);
-        if let Some(body) = cached {
+        if let Some(snapshot) = cached {
             if transaction.commit().await.is_err() {
                 return v2_error(StatusCode::SERVICE_UNAVAILABLE, "database_transaction_failed", "V2 database transaction failed");
             }
-            return public_facets_response(body);
+            return public_facets_response(snapshot.body.clone());
         }
         Some((key, manifest_sha256, suppression_generation))
     } else { None };
-    let rows = match transaction.query(&format!("SELECT country_code, classification_category, display_precision, lifecycle_status, provenance_origin_type, city, count(*)::bigint, provenance_source_id, provenance_source_name FROM (SELECT DISTINCT ON (facility_id) facility_id, country_code, classification_category, display_precision, lifecycle_status, provenance_origin_type, city, provenance_source_id, provenance_source_name FROM {public_read_model} WHERE release_id=$1 AND ($2::text IS NULL OR country_code=$2) AND ($3::text IS NULL OR classification_category=$3) AND ($4::text IS NULL OR provenance_origin_type=$4) AND ($5::text IS NULL OR display_precision=$5) AND ($6::text IS NULL OR lifecycle_status=$6) AND ($7::text IS NULL OR city=$7) ORDER BY facility_id, observation_id) public_facilities GROUP BY country_code, classification_category, display_precision, lifecycle_status, provenance_origin_type, city, provenance_source_id, provenance_source_name"), &[&release_id, &params.country_code, &params.category, &params.source_type, &params.display_precision, &params.lifecycle_status, &params.region]).await { Ok(rows) => rows, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "facets_query_failed", "public facets unavailable") };
+    let facets_query = if cacheable {
+        let category_mask = V2_TAXONOMY_PRIMARY_CATEGORIES.iter().enumerate()
+            .map(|(bit, key)| format!("WHEN '{key}' THEN {}", 1i64 << bit)).collect::<Vec<_>>().join(" ");
+        format!(r#"
+          WITH eligible_observations AS MATERIALIZED (
+            SELECT facility_id, observation_id, country_code, classification_category, display_precision,
+                   lifecycle_status, provenance_origin_type, city, provenance_source_id, provenance_source_name
+            FROM {public_read_model} WHERE release_id=$1
+              AND ($2::text IS NULL OR country_code=$2) AND ($3::text IS NULL OR classification_category=$3)
+              AND ($4::text IS NULL OR provenance_origin_type=$4) AND ($5::text IS NULL OR display_precision=$5)
+              AND ($6::text IS NULL OR lifecycle_status=$6) AND ($7::text IS NULL OR city=$7)
+          ), latest_sets AS MATERIALIZED (
+            SELECT DISTINCT ON (sets.observation_id) sets.observation_id, sets.assignment_set_id
+            FROM eligible_observations candidate
+            JOIN uec.observation_taxonomy_assignment_sets sets ON sets.observation_id=candidate.observation_id
+            WHERE sets.taxonomy_version='uec-taxonomy-v1'
+            ORDER BY sets.observation_id, sets.created_at DESC, sets.assignment_set_id DESC
+          ), native_masks AS (
+            SELECT eligible.facility_id,
+                   bit_or(CASE assignment.primary_key {category_mask} ELSE 0 END)::bigint AS native_mask
+            FROM eligible_observations eligible JOIN latest_sets sets USING (observation_id)
+            JOIN uec.observation_taxonomy_assignments assignment USING (assignment_set_id)
+            GROUP BY eligible.facility_id
+          ), public_facilities AS (
+            SELECT DISTINCT ON (eligible.facility_id) eligible.*, COALESCE(native_masks.native_mask, 0) AS native_mask
+            FROM eligible_observations eligible LEFT JOIN native_masks USING (facility_id)
+            ORDER BY eligible.facility_id, eligible.observation_id
+          )
+          SELECT country_code, classification_category, display_precision, lifecycle_status, provenance_origin_type,
+                 city, count(*)::bigint, provenance_source_id, provenance_source_name, native_mask
+          FROM public_facilities GROUP BY country_code, classification_category, display_precision, lifecycle_status,
+                 provenance_origin_type, city, provenance_source_id, provenance_source_name, native_mask
+        "#)
+    } else {
+        format!("SELECT country_code, classification_category, display_precision, lifecycle_status, provenance_origin_type, city, count(*)::bigint, provenance_source_id, provenance_source_name FROM (SELECT DISTINCT ON (facility_id) facility_id, country_code, classification_category, display_precision, lifecycle_status, provenance_origin_type, city, provenance_source_id, provenance_source_name FROM {public_read_model} WHERE release_id=$1 AND ($2::text IS NULL OR country_code=$2) AND ($3::text IS NULL OR classification_category=$3) AND ($4::text IS NULL OR provenance_origin_type=$4) AND ($5::text IS NULL OR display_precision=$5) AND ($6::text IS NULL OR lifecycle_status=$6) AND ($7::text IS NULL OR city=$7) ORDER BY facility_id, observation_id) public_facilities GROUP BY country_code, classification_category, display_precision, lifecycle_status, provenance_origin_type, city, provenance_source_id, provenance_source_name")
+    };
+    let rows = match transaction.query(&facets_query, &[&release_id, &params.country_code, &params.category, &params.source_type, &params.display_precision, &params.lifecycle_status, &params.region]).await { Ok(rows) => rows, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "facets_query_failed", "public facets unavailable") };
+    let mut category_counts = std::collections::BTreeMap::new();
+    if cacheable {
+        for row in &rows { *category_counts.entry(row.get::<_, i64>(9)).or_insert(0i64) += row.get::<_, i64>(6); }
+    }
     let mut dimensions = serde_json::Map::new();
     for (name, column) in [
         ("country_code", 0),
@@ -4747,7 +4799,7 @@ pub async fn get_v2_facets_handler(
     }
     let body: Arc<str> = Arc::from(payload.to_string());
     if let Some((key, _, _)) = cache_identity {
-        PUBLIC_FACETS_CACHE.lock().expect("facet cache lock is not poisoned").put(key, body.clone());
+        PUBLIC_FACETS_CACHE.lock().expect("facet cache lock is not poisoned").put(key, body.clone(), category_counts);
     }
     public_facets_response(body)
 }
@@ -4782,8 +4834,11 @@ pub struct V2LocationParams {
 
 impl V2LocationParams {
     fn facets_are_unfiltered(&self) -> bool {
+        self.category_keys.is_none() && self.filters_except_taxonomy_are_unfiltered()
+    }
+    fn filters_except_taxonomy_are_unfiltered(&self) -> bool {
         self.country_code.is_none() && self.source_id.is_none() && self.region.is_none()
-            && self.category.is_none() && self.category_keys.is_none() && self.source_type.is_none()
+            && self.category.is_none() && self.source_type.is_none()
             && self.display_precision.is_none() && self.lifecycle_status.is_none() && self.q.is_none()
             && self.min_lon.is_none() && self.min_lat.is_none() && self.max_lon.is_none() && self.max_lat.is_none()
             && self.radius_km.is_none() && self.latitude.is_none() && self.longitude.is_none()
@@ -5405,19 +5460,20 @@ async fn get_v2_locations_response(
                 "total_count": total_count, "mapped_count": facility_ids.len()}
         }))).into_response();
     }
-    // The global facets already count the same DISTINCT facility representatives.
-    // Reuse that total only for an unfiltered request with the same live identity
-    // in this transaction. Cache misses retain the exact-count query below.
-    let cached_total = if params.facets_are_unfiltered() {
+    // Global counts and category unions come from the same live-eligible snapshot.
+    // Additional filters and identity misses retain the exact-count path below.
+    let cached_total = if params.filters_except_taxonomy_are_unfiltered() {
         let (key, _, _) = match public_facets_cache_identity(
             &transaction, &promoted_release_id, &promoted_profile, &promoted_ruleset,
         ).await {
             Ok(identity) => identity,
             Err(response) => return response,
         };
-        cached_public_facility_total(&key)
+        let snapshot = PUBLIC_FACETS_CACHE.lock().expect("facet cache lock is not poisoned").get(&key);
+        snapshot.as_deref().and_then(|snapshot| public_facility_total(snapshot, category_keys.as_deref()))
     } else { None };
     let page_ctes = if let Some(total) = cached_total {
+        let cached_taxonomy_filter = taxonomy_filter.replace("history.observation_id", "stored.observation_id").replace("$20", "$5");
         format!(r#"
         eligible_total AS MATERIALIZED (
           SELECT {total}::bigint AS total_count
@@ -5433,6 +5489,7 @@ async fn get_v2_locations_response(
           ) live ON TRUE
           WHERE stored.release_id = $1 AND {total} > 0
             AND ($2::uuid IS NULL OR stored.facility_id > $2)
+            {cached_taxonomy_filter}
           ORDER BY stored.facility_id, stored.observation_id LIMIT $3 OFFSET $4
         )"#)
     } else {
@@ -5487,7 +5544,7 @@ async fn get_v2_locations_response(
         ORDER BY history.facility_id, history.observation_id
     "#);
     let result = if cached_total.is_some() {
-        transaction.query(&list_query, &[&promoted_release_id, &cursor, &query_limit, &effective_offset]).await
+        transaction.query(&list_query, &[&promoted_release_id, &cursor, &query_limit, &effective_offset, &category_keys]).await
     } else {
         transaction.query(&list_query, &[&promoted_release_id, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude, &cursor, &query_limit, &effective_offset, &params.source_id, &category_keys]).await
     };
@@ -5792,17 +5849,34 @@ mod v2_api_tests {
             query[field] = json!("synthetic-filter");
             let filtered: V2LocationParams = serde_json::from_value(query).unwrap();
             assert!(!filtered.facets_are_unfiltered(), "filtered dimension {field} cannot reuse global counts");
+            assert_eq!(filtered.filters_except_taxonomy_are_unfiltered(), field == "category_keys");
         }
+    }
+
+    #[test]
+    fn global_category_totals_count_overlapping_facilities_once() {
+        let slaughter = 1 << V2_TAXONOMY_PRIMARY_CATEGORIES.iter().position(|key| *key == "slaughter").unwrap();
+        let processing = 1 << V2_TAXONOMY_PRIMARY_CATEGORIES.iter().position(|key| *key == "processing_and_preparation").unwrap();
+        let snapshot = PublicFacetsSnapshot {
+            body: Arc::from(r#"{"dimensions":{"display_precision":[{"count":7}]}}"#),
+            category_counts: [(0,1),(slaughter,2),(processing,3),(slaughter|processing,1)].into(),
+        };
+        assert_eq!(public_facility_total(&snapshot, None), Some(7));
+        assert_eq!(public_facility_total(&snapshot, Some(&["slaughter".into()])), Some(3));
+        assert_eq!(public_facility_total(&snapshot, Some(&["processing_and_preparation".into()])), Some(4));
+        assert_eq!(public_facility_total(&snapshot, Some(&["slaughter".into(), "processing_and_preparation".into(), "slaughter".into()])), Some(6));
+        assert_eq!(public_facility_total(&snapshot, Some(&["unclassified".into()])), Some(0));
+        assert_eq!(public_facility_total(&snapshot, Some(&["unsupported".into()])), None);
     }
 
     #[test]
     fn facet_cache_is_bounded_and_keeps_recent_entries() {
         let mut cache = PublicFacetsCache::default();
         for index in 0..PUBLIC_FACETS_CACHE_MAX_ENTRIES {
-            cache.put(index.to_string(), Arc::from("synthetic body"));
+            cache.put(index.to_string(), Arc::from("synthetic body"), Default::default());
         }
         assert!(cache.get("0").is_some());
-        cache.put("next".into(), Arc::from("next body"));
+        cache.put("next".into(), Arc::from("next body"), Default::default());
         assert_eq!(cache.entries.len(), PUBLIC_FACETS_CACHE_MAX_ENTRIES);
         assert!(cache.get("0").is_some());
         assert!(cache.get("1").is_none());

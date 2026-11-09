@@ -214,7 +214,7 @@ class SuppressionLifecycleE2ETests(unittest.TestCase):
             db.execute("UPDATE uec.release_manifests SET manifest=manifest || '{\"tampered\":true}'::jsonb WHERE release_id='e2e-suppression-old'")
             db.execute("ALTER TABLE uec.release_manifests ENABLE TRIGGER release_manifests_append_only")
         try:
-            for route in ("/api/v2/discovery/facets", "/api/v2/locations?limit=1"):
+            for route in ("/api/v2/discovery/facets", "/api/v2/locations?limit=1", "/api/v2/locations?category_keys=slaughter&limit=1"):
                 with self.assertRaises(urllib.error.HTTPError) as invalid:
                     self.get_json(route)
                 self.assertEqual(invalid.exception.code, 503)
@@ -253,6 +253,27 @@ class SuppressionLifecycleE2ETests(unittest.TestCase):
             set_content(original)
         _, restored = self.get_json("/api/v2/locations?limit=1")
         self.assertEqual(restored, expected)
+
+    def test_3_category_totals_follow_latest_assignments_and_union_without_duplicates(self):
+        with psycopg.connect(self.env.database_url) as db:
+            artifact_id = db.execute("SELECT artifact_id FROM uec.source_records WHERE source_record_id=%s", (self.source_record_id,)).fetchone()[0]
+            persist_uec_assignment_set(db, observation_id=str(self.observation_id),
+                source_record_id=str(self.source_record_id), artifact_id=str(artifact_id),
+                document={**crosswalk_document("dk.smiley"), "source_id":"e2e.suppression",
+                          "crosswalk_version":"synthetic-overlapping-primaries"},
+                assignment_rows=[{"primary_key":primary,"leaf_key":leaf,"leaf_label":leaf,
+                                  "mapping_method":"direct","mapping_status":"mapped"}
+                                 for primary,leaf in (("slaughter","slaughter"),("processing_and_preparation","processing"))])
+        # New assignments invalidate the previous category totals immediately.
+        _, before_warm = self.get_json("/api/v2/locations?category_keys=processing_and_preparation&limit=1")
+        self.assertEqual(before_warm["meta"]["total_count"], 1)
+        _, facets = self.get_json("/api/v2/discovery/facets")
+        self.assertGreater(facets["meta"]["suppression_generation"], self.initial_facet_generation)
+        _, cached = self.get_json("/api/v2/locations?category_keys=processing_and_preparation&limit=1")
+        self.assertEqual(cached, before_warm)
+        _, union = self.get_json("/api/v2/locations?category_keys=slaughter,processing_and_preparation&limit=1")
+        self.assertEqual(union["meta"]["total_count"], 1)
+        self.assertEqual([row["facility_id"] for row in union["data"]], [str(self.facility_id)])
 
     def test_a_worker_claims_job_and_records_append_only_result(self):
         job_id = self._queue_geocode("synthetic-lease", "private lease query")
