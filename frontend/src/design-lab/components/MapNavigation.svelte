@@ -3,8 +3,10 @@
   import type { Basemap } from '../contract';
   import { language, tr } from '../../app/language';
   import { requestDeviceLocation } from '../../features/search/nearbySearch';
-  let { ready, basemap, pitch, compactHidden = false, areaEnabled = false, areaActive = false, searchMode = 'box', radiusMiles = 50, onbasemap, onviewtoggle, onarea, onlocate, onsettings }: {
+  let { ready, basemap, pitch, compactHidden = false, compact = false, locateRequest = 0, onLocateRequestConsumed, areaEnabled = false, areaActive = false, searchMode = 'box', radiusMiles = 50, onbasemap, onviewtoggle, onarea, onlocate, onsettings }: {
     ready: boolean; basemap: Basemap; pitch: number; compactHidden?: boolean; areaEnabled?: boolean; areaActive?: boolean; searchMode?:'box'|'radius'; radiusMiles?:number;
+    compact?:boolean;locateRequest?:number;
+    onLocateRequestConsumed?():void;
     onbasemap(value: Basemap): void; onviewtoggle(): void; onarea(): void; onlocate(value: {latitude:number;longitude:number}): void; onsettings(value:{mode:'box'|'radius';radiusMiles:number}):void;
   } = $props();
   let locating = $state(false);
@@ -12,7 +14,10 @@
   let locationRequest: AbortController | null = null;
   let settingsOpen = $state(false);
   let navNode: HTMLElement;
-  let settingsButton: HTMLButtonElement;
+  let settingsButton = $state<HTMLButtonElement>();
+  let handledLocateRequest=0;
+  $effect(()=>{if(compact)settingsOpen=false;});
+  $effect(()=>{if(locateRequest===0){handledLocateRequest=0;return;}if(locateRequest>handledLocateRequest){handledLocateRequest=locateRequest;onLocateRequestConsumed?.();void locate();}});
   function closeSettings(event: KeyboardEvent) { if(event.key === 'Escape' && settingsOpen) { event.preventDefault(); event.stopPropagation(); settingsOpen = false; settingsButton?.focus(); } }
   onDestroy(() => { locationRequest?.abort(); });
   async function locate() {
@@ -34,8 +39,9 @@
     </div>
     <button class="dimension-button" type="button" disabled={!ready} aria-label={tr(pitch > .5 ? 'Switch to 2D' : 'Switch to 3D', $language)} title={tr('Right-drag to tilt and rotate', $language)} aria-describedby="map-camera-help" aria-pressed={pitch > .5} onclick={onviewtoggle}>{pitch > .5 ? '3D' : '2D'}</button>
     <button type="button" disabled={!ready || locating} aria-label={tr(locating ? 'Finding your location…' : 'Your location', $language)} title={tr('Your location', $language)} aria-busy={locating} onclick={locate}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/><path d="M12 2v4m0 12v4M2 12h4m12 0h4"/></svg></button>
-    <button type="button" class="area-button" class:area-clear={areaActive} disabled={!ready || (!areaEnabled && !areaActive)} aria-label={tr(areaActive ? 'Clear map area' : 'Search this area', $language)} title={tr(areaActive ? 'Clear map area' : 'Search this area', $language)} onclick={onarea}><svg viewBox="0 0 24 24" aria-hidden="true">{#if areaActive}<path d="m6 6 12 12M18 6 6 18"/>{:else}<path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/><circle cx="11" cy="11" r="4"/><path d="m14 14 4 4"/>{/if}</svg></button>
+    {#if !compact}<button type="button" class="area-button" class:area-clear={areaActive} disabled={!ready || (!areaEnabled && !areaActive)} aria-label={tr(areaActive ? 'Clear map area' : 'Search this area', $language)} title={tr(areaActive ? 'Clear map area' : 'Search this area', $language)} onclick={onarea}><svg viewBox="0 0 24 24" aria-hidden="true">{#if areaActive}<path d="m6 6 12 12M18 6 6 18"/>{:else}<path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/><circle cx="11" cy="11" r="4"/><path d="m14 14 4 4"/>{/if}</svg></button>
     <button bind:this={settingsButton} type="button" disabled={!ready || !areaEnabled} aria-label={tr('Search settings', $language)} title={tr('Search settings', $language)} aria-expanded={settingsOpen} aria-controls="map-search-settings" onclick={() => settingsOpen = !settingsOpen}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h7m5 0h4M4 17h3m5 0h8M11 4v6M7 14v6"/></svg></button>
+    {/if}
   </div>
   {#if settingsOpen}<section id="map-search-settings" class="search-settings" aria-label={tr('Search settings', $language)}><h2>{tr('Search settings', $language)}</h2><fieldset><legend class="sr-only">{tr('Search area', $language)}</legend><label><input type="radio" name="map-search-mode" checked={searchMode === 'box'} onchange={() => onsettings({mode:'box',radiusMiles})} />{tr('Visible map', $language)}</label><label><input type="radio" name="map-search-mode" checked={searchMode === 'radius'} onchange={() => onsettings({mode:'radius',radiusMiles})} />{tr('Radius', $language)}</label></fieldset>{#if searchMode === 'radius'}<label class="radius-setting" for="map-search-radius"><span>{tr('Radius', $language)}</span><output>{tr('{count} miles', $language).replace('{count}',new Intl.NumberFormat($language).format(radiusMiles))}</output></label><input id="map-search-radius" type="range" min="5" max="250" step="5" value={radiusMiles} aria-label={tr('Search radius', $language)} aria-valuetext={tr('{count} miles', $language).replace('{count}',new Intl.NumberFormat($language).format(radiusMiles))} oninput={(event) => onsettings({mode:'radius',radiusMiles:Number(event.currentTarget.value)})} />{/if}</section>{/if}
   <span id="map-camera-help" class="sr-only">{tr('Right-drag to tilt and rotate', $language)}. {tr('On touchscreens, use two fingers to tilt.', $language)}</span>

@@ -992,5 +992,17 @@
   "Poultry slaughter kills birds and prepares their bodies for food. Typical stages include bleeding, removing feathers and removing internal organs.": "L’abattage de volailles consiste à tuer les oiseaux et à préparer leurs corps pour l’alimentation. Les étapes habituelles comprennent la saignée, le plumage et le retrait des organes internes.",
   "Aquaculture is the farming of fish, shellfish or other aquatic animals.": "L’aquaculture consiste à élever des poissons, des fruits de mer ou d’autres animaux aquatiques.",
   "Meat establishment requirements": "Exigences applicables aux établissements de viande",
-  "Search unavailable": "Recherche indisponible"
+  "Search unavailable": "Recherche indisponible",
+  "Everywhere": "Partout",
+  "Near me": "À proximité",
+  "View details": "Voir les détails",
+  "Apply filters": "Appliquer les filtres",
+  "Expand search panel": "Agrandir le panneau de recherche",
+  "Show fewer results": "Afficher moins de résultats",
+  "Expand": "Agrandir",
+  "{count} records": "{count} fiches",
+  "{count} activities": "{count} activités",
+  "{count} filters": "{count} filtres",
+  "{count} record": "{count} fiche",
+  "{count} filter": "{count} filtre"
 }

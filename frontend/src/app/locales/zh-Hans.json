@@ -992,5 +992,17 @@
   "Poultry slaughter kills birds and prepares their bodies for food. Typical stages include bleeding, removing feathers and removing internal organs.": "家禽屠宰包括杀死鸟类，并将其身体加工供食用。典型步骤包括放血、脱毛和去除内脏。",
   "Aquaculture is the farming of fish, shellfish or other aquatic animals.": "水产养殖是对鱼类、贝类或其他水生动物的养殖。",
   "Meat establishment requirements": "肉类设施要求",
-  "Search unavailable": "搜索暂不可用"
+  "Search unavailable": "搜索暂不可用",
+  "Everywhere": "所有地区",
+  "Near me": "附近",
+  "View details": "查看详情",
+  "Apply filters": "应用筛选",
+  "Expand search panel": "展开搜索面板",
+  "Show fewer results": "显示更少结果",
+  "Expand": "展开",
+  "{count} records": "{count} 条记录",
+  "{count} activities": "{count} 项活动",
+  "{count} filters": "{count} 项筛选",
+  "{count} record": "{count} 条记录",
+  "{count} filter": "{count} 项筛选"
 }

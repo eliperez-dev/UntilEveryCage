@@ -63,7 +63,7 @@ for(const width of [390,1280])test(`a failed first search retains the map and re
   const originalBox=await canvas.boundingBox();
   const camera=()=>page.evaluate(()=>{const map=(window as any).__UEC_LOCAL_PREVIEW_MAP__,center=map.getCenter();return[center.lat,center.lng,map.getZoom(),map.getPitch(),map.getBearing()];});
   const originalCamera=await camera();
-  if(width<641){const handle=page.getByRole('button',{name:'Search map',exact:true});await handle.focus();await page.keyboard.press('Home');}
+  if(width<641){const handle=page.locator('.mobile-sheet-handle');await handle.focus();await page.keyboard.press('Home');}
   else await page.getByRole('button',{name:'Close workspace',exact:true}).click();
   const recovery=page.locator('.search-recovery');await expect(recovery).toBeVisible();
   await expect(recovery.getByRole('button',{name:'Retry',exact:true})).toBeVisible();
@@ -141,8 +141,9 @@ test('Your location searches 50 miles with existing query and keeps coordinates 
   expect(await page.evaluate(() => (window as any).__locationCalls)).toBe(0);
   await page.locator('.mobile-sheet-handle').click(); await page.locator('#field-search').fill('Synthetic');
   await page.getByRole('button',{name:'Your location',exact:true}).click();
-  await expect(page.locator('.area-summary h2')).toHaveText('Near you');
-  await expect(page.locator('.scope-radius')).toHaveText('50 mile radius');
+  await expect(page.locator('.mobile-scope-toggle')).toContainText('Near me');
+  await expect(page.locator('.mobile-scope-toggle')).toContainText('50 miles');
+  await expect(page.locator('.mobile-results-heading strong')).toHaveText('130 records');
   await expect.poll(() => calls.filter(call => call.path === '/api/v2/locations').at(-1)?.params.radius_km).toBe('80.4672');
   expect(calls.filter(call => call.path === '/api/v2/locations').at(-1)?.params.q).toBe('Synthetic');
   expect(await page.evaluate(() => (window as any).__locationCalls)).toBe(1);
@@ -209,11 +210,12 @@ for (const width of [320,1440]) test(`place nearby action keeps its displayed di
   await expect(nearby.locator('.nearby-distance')).toHaveText('31 miles');
   await expect(nearby).toHaveAttribute('aria-label', /Search nearby: .+, 31 miles/);
   await nearby.click();
-  await expect(page.locator('.scope-radius')).toHaveText('31 mile radius');
+  if(width <= 640) await expect(page.locator('.mobile-scope-toggle')).toContainText('31 miles');
+  else await expect(page.locator('.scope-radius')).toHaveText('31 mile radius');
   await expect(page.locator('#field-search')).toHaveValue('');
   await expect.poll(() => calls.filter(call => call.path === '/api/v2/locations').at(-1)?.params.radius_km).toBe('50');
   expect(calls.filter(call => call.path === '/api/v2/locations').at(-1)?.params.q).toBeUndefined();
-  await expect(page.locator('.scope-chip')).toBeVisible();
+  await expect(page.locator(width <= 640 ? '.mobile-clear-scope' : '.scope-chip')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
 });
 
@@ -222,17 +224,17 @@ for(const [width,height] of [[320,568],[390,844],[1280,620]]) test(`scoped searc
   await page.getByRole('button',{name:'Search this area',exact:true}).click();await expect(page.locator('.results')).toBeVisible();
   const handle=page.locator('.mobile-sheet-handle');if(width!<641) await expect(handle).toHaveAttribute('data-sheet-state','middle');
   const first=page.locator('[data-record-id]').first();await expect(first).toBeInViewport();
-  const body=await page.locator('.list-content').boundingBox(),name=await first.locator(':scope > strong').boundingBox();
+  const body=await page.locator('.list-content').boundingBox(),name=await first.locator('strong').boundingBox();
   expect(name!.y).toBeLessThan(body!.y+body!.height);expect((await first.boundingBox())!.height).toBeGreaterThan(44);
   expect(await page.locator('[data-record-id]').evaluateAll(nodes=>nodes.every(node=>node.getBoundingClientRect().height>=44))).toBe(true);
   await expect(page.locator('.activity-summary')).toHaveCount(0);
-  expect((await page.locator('.area-summary').boundingBox())!.height).toBeLessThan(150);
+  expect((await page.locator(width!<641 ? '.mobile-search-context' : '.area-summary').boundingBox())!.height).toBeLessThan(150);
   if(process.env.UEC_AREA_CAPTURE_DIR)await page.screenshot({path:`${process.env.UEC_AREA_CAPTURE_DIR}/compact-${width}-${height}.png`});
   await page.locator('.load-more').scrollIntoViewIfNeeded();await page.locator('.load-more').click();await expect(page.locator('[data-record-id]')).toHaveCount(130);
   await page.locator('[data-record-id]').last().scrollIntoViewIfNeeded();await expect(page.locator('[data-record-id]').last()).toBeInViewport();
   expect(await page.locator('.list-content').evaluate(node=>node.scrollHeight>node.clientHeight)).toBe(true);
-  expect(await page.locator('.record-list').evaluate(node=>getComputedStyle(node).overflow)).toBe('visible');
-  if(width!<641){await handle.focus();await page.keyboard.press('End');await page.locator('#field-search').fill('Synthetic');await page.locator('#field-search').press('Enter');await expect(handle).toHaveAttribute('data-sheet-state','expanded');await handle.focus();await page.keyboard.press('Home');await page.getByRole('button',{name:'Clear map area',exact:true}).click();await expect(handle).toHaveAttribute('data-sheet-state','collapsed');await page.getByRole('button',{name:'Search this area',exact:true}).click();await expect(handle).toHaveAttribute('data-sheet-state','middle');}
+  expect(await page.locator(width!<641 ? '.mobile-record-list' : '.record-list').evaluate(node=>getComputedStyle(node).overflow)).toBe('visible');
+  if(width!<641){await handle.focus();await page.keyboard.press('End');await page.locator('#field-search').fill('Synthetic');await page.locator('#field-search').press('Enter');await expect(handle).toHaveAttribute('data-sheet-state','expanded');await handle.focus();await page.keyboard.press('Home');await handle.click();await expect(handle).toHaveAttribute('data-sheet-state','middle');await page.getByRole('button',{name:'Clear map area',exact:true}).click();await expect(handle).toHaveAttribute('data-sheet-state','middle');await handle.focus();await page.keyboard.press('Home');await page.getByRole('button',{name:'Search this area',exact:true}).click();await expect(handle).toHaveAttribute('data-sheet-state','middle');}
   expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
 });
 

@@ -7,7 +7,7 @@ describe('mobile search sheet geometry', () => {
     expect(filterViewportHeight(800,667)).toBe(0);
   });
   it('uses the actual remaining workspace and safe area', () => {
-    expect(sheetHeights(700)).toEqual({ collapsed: 56, middle: 336, expanded: 630 });
+    expect(sheetHeights(700)).toEqual({ collapsed: 56, middle: 420, expanded: 630 });
     expect(sheetHeights(700, {}, 20).collapsed).toBe(76);
     expect(sheetHeights(40)).toEqual({ collapsed: 40, middle: 40, expanded: 40 });
     expect(sheetHeights(0)).toEqual({ collapsed: 0, middle: 0, expanded: 0 });

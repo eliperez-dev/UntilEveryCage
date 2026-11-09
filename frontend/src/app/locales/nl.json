@@ -992,5 +992,17 @@
   "Poultry slaughter kills birds and prepares their bodies for food. Typical stages include bleeding, removing feathers and removing internal organs.": "Bij de pluimveeslacht worden vogels gedood en hun lichamen gereedgemaakt voor voedsel. Gebruikelijke stappen zijn het verbloeden, het verwijderen van veren en het verwijderen van inwendige organen.",
   "Aquaculture is the farming of fish, shellfish or other aquatic animals.": "Aquacultuur is het kweken van vis, schaal- en schelpdieren of andere waterdieren.",
   "Meat establishment requirements": "Eisen voor vleesbedrijven",
-  "Search unavailable": "Zoeken niet beschikbaar"
+  "Search unavailable": "Zoeken niet beschikbaar",
+  "Everywhere": "Overal",
+  "Near me": "In de buurt",
+  "View details": "Details bekijken",
+  "Apply filters": "Filters toepassen",
+  "Expand search panel": "Zoekpaneel vergroten",
+  "Show fewer results": "Minder resultaten tonen",
+  "Expand": "Vergroten",
+  "{count} records": "{count} records",
+  "{count} activities": "{count} activiteiten",
+  "{count} filters": "{count} filters",
+  "{count} record": "{count} record",
+  "{count} filter": "{count} filter"
 }

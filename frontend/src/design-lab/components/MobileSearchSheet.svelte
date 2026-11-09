@@ -2,8 +2,9 @@
   import { onDestroy } from 'svelte';
   import { language, tr } from '../../app/language';
   import { sheetHeights, nearestSheetSnap, sheetKeyboardSnap, type SheetSnap } from './mobileSheet';
-  let { open, snap, detail = false, preview = false, available, middlePercent = 48, expandedPercent = 90, onchange, onheight }: {
+  let { open, snap, detail = false, preview = false, collapsedTitle, collapsedContext = '', available, middlePercent = 60, expandedPercent = 90, onchange, onheight }: {
     open: boolean; detail?: boolean; preview?: boolean; available: number; middlePercent?: number; expandedPercent?: number;
+    collapsedTitle?:string;collapsedContext?:string;
     snap: SheetSnap; onchange(next: SheetSnap): void; onheight(height: number): void;
   } = $props();
   let safeArea = $state(0);
@@ -71,11 +72,11 @@
   onDestroy(() => { if (frame) cancelAnimationFrame(frame); if (drag && handle?.hasPointerCapture(drag.id)) handle.releasePointerCapture(drag.id); });
 </script>
 
-<button bind:this={handle} use:measure class="mobile-sheet-handle" class:collapsed={!open} class:dragging={Boolean(drag?.moved)} type="button"
-  aria-label={tr(preview ? 'View facility details' : 'Search map', $language)} aria-expanded={open} aria-controls={detail ? 'field-detail-content' : 'field-search-content'}
+<button bind:this={handle} use:measure class="mobile-sheet-handle" class:compact={collapsedTitle!==undefined} class:collapsed={!open} class:dragging={Boolean(drag?.moved)} type="button"
+  aria-label={[collapsedTitle??tr(preview ? 'View facility details' : 'Search map', $language),!open?collapsedContext:''].filter(Boolean).join(': ')} aria-expanded={open} aria-controls={detail ? 'field-detail-content' : 'field-search-content'}
   data-sheet-state={current} onclick={click} onkeydown={keydown} onpointerdown={pointerdown} onpointermove={pointermove}
   onpointerup={event => finish(event)} onpointercancel={event => finish(event, true)} onlostpointercapture={event => finish(event, true)}>
-  <span class="grip" aria-hidden="true"></span><span class="handle-label">{tr(preview ? 'View facility details' : 'Search map', $language)}</span>
+  <span class="grip" aria-hidden="true"></span><span class="handle-copy"><span class="handle-label">{collapsedTitle??tr(preview ? 'View facility details' : 'Search map', $language)}</span>{#if !open&&collapsedContext}<small class="handle-context">{collapsedContext}</small>{/if}</span>
   <svg viewBox="0 0 24 24" aria-hidden="true"><path d={current === 'expanded' ? 'm6 9 6 6 6-6' : 'm6 15 6-6 6 6'} /></svg>
 </button>
 
@@ -86,6 +87,7 @@
     .grip { position:absolute;top:7px;left:calc(50% - 18px);height:3px;width:36px;background:var(--muted);opacity:.65;border-radius:2px; }
     svg { width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6; }
     .mobile-sheet-handle:not(.collapsed) { height:44px;min-height:44px;padding-top:10px;padding-bottom:0;font-size:.75rem;color:var(--muted); }
+    .handle-copy{display:flex;flex:1;min-width:0;flex-direction:column;gap:2px;text-align:left}.handle-label,.handle-context{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.handle-context{font:400 .65625rem/1.3 system-ui,sans-serif;color:var(--muted)}.mobile-sheet-handle.compact:not(.collapsed) .handle-copy{visibility:hidden}svg{flex:none;width:16px;height:16px}
     .mobile-sheet-handle:focus-visible { outline:2px solid var(--focus,var(--ink));outline-offset:-3px; }
     .dragging { cursor:grabbing; }
   }
