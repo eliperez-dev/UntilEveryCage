@@ -189,7 +189,7 @@ for (const viewport of viewports) {
           await page.screenshot({ path: testInfo.outputPath(`map-en-${viewport.name}-${theme}-tools-open.png`), fullPage: true });
           await page.getByRole('button', { name: 'Close more tools', exact: true }).click();
           await page.getByRole('button', { name: 'Search map' }).click();
-          const fixtureRecord = page.locator(`.record-list button[data-record-id="${id}"]`);
+          const fixtureRecord = page.locator(`${viewport.name === 'mobile' ? '.mobile-record-list' : '.record-list'} button[data-record-id="${id}"]`);
           await expect(fixtureRecord).toBeVisible();
           await fixtureRecord.click();
           const detail = page.locator('.reading-sheet[aria-label="Record evidence"] .detail');
