@@ -52,8 +52,8 @@ more than a small area query.
 Unfiltered lists reuse the exact facility total from the existing global facet
 cache. The list's repeatable-read transaction validates the canonical manifest
 and the same database, server, role, profile, release, ruleset, content checksum
-and suppression generation before looking up that total. Its indexed page still
-passes the live public view before deduplication, cursor, limit and offset;
+and suppression generation before looking up that total. Its indexed cursor
+page still passes the live public view before deduplication, limit and offset;
 only that bounded page receives detail enrichment. Counts, DTOs and cursors are
 unchanged. Filtered lists retain the full eligible-set count.
 
