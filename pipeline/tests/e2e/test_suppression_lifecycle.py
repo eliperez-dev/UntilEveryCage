@@ -17,6 +17,8 @@ from unittest.mock import patch
 import psycopg
 from psycopg.types.json import Jsonb
 from pipeline.geocoding.base import GeocodeOutcome
+from pipeline.taxonomy.persistence import persist_uec_assignment_set
+from pipeline.taxonomy_crosswalk import crosswalk_document
 
 try:
     from .fixture import E2EEnvironment
@@ -45,7 +47,11 @@ class SuppressionLifecycleE2ETests(unittest.TestCase):
         if os.environ.get("UEC_RUN_E2E") != "1":
             raise unittest.SkipTest("set UEC_RUN_E2E=1 to run Docker-backed E2E tests")
         cls.env = E2EEnvironment().start()
-        cls.seed_synthetic_fixture()
+        try:
+            cls.seed_synthetic_fixture()
+        except Exception:
+            cls.env.stop()
+            raise
 
     @classmethod
     def tearDownClass(cls):
@@ -128,6 +134,17 @@ class SuppressionLifecycleE2ETests(unittest.TestCase):
                     "VALUES (%s,'synthetic',%s,'fixture','accepted',1,ST_SetSRID(ST_MakePoint(12,56),4326)::geography,%s)",
                     (cls.source_record_id, cls.private_marker, now),
                 )
+        # Separate commits make the older processing assignment unambiguously
+        # older than the current slaughter mapping for this same observation.
+        for version, primary, leaf in (("older", "processing_and_preparation", "processing"),
+                                       ("current", "slaughter", "slaughter")):
+            with psycopg.connect(cls.env.database_url) as db:
+                persist_uec_assignment_set(db, observation_id=str(cls.observation_id),
+                    source_record_id=str(cls.source_record_id), artifact_id=str(artifact_id),
+                    document={**crosswalk_document("dk.smiley"), "source_id": "e2e.suppression",
+                              "crosswalk_version": "synthetic-" + version},
+                    assignment_rows=[{"primary_key": primary, "leaf_key": leaf, "leaf_label": leaf,
+                                      "mapping_method": "direct", "mapping_status": "mapped"}])
         cls.env.build_public_read_model("e2e-suppression-old")
 
     def _queue_geocode(self, provider, query, *, started_at=None):
@@ -158,6 +175,22 @@ class SuppressionLifecycleE2ETests(unittest.TestCase):
         self.assertEqual(cached, facets)
         _, matches = self.get_json("/api/v2/map/matches?release_id=e2e-suppression-old&latitude=55&longitude=10&radius_km=500")
         self.assertEqual(matches["data"]["facility_ids"], [str(self.facility_id)])
+        for scope in ("", "&min_lon=9&min_lat=54&max_lon=13&max_lat=58",
+                      "&latitude=55&longitude=10&radius_km=500", "&q=Synthetic",
+                      "&source_id=e2e.suppression"):
+            query = "release_id=e2e-suppression-old&category_keys=slaughter" + scope
+            _, native_matches = self.get_json("/api/v2/map/matches?" + query)
+            self.assertEqual(native_matches["data"]["facility_ids"], [str(self.facility_id)])
+            _, page = self.get_json("/api/v2/locations?limit=1&" + query)
+            self.assertEqual([row["facility_id"] for row in page["data"]], [str(self.facility_id)])
+            self.assertEqual(page["data"][0]["taxonomy_display_category"], "slaughter")
+            self.assertEqual(page["meta"]["total_count"], 1)
+            _, beyond = self.get_json("/api/v2/locations?offset=10&" + query)
+            self.assertEqual(beyond["data"], [])
+            self.assertEqual(beyond["meta"]["total_count"], 1)
+        _, obsolete = self.get_json("/api/v2/locations?category_keys=processing_and_preparation")
+        self.assertEqual(obsolete["data"], [])
+        self.assertEqual(obsolete["meta"]["total_count"], 0)
 
     def test_1_cached_facets_reject_corrupt_manifest(self):
         _, before = self.get_json("/api/v2/discovery/facets")
@@ -423,6 +456,14 @@ class SuppressionLifecycleE2ETests(unittest.TestCase):
         self.assertGreater(cached_facets["meta"]["suppression_generation"], self.initial_facet_generation)
         _, radius_matches = self.get_json("/api/v2/map/matches?release_id=e2e-suppression-old&latitude=55&longitude=10&radius_km=500")
         self.assertEqual(radius_matches["data"]["facility_ids"], [])
+        for scope in ("", "&min_lon=9&min_lat=54&max_lon=13&max_lat=58",
+                      "&latitude=55&longitude=10&radius_km=500", "&source_id=e2e.suppression"):
+            _, native_matches = self.get_json("/api/v2/map/matches?release_id=e2e-suppression-old&category_keys=slaughter" + scope)
+            self.assertEqual(native_matches["data"]["facility_ids"], [])
+            self.assertEqual(native_matches["meta"]["total_count"], 0)
+            _, native_page = self.get_json("/api/v2/locations?category_keys=slaughter" + scope)
+            self.assertEqual(native_page["data"], [])
+            self.assertEqual(native_page["meta"]["total_count"], 0)
         _, csv_body = self.get_csv()
         self.assertNotIn("Synthetic eligible target", csv_body)
         self.assertNotIn(self.private_marker, csv_body)

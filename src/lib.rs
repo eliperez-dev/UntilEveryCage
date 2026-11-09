@@ -4890,6 +4890,26 @@ fn v2_public_radius_matches_cte(radius: &str, longitude: &str, latitude: &str, s
     )"#)
 }
 
+/// Start native category browsing from indexed current assignments. These are
+/// candidates only; the caller still checks the live public view per observation.
+fn v2_public_taxonomy_matches_cte(category_keys: &str, search: &str, source: &str, bounds: [&str; 4]) -> String {
+    let [min_lon, min_lat, max_lon, max_lat] = bounds;
+    format!(r#"taxonomy_matches AS MATERIALIZED (
+        SELECT DISTINCT stored.facility_id, stored.observation_id
+        FROM uec.observation_taxonomy_assignments assignment
+        JOIN uec.observation_taxonomy_assignment_sets sets ON sets.assignment_set_id=assignment.assignment_set_id
+        JOIN uec.public_discovery_read_model_rows stored ON stored.observation_id=sets.observation_id
+        WHERE stored.release_id=$1 AND {search}::text IS NULL AND sets.taxonomy_version='uec-taxonomy-v1'
+          AND ({source}::text IS NULL OR stored.provenance_source_id=ANY(string_to_array({source}, ',')))
+          AND ({min_lon}::double precision IS NULL OR ST_Intersects(stored.display_location::geometry,
+              ST_MakeEnvelope({min_lon}, {min_lat}, {max_lon}, {max_lat}, 4326)))
+          AND assignment.primary_key=ANY({category_keys}::text[])
+          AND NOT EXISTS (SELECT 1 FROM uec.observation_taxonomy_assignment_sets newer
+              WHERE newer.observation_id=sets.observation_id AND newer.taxonomy_version=sets.taxonomy_version
+                AND (newer.created_at,newer.assignment_set_id)>(sets.created_at,sets.assignment_set_id))
+    )"#)
+}
+
 pub async fn get_v2_locations_handler(
     State(state): State<ApiState>,
     Query(params): Query<V2LocationParams>,
@@ -5242,27 +5262,28 @@ async fn get_v2_locations_response(
         v2_public_search_matches_cte(public_read_model, "$8")
     } else if radius_km.is_some() {
         v2_public_radius_matches_cte("$13", "$14", "$15", "$8")
+    } else if taxonomy_filters_requested {
+        v2_public_taxonomy_matches_cte("$20", "$8", "$19", ["$9", "$10", "$11", "$12"])
     } else {
         String::new()
     };
-    let indexed_matches = search_text.is_some() || radius_km.is_some();
-    let matches_relation = if search_text.is_some() { "search_matches" } else { "spatial_matches" };
-    // Apply taxonomy before DISTINCT ON for a map mask, just as the taxonomy
-    // list path does. Filtering only the chosen observation afterwards could
+    let indexed_matches = search_text.is_some() || radius_km.is_some() || taxonomy_filters_requested;
+    let matches_relation = if search_text.is_some() { "search_matches" }
+        else if radius_km.is_some() { "spatial_matches" } else { "taxonomy_matches" };
+    // Apply taxonomy before DISTINCT ON for both the map and the list.
+    // Filtering only the chosen observation afterwards could
     // miss a facility whose other eligible observation matches the category.
-    let map_taxonomy_filter = if map_matches {
-        r#"AND ($20::text[] IS NULL OR EXISTS (
+    let taxonomy_filter = r#"AND ($20::text[] IS NULL OR EXISTS (
             SELECT 1 FROM uec.observation_taxonomy_assignment_sets sets
             JOIN uec.observation_taxonomy_assignments assignment ON assignment.assignment_set_id=sets.assignment_set_id
             WHERE sets.observation_id=history.observation_id AND sets.taxonomy_version='uec-taxonomy-v1'
               AND NOT EXISTS (SELECT 1 FROM uec.observation_taxonomy_assignment_sets newer
                 WHERE newer.observation_id=sets.observation_id AND newer.taxonomy_version=sets.taxonomy_version
                   AND (newer.created_at,newer.assignment_set_id)>(sets.created_at,sets.assignment_set_id))
-              AND assignment.primary_key = ANY($20::text[])))"#
-    } else { "" };
+              AND assignment.primary_key = ANY($20::text[])))"#;
     // Viewport boxes are planar longitude/latitude bounds. Casting a global
     // envelope to geography can be invalid or select the opposite hemisphere.
-    let ordinary_filtered_ctes = if indexed_matches {
+    let filtered_ctes = if indexed_matches {
         format!(r#"
         {search_matches_cte}, filtered AS MATERIALIZED (
           SELECT DISTINCT ON (history.facility_id) history.facility_id, history.observation_id,
@@ -5288,7 +5309,7 @@ async fn get_v2_locations_response(
             AND ($7::text IS NULL OR history.provenance_origin_type = $7)
             AND ($9::double precision IS NULL OR ST_Intersects(history.display_location::geometry, ST_MakeEnvelope($9, $10, $11, $12, 4326)))
             AND ($13::double precision IS NULL OR ST_DWithin(history.display_location, ST_SetSRID(ST_Point($14, $15), 4326)::geography, $13 * 1000))
-            {map_taxonomy_filter}
+            {taxonomy_filter}
           ORDER BY history.facility_id, history.observation_id
         )"#)
     } else {
@@ -5318,7 +5339,7 @@ async fn get_v2_locations_response(
                         AND lower(concat_ws(' ', assignment.leaf_label, assignment.source_code, assignment.source_label, assignment.source_code_reference, assignment.source_label_reference)) LIKE '%' || lower($8) || '%' ESCAPE '\')))
             AND ($9::double precision IS NULL OR ST_Intersects(history.display_location::geometry, ST_MakeEnvelope($9, $10, $11, $12, 4326)))
             AND ($13::double precision IS NULL OR ST_DWithin(history.display_location, ST_SetSRID(ST_Point($14, $15), 4326)::geography, $13 * 1000))
-            {map_taxonomy_filter}
+            {taxonomy_filter}
           ORDER BY history.facility_id, history.observation_id
         )"#)
     };
@@ -5340,7 +5361,7 @@ async fn get_v2_locations_response(
         }
         // The list reserves parameters 16..18 for pagination. The ID projection
         // has none; compact those slots without duplicating filter SQL.
-        let matches_ctes = ordinary_filtered_ctes.replace("$19", "$16").replace("$20", "$17");
+        let matches_ctes = filtered_ctes.replace("$19", "$16").replace("$20", "$17");
         let row = match transaction.query_one(&format!(r#"
             WITH {matches_ctes}
             SELECT count(*)::bigint,
@@ -5369,108 +5390,10 @@ async fn get_v2_locations_response(
                 "total_count": total_count, "mapped_count": facility_ids.len()}
         }))).into_response();
     }
-    // Ordinary browsing carries its exact total from the same materialized
-    // eligible-facility set used to choose the page below.
-    let taxonomy_total_count: Option<i64> = if !taxonomy_filters_requested {
-        None
-    } else if !indexed_matches { match transaction.query_one(&format!(r#"
-        SELECT count(DISTINCT history.facility_id)::bigint
-        FROM {public_read_model} AS history
-        WHERE history.release_id = $1
-          AND ($17::text IS NULL OR history.provenance_source_id = ANY(string_to_array($17, ',')))
-          AND ($2::text IS NULL OR history.country_code = ANY(string_to_array($2, ','))) AND ($3::text IS NULL OR history.city = $3)
-          AND ($4::text IS NULL OR history.classification_category = $4) AND ($5::text IS NULL OR history.display_precision = ANY(string_to_array($5, ',')))
-          AND ($6::text IS NULL OR history.lifecycle_status = $6) AND ($7::text IS NULL OR history.provenance_origin_type = $7)
-          AND $8::text IS NULL
-          AND ($9::double precision IS NULL OR ST_Intersects(history.display_location::geometry, ST_MakeEnvelope($9, $10, $11, $12, 4326)))
-          AND ($13::double precision IS NULL OR ST_DWithin(history.display_location, ST_SetSRID(ST_Point($14, $15), 4326)::geography, $13 * 1000))
-          AND EXISTS (
-                SELECT 1
-                FROM uec.observation_taxonomy_assignment_sets sets
-                JOIN uec.observation_taxonomy_assignments assignment ON assignment.assignment_set_id=sets.assignment_set_id
-                WHERE sets.observation_id=history.observation_id AND sets.taxonomy_version='uec-taxonomy-v1'
-                  AND NOT EXISTS (SELECT 1 FROM uec.observation_taxonomy_assignment_sets newer WHERE newer.observation_id=sets.observation_id AND newer.taxonomy_version=sets.taxonomy_version AND (newer.created_at,newer.assignment_set_id)>(sets.created_at,sets.assignment_set_id))
-                  AND assignment.primary_key = ANY($16::text[]))
-    "#), &[&promoted_release_id, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude, &category_keys, &params.source_id]).await {
-        Ok(row) => Some(row.get(0)), Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "location_query_failed", "V2 location query failed"),
-    }} else { match transaction.query_one(&format!(r#"
-        WITH {search_matches_cte}
-        SELECT count(DISTINCT history.facility_id)::bigint
-        FROM {matches_relation} matches
-        JOIN LATERAL (
-          SELECT candidate.facility_id, candidate.observation_id, candidate.provenance_source_id,
-                 candidate.country_code, candidate.city, candidate.classification_category,
-                 candidate.display_precision, candidate.lifecycle_status,
-                 candidate.provenance_origin_type, candidate.display_location
-          FROM {public_read_model} AS candidate
-          WHERE candidate.release_id = $1
-            AND candidate.facility_id = matches.facility_id
-            AND candidate.observation_id = matches.observation_id
-          LIMIT 1
-        ) AS history ON TRUE
-        WHERE ($17::text IS NULL OR history.provenance_source_id = ANY(string_to_array($17, ',')))
-          AND ($2::text IS NULL OR history.country_code = ANY(string_to_array($2, ',')))
-          AND ($3::text IS NULL OR history.city = $3)
-          AND ($4::text IS NULL OR history.classification_category = $4)
-          AND ($5::text IS NULL OR history.display_precision = ANY(string_to_array($5, ',')))
-          AND ($6::text IS NULL OR history.lifecycle_status = $6)
-          AND ($7::text IS NULL OR history.provenance_origin_type = $7)
-          AND ($9::double precision IS NULL OR ST_Intersects(history.display_location::geometry, ST_MakeEnvelope($9, $10, $11, $12, 4326)))
-          AND ($13::double precision IS NULL OR ST_DWithin(history.display_location, ST_SetSRID(ST_Point($14, $15), 4326)::geography, $13 * 1000))
-          AND EXISTS (
-                SELECT 1
-                FROM uec.observation_taxonomy_assignment_sets sets
-                JOIN uec.observation_taxonomy_assignments assignment ON assignment.assignment_set_id=sets.assignment_set_id
-                WHERE sets.observation_id=history.observation_id AND sets.taxonomy_version='uec-taxonomy-v1'
-                  AND NOT EXISTS (SELECT 1 FROM uec.observation_taxonomy_assignment_sets newer WHERE newer.observation_id=sets.observation_id AND newer.taxonomy_version=sets.taxonomy_version AND (newer.created_at,newer.assignment_set_id)>(sets.created_at,sets.assignment_set_id))
-                  AND assignment.primary_key = ANY($16::text[]))
-    "#), &[&promoted_release_id, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude, &category_keys, &params.source_id]).await {
-        Ok(row) => Some(row.get(0)), Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "location_query_failed", "V2 location query failed"),
-    }};
-    let taxonomy_search_matches_cte = if search_text.is_some() {
-        format!("WITH {}", v2_public_search_matches_cte(public_read_model, "$9"))
-    } else if radius_km.is_some() {
-        format!("WITH {}", v2_public_radius_matches_cte("$14", "$15", "$16", "$9"))
-    } else {
-        String::new()
-    };
-    let taxonomy_search_from = if indexed_matches {
-        format!(r#"
-        FROM {matches_relation} matches
-        JOIN LATERAL (
-          SELECT candidate.*
-          FROM {public_read_model} AS candidate
-          WHERE candidate.release_id = $1
-            AND candidate.facility_id = matches.facility_id
-            AND candidate.observation_id = matches.observation_id
-          LIMIT 1
-        ) AS history ON TRUE
-        JOIN uec.public_discovery_read_model_rows stored
-          ON stored.release_id=history.release_id AND stored.facility_id=history.facility_id AND stored.observation_id=history.observation_id"#)
-    } else {
-        format!(r#"
-        FROM {public_read_model} AS history
-        JOIN uec.public_discovery_read_model_rows stored
-          ON stored.release_id=history.release_id AND stored.facility_id=history.facility_id AND stored.observation_id=history.observation_id"#)
-    };
-    let taxonomy_search_filter = if search_text.is_some() {
-        String::new()
-    } else {
-        r#"AND ($9::text IS NULL OR stored.public_search_text ILIKE '%' || $9 || '%' ESCAPE '\'
-               OR (stored.public_search_text = '' AND lower(concat_ws(' ', history.canonical_name, history.city, history.country_code, history.classification_category, history.provenance_source_name)) LIKE '%' || lower($9) || '%' ESCAPE '\')
-               OR (stored.public_search_text = '' AND EXISTS (
-                    SELECT 1 FROM uec.observation_taxonomy_assignment_sets sets
-                    LEFT JOIN uec.observation_taxonomy_assignments assignment ON assignment.assignment_set_id=sets.assignment_set_id
-                    WHERE sets.observation_id=history.observation_id AND sets.taxonomy_version='uec-taxonomy-v1'
-                      AND NOT EXISTS (SELECT 1 FROM uec.observation_taxonomy_assignment_sets newer WHERE newer.observation_id=sets.observation_id AND newer.taxonomy_version=sets.taxonomy_version AND (newer.created_at,newer.assignment_set_id)>(sets.created_at,sets.assignment_set_id))
-                      AND lower(concat_ws(' ', assignment.leaf_label, assignment.source_code, assignment.source_label, assignment.source_code_reference, assignment.source_label_reference)) LIKE '%' || lower($9) || '%' ESCAPE '\')))"#.to_owned()
-    };
-    let rows = if !taxonomy_filters_requested {
-        // Pick the stable page before calculating DTO-only taxonomy. The
-        // taxonomy is still returned for each record, but no longer expanded
-        // for every eligible facility on an ordinary browse request.
-        match transaction.query(&format!(r#"
-        WITH {ordinary_filtered_ctes}, eligible_total AS MATERIALIZED (
+    // Select the matching observation and stable page before DTO enrichment.
+    // Map membership, exact totals and pagination share this same filtered set.
+    let rows = match transaction.query(&format!(r#"
+        WITH {filtered_ctes}, eligible_total AS MATERIALIZED (
           SELECT count(*)::bigint AS total_count FROM filtered
         ), page AS (
           SELECT facility_id, observation_id
@@ -5515,64 +5438,11 @@ async fn get_v2_locations_response(
             AND NOT EXISTS (SELECT 1 FROM uec.observation_taxonomy_assignment_sets newer WHERE newer.observation_id=s.observation_id AND newer.taxonomy_version=s.taxonomy_version AND (newer.created_at,newer.assignment_set_id)>(s.created_at,s.assignment_set_id))
         ) taxonomy ON TRUE
         ORDER BY history.facility_id, history.observation_id
-    "#), &[&promoted_release_id, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude, &cursor, &query_limit, &effective_offset, &params.source_id]).await {
-            Ok(rows) => rows,
-            Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "location_query_failed", "V2 location query failed"),
-        }
-    } else { match transaction.query(&format!(r#"
-        {taxonomy_search_matches_cte}
-        SELECT DISTINCT ON (history.facility_id) history.facility_id, history.canonical_name, history.country_code, history.city, history.classification_category, history.display_precision,
-               history.factual_review_status, history.privacy_screening_status, history.maintainer_approval, history.reviewer_role,
-               ST_Y(history.display_location::geometry), ST_X(history.display_location::geometry),
-               history.first_observed_at, history.last_observed_at, history.observation_count, history.lifecycle_status,
-               history.provenance_origin_type, history.release_id, history.release_ruleset_version,
-               history.provenance_source_id, history.provenance_source_name, history.provenance_source_url, history.provenance_retrieved_at,
-               history.source_rights_status,
-               COALESCE(taxonomy.display_category, 'unclassified'),
-               COALESCE(taxonomy.primary_categories, ARRAY['unclassified']::text[]),
-               COALESCE(taxonomy.leaf_activities, '[]'::jsonb)::text,
-               COALESCE(taxonomy.assignments, '[]'::jsonb)::text,
-               history.geometry_provenance::text,
-               stored.public_detail::text
-        {taxonomy_search_from}
-        LEFT JOIN LATERAL (
-          SELECT min(s.display_category) AS display_category,
-                 array_agg(DISTINCT a.primary_key ORDER BY a.primary_key) FILTER (WHERE a.primary_key IS NOT NULL) AS primary_categories,
-                 COALESCE(jsonb_agg(DISTINCT jsonb_build_object('key', a.leaf_key, 'label', a.leaf_label)) FILTER (WHERE a.leaf_key IS NOT NULL AND a.leaf_label IS NOT NULL AND a.mapping_method IN ('direct','derived') AND a.mapping_status IN ('mapped','partial')), '[]'::jsonb) AS leaf_activities,
-                 COALESCE(jsonb_agg(DISTINCT jsonb_build_object('primary_key',a.primary_key,'leaf_key',a.leaf_key,'leaf_label',a.leaf_label,'source_code_reference',a.source_code_reference,'source_label_reference',a.source_label_reference,'source_code',a.source_code,'source_label',a.source_label,'method',a.mapping_method,'status',a.mapping_status,'taxonomy_version',s.taxonomy_version,'crosswalk_version',s.crosswalk_version,'ruleset_version',s.ruleset_version)) FILTER (WHERE a.assignment_set_id IS NOT NULL), '[]'::jsonb) AS assignments
-          FROM uec.public_discovery_api_read_model eligible
-          JOIN uec.observation_taxonomy_assignment_sets s ON s.observation_id=eligible.observation_id AND s.taxonomy_version='uec-taxonomy-v1'
-            AND NOT EXISTS (SELECT 1 FROM uec.observation_taxonomy_assignment_sets newer WHERE newer.observation_id=s.observation_id AND newer.taxonomy_version=s.taxonomy_version AND (newer.created_at,newer.assignment_set_id)>(s.created_at,s.assignment_set_id))
-          LEFT JOIN uec.observation_taxonomy_assignments a ON a.assignment_set_id=s.assignment_set_id
-          WHERE eligible.release_id=history.release_id AND eligible.facility_id=history.facility_id AND eligible.observation_id=history.observation_id
-        ) taxonomy ON TRUE
-        WHERE history.release_id = $1
-          AND ($20::text IS NULL OR history.provenance_source_id = ANY(string_to_array($20, ',')))
-          AND ($2::uuid IS NULL OR history.facility_id > $2)
-          AND ($3::text IS NULL OR history.country_code = ANY(string_to_array($3, ',')))
-          AND ($4::text IS NULL OR history.city = $4)
-          AND ($5::text IS NULL OR history.classification_category = $5)
-          AND ($6::text IS NULL OR history.display_precision = ANY(string_to_array($6, ',')))
-          AND ($7::text IS NULL OR history.lifecycle_status = $7)
-          AND ($8::text IS NULL OR history.provenance_origin_type = $8)
-          {taxonomy_search_filter}
-          AND ($10::double precision IS NULL OR ST_Intersects(history.display_location::geometry, ST_MakeEnvelope($10, $11, $12, $13, 4326)))
-          AND ($14::double precision IS NULL OR ST_DWithin(history.display_location, ST_SetSRID(ST_Point($15, $16), 4326)::geography, $14 * 1000))
-          AND EXISTS (
-                SELECT 1
-                FROM uec.observation_taxonomy_assignment_sets sets
-                JOIN uec.observation_taxonomy_assignments assignment ON assignment.assignment_set_id=sets.assignment_set_id
-                WHERE sets.observation_id=history.observation_id AND sets.taxonomy_version='uec-taxonomy-v1'
-                  AND NOT EXISTS (SELECT 1 FROM uec.observation_taxonomy_assignment_sets newer WHERE newer.observation_id=sets.observation_id AND newer.taxonomy_version=sets.taxonomy_version AND (newer.created_at,newer.assignment_set_id)>(sets.created_at,sets.assignment_set_id))
-                  AND assignment.primary_key = ANY($19::text[]))
-        ORDER BY history.facility_id, history.observation_id LIMIT $17 OFFSET $18
-    "#), &[&promoted_release_id, &cursor, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude, &query_limit, &effective_offset, &category_keys, &params.source_id]).await {
+    "#), &[&promoted_release_id, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude, &cursor, &query_limit, &effective_offset, &params.source_id, &category_keys]).await {
         Ok(rows) => rows,
         Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "location_query_failed", "V2 location query failed"),
-    }};
-    let total_count = taxonomy_total_count.unwrap_or_else(|| {
-        rows.first().map(|row| row.get::<_, i64>(29)).unwrap_or(0)
-    });
+    };
+    let total_count = rows.first().map(|row| row.get::<_, i64>(29)).unwrap_or(0);
     let has_next = rows.len() as i64 > limit;
     let data = rows
         .into_iter()
@@ -7029,23 +6899,6 @@ mod v2_api_tests {
     }
 
     #[test]
-    fn taxonomy_total_without_search_avoids_the_redundant_search_row_join() {
-        let source = include_str!("lib.rs");
-        let handler = source
-            .split("pub async fn get_v2_locations_handler")
-            .nth(1)
-            .expect("public locations handler");
-        let no_search_total = handler
-            .split("} else if !indexed_matches { match transaction.query_one")
-            .nth(1)
-            .and_then(|rest| rest.split("} else { match transaction.query_one").next())
-            .expect("taxonomy total without search");
-        assert!(no_search_total.contains("FROM {public_read_model} AS history"));
-        assert!(!no_search_total.contains("public_discovery_read_model_rows stored"));
-        assert!(no_search_total.contains("assignment.primary_key = ANY($16::text[])"));
-    }
-
-    #[test]
     fn ordinary_public_list_counts_the_eligible_snapshot_before_cursor_pagination() {
         let source = include_str!("lib.rs");
         let handler = source
@@ -7086,10 +6939,10 @@ mod v2_api_tests {
             .expect("public search candidate CTE builder");
 
         assert!(handler.contains("if search_text.is_some()"));
-        assert!(handler.contains("v2_public_search_matches_cte(public_read_model, \"$9\")"));
+        assert!(handler.contains("v2_public_search_matches_cte(public_read_model, \"$8\")"));
         assert!(handler.contains("if search_text.is_some() { \"search_matches\" }"));
         assert!(handler.contains("FROM {matches_relation} matches"));
-        assert!(handler.contains("assignment.primary_key = ANY($16::text[])"));
+        assert!(handler.contains("assignment.primary_key = ANY($20::text[])"));
         assert!(search_match_builder.contains("search_matches AS MATERIALIZED"));
         assert!(search_match_builder.contains("stored.public_search_text <> ''"));
         assert!(search_match_builder.contains("stored.public_search_text ILIKE '%' || {search_parameter} || '%'"));

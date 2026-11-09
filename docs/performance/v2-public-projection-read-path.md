@@ -1,13 +1,13 @@
 # V2 public projection read-path decision
 
-## Current implementation (2026-10-09)
+## Current implementation (2026-11-03)
 
 The approved v0 repair supersedes the earlier no-request-cache decision below.
 Public map reads use the manifest-bound discovery read model and a prepared,
 serialized projection. Rust keeps at most eight projection identities in memory
-and coalesces concurrent builds. Startup warms the current official compact
-projection in the background; readiness and other requests are not blocked.
-The first request can still wait if warming has not finished.
+and coalesces concurrent builds. Production builds the current official facets
+before opening its listener, then warms the compact map projection in the
+background. A map-feed request can still wait if that separate warmup is unfinished.
 
 Every server lookup, including conditional `304` responses, first verifies the
 current eligible release, manifest checksum and suppression generation. The
@@ -19,7 +19,8 @@ build rather than serving stale rows; a restart loses the in-memory cache.
 pair per point, with dictionaries for repeated source/category/precision values.
 The existing GeoJSON response remains available. Both formats have the same
 release metadata, counts and point semantics. The browser expands the compact
-response for native MapLibre clustering, whose default radius remains 30px.
+response for native MapLibre clustering; current control defaults belong in
+[the frontend guide](../frontend/README.md).
 
 The public map repository uses Cache Storage, bounded to three identities,
 keyed by profile/release/manifest/generation. It validates release identity
@@ -38,10 +39,15 @@ conditional requests without rebuilding unchanged bodies. Ordinary HTTP gzip
 and Brotli compression are supported; no custom compression protocol is used.
 The private preview is distinct from the frozen public v0 projection.
 
-Ordinary list queries select a bounded candidate page before taxonomy
-enrichment. `meta.total_count` describes the full eligible filtered result,
-independent of cursor/page size. Taxonomy-dependent searches retain their
-matching semantics; they are not claimed to have the same cost as plain browse.
+List queries select a bounded page before taxonomy enrichment, including native
+category filters. Global category queries start with indexed current assignment
+candidates; stored source and planar bounding-box fields narrow that candidate
+set. Every candidate still passes the live public view, filters and geometry
+checks. The category predicate applies before facility deduplication, preserving
+the selected matching observation. Map membership, exact totals and pagination
+use the same filtered set. `meta.total_count` is independent of cursor/page size.
+These queries do not cache result membership; broad categories can still cost
+more than a small area query.
 
 The 2026-10-10 repair filters taxonomy through the release-bound assignment
 indexes before assembling row detail. Migration 070 separates the candidate

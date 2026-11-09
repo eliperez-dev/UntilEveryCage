@@ -2,7 +2,7 @@
 
 **Canonical authority:** this document is the sole product-level readiness and overall V2 roadmap authority.
 
-**Owner:** project maintainer. **Updated:** 2026-11-02, Pacific.
+**Owner:** project maintainer. **Updated:** 2026-11-03, Pacific.
 Source readiness belongs in [source-status.json](source-status.json), frontend
 behavior in [the frontend guide](frontend/README.md), and data policy in
 [ETHICS.md](ETHICS.md). Update these owners rather than adding sprint reports.
@@ -22,9 +22,9 @@ The current dataset is **October 31, 2026**, `release-2026-10-31`.
 | Graph | 83,067 connections: 23,874 exact and 59,193 inferred; 1,024 APHIS evidence references |
 | Historical dataset | October 18 remains accessible, including all 69,526 original graph edges |
 | V0 | Retired from production at the maintainer's request; seven old projection copies removed, reclaiming 521,412,608 bytes. The local development baseline and source evidence remain |
-| Application | `a4d41dcc0ca3278c65652c81e332ec4753f23653` on `eli/v2` |
-| CI | All seven jobs passed in [run 41587419415](https://github.com/eliperez-dev/UntilEveryCage/actions/runs/41587419415) |
-| Render | Deployment `dep-dbko10ugekts73en8dtg`, serving database `uec_serving_country_20261031`; Auto-Deploy remains off |
+| Application | `a71a5d1cf748aa3a35877e7b5570b0494aaacd01` on `eli/v2` |
+| CI | All seven jobs passed in [run 41720735466](https://github.com/eliperez-dev/UntilEveryCage/actions/runs/41720735466) |
+| Render | Deployment `dep-dbl5afei0phs738hl4k0`, serving database `uec_serving_country_20261031`; Auto-Deploy remains off |
 | Contributions | Existing intake and bug-report capabilities remain enabled; community data was not moved or modified |
 
 The country first pass is complete. Germany, national Spain, Catalonia, France,
@@ -72,6 +72,19 @@ source inventory. Source rows are not a globally deduplicated premises census.
   then the first checked public facet request took 0.36 seconds. A fresh local
   production process returned its first HTTP facets in 0.25 seconds; unavailable
   data stopped startup before bind. Live totals and deferred canvases were verified.
+- The November 3 native-category repair shares candidate filtering, exact counts
+  and bounded page enrichment. Current, historical and local V0 API comparisons
+  preserved memberships and DTOs; latest-assignment, pagination and suppression
+  cases passed. Nine live API checks passed: concurrent map/list requests for the
+  reported 3,318-record area took 3.3–3.6 seconds, versus the earlier 31-second
+  failed map request and 44-second list. Global Slaughter matches/list took
+  4.0/2.7 seconds with the same 11,255 records and 7,832 mapped IDs. Temporary
+  search failures retain the map and Retry; failed release validation removes it.
+  The unchanged validation test and Chromium/WebKit recovery cases passed.
+  One live mobile-sized WebKit flow completed a 50-mile LA radius search in
+  1.1 seconds: seven rows, unchanged canvas/camera and no page errors. Its
+  headless screenshot did not verify tiles or pins. A normal browser separately
+  rendered street tiles and red pins without captured warnings or errors.
 
 The aggregate completion receipt is retained locally in ignored
 `data/staging/country-release-20261031/acceptance.json`. Its component receipts
@@ -89,8 +102,13 @@ October 27 snapshots were never published and are not the current release.
 
 ## Measured backend follow-ups
 
-- Initial unfiltered record browsing, filtered facet queries and wide-area
-  category-filtered map matches still need performance work.
+- Initial unfiltered record browsing took 10.2 seconds in the live mobile flow;
+  filtered facet queries and broad concurrent category queries also need work.
+  Global Processing returned 52,941
+  matches in about 6.8 seconds locally; the reported area repair is not a claim
+  that every global filter is fast.
+- A graceful service restart was observed November 3 at 12:08 PM Pacific.
+  Its trigger remains unknown; no matching deploy or OOM event was found.
 - Generalize the exact canonical graph-alias rebinding used for reused private
   handoffs in this release. Original identifiers and evidence must remain intact.
 - Apply the human-readable French ICPE source label in the next source projection.
