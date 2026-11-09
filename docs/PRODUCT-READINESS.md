@@ -22,9 +22,9 @@ The current dataset is **October 31, 2026**, `release-2026-10-31`.
 | Graph | 83,067 connections: 23,874 exact and 59,193 inferred; 1,024 APHIS evidence references |
 | Historical dataset | October 18 remains accessible, including all 69,526 original graph edges |
 | V0 | Retired from production at the maintainer's request; seven old projection copies removed, reclaiming 521,412,608 bytes. The local development baseline and source evidence remain |
-| Application | `73f5858da3e7558947050f796e07bacb78fd70f1` on `eli/v2` |
-| CI | All seven jobs passed in [run 42659646999](https://github.com/eliperez-dev/UntilEveryCage/actions/runs/42659646999) |
-| Render | Deployment `dep-dbp0748m7kps73b3sm8g`, serving database `uec_serving_country_20261031`; Auto-Deploy remains off |
+| Application | `128b6ae002e76cf95bd2ed0a4447d91ab67e835e` on `eli/v2` |
+| CI | All seven jobs passed in [run 42678002156](https://github.com/eliperez-dev/UntilEveryCage/actions/runs/42678002156) |
+| Render | Deployment `dep-dbp1q00n74is73abql10`, serving database `uec_serving_country_20261031`; Auto-Deploy remains off |
 | Contributions | Existing intake and bug-report capabilities remain enabled; community data was not moved or modified |
 
 The country first pass is complete. Germany, national Spain, Catalonia, France,
@@ -98,6 +98,20 @@ source inventory. Source rows are not a globally deduplicated premises census.
   its initial list/map transfers took 0.51/0.62 seconds. Selection, scope clearing,
   sheet positions and map geometry passed without JavaScript exceptions.
   A retired-V0 availability probe returned 404; one other resource error remained unattributed.
+- Global native-category lists now reuse exact counts from the existing facet
+  cache. Overlapping categories count each facility once; page selection still
+  checks current eligibility. All 24 old/new local response comparisons passed,
+  including pagination, combined-filter fallbacks, history and restricted local
+  V0. The 157 Rust unit tests, 12 suppression/cache E2E tests and final CI passed.
+  Nine public checks passed. Slaughter, Processing and their OR combination took
+  1.27, 1.20 and 1.07 seconds, versus 3.0, 12.7 and 15.3 seconds just before
+  deployment, with complete responses unchanged. Unfiltered lists took 0.67
+  seconds; October 18 remains accessible and V0 returns 410. Production prepared
+  facets before listening in 19.6 seconds. No frontend or database changes were made.
+  A fresh public mobile-sized browser showed each category selection in 2.1–2.2
+  seconds, with API transfers of 0.75–1.11 seconds. Pagination reached 200 unique
+  rows without changing totals, canvas or geometry. No JavaScript exceptions or
+  overflow occurred; the known retired-V0 availability request returned 404.
 
 The aggregate completion receipt is retained locally in ignored
 `data/staging/country-release-20261031/acceptance.json`. Its component receipts
@@ -115,11 +129,10 @@ October 27 snapshots were never published and are not the current release.
 
 ## Measured backend follow-ups
 
-- Filtered facet queries and broad category queries still need work. The November 9
-  public mobile check took 8.0 seconds for the first global Slaughter list and
-  2.8 seconds on repeat; these retain the exact-count path. Global Processing returned 52,941
-  matches in about 6.8 seconds locally; the reported area repair is not a claim
-  that every global filter is fast.
+- Combined-filter lists and filtered facet queries retain the exact-count path.
+  The global-category repair does not accelerate arbitrary combinations of
+  country, source, text, precision and spatial filters. The earlier wide-radius
+  category sample took 7.2 seconds; optimize further only against a measured case.
 - A graceful service restart was observed November 3 at 12:08 PM Pacific.
   Its trigger remains unknown; no matching deploy or OOM event was found.
 - Generalize the exact canonical graph-alias rebinding used for reused private
