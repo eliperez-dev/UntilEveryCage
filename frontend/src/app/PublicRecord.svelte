@@ -37,7 +37,14 @@
   const hasReports = $derived(isAphisRelevant(record?.sourceId, record?.sourceFacts));
   const tabs = $derived(tabItems.filter(tab => tab.id !== 'reports' || hasReports));
   const activeTab = $derived(chosenTab ?? (hasReports ? 'reports' : 'details'));
-  const locality = $derived([record?.region, record?.countryCode].filter(Boolean).join(', '));
+  const countryNames = $derived(new Intl.DisplayNames($language, { type: 'region' }));
+  const locality = $derived.by(() => {
+    const region = record?.region?.trim();
+    const code = record?.countryCode?.toUpperCase();
+    const country = code && /^[A-Z]{2}$/.test(code) ? countryNames.of(code) ?? code : code;
+    if (!region || region.toUpperCase() === code || region === country) return country ?? '';
+    return [region, country].filter(Boolean).join(', ');
+  });
   $effect(() => {
     void retry;
     const controller = new AbortController(); record = null; busy = true; error = '';

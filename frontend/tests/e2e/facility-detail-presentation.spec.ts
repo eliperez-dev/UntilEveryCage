@@ -55,7 +55,7 @@ for (const [width, canonicalName] of [[320, null], [1440, null], [320, 'Name not
 
 for (const width of [1440, 375]) test(`direct evidence access and optional location mechanics work at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: 900 });
-  await mockPublicRecord(page, { display_precision: 'approximate', geometry_provenance: {
+  await mockPublicRecord(page, { city: width === 375 ? null : row.city, display_precision: 'approximate', geometry_provenance: {
     origin: 'provider_derived', method: 'geoapify_rooftop', provider: 'Geoapify', confidence: '0.8', confidence_band: 'medium',
   } });
   await page.goto(`./#/map?selected=${id}&release_id=${release}`);
@@ -66,6 +66,7 @@ for (const width of [1440, 375]) test(`direct evidence access and optional locat
   await expect(page.locator('#field-record-list')).toBeHidden();
   await panel.getByRole('link', { name: 'View full record', exact: true }).click();
   const full = page.locator('.public-record');
+  await expect(full.locator('.record-locality')).toHaveText(width === 375 ? 'Denmark' : 'Synthetic locality, Denmark');
   await expect(full.locator('.compact-source .direct-source')).toHaveAttribute('href', row.provenance_source_url);
   await expect(full.locator('.compact-source .direct-source')).toBeHidden();
   await full.locator('#location-heading').click();
