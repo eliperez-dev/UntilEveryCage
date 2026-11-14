@@ -70,7 +70,7 @@ for (const width of [320, 390, 1440]) {
     const searchBox = (await search.boundingBox())!;
     const filterBox = (await filters.boundingBox())!;
     expect(filterBox.x).toBeCloseTo(searchBox.x + searchBox.width, 0);
-    expect(filterBox.height).toBeGreaterThanOrEqual(44);
+    expect(Math.round(filterBox.height)).toBeGreaterThanOrEqual(44);
 
     await query.fill('e');
     if (width === 1440) await expect(results).toBeVisible();

@@ -74,7 +74,8 @@ test('public record navigation reads the selected release and unavailable record
   await expect(page.getByRole('region',{name:'Public record'}).getByRole('heading',{name:/Synthetic public record/})).toBeVisible();
   expect(reads[0]!.searchParams.get('release_id')).toBe('synthetic-release'); expect(reads[0]!.searchParams.get('profile')).toBe('official');
   expect(new URL(page.url()).hash).toContain(encodeURIComponent(mapContext));
-  await expect(page.getByText('Unmapped',{exact:false}).first()).toBeVisible();
+  await page.getByRole('tabpanel', {name:'Details',exact:true}).locator('#location-heading').click();
+  await expect(page.getByRole('tabpanel', {name:'Details',exact:true}).getByText('Unmapped · no public point',{exact:true})).toBeVisible();
   await expect(page.getByRole('link',{name:'Open in Map',exact:true})).toHaveCount(0);
   await expect(page.getByRole('button',{name:'Copy facility link',exact:true})).toBeVisible();
 
