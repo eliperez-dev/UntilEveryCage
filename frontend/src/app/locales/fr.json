@@ -1007,5 +1007,8 @@
   "{count} filter": "{count} filtre",
   "Theme": "Thème",
   "Advanced": "Options avancées",
-  "View full record": "Voir la fiche complète"
+  "View full record": "Voir la fiche complète",
+  "State": "État",
+  "City": "Ville",
+  "Enter at least 3 letters or numbers.": "Saisissez au moins 3 lettres ou chiffres."
 }

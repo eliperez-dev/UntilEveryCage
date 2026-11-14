@@ -1007,5 +1007,8 @@
   "{count} filter": "{count} filter",
   "Theme": "Tema",
   "Advanced": "Avanceret",
-  "View full record": "Se hele posten"
+  "View full record": "Se hele posten",
+  "State": "Delstat",
+  "City": "By",
+  "Enter at least 3 letters or numbers.": "Indtast mindst 3 bogstaver eller tal."
 }

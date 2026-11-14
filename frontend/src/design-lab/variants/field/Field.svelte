@@ -30,7 +30,7 @@
   import { classificationLabel } from "../../../features/locations/classificationSummary";
   import { language, tr } from '../../../app/language';
   import { serializeRoute } from "../../../app/routeState";
-  import { parseSearch, searchSuggestions, applySearchSuggestion, areaScopeFromBounds, type SearchSuggestion } from "../../../features/search/powerSearch";
+  import { canSearchRecords, parseSearch, searchSuggestions, applySearchSuggestion, areaScopeFromBounds, stateSearchName, type SearchSuggestion } from "../../../features/search/powerSearch";
   import AreaSummary from '../../../features/search/AreaSummary.svelte';
   import type { TaxonomyPrimaryKey } from '../../../domain/taxonomy';
   import MobileSearchFilters from '../../../features/search/MobileSearchFilters.svelte';
@@ -168,6 +168,7 @@
   );
   const resultCount = $derived(aggregateRecords.length);
   const areaSummary = writable<AreaSummaryData | null>(null);
+  let fitResultsRequest = $state(0);
   const workspaceOpen = $derived(mapState.listOpen || Boolean(mapState.selectedId) || aggregateOpen);
   const railWidth = writable<number | null>(null);
   const layoutTuning = writable<LayoutTuning>({ panelWidthPercent: 100 / 3, rowPadding: 16, typeScale: 1, mobileSheetPercent: 60, mobileExpandedPercent: 90 });
@@ -178,13 +179,11 @@
   const resultsSheetSnap = writable<SheetSnap>('middle');
   const detailSheetSnap = writable<SheetSnap>('middle');
   const mobileFiltersOpen = writable(false);
-  const locateRequest = writable(0);
   let locationRequest: AbortController | undefined;
   let locationError = $state('');
   let locating = $state(false);
   $effect(() => {
     if (!active) {
-      locateRequest.set(0);
       locationRequest?.abort();
       if (get(mobileFiltersOpen)) mobileFiltersOpen.set(false);
     }
@@ -357,6 +356,11 @@
   let initialSelectionFlightHandled = false;
   const placeSuggestions = writable<readonly PlaceSuggestion[]>([]);
   const placesExpanded = writable(false);
+  let searchDraft = $state('');
+  let shortQuery = $state(false);
+  let searchFocused = $state(false);
+  const committedQuery = $derived(mapState.query);
+  $effect(() => { searchDraft = committedQuery; });
   const flightTarget = writable<{
     id: number;
     longitude: number;
@@ -384,9 +388,10 @@
   let placeSearchModule: Promise<typeof import("../../../features/placeSearch/placeSearch")> | undefined;
   // The gazetteer is lazy and local: typing a place never contacts a geocoder.
   $effect(() => {
-    const query = mapState.query.trim();
+    const query = (publicMap && searchFocused ? searchDraft : committedQuery).trim();
     placesExpanded.set(false);
-    if (!active || !mapState.listOpen || query.length < 2 || aggregateOpen) {
+    placeSuggestions.set([]);
+    if (!active || (!publicMap && !mapState.listOpen) || query.length < 2 || aggregateOpen) {
       placeSuggestions.set([]);
       return;
     }
@@ -493,6 +498,11 @@
   function selectPlace(place: PlaceSuggestion) {
     // Natural Earth supplies a city-centre navigation point, not a facility.
     flyTo(place.longitude, place.latitude, 10);
+    if (publicMap) {
+      autocompleteOpen.set(false);
+      searchDraft = mapState.query;
+      document.querySelector<HTMLInputElement>('#field-search')?.blur();
+    }
     // Keep the drawer in the hit-test tree until this pointer click finishes.
     // Removing it synchronously can send the tail of the gesture to the map.
     setTimeout(() => dispatch({ type: "list", value: false }), 0);
@@ -616,13 +626,10 @@
     const editing = target instanceof HTMLElement && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
     if (event.key === "/" && !editing && !event.ctrlKey && !event.metaKey && !event.altKey) {
       event.preventDefault();
-      detailMapPreview.set(false);
-      if (mapState.selectedId) dispatch({ type: 'results' });
-      dispatch({ type: "list", value: true });
+      if (!publicMap) openMobileSearch();
       void tick().then(() => document.querySelector<HTMLInputElement>("#field-search")?.focus());
       return;
     }
-    if (event.key === 'Escape' && document.querySelector('.map-navigation #map-navigation-view, #map-search-settings, .mobile-scope-menu')) return;
     if (event.key === "Escape" && $autocompleteOpen) {
       event.preventDefault(); autocompleteOpen.set(false); return;
     }
@@ -692,7 +699,10 @@
       beforeFilterSnap = null;
     }
   }
-  const suggestions = $derived(searchSuggestions(mapState.query, candidateFacets, $language));
+  const suggestions = $derived([
+    ...searchSuggestions(publicMap ? searchDraft : mapState.query, candidateFacets, $language, 5, publicMap),
+    ...(publicMap ? $placeSuggestions.slice(0, 3) : []),
+  ].slice(0, 8));
   const countries = $derived(new Intl.DisplayNames([$language], { type: 'region' }));
   function countryName(value: string) { try { return countries.of(value) ?? value; } catch { return value; } }
   function sourceName(value: string) { return candidateFacets?.sources.find(facet => facet.value === value)?.label ?? value; }
@@ -703,16 +713,39 @@
     dispatch({ type: 'results' });
   }
   function applyParsedSearch() {
-    openSearchResults();
-    const parsed = parseSearch(mapState.query, mapState.filters, candidateFacets, $language);
-    dispatch({ type: 'search', value: parsed });
-    autocompleteOpen.set(false);
+    const parsed = parseSearch(publicMap ? searchDraft : mapState.query, mapState.filters, candidateFacets, $language, publicMap);
+    if (parsed.filters.countries !== mapState.filters.countries && mapState.searchScope?.kind === 'state' && !parsed.scope) parsed.scope = null;
+    submitSearch(parsed);
   }
-  function applySuggestion(suggestion: SearchSuggestion) {
-    openSearchResults();
-    dispatch({ type: 'search', value: applySearchSuggestion(suggestion, mapState.filters) });
+  function submitSearch(selection: ReturnType<typeof parseSearch>) {
+    if (publicMap && selection.query && !canSearchRecords(selection.query)) {
+      shortQuery = true;
+      return;
+    }
+    shortQuery = false;
+    if (publicMap && (selection.scope?.kind === 'state' || (selection.filters.countries !== mapState.filters.countries && selection.filters.countries.length))) fitResultsRequest += 1;
+    mobileFiltersOpen.set(false);
+    detailMapPreview.set(false);
+    dispatch({ type: 'search', value: selection });
+    searchDraft = selection.query;
     autocompleteOpen.set(false);
-    void tick().then(() => { document.querySelector<HTMLInputElement>('#field-search')?.focus(); autocompleteOpen.set(false); });
+    if (publicMap) document.querySelector<HTMLInputElement>('#field-search')?.blur();
+  }
+  function applySuggestion(suggestion: SearchSuggestion | PlaceSuggestion) {
+    if (suggestion.kind === 'place') selectPlace(suggestion);
+    else submitSearch(applySearchSuggestion(suggestion, mapState.filters, candidateFacets, $language));
+  }
+  function editSearch(value: string) {
+    searchDraft = value;
+    shortQuery = false;
+    autocompleteOpen.set(true);
+    suggestionIndex.set(-1);
+    if (!publicMap) dispatch({ type: 'search', value: { query: value, filters: mapState.filters } });
+  }
+  function clearSearchInput() {
+    editSearch('');
+    if (mapState.query) submitSearch({ query: '', filters: mapState.filters });
+    void tick().then(() => document.querySelector<HTMLInputElement>('#field-search')?.focus());
   }
   function clearSearch() {
     dispatch({ type: 'reset-filters' });
@@ -726,6 +759,7 @@
   function closeWorkspace() {
     mobileFiltersOpen.set(false);
     autocompleteOpen.set(false);
+    shortQuery = false;
     scopeError.set('');
     detailMapPreview.set(false);
     dispatch({ type: 'close-workspace' });
@@ -762,10 +796,17 @@
   }
   function applyMobileFilters(value:{filters:LabFilters;sourceId:string|null}) {
     if(value.sourceId!==mapState.sourceId)dispatch({type:'source',value:value.sourceId});
-    dispatch({type:'search',value:{query:mapState.query,filters:value.filters}});
+    const clearState = mapState.searchScope?.kind === 'state' && value.filters.countries.length > 0;
+    dispatch({type:'search',value:{query:mapState.query,filters:value.filters,...(clearState ? {scope:null} : {})}});
     closeMobileFilters();
   }
-  const mobileScopeLabel=$derived(!mapState.searchScope?tr('Everywhere',$language):mapState.searchScope.kind==='area'?tr('This map area',$language):`${mapState.searchScope.deviceDerived?tr('Near me',$language):mapState.searchScope.label} · ${nearbyRadiusLabel(mapState.searchScope.radiusKm)}`);
+  const mobileScopeLabel = $derived.by(() => {
+    const scope = mapState.searchScope;
+    if (!scope) return tr('Everywhere', $language);
+    if (scope.kind === 'state') return stateSearchName(scope.code) ?? scope.code;
+    if (scope.kind === 'area') return tr('This map area', $language);
+    return `${scope.deviceDerived ? tr('Near me', $language) : scope.label} · ${nearbyRadiusLabel(scope.radiusKm)}`;
+  });
   const retainedFilterCount=$derived(mapState.filters.categories.length+mapState.filters.countries.length+mapState.filters.sources.length+(mapState.sourceId?1:0));
   function searchSettings(value: {mode:'box'|'radius';radiusMiles:number}) {
     searchMode.set(value.mode); radiusMiles.set(value.radiusMiles);
@@ -795,10 +836,6 @@
     flyTo(place.longitude, place.latitude, 10);
     autocompleteOpen.set(false);
   }
-  function detailFilter(field: 'categories' | 'sources', value: string) {
-    dispatch({ type: 'filters', value: { ...mapState.filters, [field]: [...new Set([...mapState.filters[field], value])] } });
-    dispatch({ type: 'results' });
-  }
 
 </script>
 
@@ -807,17 +844,21 @@
           <form class="search" role="search" onsubmit={(event) => { event.preventDefault(); applyParsedSearch(); }}>
             <div class="query-box">
             <label for="field-search">{tr(mode === "public-release" ? 'Search across public release records' : 'Search across preview records', $language)}</label>
-            {#if publicMap || !$mobileLayout}<button class="search-toggle" bind:this={$searchToggle} type="button" aria-label={tr($detailMapPreview ? 'View facility details' : 'Search map', $language)} aria-expanded={workspaceOpen} aria-controls="field-record-list" onclick={publicMap ? openSearchResults : openMobileSearch}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg></button>{:else}<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg>{/if}
-            <input id="field-search" type="search" role="combobox" aria-autocomplete="list" aria-haspopup="listbox" maxlength="120" placeholder={tr((publicMap || !$mobileLayout) && (!workspaceOpen || detailCollapsed) ? 'Search map' : 'Name, activity, source, or place', $language)}
-              value={mapState.query} aria-activedescendant={$autocompleteOpen && $suggestionIndex >= 0 ? `field-suggestion-${$suggestionIndex}` : undefined} aria-expanded={$autocompleteOpen && suggestions.length > 0} aria-controls="search-suggestions" onfocus={() => { if (publicMap || mapState.selectedId) openSearchResults(); else if (!$mobileLayout) openMobileSearch(); autocompleteOpen.set(true); suggestionIndex.set(-1); }} onblur={(event) => { if (!(event.relatedTarget instanceof HTMLElement) || !event.relatedTarget.closest('.search-autocomplete')) autocompleteOpen.set(false); }} oninput={(event) => { autocompleteOpen.set(true); suggestionIndex.set(-1); dispatch({ type: 'search', value: { query: event.currentTarget.value, filters: mapState.filters } }); }} onkeydown={(event) => {
-                if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && suggestions.length) { event.preventDefault(); autocompleteOpen.set(true); suggestionIndex.update(index => (index + (event.key === 'ArrowDown' ? 1 : -1) + suggestions.length) % suggestions.length); }
-                if (event.key === 'Enter') { event.preventDefault(); if ($autocompleteOpen && $suggestionIndex >= 0 && suggestions[$suggestionIndex]) applySuggestion(suggestions[$suggestionIndex]!); else applyParsedSearch(); }
+            {#if publicMap || !$mobileLayout}<button class="search-toggle" bind:this={$searchToggle} type={publicMap ? 'submit' : 'button'} aria-label={tr($detailMapPreview ? 'View facility details' : 'Search map', $language)} aria-controls="field-record-list" onclick={publicMap ? undefined : openMobileSearch}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg></button>{:else}<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg>{/if}
+            <input id="field-search" type="search" role="combobox" aria-autocomplete="list" aria-haspopup="listbox" maxlength="120" enterkeyhint="search" placeholder={tr(publicMap || !workspaceOpen ? 'Search map' : 'Name, activity, source, or place', $language)}
+              value={publicMap ? searchDraft : mapState.query} aria-invalid={shortQuery || undefined} aria-describedby={shortQuery ? 'search-query-hint' : undefined} aria-activedescendant={$autocompleteOpen && suggestions[$suggestionIndex] ? `field-suggestion-${$suggestionIndex}` : undefined} aria-expanded={$autocompleteOpen && !shortQuery && suggestions.length > 0} aria-controls={$autocompleteOpen && !shortQuery && suggestions.length > 0 ? 'search-suggestions' : undefined} onfocus={() => { searchFocused = true; if (!publicMap && mapState.selectedId) openSearchResults(); else if (!publicMap && !$mobileLayout) openMobileSearch(); autocompleteOpen.set(true); suggestionIndex.set(-1); }} onblur={(event) => { searchFocused = false; if (!(event.relatedTarget instanceof HTMLElement) || !event.relatedTarget.closest('.search-autocomplete')) autocompleteOpen.set(false); }} oninput={(event) => editSearch(event.currentTarget.value)} onkeydown={(event) => {
+                if (event.isComposing) return;
+                if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && suggestions.length) { event.preventDefault(); autocompleteOpen.set(true); suggestionIndex.update(index => index === -1 ? (event.key === 'ArrowDown' ? 0 : suggestions.length - 1) : (index + (event.key === 'ArrowDown' ? 1 : -1) + suggestions.length) % suggestions.length); }
+                if (event.key === 'Enter' && $autocompleteOpen && suggestions[$suggestionIndex]) { event.preventDefault(); applySuggestion(suggestions[$suggestionIndex]!); }
               }} />
-            {#if $mobileLayout&&mode==='public-release'&&mapState.query}<button class="mobile-clear-query" type="button" aria-label={tr('Clear search',$language)} onclick={()=>{dispatch({type:'search',value:{query:'',filters:mapState.filters}});void tick().then(()=>document.querySelector<HTMLInputElement>('#field-search')?.focus());}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>{/if}
+            {#if publicMap && searchDraft}<button class="mobile-clear-query" type="button" aria-label={tr('Clear search',$language)} onclick={clearSearchInput}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>{/if}
             </div>
           </form>
-          {#if $autocompleteOpen && suggestions.length > 0}<div id="search-suggestions" class="search-autocomplete" role="listbox" aria-label={tr('Search suggestions', $language)}>
-            {#each suggestions as suggestion, index (`${suggestion.kind}:${suggestion.value}`)}<button id={`field-suggestion-${index}`} role="option" aria-selected={$suggestionIndex === index} tabindex="-1" type="button" onclick={() => applySuggestion(suggestion)}><strong>{suggestion.label}</strong><small>{tr(suggestion.kind === 'country' ? 'Country' : suggestion.kind === 'category' ? 'Category' : 'Source', $language)}</small></button>{/each}
+          {#if shortQuery}<p class="search-autocomplete query-hint" id="search-query-hint" role="status">{tr('Enter at least 3 letters or numbers.', $language)}</p>
+          {:else if $autocompleteOpen && suggestions.length > 0}<div id="search-suggestions" class="search-autocomplete" role="listbox" aria-label={tr('Search suggestions', $language)}>
+            {#each suggestions as suggestion, index (`${suggestion.kind}:${suggestion.kind === 'place' ? suggestion.id : suggestion.value}`)}
+              <button id={`field-suggestion-${index}`} role="option" aria-selected={$suggestionIndex === index} tabindex="-1" type="button" onpointerdown={(event) => event.preventDefault()} onclick={() => applySuggestion(suggestion)}><strong>{suggestion.label}</strong><small>{tr(suggestion.kind === 'country' ? 'Country' : suggestion.kind === 'state' ? 'State' : suggestion.kind === 'place' ? 'City' : suggestion.kind === 'category' ? 'Category' : 'Source', $language)}</small></button>
+            {/each}
           </div>{/if}
 
 {/snippet}
@@ -888,6 +929,7 @@
         {mapMatchesError}
         {mapMatchesSearchKey}
         onAreaSummary={(summary) => { areaSummary.set(summary); }}
+        {fitResultsRequest}
         searchScope={mapState.searchScope}
         flightTarget={$flightTarget}
         cameraViewRequest={$cameraViewRequest}
@@ -957,15 +999,23 @@
       <div class="map-toolbar" class:toolbar-hidden={!publicMap && $mobileLayout && $workspaceHeight - $sheetHeight < 100}>
         <div class="desktop-search search-tools">{#if publicMap || !$mobileLayout}{@render searchInput()}{/if}</div>
       {#if publicMap}<button class="public-filter-button" type="button" aria-expanded={$mobileFiltersOpen} aria-controls="public-map-filters" onclick={openMobileFilters}>{tr('Filters', $language)}{#if retainedFilterCount} <span>{retainedFilterCount}</span>{/if}</button>{/if}
-      {#if active && !publicMap}<MapNavigation ready={$mapControlsReady} basemap={mapState.basemap} pitch={$mapCameraPitch} compact={$mobileLayout&&mode==='public-release'} locateRequest={$locateRequest} onLocateRequestConsumed={()=>locateRequest.set(0)} compactHidden={$mobileLayout && $workspaceHeight - $sheetHeight < 100} onbasemap={(value) => dispatch({type:'basemap',value})} onviewtoggle={toggleMapCameraView} areaEnabled={Boolean($currentBounds) && mode === 'public-release'} areaActive={Boolean(mapState.searchScope)} searchMode={mapState.searchScope?.kind === 'radius' ? 'radius' : $searchMode} radiusMiles={mapState.searchScope?.kind === 'radius' ? Math.round(mapState.searchScope.radiusKm / 1.609344) : $radiusMiles} onsettings={searchSettings} onarea={searchArea} onlocate={(value) => { openSearchResults(); searchMode.set('radius'); dispatch({ type: 'near-device', value:{...value,radiusKm:$radiusMiles * 1.609344} }); }} />{/if}
+      {#if active && !publicMap}<MapNavigation ready={$mapControlsReady} basemap={mapState.basemap} pitch={$mapCameraPitch} onbasemap={(value) => dispatch({type:'basemap',value})} onviewtoggle={toggleMapCameraView} />{/if}
       </div>
     {#if publicMap && $mobileFiltersOpen}<div class="public-filter-panel" id="public-map-filters"><MobileSearchFilters filters={mapState.filters} sourceId={mapState.sourceId} facets={candidateFacets} {facetsStatus} onapply={applyMobileFilters} onclose={closeMobileFilters}/></div>{/if}
-    <aside class="results" inert={$debugOpen && $mobileLayout} aria-hidden={$debugOpen && $mobileLayout ? true : undefined} class:rail-collapsed={!workspaceOpen} class:map-preview={detailCollapsed} class:behind-filters={publicMap && $mobileFiltersOpen} id="field-record-list" aria-label={tr('Search, filters, and results', $language)}>
-      <div class="mobile-sheet-control"><MobileSearchSheet open={workspaceOpen && !detailCollapsed} snap={mapState.selectedId ? $detailSheetSnap : $resultsSheetSnap} detail={Boolean(mapState.selectedId)} preview={Boolean(mapState.selectedId)} available={$workspaceHeight} middlePercent={$layoutTuning.mobileSheetPercent ?? 60} expandedPercent={$layoutTuning.mobileExpandedPercent ?? 90} onchange={changeMobileSheet} onheight={height => sheetHeight.set(height)} /></div>
+    <aside class="results" inert={$debugOpen && $mobileLayout} aria-hidden={$debugOpen && $mobileLayout ? true : undefined} class:rail-collapsed={!workspaceOpen} class:map-preview={detailCollapsed} class:behind-filters={publicMap && $mobileFiltersOpen} class:typing={publicMap && searchFocused} style:--results-height={$resultsSheetSnap === 'expanded' ? '88%' : '55%'} id="field-record-list" aria-label={tr('Search, filters, and results', $language)}>
+      {#if !publicMap}<div class="mobile-sheet-control"><MobileSearchSheet open={workspaceOpen && !detailCollapsed} snap={mapState.selectedId ? $detailSheetSnap : $resultsSheetSnap} detail={Boolean(mapState.selectedId)} preview={Boolean(mapState.selectedId)} available={$workspaceHeight} middlePercent={$layoutTuning.mobileSheetPercent ?? 60} expandedPercent={$layoutTuning.mobileExpandedPercent ?? 90} onchange={changeMobileSheet} onheight={height => sheetHeight.set(height)} /></div>{/if}
       <button class="rail-resize" type="button" aria-label={tr('Resize search panel', $language)} title={tr('Use left and right arrows to resize', $language)} onpointerdown={resizeRail} onkeydown={resizeRailKey}></button>
       <header hidden={Boolean(mapState.selectedId) || !workspaceOpen}><strong>{tr('Search records', $language)}</strong><button type="button" aria-label={tr('Close workspace', $language)} onclick={closeWorkspace}>×</button></header>
         <div class="search-tools" id="field-search-content" hidden={Boolean(mapState.selectedId) || !workspaceOpen || $mobileFiltersOpen}>
-          {#if publicMap && mapState.searchScope}<div class="public-scope"><button class="scope-chip" type="button" aria-label={`${tr('Clear map area', $language)}: ${mobileScopeLabel}`} onclick={clearMapArea}>{mobileScopeLabel} <span aria-hidden="true">×</span></button></div>{/if}
+          {#if publicMap && (mapState.searchScope || retainedFilterCount)}
+            <div class="public-scope filter-chips" aria-label={tr('Search filters', $language)}>
+              {#if mapState.searchScope}<button class="scope-chip" type="button" aria-label={`${tr('Clear map area', $language)}: ${mobileScopeLabel}`} onclick={clearMapArea}>{mobileScopeLabel} <span aria-hidden="true">×</span></button>{/if}
+              {#each mapState.filters.countries as value}<button type="button" aria-label={`${tr('Remove filter', $language)}: ${countryName(value)}`} onclick={() => removeFilter('countries', value)}>{countryName(value)} <span aria-hidden="true">×</span></button>{/each}
+              {#each mapState.filters.categories as value}<button type="button" aria-label={`${tr('Remove filter', $language)}: ${categoryName(value)}`} onclick={() => removeFilter('categories', value)}>{categoryName(value)} <span aria-hidden="true">×</span></button>{/each}
+              {#each mapState.filters.sources as value}<button type="button" aria-label={`${tr('Remove filter', $language)}: ${sourceName(value)}`} onclick={() => removeFilter('sources', value)}>{sourceName(value)} <span aria-hidden="true">×</span></button>{/each}
+              {#if mapState.sourceId}<button type="button" aria-label={`${tr('Remove filter', $language)}: ${sourceName(mapState.sourceId)}`} onclick={() => chooseSource(null)}>{sourceName(mapState.sourceId)} <span aria-hidden="true">×</span></button>{/if}
+            </div>
+          {/if}
           {#if $mobileLayout && !publicMap}{@render searchInput()}{/if}
           {#if !publicMap}
           <div class="filter-chips" aria-label={tr('Search filters', $language)}>
@@ -1140,7 +1190,7 @@
       </section>{:else if !publicMap && active && mapState.selectedId && selected}<section class="reading-sheet dossier" aria-label="Record evidence" hidden={detailCollapsed}>
         <header class="dossier-header"><button class="back-to-results" type="button" onclick={dismissSelection}>← {tr('Back to results', $language)}</button><button class="detail-close" type="button" aria-label={tr('Close record detail', $language)} onclick={dismissSelection}>×</button></header>
         {#if aggregateOpen}<button type="button" class="back" onclick={dismissSelection}>← Members</button>{/if}
-        <RecordDetail record={selected} presentation="rail" fullRecordHref={facilityPageHref} publicRelease={mode === "public-release"} publicReleaseId={mode === "public-release" ? publicReleaseId : null} onshowmap={selected.latitude !== null && selected.longitude !== null ? showSelectedOnMap : undefined} oncategoryfilter={mode === 'public-release' ? (value) => detailFilter('categories', value) : undefined} onsourcefilter={mode === 'public-release' ? (value) => detailFilter('sources', value) : undefined} />
+        <RecordDetail record={selected} presentation="rail" fullRecordHref={facilityPageHref} onshowmap={selected.latitude !== null && selected.longitude !== null ? showSelectedOnMap : undefined} />
       </section>{/if}
       </div>
     </aside>
@@ -1149,11 +1199,15 @@
 </section>
 
 <style>
-  .public-map .map-toolbar { gap: .5rem; border: 0; background: none; box-shadow: none; }
-  .public-map .desktop-search { background: var(--panel); border: 1px solid var(--line); box-shadow: 0 3px 12px #0003; }
-  .public-map .desktop-search .search { outline: none; }
+  .public-map .map-toolbar { z-index: 7; gap: 0; }
+  .public-map .desktop-search { position: relative; }
+  .public-map .desktop-search .search { margin: 0; padding: 0; outline: none; }
   .public-map .desktop-search .search:focus-within { outline: 2px solid var(--focus); outline-offset: -2px; }
-  .public-filter-button { min-height: 44px; padding: 0 .85rem; border: 1px solid var(--line); background: var(--panel); color: var(--ink); box-shadow: 0 3px 12px #0003; font: inherit; cursor: pointer; }
+  .public-map .desktop-search .query-box { display: flex; align-items: center; width: 100%; min-width: 0; padding: 0; border: 0; outline: 0; }
+  .public-map .desktop-search .query-box input { flex: 1; min-width: 0; padding-inline: .25rem; outline: 0; }
+  .public-map .desktop-search .search-autocomplete { top: 100%; left: 0; right: 0; max-height: min(20rem, max(2.75rem, calc(var(--visual-workspace-height) - 4rem))); }
+  .public-map .desktop-search .query-hint { margin: 0; padding: .65rem; }
+  .public-filter-button { min-height: 44px; padding: 0 .85rem; border: 0; border-left: 1px solid var(--line); background: var(--panel); color: var(--ink); font: inherit; cursor: pointer; }
   .public-filter-button:hover, .public-filter-button[aria-expanded="true"] { background: var(--panel-hover); }
   .public-filter-button span { margin-left: .25rem; color: var(--muted); }
   .public-filter-panel { position: absolute; z-index: 8; inset: 3.4rem auto auto 0; display: flex; flex-direction: column; width: 100%; max-width: 28rem; max-height: calc(100% - 3.5rem); border: 1px solid var(--line); background: var(--panel); box-shadow: 0 6px 18px #0003; pointer-events: auto; }
@@ -1176,15 +1230,16 @@
     .public-map .map-toolbar { inset: .65rem .65rem auto; width: auto; max-width: none; transform: none; }
     .public-map .desktop-search { display: grid; }
     .public-map .desktop-search .search input { font-size: 16px; }
+    .workspace.public-map .map-tool-shell .results.typing { display: none; }
+    .workspace.public-map .map-tool-shell .results { height: min(var(--results-height), max(0px, calc(var(--visual-workspace-height) - 4.25rem))); }
     .public-map .public-filter-panel { inset: 3.75rem .65rem auto; width: auto; max-width: none; max-height: calc(100% - 4.4rem); }
     .public-map:not(.workspace-open) .map-stage :global(.maplibregl-ctrl-bottom-right) { bottom: .35rem; }
-    .public-map .mobile-sheet-control { display: none; }
     .workspace.public-map .map-tool-shell .results > header { display: block; top: 0; }
     .workspace.public-map .map-tool-shell .results > header[hidden] { display: none; }
     .public-map .mobile-results-heading { padding-right: 3rem; }
   }
-  .public-scope { padding: .4rem .65rem; border-bottom: 1px solid var(--line); }
-  .public-scope .scope-chip { min-height: 44px; margin: 0; }
+  .public-map .public-scope { padding: .4rem .65rem; border-bottom: 1px solid var(--line); }
+  .public-map .public-scope button { min-height: 44px; margin: 0; font-size: .8125rem; }
   .search-recovery { position:absolute;z-index:5;left:50%;bottom:calc(var(--mobile-sheet-height, 0px) + 12px);transform:translateX(-50%);display:flex;align-items:center;gap:12px;max-width:calc(100% - 32px);padding:0 10px 0 14px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font-size:.8125rem; }
   .search-recovery button,.search-error button { min-height:44px;min-width:44px;padding:8px;border:0;background:transparent;color:inherit;font:inherit;text-decoration:underline;cursor:pointer; }
   .search-recovery button:focus-visible,.search-error button:focus-visible { outline:2px solid var(--focus,var(--ink));outline-offset:-2px; }
@@ -1442,7 +1497,6 @@
   .mobile-clear-query,.mobile-results-heading{display:none}
   @media(max-width:40rem){
     .mobile-discovery .results>header{display:none}
-    .mobile-discovery .results:has(:global(.mobile-scope-menu)){z-index:9}
     .mobile-discovery .search{height:44px;margin:0 .75rem;padding:0;gap:.45rem;outline:0}
     .mobile-discovery .search:focus-within{outline:0}
     .mobile-discovery .query-box{display:flex;align-items:center;flex:1;min-width:0;height:44px;padding-left:.6rem;border:1px solid var(--ink);border-radius:3px}

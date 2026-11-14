@@ -85,12 +85,12 @@ class PublicDiscoveryQueryContractTests(unittest.TestCase):
 
     def test_literal_search_uses_new_allowlist_and_legacy_fallback_consistently(self):
         source = _source()
-        locations = source[source.index("pub async fn get_v2_locations_handler"):source.index("pub async fn get_v2_location_detail_handler")]
-        self.assertIn("public_search_text ILIKE '%'", locations)
-        self.assertIn("ESCAPE '\\'", locations)
-        self.assertIn("public_search_text = ''", locations)
-        self.assertIn("observation_taxonomy_assignment_sets sets", locations)
-        self.assertNotIn("websearch_to_tsquery", locations)
+        builder = source[source.index("fn v2_public_search_matches_cte"):source.index("fn v2_public_radius_matches_cte")]
+        self.assertIn("public_search_text ILIKE '%'", builder)
+        self.assertIn("ESCAPE '\\'", builder)
+        self.assertIn("public_search_text = ''", builder)
+        self.assertIn("observation_taxonomy_assignment_sets sets", builder)
+        self.assertNotIn("websearch_to_tsquery", builder)
 
     def test_taxonomy_filter_count_uses_assignment_existence_not_json_aggregation(self):
         source = _source()
@@ -113,7 +113,7 @@ class PublicDiscoveryQueryContractTests(unittest.TestCase):
             start = source.index(f"async fn {endpoint}")
             next_handler = source.find("pub async fn ", start + 1)
             body = source[start:next_handler if next_handler != -1 else None]
-            self.assertIn('batch_execute("SET LOCAL jit = off")', body)
+            self.assertIn('"SET LOCAL jit = off"', body)
 
     def test_map_and_list_bounds_use_planar_envelopes_including_the_whole_world(self):
         source = _source()

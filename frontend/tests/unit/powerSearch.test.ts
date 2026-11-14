@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_LAB_STATE } from '../../src/design-lab/contract';
-import { applySearchSuggestion, areaScopeFromBounds, parseSearch, publicSearchFilters, searchSuggestions } from '../../src/features/search/powerSearch';
+import { applySearchSuggestion, areaScopeFromBounds, canSearchRecords, parseSearch, publicSearchFilters, searchSuggestions } from '../../src/features/search/powerSearch';
 import { encodeLabHash, reduceLabState } from '../../src/design-lab/state';
 
 const facets = { countries: [{ value: 'ES', label: 'Spain', count: 4 }, { value: 'FR', label: 'France', count: 2 }], sources: [{ value: 'synthetic-register', label: 'Synthetic food register', count: 4 }], categories: [], activities: [] };
@@ -12,7 +12,7 @@ describe('structured map search', () => {
     expect(parseSearch('slaughterhouses in Spain', DEFAULT_LAB_STATE.filters, facets)).toMatchObject({ query: '', filters: { countries: ['ES'], categories: ['slaughter'] } });
     expect(parseSearch('mataderos en España', DEFAULT_LAB_STATE.filters, facets, 'es')).toMatchObject({ query: '', filters: { countries: ['ES'], categories: ['slaughter'] } });
     expect(parseSearch('poultry in neverland', DEFAULT_LAB_STATE.filters, facets).query).toBe('poultry in neverland');
-    expect(parseSearch('poultry in Portugal', DEFAULT_LAB_STATE.filters, facets).query).toBe('poultry in Portugal');
+    expect(parseSearch('poultry in Portugal', DEFAULT_LAB_STATE.filters, facets)).toMatchObject({ query: 'poultry', filters: { countries: ['PT'] } });
     expect(parseSearch('slaughterhouses near Spain', DEFAULT_LAB_STATE.filters, facets).query).toBe('slaughterhouses near Spain');
   });
 
@@ -20,7 +20,7 @@ describe('structured map search', () => {
     const country = searchSuggestions('poultry in Espa', facets, 'es').find(option => option.kind === 'country')!;
     expect(country).toEqual({ kind: 'country', value: 'ES', label: 'España', query: 'poultry' });
     const result = applySearchSuggestion(country, { ...DEFAULT_LAB_STATE.filters, categories: ['slaughter'], countries: ['FR'] });
-    expect(result).toMatchObject({ query: 'poultry', filters: { countries: ['FR', 'ES'], categories: ['slaughter'] } });
+    expect(result).toMatchObject({ query: 'poultry', filters: { countries: ['ES'], categories: ['slaughter'] } });
     expect(searchSuggestions('food reg', facets)).toContainEqual({ kind: 'source', value: 'synthetic-register', label: 'Synthetic food register', query: '' });
     expect(searchSuggestions('slaughter', facets)[0]).toMatchObject({ kind: 'category', value: 'slaughter' });
     expect(searchSuggestions('x', facets)).toEqual([]);
@@ -32,6 +32,24 @@ describe('structured map search', () => {
     const area = publicSearchFilters({ ...state, searchScope: { kind: 'area', bounds: { west: -4, east: 4, south: 38, north: 44 } } });
     expect(area).toMatchObject({ min_lon: -4, max_lon: 4, min_lat: 38, max_lat: 44 });
     expect(area).not.toHaveProperty('radius_km');
+  });
+
+  it('combines activities with countries and U.S. states', () => {
+    const filters = { ...DEFAULT_LAB_STATE.filters, countries: ['ES'], sources: ['synthetic-register'] };
+    expect(parseSearch('France', filters, facets)).toEqual({ query: '', filters: { ...filters, countries: ['FR'] } });
+    expect(searchSuggestions('calif', facets)[0]).toMatchObject({ kind: 'state', value: 'US-CA', label: 'California' });
+    const ohio = searchSuggestions('slaughter houses in oh', facets)[0]!;
+    expect(ohio).toMatchObject({ kind: 'state', value: 'US-OH', label: 'Ohio' });
+    const intent = { query: '', filters: { ...filters, countries: [], categories: ['slaughter'] }, scope: { kind: 'state', code: 'US-OH' } };
+    expect(applySearchSuggestion(ohio, filters, facets)).toEqual(intent);
+    expect(parseSearch('slaughter houses in Ohio', filters, facets)).toEqual(intent);
+    expect(publicSearchFilters({ ...DEFAULT_LAB_STATE, filters: intent.filters, searchScope: { kind: 'state', code: 'US-OH' } })).toEqual({ category_keys: ['slaughter'], us_state: 'US-OH', source_id: 'synthetic-register' });
+  });
+
+  it('keeps too-short text out of both public queries', () => {
+    expect(['e', 'ab', 'a.+b', '   '].map(canSearchRecords)).toEqual([false, false, false, false]);
+    expect(['poultry', '123', '屠宰'].map(canSearchRecords)).toEqual([true, true, true]);
+    expect(publicSearchFilters({ ...DEFAULT_LAB_STATE, query: 'e' })).not.toHaveProperty('q');
   });
 
   it('normalizes full-world views but rejects crossing or degenerate bounds', () => {

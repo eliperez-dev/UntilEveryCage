@@ -84,7 +84,7 @@
   import { applyFacilityPinScale, DEFAULT_FACILITY_PIN_SCALE } from './facilityPinScale';
   import { mergeMapDisplaySettings } from './mapDisplaySettings';
   import { emptyAreaSummary, summarizeMappedArea } from '../../features/search/areaSummary';
-  import { publicSearchFilters } from '../../features/search/powerSearch';
+  import { canSearchRecords, publicSearchFilters } from '../../features/search/powerSearch';
   import { nearbyCameraBounds } from '../../features/search/nearbySearch';
   import PublicPinRing from './PublicPinRing.svelte';
   import { collectPublicOverlap, createPublicOverlapIndex, OVERLAP_BADGE_LAYER, OVERLAP_BADGE_SOURCE, OVERLAP_LAYERS, publicOverlapMember, type OverlapMember, type PublicOverlapIndex, type RingBounds, type ScreenPoint } from './publicPinOverlap';
@@ -1333,7 +1333,7 @@
   const areaSummaryFilterKey = $derived(JSON.stringify([
     mapState.query, mapState.sourceId, mapState.filters, searchScope,
   ]));
-  const areaSummaryNeedsMatches = $derived(!!mapState.query.trim() || searchScope !== null);
+  const areaSummaryNeedsMatches = $derived(canSearchRecords(mapState.query) || searchScope !== null);
   const areaSummary = $derived.by((): AreaSummary => {
     // Match results must describe this exact release, restrictions and query.
     // A newly changed scope cannot briefly display the previous area's figures.

@@ -692,6 +692,9 @@ export const es = {
   "{count} record": "{count} registro",
   "{count} filter": "{count} filtro",
   'Theme': 'Tema', 'Advanced': 'Opciones avanzadas', 'View full record': 'Ver ficha completa',
+  "State": "Estado",
+  "City": "Ciudad",
+  "Enter at least 3 letters or numbers.": "Escribe al menos 3 letras o números.",
 } satisfies Record<string, string>;
 export type TranslationKey = keyof typeof es;
 export type LocaleMessages = Record<TranslationKey, string>;

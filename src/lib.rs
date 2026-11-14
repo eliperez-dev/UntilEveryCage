@@ -4810,6 +4810,8 @@ pub struct V2LocationParams {
     /// Comma-separated public provenance source IDs; OR within this dimension.
     pub source_id: Option<String>,
     pub region: Option<String>,
+    /// ISO 3166-2 code for a U.S. state or the District of Columbia.
+    pub us_state: Option<String>,
     pub category: Option<String>,
     /// Comma-separated taxonomy primaries; multiple values use OR semantics.
     pub category_keys: Option<String>,
@@ -4837,7 +4839,7 @@ impl V2LocationParams {
         self.category_keys.is_none() && self.filters_except_taxonomy_are_unfiltered()
     }
     fn filters_except_taxonomy_are_unfiltered(&self) -> bool {
-        self.country_code.is_none() && self.source_id.is_none() && self.region.is_none()
+        self.country_code.is_none() && self.source_id.is_none() && self.region.is_none() && self.us_state.is_none()
             && self.category.is_none() && self.source_type.is_none()
             && self.display_precision.is_none() && self.lifecycle_status.is_none() && self.q.is_none()
             && self.min_lon.is_none() && self.min_lat.is_none() && self.max_lon.is_none() && self.max_lat.is_none()
@@ -4897,52 +4899,47 @@ pub struct V2Location {
     pub provenance_retrieved_at: chrono::DateTime<chrono::Utc>,
 }
 
-fn v2_public_search_matches_cte(public_read_model: &str, search_parameter: &str) -> String {
+fn v2_public_search_matches_cte(search_parameter: &str) -> String {
     format!(r#"
+        legacy_assignments AS MATERIALIZED (
+          SELECT DISTINCT sets.observation_id
+          FROM uec.observation_taxonomy_assignments assignment
+          JOIN uec.observation_taxonomy_assignment_sets sets USING (assignment_set_id)
+          WHERE sets.taxonomy_version = 'uec-taxonomy-v1'
+            AND EXISTS (
+              SELECT 1 FROM uec.public_discovery_read_model_rows legacy
+              WHERE legacy.release_id = $1 AND legacy.public_search_text = ''
+                AND ($2::text IS NULL OR legacy.country_code = ANY(string_to_array($2, ',')))
+            )
+            AND lower(concat_ws(' ', assignment.leaf_label, assignment.source_code,
+                                assignment.source_label, assignment.source_code_reference,
+                                assignment.source_label_reference))
+                LIKE '%' || lower({search_parameter}) || '%' ESCAPE '\'
+            AND NOT EXISTS (
+              SELECT 1 FROM uec.observation_taxonomy_assignment_sets newer
+              WHERE newer.observation_id = sets.observation_id
+                AND newer.taxonomy_version = sets.taxonomy_version
+                AND (newer.created_at, newer.assignment_set_id) > (sets.created_at, sets.assignment_set_id)
+            )
+        ),
         search_matches AS MATERIALIZED (
           SELECT stored.facility_id, stored.observation_id
           FROM uec.public_discovery_read_model_rows stored
           WHERE stored.release_id = $1
+            AND ($2::text IS NULL OR stored.country_code = ANY(string_to_array($2, ',')))
             AND stored.public_search_text <> ''
             AND stored.public_search_text ILIKE '%' || {search_parameter} || '%' ESCAPE '\'
           UNION ALL
           SELECT legacy.facility_id, legacy.observation_id
           FROM uec.public_discovery_read_model_rows legacy
-          JOIN LATERAL (
-            SELECT history.canonical_name, history.city, history.country_code,
-                   history.classification_category, history.provenance_source_name,
-                   history.observation_id
-            FROM {public_read_model} AS history
-            WHERE history.release_id = legacy.release_id
-              AND history.facility_id = legacy.facility_id
-              AND history.observation_id = legacy.observation_id
-            LIMIT 1
-          ) AS history ON TRUE
           WHERE legacy.release_id = $1
+            AND ($2::text IS NULL OR legacy.country_code = ANY(string_to_array($2, ',')))
             AND legacy.public_search_text = ''
             AND (
-              lower(concat_ws(' ', history.canonical_name, history.city, history.country_code,
-                              history.classification_category, history.provenance_source_name))
+              lower(concat_ws(' ', legacy.canonical_name, legacy.city, legacy.country_code,
+                              legacy.classification_category, legacy.provenance_source_name))
                 LIKE '%' || lower({search_parameter}) || '%' ESCAPE '\'
-              OR EXISTS (
-                SELECT 1
-                FROM uec.observation_taxonomy_assignment_sets sets
-                LEFT JOIN uec.observation_taxonomy_assignments assignment
-                  ON assignment.assignment_set_id = sets.assignment_set_id
-                WHERE sets.observation_id = history.observation_id
-                  AND sets.taxonomy_version = 'uec-taxonomy-v1'
-                  AND NOT EXISTS (
-                    SELECT 1
-                    FROM uec.observation_taxonomy_assignment_sets newer
-                    WHERE newer.observation_id = sets.observation_id
-                      AND newer.taxonomy_version = sets.taxonomy_version
-                      AND (newer.created_at, newer.assignment_set_id) > (sets.created_at, sets.assignment_set_id)
-                  )
-                  AND lower(concat_ws(' ', assignment.leaf_label, assignment.source_code,
-                                      assignment.source_label, assignment.source_code_reference,
-                                      assignment.source_label_reference))
-                      LIKE '%' || lower({search_parameter}) || '%' ESCAPE '\'
-              )
+              OR legacy.observation_id IN (SELECT observation_id FROM legacy_assignments)
             )
         )"#)
 }
@@ -5002,6 +4999,30 @@ pub async fn get_v2_map_matches_handler(
         return v2_error(StatusCode::BAD_REQUEST, "invalid_pagination", "map matches are not paginated");
     }
     get_v2_locations_response(state, params, true).await
+}
+
+static PUBLIC_DISCOVERY_LIMITER: Lazy<tokio::sync::Semaphore> =
+    Lazy::new(|| tokio::sync::Semaphore::new(2));
+
+// Generalized 1:110m Natural Earth boundaries, v5.1.2. Accept a known code
+// only. Never build spatial SQL from client-provided geometry.
+static PUBLIC_US_STATES: Lazy<Value> = Lazy::new(|| serde_json::from_str(
+    include_str!("../frontend/src/features/placeSearch/usStates.json")
+).expect("bundled Natural Earth state boundaries"));
+
+fn usable_public_search(query: &str) -> bool {
+    query.split(|ch: char| !ch.is_alphanumeric()).any(|word| word.chars().count() >= 3)
+        || query.split(|ch: char| !matches!(ch, '\u{3400}'..='\u{4dbf}' | '\u{4e00}'..='\u{9fff}'))
+            .any(|word| word.chars().count() >= 2)
+}
+
+fn discovery_query_error(error: tokio_postgres::Error) -> Response<axum::body::Body> {
+    let sqlstate = error.as_db_error().map(|error| error.code().code());
+    println!("{}", json!({"event":"public_discovery_query_error","sqlstate":sqlstate}));
+    if sqlstate == Some("57014") {
+        return v2_error(StatusCode::SERVICE_UNAVAILABLE, "search_timed_out", "Search took too long. Try a more specific search.");
+    }
+    v2_error(StatusCode::INTERNAL_SERVER_ERROR, "location_query_failed", "V2 location query failed")
 }
 
 async fn get_v2_locations_response(
@@ -5100,6 +5121,16 @@ async fn get_v2_locations_response(
             "region and q must be non-empty and at most 120 characters",
         );
     }
+    if params.q.as_deref().is_some_and(|value| !usable_public_search(value)) {
+        return v2_error(StatusCode::BAD_REQUEST, "search_too_short", "Enter at least three letters or numbers in a row, or two Han characters.");
+    }
+    let state_geometry = match params.us_state.as_deref() {
+        None => None,
+        Some(code) => match PUBLIC_US_STATES.as_array().and_then(|states| states.iter().find(|state| state["code"] == code)) {
+            Some(state) => Some(state["geometry"].to_string()),
+            None => return v2_error(StatusCode::BAD_REQUEST, "invalid_us_state", "us_state is unsupported"),
+        },
+    };
     // Preserve the documented literal substring semantics. Escape LIKE
     // metacharacters before binding, including for the legacy-model fallback.
     let search_text = params.q.as_deref().map(|value| {
@@ -5247,6 +5278,15 @@ async fn get_v2_locations_response(
         }
     };
     let effective_offset = if cursor.is_some() { 0 } else { offset };
+    let filtered_discovery = !params.facets_are_unfiltered() || map_matches;
+    let _discovery_permit = if filtered_discovery {
+        match PUBLIC_DISCOVERY_LIMITER.try_acquire() {
+            Ok(permit) => Some(permit),
+            Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "search_busy", "Search is busy. Try again shortly."),
+        }
+    } else {
+        None
+    };
     let mut client = match state.database.as_ref() {
         Some(pool) => match pool.get().await {
             Ok(client) => client,
@@ -5282,7 +5322,12 @@ async fn get_v2_locations_response(
             );
         }
     };
-    if transaction.batch_execute("SET LOCAL jit = off").await.is_err() {
+    let settings = if filtered_discovery {
+        "SET LOCAL jit = off; SET LOCAL statement_timeout = '8s'"
+    } else {
+        "SET LOCAL jit = off"
+    };
+    if transaction.batch_execute(settings).await.is_err() {
         return v2_error(
             StatusCode::SERVICE_UNAVAILABLE,
             "database_transaction_unavailable",
@@ -5328,18 +5373,37 @@ async fn get_v2_locations_response(
     // as the page. It is deliberately not the size of a client-loaded page.
     let query_limit = limit + 1;
     let taxonomy_filters_requested = category_keys.is_some();
-    let search_matches_cte = if search_text.is_some() {
-        v2_public_search_matches_cte(public_read_model, "$8")
+    let state_boundary_sql = "SELECT ST_MakeValid(ST_SetSRID(ST_GeomFromGeoJSON($21::text), 4326))";
+    let (candidate_cte, matches_relation) = if search_text.is_some() {
+        (v2_public_search_matches_cte("$8"), "search_matches")
+    } else if state_geometry.is_some() {
+        (format!(r#"state_matches AS MATERIALIZED (
+          SELECT stored.facility_id, stored.observation_id
+          FROM uec.public_discovery_read_model_rows stored
+          WHERE stored.release_id=$1 AND stored.country_code='US' AND $8::text IS NULL
+            AND stored.display_precision <> 'unmapped'
+            AND ST_Covers(({state_boundary_sql}), stored.display_location::geometry)
+        )"#), "state_matches")
     } else if radius_km.is_some() {
-        v2_public_radius_matches_cte("$13", "$14", "$15", "$8")
+        (v2_public_radius_matches_cte("$13", "$14", "$15", "$8"), "spatial_matches")
     } else if taxonomy_filters_requested {
-        v2_public_taxonomy_matches_cte("$20", "$8", "$19", ["$9", "$10", "$11", "$12"])
+        (v2_public_taxonomy_matches_cte("$20", "$8", "$19", ["$9", "$10", "$11", "$12"]), "taxonomy_matches")
+    } else if params.country_code.is_some() {
+        (r#"country_matches AS MATERIALIZED (
+          SELECT stored.facility_id, stored.observation_id
+          FROM uec.public_discovery_read_model_rows stored
+          WHERE stored.release_id=$1 AND $8::text IS NULL
+            AND stored.country_code=ANY(string_to_array($2, ','))
+        )"#.to_owned(), "country_matches")
     } else {
-        String::new()
+        (String::new(), "")
     };
-    let indexed_matches = search_text.is_some() || radius_km.is_some() || taxonomy_filters_requested;
-    let matches_relation = if search_text.is_some() { "search_matches" }
-        else if radius_km.is_some() { "spatial_matches" } else { "taxonomy_matches" };
+    // The boundary is fixed for the entire request. Use public display
+    // geometry only, so an unmapped or suppressed record cannot match by
+    // way of any hidden address or coordinate.
+    let state_filter = format!(r#"AND ($21::text IS NULL OR (history.country_code = 'US'
+        AND history.display_precision <> 'unmapped'
+        AND ST_Covers(({state_boundary_sql}), history.display_location::geometry)))"#);
     // Apply taxonomy before DISTINCT ON for both the map and the list.
     // Filtering only the chosen observation afterwards could
     // miss a facility whose other eligible observation matches the category.
@@ -5353,9 +5417,22 @@ async fn get_v2_locations_response(
               AND assignment.primary_key = ANY($20::text[])))"#;
     // Viewport boxes are planar longitude/latitude bounds. Casting a global
     // envelope to geography can be invalid or select the opposite hemisphere.
-    let filtered_ctes = if indexed_matches {
+    let discovery_predicates = format!(r#"
+          WHERE ($19::text IS NULL OR history.provenance_source_id = ANY(string_to_array($19, ',')))
+            AND ($2::text IS NULL OR history.country_code = ANY(string_to_array($2, ',')))
+            AND ($3::text IS NULL OR history.city = $3)
+            AND ($4::text IS NULL OR history.classification_category = $4)
+            AND ($5::text IS NULL OR history.display_precision = ANY(string_to_array($5, ',')))
+            AND ($6::text IS NULL OR history.lifecycle_status = $6)
+            AND ($7::text IS NULL OR history.provenance_origin_type = $7)
+            AND ($9::double precision IS NULL OR ST_Intersects(history.display_location::geometry, ST_MakeEnvelope($9, $10, $11, $12, 4326)))
+            AND ($13::double precision IS NULL OR ST_DWithin(history.display_location, ST_SetSRID(ST_Point($14, $15), 4326)::geography, $13 * 1000))
+            {state_filter}
+            {taxonomy_filter}
+    "#);
+    let filtered_ctes = if !candidate_cte.is_empty() {
         format!(r#"
-        {search_matches_cte}, filtered AS MATERIALIZED (
+        {candidate_cte}, filtered AS MATERIALIZED (
           SELECT DISTINCT ON (history.facility_id) history.facility_id, history.observation_id,
                  (history.display_location IS NOT NULL AND history.display_precision <> 'unmapped') AS mapped
           FROM {matches_relation} matches
@@ -5370,16 +5447,7 @@ async fn get_v2_locations_response(
               AND candidate.observation_id = matches.observation_id
             LIMIT 1
           ) AS history ON TRUE
-          WHERE ($19::text IS NULL OR history.provenance_source_id = ANY(string_to_array($19, ',')))
-            AND ($2::text IS NULL OR history.country_code = ANY(string_to_array($2, ',')))
-            AND ($3::text IS NULL OR history.city = $3)
-            AND ($4::text IS NULL OR history.classification_category = $4)
-            AND ($5::text IS NULL OR history.display_precision = ANY(string_to_array($5, ',')))
-            AND ($6::text IS NULL OR history.lifecycle_status = $6)
-            AND ($7::text IS NULL OR history.provenance_origin_type = $7)
-            AND ($9::double precision IS NULL OR ST_Intersects(history.display_location::geometry, ST_MakeEnvelope($9, $10, $11, $12, 4326)))
-            AND ($13::double precision IS NULL OR ST_DWithin(history.display_location, ST_SetSRID(ST_Point($14, $15), 4326)::geography, $13 * 1000))
-            {taxonomy_filter}
+          {discovery_predicates}
           ORDER BY history.facility_id, history.observation_id
         )"#)
     } else {
@@ -5387,29 +5455,8 @@ async fn get_v2_locations_response(
           SELECT DISTINCT ON (history.facility_id) history.facility_id, history.observation_id,
                  (history.display_location IS NOT NULL AND history.display_precision <> 'unmapped') AS mapped
           FROM {public_read_model} AS history
-          LEFT JOIN uec.public_discovery_read_model_rows indexed
-            ON indexed.release_id = history.release_id
-           AND indexed.facility_id = history.facility_id
-           AND indexed.observation_id = history.observation_id
-          WHERE history.release_id = $1
-          AND ($19::text IS NULL OR history.provenance_source_id = ANY(string_to_array($19, ',')))
-            AND ($2::text IS NULL OR history.country_code = ANY(string_to_array($2, ',')))
-            AND ($3::text IS NULL OR history.city = $3)
-            AND ($4::text IS NULL OR history.classification_category = $4)
-            AND ($5::text IS NULL OR history.display_precision = ANY(string_to_array($5, ',')))
-            AND ($6::text IS NULL OR history.lifecycle_status = $6)
-            AND ($7::text IS NULL OR history.provenance_origin_type = $7)
-            AND ($8::text IS NULL OR indexed.public_search_text ILIKE '%' || $8 || '%' ESCAPE '\'
-                 OR (indexed.public_search_text = '' AND lower(concat_ws(' ', history.canonical_name, history.city, history.country_code, history.classification_category, history.provenance_source_name)) LIKE '%' || lower($8) || '%' ESCAPE '\')
-                 OR (indexed.public_search_text = '' AND EXISTS (
-                      SELECT 1 FROM uec.observation_taxonomy_assignment_sets sets
-                      LEFT JOIN uec.observation_taxonomy_assignments assignment ON assignment.assignment_set_id=sets.assignment_set_id
-                      WHERE sets.observation_id=history.observation_id AND sets.taxonomy_version='uec-taxonomy-v1'
-                        AND NOT EXISTS (SELECT 1 FROM uec.observation_taxonomy_assignment_sets newer WHERE newer.observation_id=sets.observation_id AND newer.taxonomy_version=sets.taxonomy_version AND (newer.created_at,newer.assignment_set_id)>(sets.created_at,sets.assignment_set_id))
-                        AND lower(concat_ws(' ', assignment.leaf_label, assignment.source_code, assignment.source_label, assignment.source_code_reference, assignment.source_label_reference)) LIKE '%' || lower($8) || '%' ESCAPE '\')))
-            AND ($9::double precision IS NULL OR ST_Intersects(history.display_location::geometry, ST_MakeEnvelope($9, $10, $11, $12, 4326)))
-            AND ($13::double precision IS NULL OR ST_DWithin(history.display_location, ST_SetSRID(ST_Point($14, $15), 4326)::geography, $13 * 1000))
-            {taxonomy_filter}
+          {discovery_predicates}
+            AND history.release_id = $1 AND $8::text IS NULL
           ORDER BY history.facility_id, history.observation_id
         )"#)
     };
@@ -5431,18 +5478,17 @@ async fn get_v2_locations_response(
         }
         // The list reserves parameters 16..18 for pagination. The ID projection
         // has none; compact those slots without duplicating filter SQL.
-        let matches_ctes = filtered_ctes.replace("$19", "$16").replace("$20", "$17");
+        let matches_ctes = filtered_ctes.replace("$19", "$16").replace("$20", "$17").replace("$21", "$18");
         let row = match transaction.query_one(&format!(r#"
             WITH {matches_ctes}
-            SELECT count(*)::bigint,
-                   COALESCE(array_agg(facility_id ORDER BY facility_id) FILTER (WHERE mapped), ARRAY[]::uuid[])
-            FROM filtered
+            SELECT (SELECT count(*)::bigint FROM filtered),
+                   ARRAY(SELECT facility_id FROM filtered WHERE mapped ORDER BY facility_id LIMIT $19)
         "#), &[&promoted_release_id, &params.country_code, &params.region, &params.category,
             &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text,
             &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude,
-            &params.source_id, &category_keys]).await {
+            &params.source_id, &category_keys, &state_geometry, &(PUBLIC_MAP_FEED_MAX_FEATURES + 1)]).await {
             Ok(row) => row,
-            Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "location_query_failed", "V2 map matches query failed"),
+            Err(error) => return discovery_query_error(error),
         };
         let total_count: i64 = row.get(0);
         let facility_ids: Vec<uuid::Uuid> = row.get(1);
@@ -5546,11 +5592,11 @@ async fn get_v2_locations_response(
     let result = if cached_total.is_some() {
         transaction.query(&list_query, &[&promoted_release_id, &cursor, &query_limit, &effective_offset, &category_keys]).await
     } else {
-        transaction.query(&list_query, &[&promoted_release_id, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude, &cursor, &query_limit, &effective_offset, &params.source_id, &category_keys]).await
+        transaction.query(&list_query, &[&promoted_release_id, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude, &cursor, &query_limit, &effective_offset, &params.source_id, &category_keys, &state_geometry]).await
     };
     let rows = match result {
         Ok(rows) => rows,
-        Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "location_query_failed", "V2 location query failed"),
+        Err(error) => return discovery_query_error(error),
     };
     let total_count = rows.first().map(|row| row.get::<_, i64>(29)).unwrap_or(0);
     let has_next = rows.len() as i64 > limit;
@@ -5616,7 +5662,7 @@ async fn get_v2_locations_response(
         "coverage_note": "Results are eligible public facility projection rows from the selected promoted release after current suppression; they are not story-wide or animal counts.",
         "coverage_scope": "selected_promoted_release_public_facilities",
         "count_semantics": "Each row represents a public facility projection, not an animal count.",
-        "query": {"q": params.q, "filters": {"country_code": params.country_code, "region": params.region, "category": params.category, "source_type": params.source_type, "display_precision": params.display_precision, "lifecycle_status": params.lifecycle_status}}
+        "query": {"q": params.q, "filters": {"country_code": params.country_code, "region": params.region, "us_state": params.us_state, "category": params.category, "source_type": params.source_type, "display_precision": params.display_precision, "lifecycle_status": params.lifecycle_status}}
     });
     if transaction.commit().await.is_err() {
         return (
@@ -5958,6 +6004,11 @@ mod v2_api_tests {
             (json!({"release_id":"r1","min_lon":"0"}), StatusCode::BAD_REQUEST),
             (json!({"release_id":"r1","radius_km":"25","latitude":"0","longitude":"0"}), StatusCode::SERVICE_UNAVAILABLE),
             (json!({"release_id":"r1","q":"poultry","country_code":"ES"}), StatusCode::SERVICE_UNAVAILABLE),
+            (json!({"release_id":"r1","q":"e"}), StatusCode::BAD_REQUEST),
+            (json!({"release_id":"r1","q":"a.+b"}), StatusCode::BAD_REQUEST),
+            (json!({"release_id":"r1","q":"屠宰"}), StatusCode::SERVICE_UNAVAILABLE),
+            (json!({"release_id":"r1","us_state":"US-OH"}), StatusCode::SERVICE_UNAVAILABLE),
+            (json!({"release_id":"r1","us_state":"US-ZZ"}), StatusCode::BAD_REQUEST),
         ] {
             let state = ApiState { database: None, community_database: None,
                 dev_preview_token: None, dev_test_release_id: None, dev_test_release_token: None };
@@ -7066,15 +7117,15 @@ mod v2_api_tests {
             .expect("public search candidate CTE builder");
 
         assert!(handler.contains("if search_text.is_some()"));
-        assert!(handler.contains("v2_public_search_matches_cte(public_read_model, \"$8\")"));
-        assert!(handler.contains("if search_text.is_some() { \"search_matches\" }"));
+        assert!(handler.contains("v2_public_search_matches_cte(\"$8\")"));
+        assert!(handler.contains("\"search_matches\""));
         assert!(handler.contains("FROM {matches_relation} matches"));
         assert!(handler.contains("assignment.primary_key = ANY($20::text[])"));
         assert!(search_match_builder.contains("search_matches AS MATERIALIZED"));
         assert!(search_match_builder.contains("stored.public_search_text <> ''"));
         assert!(search_match_builder.contains("stored.public_search_text ILIKE '%' || {search_parameter} || '%'"));
         assert!(search_match_builder.contains("legacy.public_search_text = ''"));
-        assert!(search_match_builder.contains("lower(concat_ws(' ', history.canonical_name"));
+        assert!(search_match_builder.contains("lower(concat_ws(' ', legacy.canonical_name"));
         assert!(search_match_builder.contains("assignment.leaf_label, assignment.source_code"));
         assert!(handler.contains("AND candidate.observation_id = matches.observation_id"));
         assert!(handler.contains("LIMIT 1"));

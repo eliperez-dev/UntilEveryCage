@@ -38,6 +38,7 @@ export type AreaSummary = Readonly<{
 export type NearbySearchCommand = Readonly<{ id: number; latitude: number; longitude: number }>;
 export type SearchScope = null
   | Readonly<{ kind: 'area'; bounds: ViewportBounds }>
+  | Readonly<{ kind: 'state'; code: string }>
   | Readonly<{ kind: 'radius'; label: string; latitude: number; longitude: number; radiusKm: number; deviceDerived?: true }>;
 export type Viewport = Readonly<{ centerLat: number; centerLon: number; zoom: number; pitch?: number; bearing?: number }>;
 export type MapDiagnostics = Readonly<{
@@ -65,7 +66,7 @@ export type LabAction =
   | { type: 'near-device'; value: Readonly<{ latitude: number; longitude: number; radiusKm?: number }> }
   | { type: 'filters'; value: LabFilters } | { type: 'reset-filters' }
   | { type: 'scope'; value: SearchScope; preserveWorkspace?: boolean }
-  | { type: 'search'; value: { query: string; filters: LabFilters } }
+  | { type: 'search'; value: { query: string; filters: LabFilters; scope?: SearchScope } }
   | { type: 'results' } | { type: 'close-workspace' } | { type: 'explore-map' };
 
 export type PinHoverLabel = Readonly<{ name: string; nameProvided?: boolean; categoryKey: string }>;

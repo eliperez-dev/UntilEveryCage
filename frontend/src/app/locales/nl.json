@@ -1007,5 +1007,8 @@
   "{count} filter": "{count} filter",
   "Theme": "Thema",
   "Advanced": "Geavanceerd",
-  "View full record": "Volledig record bekijken"
+  "View full record": "Volledig record bekijken",
+  "State": "Staat",
+  "City": "Stad",
+  "Enter at least 3 letters or numbers.": "Voer ten minste 3 letters of cijfers in."
 }

@@ -1007,5 +1007,8 @@
   "{count} filter": "{count} Filter",
   "Theme": "Design",
   "Advanced": "Erweitert",
-  "View full record": "Vollständigen Datensatz ansehen"
+  "View full record": "Vollständigen Datensatz ansehen",
+  "State": "Bundesstaat",
+  "City": "Stadt",
+  "Enter at least 3 letters or numbers.": "Gib mindestens 3 Buchstaben oder Ziffern ein."
 }

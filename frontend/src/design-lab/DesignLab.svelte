@@ -9,7 +9,7 @@
   import { LocalLocationRepository } from '../api/LocalLocationRepository';
   import { FacetsRepository } from '../api/FacetsRepository';
   import { PublicMapMatchesRepository } from '../api/PublicMapMatchesRepository';
-  import { publicSearchFilters } from '../features/search/powerSearch';
+  import { canSearchRecords, publicSearchFilters } from '../features/search/powerSearch';
   import { PublicReleaseRepository, type PublicReleaseIdentity } from '../api/PublicReleaseRepository';
   import { TestReleaseRepository, type CandidateFacets } from '../api/TestReleaseRepository';
   import { TestReleaseDetailRepository } from '../api/TestReleaseDetailRepository';
@@ -346,7 +346,8 @@
       $dataError = '';
       if (!apiRecords.length) $dataStatus = 'loading';
       const query = labState.query;
-      searchTimer = setTimeout(() => void loadPage(query, true), 180);
+      if (mode === 'public-release') untrack(() => void loadPage(query, true));
+      else searchTimer = setTimeout(() => void loadPage(query, true), 180);
     }
   });
 
@@ -355,7 +356,7 @@
   // one authoritative all-ID response, never from the currently loaded list page.
   $effect(() => {
     if (!dataActive) return;
-    const required = mode === 'public-release' && (!!labState.query.trim() || labState.searchScope !== null);
+    const required = mode === 'public-release' && (canSearchRecords(labState.query) || labState.searchScope !== null);
     const identity = $publicReleaseManifestIdentity;
     if (!required) {
       mapMatchesSearchKey = null; mapMatchesTotalCount = null; mapMatchesMappedCount = null;
@@ -403,7 +404,7 @@
         mapMatchingIds = []; mapMatchesStatus = 'error';
         mapMatchesError = 'Matching map locations could not be loaded. Try again.';
       });
-    }, 180);
+    }, 0);
   });
 
 
@@ -481,7 +482,10 @@
         if (verifiedActivation !== requestedActivation) resumeStatus = 'checking';
         void resumeGuard.verify(async signal => {
           const latest = await publicReleaseRepository.current('official', signal);
-          const current = $pinnedPublicReleaseId ? await publicReleaseRepository.current('official', signal, $pinnedPublicReleaseId) : latest;
+          const pinned = $pinnedPublicReleaseId;
+          const current = pinned && pinned !== latest?.releaseId
+            ? await publicReleaseRepository.current('official', signal, pinned)
+            : latest;
           if (!current) throw new Error('Selected release unavailable');
           return { latest, current };
         }, ({ latest, current }) => {

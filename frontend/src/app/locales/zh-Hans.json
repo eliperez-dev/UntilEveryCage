@@ -1007,5 +1007,8 @@
   "{count} filter": "{count} 项筛选",
   "Theme": "主题",
   "Advanced": "高级选项",
-  "View full record": "查看完整记录"
+  "View full record": "查看完整记录",
+  "State": "州",
+  "City": "城市",
+  "Enter at least 3 letters or numbers.": "请输入至少 3 个连续字母或数字，或 2 个连续汉字。"
 }

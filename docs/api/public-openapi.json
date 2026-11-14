@@ -75,6 +75,9 @@
             "$ref": "#/components/parameters/q"
           },
           {
+            "$ref": "#/components/parameters/us_state"
+          },
+          {
             "$ref": "#/components/parameters/limit"
           },
           {
@@ -876,6 +879,9 @@
           },
           {
             "$ref": "#/components/parameters/q"
+          },
+          {
+            "$ref": "#/components/parameters/us_state"
           },
           {
             "$ref": "#/components/parameters/min_lon"
@@ -2262,9 +2268,19 @@
         "name": "q",
         "in": "query",
         "required": false,
-        "description": "Nonblank search text, at most 120 UTF-8 bytes. Locations searches name, city, country, legacy category and source name.",
+        "description": "Literal search text, at most 120 UTF-8 bytes. Include at least three consecutive letters or digits, or two consecutive Han characters. Locations searches eligible public names, cities, countries, activities and source names.",
         "schema": {
           "type": "string"
+        }
+      },
+      "us_state": {
+        "name": "us_state",
+        "in": "query",
+        "required": false,
+        "description": "ISO 3166-2 code for a U.S. state or the District of Columbia. Matches public map points within a generalized Natural Earth boundary.",
+        "schema": {
+          "type": "string",
+          "pattern": "^US-[A-Z]{2}$"
         }
       },
       "limit": {

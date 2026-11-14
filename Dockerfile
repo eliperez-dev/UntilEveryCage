@@ -13,6 +13,7 @@ FROM rust:1.90.0-bookworm AS api-builder
 WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src
+COPY frontend/src/features/placeSearch/usStates.json ./frontend/src/features/placeSearch/usStates.json
 # Legacy development handlers retain their embedded directory in source builds.
 # The production router excludes them, so package only an empty compile-time
 # directory rather than copying legacy records into the public image.

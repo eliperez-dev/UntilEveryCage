@@ -37,9 +37,16 @@ filters, including bbox or radius, but rejects pagination parameters. The JSON
 release, canonical manifest and suppression generation, plus `total_count`
 (including unmapped results) and `mapped_count`. No names, coordinates, query
 text or source payloads are returned. Responses use `Cache-Control: no-store`;
-clients must validate the identity against their map feed. More than 75,000
+clients must validate the identity against their map feed. More than 150,000
 matching mapped IDs returns `413` rather than a partial mask. Existing location
 and map-feed response defaults are unchanged.
+
+Both routes accept `us_state`, an ISO 3166-2 code such as `US-OH`. The
+spatial filter uses eligible public display points and generalized Natural Earth
+state boundaries. Records without a public map point are excluded from state
+search. Text search (`q`) requires three consecutive letters or digits, or two
+consecutive Han characters, and allows up to 120 UTF-8 bytes. If filtered search
+is busy or exceeds its database time budget, the API returns `503`.
 
 Researchers may request `GET /api/v2/locations.csv?profile=official` (or another explicit supported profile). Without `limit`, the export returns every eligible row in the selected release/profile. Supplying `limit=1..1000` explicitly opts into the first deterministic UUID-ordered page; `X-UEC-Export-Total-Count`, `X-UEC-Export-Returned-Count`, and `X-UEC-Export-Truncated` disclose the current eligible total and whether the explicit bound omitted rows. It uses deterministic CSV columns and escaping, contains only the selected public projection, and includes `release_profile`, `release_id`, and `manifest_sha256` on every row plus matching response headers. Community exports retain their unreviewed/not-approved warning. It is unavailable when no eligible release with a manifest exists; it never exposes raw evidence or restricted records. `release_id` pins the export to an eligible promoted or retained historical release in the selected profile. CSV does not apply discovery filters or cursor pagination; use paginated location JSON for filtered queries.
 
