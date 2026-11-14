@@ -16,6 +16,14 @@ export function isAphisRelevant(sourceId?: string, sourceFacts?: LocationSourceF
     || Boolean(sourceFacts?.aphisAnnualReports?.length || sourceFacts?.aphisDatedInspections?.length);
 }
 
+export function canHaveAphisAnnualReports(sourceId?: string, sourceFacts?: LocationSourceFacts): boolean {
+  // These exact registration-directory certificate classes are for breeders,
+  // dealers, exhibitors, handlers and carriers. Unknown classes still get
+  // looked up, and existing report evidence always takes precedence.
+  return sourceId !== 'us.aphis' || Boolean(sourceFacts?.aphisAnnualReports?.length)
+    || !/^aphis-registration:\d{2}-[ABCHT]-\d{4}$/.test(sourceFacts?.establishmentId ?? '');
+}
+
 export class AphisReportsRepository {
   constructor(private readonly fetcher: typeof fetch = globalThis.fetch) {}
 

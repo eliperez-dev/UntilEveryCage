@@ -1,7 +1,7 @@
 <script lang="ts">
   import { untrack, type Snippet } from 'svelte';
   import { language, tr } from './language';
-  import { AphisReportsRepository, isAphisRelevant, type AphisReportKind } from '../api/AphisReportsRepository';
+  import { AphisReportsRepository, canHaveAphisAnnualReports, isAphisRelevant, type AphisReportKind } from '../api/AphisReportsRepository';
   import type { LocalProfile } from '../api/LocalLocationRepository';
   import type { LocationSourceFacts } from '../domain/location';
   import type { PublicAphisReportLink } from '../api/publicGraphSchema';
@@ -25,19 +25,24 @@
   const newList = (): ReportList => ({ rows: [], cursor: null, loading: true, error: false });
   let lists = $state<Record<AphisReportKind, ReportList>>({ annual_reports: newList(), inspections: newList() });
   const relevant = $derived(isAphisRelevant(sourceId, sourceFacts));
+  const annualApplicable = $derived(canHaveAphisAnnualReports(sourceId, sourceFacts));
   let controller: AbortController | undefined;
 
-  async function fetchPage(kind: AphisReportKind, active: AbortController) {
+  async function fetchPage(kind: AphisReportKind, active: AbortController, includeAnnualHistory = false) {
     if (active.signal.aborted) return;
     const list = lists[kind];
-    const cursor = list.cursor;
     try {
-      const page = await repository.page(facilityId, profile, kind, releaseId, 20, cursor ?? undefined, active.signal);
-      if (active.signal.aborted) return;
-      const rows = new Map(list.rows.map(row => [row.reference_id, row]));
-      for (const row of page.data) rows.set(row.reference_id, row);
-      list.rows = [...rows.values()];
-      list.cursor = page.nextCursor;
+      const pageCount = includeAnnualHistory ? 2 : 1;
+      for (let index = 0; index < pageCount; index += 1) {
+        const cursor = list.cursor;
+        const page = await repository.page(facilityId, profile, kind, releaseId, 20, cursor ?? undefined, active.signal);
+        if (active.signal.aborted) return;
+        const rows = new Map(list.rows.map(row => [row.reference_id, row]));
+        for (const row of page.data) rows.set(row.reference_id, row);
+        list.rows = [...rows.values()];
+        list.cursor = page.nextCursor === cursor ? null : page.nextCursor;
+        if (!list.cursor || list.rows.length >= 20) break;
+      }
     } catch {
       if (!active.signal.aborted) list.error = true;
     } finally {
@@ -60,7 +65,8 @@
     lists = { annual_reports: newList(), inspections: newList() };
     // The report resolver has a shared upstream concurrency limit. Start both
     // lookups on open, one at a time, without blocking the record or its map.
-    untrack(() => { void fetchPage('annual_reports', active).then(() => fetchPage('inspections', active)); });
+    const start = annualApplicable ? () => fetchPage('annual_reports', active, true) : () => Promise.resolve();
+    untrack(() => { void start().then(() => fetchPage('inspections', active)); });
     return () => { active.abort(); };
   });
 </script>
@@ -84,7 +90,9 @@
             {/each}
           </ul>
         {/if}
-        {#if list.loading}
+        {#if group.kind === 'annual_reports' && !annualApplicable}
+          <p>{tr('Annual reports are for research facilities.', $language)}</p>
+        {:else if list.loading}
           <p role="status">{tr('Loading reports…', $language)}</p>
         {:else if list.error}
           <p role="alert">{tr('Reports could not be loaded.', $language)} <button type="button" onclick={() => loadMore(group.kind)}>{tr('Retry', $language)}</button></p>

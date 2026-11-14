@@ -2,7 +2,7 @@
   import { language, tr } from '../../app/language';
   import { classificationSummary, type ClassificationRecord } from './classificationSummary';
   import { classificationExplanation } from './classificationExplanation';
-  let { record, presentation = 'all' }: { record: ClassificationRecord; presentation?: 'all' | 'summary' | 'details' } = $props();
+  let { record, presentation = 'all', detailsOpen = false }: { record: ClassificationRecord; presentation?: 'all' | 'summary' | 'details'; detailsOpen?: boolean } = $props();
   const classification = $derived(classificationSummary(record, label => tr(label, $language)));
   const explanation = $derived(classificationExplanation(record, label => tr(label, $language), $language));
 </script>
@@ -12,7 +12,7 @@
     <p class="summary" data-classification-explanation>{explanation.text}</p>
   {/if}
   {#if presentation !== 'summary'}
-    <details>
+    <details open={detailsOpen}>
       <summary>{tr('Classification details', $language)}</summary>
       <dl>
         {#if classification.categories.length > 1}<div><dt>{tr('Categories', $language)}</dt><dd>{classification.categories.join(', ')}</dd></div>{/if}

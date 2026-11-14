@@ -108,7 +108,7 @@ test('clearing a nearby area retains the private camera and keeps persistence an
   await expect(page.locator('.area-summary')).toHaveCount(0);
 });
 
-test('individual PNG and optimized pins receive shaped hover highlights without source or index updates', async ({ page }, testInfo) => {
+test('pointer movement over PNG and optimized pins leaves the display and source unchanged', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await install(page);
   await page.goto(`./#/map?release_id=${release}&lat=${center.latitude}&lon=${center.longitude}&z=12`);
@@ -118,15 +118,16 @@ test('individual PNG and optimized pins receive shaped hover highlights without 
   });
   await page.evaluate(() => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__, source = map.getSource('locations');
-    (window as any).__haloSourceChanges = 0;
+    (window as any).__pointerSourceChanges = 0;
     for (const key of ['setData', 'setClusterOptions']) {
       const original = source[key].bind(source);
-      source[key] = (...args: unknown[]) => { (window as any).__haloSourceChanges++; return original(...args); };
+      source[key] = (...args: unknown[]) => { (window as any).__pointerSourceChanges++; return original(...args); };
     }
   });
   for (const optimized of [false, true]) {
     if (optimized) {
       await page.getByRole('button', { name: 'More tools', exact: true }).click();
+      await page.getByText('Advanced', { exact: true }).click();
       await page.getByRole('checkbox', { name: 'Use optimized pins', exact: true }).check();
       await page.getByRole('button', { name: 'More tools', exact: true }).click();
     }
@@ -140,23 +141,8 @@ test('individual PNG and optimized pins receive shaped hover highlights without 
       return { x: value.x + box.x, y: value.y + box.y - (optimized ? 0 : 14) };
     }, { point: center, optimized });
     await page.mouse.move(pixel.x, pixel.y);
-    const halo = page.locator('.pin-hover-halo');
-    await expect(halo).toBeVisible();
-    const style = await halo.evaluate(element => {
-      const css = getComputedStyle(element), child = getComputedStyle(element.firstElementChild!), box = element.getBoundingClientRect();
-      return { animation: css.animationName, pointer: css.pointerEvents, glow: css.filter, radius: child.borderRadius,
-        mask: child.maskImage, mode: child.maskMode, kind: element.getAttribute('data-kind'), width: box.width, height: box.height };
-    });
-    expect(style).toMatchObject({ animation: 'none', pointer: 'none', kind: optimized ? 'dot' : 'pin' });
-    expect(style.glow).toContain('drop-shadow');
-    if (optimized) {
-      expect(style).toMatchObject({ radius: '50%', mask: 'none', width: 21, height: 21 });
-    } else {
-      expect(style.mask).toContain('/v1-pins/marker-icon-2x-grey.png'); expect(style.mode).toBe('alpha');
-      expect(style.width).toBeCloseTo(20, 1); expect(style.height).toBeCloseTo(32.8, 1);
-    }
-    await page.screenshot({ path: testInfo.outputPath(optimized ? 'dot-hover-highlight.png' : 'png-hover-highlight.png') });
-    await page.mouse.move(1400, 850); await expect(halo).toHaveCount(0);
+    await expect(page.locator('.pin-hover-halo')).toHaveCount(0);
+    await expect(page.getByRole('tooltip')).toHaveCount(0);
   }
-  expect(await page.evaluate(() => (window as any).__haloSourceChanges)).toBe(0);
+  expect(await page.evaluate(() => (window as any).__pointerSourceChanges)).toBe(0);
 });

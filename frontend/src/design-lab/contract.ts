@@ -69,8 +69,8 @@ export type LabAction =
   | { type: 'search'; value: { query: string; filters: LabFilters; scope?: SearchScope; sourceId?: string | null } }
   | { type: 'results' } | { type: 'close-workspace' } | { type: 'explore-map' };
 
-export type PinHoverLabel = Readonly<{ name: string; nameProvided?: boolean; categoryKey: string }>;
-export type PinHoverResolver = (id: string, signal: AbortSignal) => PinHoverLabel | null | Promise<PinHoverLabel | null>;
+export type PublicPinSummary = Readonly<{ name: string; nameProvided?: boolean; categoryKey: string; locality?: string; country?: string }>;
+export type PublicPinSummaryResolver = (id: string, signal: AbortSignal) => PublicPinSummary | null | Promise<PublicPinSummary | null>;
 export type MapDisplaySettings = Readonly<{ clusterMode: 'auto' | 'on' | 'off'; pinScale: number; optimizedPins: boolean; coordinateRadius: number }>;
 export type MapDisplaySettingsRequest = Readonly<{ id: number; patch: Partial<MapDisplaySettings> }>;
 
@@ -78,7 +78,8 @@ export interface DirectionViewProps {
   state: LabState;
   records: readonly LabRecord[];
   mapRecords?: readonly LabRecord[];
-  resolvePinHover?: PinHoverResolver;
+  resolvePinSummary?: PublicPinSummaryResolver;
+  selectedPinSummary?: Readonly<{ id: string; label: PublicPinSummary }> | null;
   mode?: 'synthetic' | 'real-preview' | 'candidate-preview' | 'public-release';
   publicReleaseId?: string | null;
   publicReleaseIdentity?: string | null;

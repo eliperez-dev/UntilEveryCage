@@ -188,8 +188,8 @@ API schemas own supported fields. They are not additional roadmaps.
   existing result scroller owns records and pagination.
   Selecting a public pin or result opens a compact summary over the map.
   Mapped summaries follow the selected point within the viewport. Unmapped
-  results use the same summary without a pin. Show the name, activity, locality,
-  source, and precision. View full record opens the release-pinned page for
+  results use the same summary without a pin. Show the name, activity and
+  locality on separate lines. View full record opens the release-pinned page for
   location methods and coordinates, source evidence, and connections.
   Search results keep their existing scope and pagination. Filters include
   Activity category, Country, and Source. Each checkbox applies immediately.
@@ -199,18 +199,10 @@ API schemas own supported fields. They are not additional roadmaps.
 
 ## Map
 
-- Individual pins show a compact, subtly rounded escaped-text name/category label on fine-pointer
-  hover. Labels use the validated release-pinned public detail projection, with
-  cancellation and a bounded short-lived in-memory cache. Verified loaded records
-  and cached names render synchronously; an unseen name starts its detail request
-  immediately, without a hover timer. Release,
-  restrictions, filter and active-state changes invalidate labels; clusters and
-  aggregate references never expose a facility tooltip. Hover does not move the
-  camera or obstruct pin selection. The category uses muted text without a
-  colored swatch; the pin already communicates category color.
-  PNG highlights follow the actual pin's alpha mask and rendered size, with a
-  stronger static white glow. Optimized dots use a centered ring. Do not pulse
-  clusters or rebuild map data to show the hover cue.
+- Individual pins open the summary on selection. Verified list rows and
+  recently loaded summaries can render immediately. For a new record, the
+  summary waits for the release-pinned detail response. The small in-memory
+  display cache clears when the release, restrictions or search context changes.
 - Search this area captures fixed bounds and draws a native geographic perimeter.
   Panning, rotation and style changes retain those bounds. There is no separate
   Searching this area indicator. With any box, radius or device-derived scope
@@ -254,29 +246,15 @@ API schemas own supported fields. They are not additional roadmaps.
   On selection/inspection, show a red geographic area 500 metres across
   (250-metre radius), not a fixed-pixel circle or invented confidence interval.
   Use supported source extent where available. No permanent approximation legend.
-- Shared public map points retain their individual records and gain a count badge
-  when unclustered. Clicking opens concentric rings with at most twelve pins per ring.
-  Partly filled outer rings are balanced and evenly spaced. All members belong to
-  one compact, fixed layout with a short outward expansion and no ring pan,
-  zoom or offset controls. Selection and keyboard focus never shift the rings.
-  Groups that cannot fit use a bounded scrollable member list, preserving access
-  to every record without moving the map or shrinking touch targets. Small
-  phones retain the compact group-reopen action when the details sheet leaves
-  too little space.
-  Warm names for displayed ring members and visible list rows with bounded
-  requests; cancel them when the group closes. Hover labels wait for an actual
-  name rather than flashing numbered record placeholders.
-  Nearby overlapping pins use the same temporary layout with connectors to each
-  original point. No coordinates are changed and proximity never merges records.
-  Selecting a member opens the existing facility panel without flying the camera;
-  PNG/dot mode, category colors and size settings remain shared with the map.
-  A geographically coincident native cluster opens the ring directly; ordinary
-  clusters retain their existing expansion. Escape, background clicks, camera
-  movement and context changes dismiss it. Membership and count badges use only
-  the current filtered public feed and clear on release, restrictions or search
-  changes; private reference-member endpoints are never used for these records.
-  Grouping and badges are built once per changed collection, without modifying
-  the persisted clustering source or scanning the full viewport on every idle.
+- Shared public points use a neutral marker with the count inside. Clicking it
+  opens an anchored member list on desktop and a bottom list on mobile.
+  Opening the list and selecting a member preserve the camera and record
+  coordinates. Nearby overlapping pins can also open the member list.
+  Visible rows load names from the verified public detail projection using
+  bounded requests. Escape, background clicks, camera movement and context
+  changes dismiss the list. Membership uses the current filtered public feed.
+  Geographically coincident native clusters open the same list. Ordinary
+  geographic clusters keep their expansion.
 - The Street/Satellite switch and adjacent 2D/3D toggle live in the map toolbar,
   with accessible camera-gesture help. Do not duplicate them in More tools.
   Keep the map navigation toolbar in the map column, above mobile sheets
@@ -341,40 +319,33 @@ API schemas own supported fields. They are not additional roadmaps.
 - A verified source-codebook slaughter range appears directly below the
   classification summary when available, including for a processing-classified
   record with slaughter evidence. Preserve exclusive upper and unbounded lower
-  values and the exact `last 360 days` period. Link the HTTPS source codebook;
-  never extrapolate absent ranges or convert them to annual point estimates.
-  Do not repeat the promoted range inside Source facts. Processing monthly
-  volume remains in Source facts.
+  values and the exact `last 360 days` period. Link the HTTPS codebook in
+  Source facts. Preserve processing monthly volume there.
 
 - Full pages start with the facility name, location, classification summary and
-  satellite preview. The preview opens the same release on the map with the
-  facility selected. Reports, Connections and Details use tabs, with Reports
+  satellite preview. Back to map restores the originating map view. The
+  preview centers the map on the selected facility in the same release.
+  Reports, Connections and Details use tabs, with Reports
   available for applicable APHIS facilities. Location information, detailed
-  classification, Source facts and Source and review remain under Details.
+  classification, Source facts and Source and review open expanded under Details.
   The full page keeps released annual counts and dated inspection evidence in
   the Report details disclosure within APHIS reports.
-  A compact source/date line near the title links directly to the already
+  A compact source/date line in Source and review links directly to the already
   eligible HTTPS source-record URL when available, otherwise the source URL.
   Public full pages use their available validated source URL. Missing links
   stay plain text; complete Source and review and source filtering remain.
-  No separate copy-record-ID button or repeated Record Evidence heading.
+  The facility heading shows the name.
 - Public source-reported and exact facility points also offer `Open in maps`
   in Location. It sends only the public destination to the external map, never
   the visitor's origin. Approximate, city, coarse, mailing-locality and unmapped
   records have no external-map action. Existing Show on map remains available
   according to its normal mapped-location behavior.
-- Copy actions show a brief checkmark only after the clipboard write succeeds,
-  with a localized live-region status. Failure shows an X and accessible status;
-  neither state shifts the facility heading or share button.
-- Map detail has an `Open facility page` link, selected-release context and
-  close control. It shares the mobile map sheet with scrollable content.
-  Detailed classification follows Location immediately before Source facts,
-  collapsed by default. Connections start collapsed when none exist and expand
-  when connections are available; loading and errors remain accessible.
+- Map summaries have a `View full record` link with the selected release and a
+  close control.
 - Full mapped records have `Open in Map`, centering/selecting that facility
   in the same release. Unmapped records have no location map/action.
 - Single-record previews use the existing providers/pins: source/exact
-  satellite zoom 15; approximate street zoom 9. Do not fetch the global point
+  satellite zoom 15; approximate satellite zoom 9. Do not fetch the global point
   projection for these previews or invent an address from a locality.
 - Show the category pin and short text label in search rows and expanded detail.
   Keep explanatory prose in facility details rather than repeating it in result cards.
@@ -422,7 +393,9 @@ API schemas own supported fields. They are not additional roadmaps.
   summary does not gain a fabricated facility page. A canvas limit or API page
   bound is not a graph storage cap.
 - APHIS reports appear for relevant APHIS records. Opening a record loads
-  annual and inspection reports automatically. Each list has its own retry
+  inspection reports automatically. For research and unrecognized certificate
+  classes, it also loads annual reports and their first available history page.
+  Each list has its own retry
   and pagination controls. The release-scoped lookup combines released
   evidence references with additional official historical document links for
   that same source identifier. Keep those origins structured and distinct.
@@ -585,7 +558,7 @@ shared dictionaries. Country display names and formatted dates/numbers use the
 selected locale. Source names, identifiers, unknown source facts and user content
 retain their original language. Missing-name placeholders and unmapped result
 labels are localized. Client-only name-presence metadata distinguishes a generated
-placeholder from an identical source-provided name; cached hover labels retain
+placeholder from an identical source-provided name; cached map summaries retain
 that metadata and translate only when rendered. Generated Swagger references and operator/debug
 strings may remain English. Extend the existing dictionary rather than
 creating another localization path or rewriting approved English copy.

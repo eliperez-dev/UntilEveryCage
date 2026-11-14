@@ -13,7 +13,8 @@ describe('public record detail facts', () => {
     expect(component).toContain(".join(', ')");
     expect(component).toContain('affirmativeEntries(sourceFacts?.speciesSlaughtered)');
     expect(component).toContain('<ClassificationSummary {record} presentation="summary" />');
-    expect(component).toContain('<ClassificationSummary {record} presentation="details" />');
+    expect(component).toContain('<ClassificationSummary {record} presentation="details" detailsOpen />');
+    expect(component).toContain('hasSourceFactRows || slaughterCodebooks.length');
   });
 
   it('uses a concise precision and method row instead of a repeated limitation wall', () => {

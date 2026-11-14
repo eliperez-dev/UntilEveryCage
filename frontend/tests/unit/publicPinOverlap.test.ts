@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { collectPublicOverlap, coordinateKey, createConcentricRingLayout, createPublicOverlapIndex, projectRingPoint, publicOverlapMember, ringViewport } from '../../src/design-lab/components/publicPinOverlap';
+import { collectPublicOverlap, coordinateKey, createPublicOverlapIndex, overlapPanelFrame, publicOverlapMember } from '../../src/design-lab/components/publicPinOverlap';
 import type { JsonMapCollection, JsonMapFeature } from '../../src/design-lab/components/jsonMapFallback';
 
 const point = (n: number, coordinates: [number, number] = [12, 34], precision = 'source_reported'): JsonMapFeature => ({
@@ -61,78 +61,19 @@ describe('public pin overlaps', () => {
   });
 });
 
-describe('growing concentric ring geometry', () => {
-  it('uses one evenly spaced ring for eight records and caps every ring at twelve', () => {
-    expect(createConcentricRingLayout(0)).toEqual({ positions: [], ringCounts: [], ringRadii: [], radius: 0 });
-    expect(createConcentricRingLayout(8).ringCounts).toEqual([8]);
-    expect(createConcentricRingLayout(12).ringCounts).toEqual([12]);
-    expect(createConcentricRingLayout(13).ringCounts).toEqual([7,6]);
-    expect(createConcentricRingLayout(25).ringCounts).toEqual([9,8,8]);
-    const layout = createConcentricRingLayout(64);
-    expect(layout.ringCounts).toEqual([11,11,11,11,10,10]);
-    for (let ring = 0; ring < layout.ringCounts.length; ring++) {
-      const members = layout.positions.filter(position => position.ring === ring + 1);
-      const radius = layout.ringRadii[ring]!;
-      const chord = 2 * radius * Math.sin(Math.PI / members.length);
-      for (const member of members) expect(Math.hypot(member.x, member.y)).toBeCloseTo(radius);
-      for (let i = 0; i < members.length; i++) {
-        const first = members[i]!, second = members[(i + 1) % members.length]!;
-        expect(Math.hypot(first.x - second.x, first.y - second.y)).toBeCloseTo(chord);
-      }
-      if (ring > 0) expect(radius - layout.ringRadii[ring - 1]!).toBe(44);
-    }
-  });
-  for (const total of [6,8,12,13,18,25,36,214,614]) it('lays out all '+total+' records once with disjoint44px targets', () => {
-    const layout=createConcentricRingLayout(total);
-    expect(Math.max(...layout.ringCounts)).toBeLessThanOrEqual(12);
-    expect(Math.max(...layout.ringCounts)-Math.min(...layout.ringCounts)).toBeLessThanOrEqual(1);
-    expect(layout.positions.map(p=>p.index)).toEqual(Array.from({length:total},(_,i)=>i));
-    for (const p of layout.positions) {
-      expect(Math.hypot(p.x,p.y)).toBeCloseTo(layout.ringRadii[p.ring-1]!);
-      for (const q of layout.positions.slice(p.index+1)) expect(Math.hypot(p.x-q.x,p.y-q.y)).toBeGreaterThanOrEqual(44);
-    }
-  });
-  for (const width of [375,390,768]) for (const total of [214,614]) {
-    it('uses a bounded member list instead of clipped rings at width '+width+' for '+total+' records', () => {
-      const layout = createConcentricRingLayout(total);
-      const viewport = ringViewport({left:12,right:width-12,top:70,bottom:640},{x:width/2,y:280},layout.radius);
-      expect(viewport.usable).toBe(true);
-      expect(viewport.overflow).toBe(true);
-      expect(viewport.width).toBeLessThanOrEqual(width-24);
-      expect(viewport.height).toBeLessThanOrEqual(420);
-      expect(layout.positions).toHaveLength(total);
-      expect(viewport.bounds.top).toBeGreaterThanOrEqual(122);
-      expect(viewport.bounds.bottom).toBeLessThanOrEqual(640);
+describe('overlap panel positioning', () => {
+  const bounds = { left: 12, right: 1100, top: 80, bottom: 800 };
+
+  it('places the list beside the pin when there is room', () => {
+    expect(overlapPanelFrame(bounds, { x: 550, y: 400 }, 5)).toEqual({
+      left: 575, top: 353, width: 304, maxHeight: 382,
     });
-  }
-  it('fits thirty-six compact records into a fixed surface under450px', () => {
-    const layout = createConcentricRingLayout(36);
-    const viewport = ringViewport({left:12,right:1428,top:120,bottom:820},{x:700,y:450},layout.radius);
-    expect(layout.ringRadii).toEqual([86,130,174]);
-    expect(viewport.overflow).toBe(false);
-    expect(viewport.width).toBe(436);
-    expect(viewport.height).toBe(436);
-    for (const position of layout.positions) {
-      const point = projectRingPoint(position,viewport.center);
-      expect(point.x-22).toBeGreaterThanOrEqual(viewport.bounds.left);
-      expect(point.x+22).toBeLessThanOrEqual(viewport.bounds.right);
-      expect(point.y-42).toBeGreaterThanOrEqual(viewport.bounds.top);
-      expect(point.y+22).toBeLessThanOrEqual(viewport.bounds.bottom);
-    }
+    expect(overlapPanelFrame(bounds, { x: 1050, y: 100 }, 5)).toMatchObject({ left: 721, top: 80 });
   });
-  it('centers a ring on the source anchor when there is room and clamps only at viewport edges', () => {
-    const layout = createConcentricRingLayout(8);
-    const bounds = { left: 12, right: 1100, top: 80, bottom: 800 };
-    const anchor = { x: 550, y: 400 };
-    const centered = ringViewport(bounds, anchor, layout.radius);
-    expect(centered.center).toEqual(anchor);
-    const edged = ringViewport(bounds, { x: 20, y: 90 }, layout.radius);
-    expect(edged.bounds.left).toBeGreaterThanOrEqual(bounds.left);
-    expect(edged.bounds.top).toBeGreaterThanOrEqual(bounds.top + 52);
-    expect(edged.bounds.right).toBeLessThanOrEqual(bounds.right);
-    expect(edged.bounds.bottom).toBeLessThanOrEqual(bounds.bottom);
-  });
-  it('does not place the group viewport over a short or fully expanded sheet',()=>{
-    for(const bottom of [100,250]) expect(ringViewport({left:12,right:360,top:80,bottom},{x:100,y:100},createConcentricRingLayout(81).radius).usable).toBe(false);
+
+  it('keeps a long list above the bottom and within a narrow viewport', () => {
+    expect(overlapPanelFrame(bounds, { x: 500, y: 790 }, 614)).toMatchObject({ top: 418 });
+    expect(overlapPanelFrame({ left: 12, right: 302, top: 80, bottom: 350 }, { x: 200, y: 250 }, 214))
+      .toEqual({ left: 12, top: 80, width: 290, maxHeight: 270 });
   });
 });

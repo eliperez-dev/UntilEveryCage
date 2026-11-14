@@ -50,7 +50,6 @@ describe('public record connections', () => {
   });
 
   it('loads both report lists automatically and aborts obsolete lookups', () => {
-    expect(aphisReports).toContain("fetchPage('annual_reports', active).then(() => fetchPage('inspections', active))");
     expect(aphisReports).toContain('return () => { active.abort(); }');
     expect(aphisReports).toContain('if (active.signal.aborted) return;');
     expect(aphisReports).not.toContain('Fetch annual reports');

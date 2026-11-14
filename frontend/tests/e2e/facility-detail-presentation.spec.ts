@@ -60,33 +60,34 @@ for (const width of [1440, 375]) test(`direct evidence access and optional locat
   } });
   await page.goto(`./#/map?selected=${id}&release_id=${release}`);
   const panel = page.locator('.map-summary');
-  await expect(panel.getByText(row.provenance_source_name, { exact: true })).toBeVisible();
+  await expect(panel.locator('strong')).toHaveText(row.canonical_name);
+  await expect(panel.locator('p')).toHaveText(['Processing', width === 375 ? 'Denmark' : 'Synthetic locality, Denmark']);
+  await expect(panel.getByText(row.provenance_source_name, { exact: true })).toHaveCount(0);
   await expect(panel.getByText('Approximate location', { exact: true })).toHaveCount(0);
   await expect(panel.locator('.location-details')).toHaveCount(0);
+  await expect(panel.getByRole('status')).toHaveCount(0);
+  await expect(panel.getByRole('button', { name: 'Close record detail' })).toBeVisible();
+  await expect(panel.getByRole('link')).toHaveCount(1);
   await expect(page.locator('#field-record-list')).toBeHidden();
   await panel.getByRole('link', { name: 'View full record', exact: true }).click();
   const full = page.locator('.public-record');
   await expect(full.locator('.record-locality')).toHaveText(width === 375 ? 'Denmark' : 'Synthetic locality, Denmark');
   await expect(full.locator('.compact-source .direct-source')).toHaveAttribute('href', row.provenance_source_url);
-  await expect(full.locator('.compact-source .direct-source')).toBeHidden();
-  await full.locator('#location-heading').click();
+  await expect(full.locator('.compact-source .direct-source')).toBeVisible();
   await expect(full.getByText('Precision', { exact: true })).toBeVisible();
-  await expect(full.locator('.location-details')).not.toHaveAttribute('open');
-  await expect(full.getByText('Geocoding provider', { exact: true })).toBeHidden();
-  await full.locator('.location-details > summary').click();
+  await expect(full.locator('.location-details')).toHaveAttribute('open', '');
+  await expect(full.getByText('Geocoding provider', { exact: true })).toBeVisible();
   await expect(full.getByText('Geoapify', { exact: true })).toBeVisible();
   await expect(full.locator('.location-details')).toContainText('provider score');
   await expect(full.getByRole('link', { name: 'Open in maps', exact: true })).toHaveCount(0);
   await expect(full.getByRole('link', { name: 'Open in Map', exact: true })).toHaveAttribute('href', new RegExp(`release_id=${release}`));
   const sourceFacts = full.locator('details').filter({ has: page.locator('summary', { hasText: /^Source facts$/ }) });
   const sourceReview = full.locator('details').filter({ has: page.locator('summary', { hasText: /^Source and review$/ }) });
-  await expect(sourceFacts).not.toHaveAttribute('open', '');
-  await expect(sourceReview).not.toHaveAttribute('open', '');
-  await expect(full.getByText('Synthetic former name', { exact: true })).toBeHidden();
-  await sourceFacts.locator('summary').click();
+  await expect(sourceFacts).toHaveAttribute('open', '');
+  await expect(sourceReview).toHaveAttribute('open', '');
   await expect(full.getByText('Synthetic former name', { exact: true })).toBeVisible();
-  await expect(full.getByText('Government-sourced', { exact: true })).toBeHidden();
-  await sourceReview.locator('summary').click();
+  await sourceFacts.locator('summary').click();
+  await expect(full.getByText('Synthetic former name', { exact: true })).toBeHidden();
   await expect(full.getByText('Government-sourced', { exact: true })).toBeVisible();
   await expect(full.locator('.compact-source .direct-source')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -104,7 +105,7 @@ test('long reference-provider attributions remain readable in mobile list and de
   await expect(panel.getByText(provider,{exact:true})).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   await panel.getByRole('link',{name:'Open facility page',exact:true}).click();
-  const full=page.locator('.public-record');await full.locator('#location-heading').click();await full.locator('.location-details > summary').click();
+  const full=page.locator('.public-record');
   await expect(full.getByText(provider,{exact:true})).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
@@ -116,25 +117,39 @@ test('search summary names filtered matches as records and distinguishes the sho
   await expect(page.locator('.result-status')).toContainText('1 shown');
 });
 
-for(const [bounds,lower,upper,text] of [['exclusive_upper',null,1000,'Less than 1,000 animals'],['inclusive_lower_exclusive_upper',1000,10000,'1,000 to less than 10,000 animals'],['inclusive_lower_unbounded',100000,null,'100,000 or more animals']] as const) test(`verified slaughter estimate preserves exact 360-day ${bounds} bounds in map and full record`,async({page})=>{
+for(const [bounds,lower,upper,text] of [['exclusive_upper',null,1000,'Less than 1,000 animals'],['inclusive_lower_exclusive_upper',1000,10000,'1,000 to less than 10,000 animals'],['inclusive_lower_unbounded',100000,null,'100,000 or more animals']] as const) test(`verified slaughter estimate preserves exact 360-day ${bounds} bounds in the full record`,async({page})=>{
     await mockPublicRecord(page,{derived_source_volume_ranges:[{...facts.derived_source_volume_ranges[0],bounds,lower,upper},facts.derived_source_volume_ranges[1]]});
-    await page.goto(`./#/map?selected=${id}&release_id=${release}`);const panel=page.locator('.reading-sheet[aria-label="Record evidence"]'),estimate=panel.locator('.slaughter-estimate');
-    await expect(estimate).toBeVisible();await expect(estimate.locator('strong')).toHaveText(text);await expect(estimate.getByText('Estimated animals slaughtered (last 360 days)',{exact:true})).toBeVisible();
-    await expect(estimate.getByRole('link',{name:'Source codebook',exact:true})).toHaveAttribute('href','https://example.test/codebook');
-    await expect(panel.locator('.source-facts-section')).not.toHaveAttribute('open','');await expect(panel.locator('.source-facts-section dt').filter({hasText:'Estimated animals slaughtered'})).toHaveCount(0);
-    expect(await estimate.evaluate(node=>Boolean(node.compareDocumentPosition(document.querySelector('#location-heading')!)&Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
-    await panel.getByRole('link',{name:'Open facility page',exact:true}).click();const full=page.locator('.public-record');await expect(full.locator('.slaughter-estimate strong')).toHaveText(text);
+    await page.goto(`./#/records/${id}?profile=official&release_id=${release}`);
+    const full=page.locator('.public-record');
+    await expect(full.locator('.slaughter-estimate')).toHaveText(`Estimated animals slaughtered (last 360 days) · ${text}`);
+    await expect(full.locator('.slaughter-estimate a')).toHaveCount(0);
+    await expect(full.locator('.source-facts').getByRole('link',{name:'Source codebook',exact:true})).toHaveAttribute('href','https://example.test/codebook');
     await expect(full.locator('.source-facts')).toContainText('10,000 to less than 100,000 pounds/month');await expect(full.locator('.source-facts dt').filter({hasText:'Estimated animals slaughtered'})).toHaveCount(0);
     await expect(full.locator('.slaughter-estimate')).not.toContainText(/365|per year|annually/);
 });
 
 test('missing slaughter range never becomes an estimate from processing volume',async({page})=>{
-  await mockPublicRecord(page,{derived_source_volume_ranges:[facts.derived_source_volume_ranges[1]]});await page.goto(`./#/map?selected=${id}&release_id=${release}`);
-  const panel=page.locator('.reading-sheet[aria-label="Record evidence"]');await expect(panel.locator('.detail h1')).toBeVisible();await expect(panel.locator('.slaughter-estimate')).toHaveCount(0);
-  await panel.getByRole('link',{name:'Open facility page',exact:true}).click();await expect(page.locator('.public-record h1')).toBeVisible();await expect(page.locator('.public-record .slaughter-estimate')).toHaveCount(0);await expect(page.locator('.public-record .source-facts')).toContainText('10,000 to less than 100,000 pounds/month');
+  await mockPublicRecord(page,{derived_source_volume_ranges:[facts.derived_source_volume_ranges[1]]});
+  await page.goto(`./#/records/${id}?profile=official&release_id=${release}`);
+  const full=page.locator('.public-record');
+  await expect(full.getByRole('heading',{name:row.canonical_name,exact:true})).toBeVisible();
+  await expect(full.locator('.slaughter-estimate')).toHaveCount(0);
+  await expect(full.locator('.source-facts')).toContainText('10,000 to less than 100,000 pounds/month');
 });
 
-async function mockPublicRecord(page: Page, overrides: Record<string, unknown> = {}, options: { failFirstReport?: boolean } = {}) {
+test('a verified slaughter range keeps its codebook in Source facts even without other source rows', async ({ page }) => {
+  await mockPublicRecord(page, {
+    alternate_names: undefined, species_slaughtered: undefined, establishment_number: undefined,
+    derived_source_volume_ranges: [facts.derived_source_volume_ranges[0]],
+  });
+  await page.goto(`./#/records/${id}?profile=official&release_id=${release}`);
+  const sourceFacts = page.getByRole('tabpanel', { name: 'Details' }).locator('.source-facts');
+  await expect(sourceFacts).toHaveAttribute('open', '');
+  await expect(sourceFacts.getByRole('link', { name: 'Source codebook' })).toHaveAttribute('href', 'https://example.test/codebook');
+  await expect(sourceFacts.locator('dl')).toHaveCount(0);
+});
+
+async function mockPublicRecord(page: Page, overrides: Record<string, unknown> = {}, options: { failFirstReport?: boolean; annualHistory?: boolean } = {}) {
   const detailFields = new Set(['alternate_names','species_slaughtered','processing_activities','source_volume_categories','derived_source_volume_ranges','aphis_annual_reports','aphis_dated_inspections','establishment_id','establishment_number','grant_date','native_activity_code','native_activity_label']);
   const listOverrides = Object.fromEntries(Object.entries(overrides).filter(([key])=>!detailFields.has(key)));
   await page.route('https://tile.openstreetmap.org/**', route => route.abort());
@@ -148,11 +163,13 @@ async function mockPublicRecord(page: Page, overrides: Record<string, unknown> =
     else if (path === `/api/v2/locations/${id}`) body = { api_version: 'v2', data: { ...row, ...facts, ...overrides }, meta };
     else if (path === '/api/v2/locations') body = { api_version: 'v2', data: [{ ...row, ...listOverrides }], meta: { ...meta, coverage_note: 'Synthetic test coverage.', total_count: 1, next_cursor: null } };
     else if (path === `/api/v2/locations/${id}/aphis-report-links`) {
-      const kind = new URL(route.request().url()).searchParams.get('kind');
+      const params = new URL(route.request().url()).searchParams;
+      const kind = params.get('kind');
+      const olderAnnual = kind === 'annual_reports' && params.has('cursor');
       if (kind === 'annual_reports' && reportFailureRemaining > 0) { reportFailureRemaining -= 1; return route.fulfill({ status: 503, contentType: 'application/json', body: '{}' }); }
       body = { api_version: 'v2', data: kind === 'annual_reports' ? [{
-        reference_id: '550e8400-e29b-41d4-a716-446655440001', source_id: 'us.aphis.annual-reports', evidence_type: 'annual_reports',
-        event_date: null, event_period: '2025',
+        reference_id: olderAnnual ? '550e8400-e29b-41d4-a716-446655440003' : '550e8400-e29b-41d4-a716-446655440001', source_id: 'us.aphis.annual-reports', evidence_type: 'annual_reports',
+        event_date: null, event_period: olderAnnual ? '2024' : '2025',
         source_url: 'https://direct.aphis.usda.gov/awa/research-facility-report/annual-summary',
         report_url: 'https://www.aphis.usda.gov/sites/default/files/annual-report.pdf', column_e_url: null,
         reference_origin: 'release_approved_evidence', match_method: 'exact_source_identifier',
@@ -162,7 +179,7 @@ async function mockPublicRecord(page: Page, overrides: Record<string, unknown> =
         source_url: 'https://direct.aphis.usda.gov/awa/search/inspection-reports',
         report_url: null, column_e_url: null,
         reference_origin: 'release_approved_evidence', match_method: 'exact_source_identifier',
-      }], meta: { profile: 'official', release_id: release, ruleset_version: 'synthetic-rules', kind, limit: 20, next_cursor: null, public_projection: true } };
+      }], meta: { profile: 'official', release_id: release, ruleset_version: 'synthetic-rules', kind, limit: 20, next_cursor: options.annualHistory && kind === 'annual_reports' && !olderAnnual ? '550e8400-e29b-41d4-a716-446655440001' : null, public_projection: true } };
     }
     else if (path.startsWith('/api/v2/graph/')) body = { api_version: 'v2-graph-v1', data: [], meta: { ...meta, limit: 20, page_max: 100, next_cursor: null, public_projection: true } };
     else if (path === '/api/v2/map/feed') body = { api_version: 'v2', data: { type: 'FeatureCollection', features: [] }, meta: {
@@ -232,27 +249,8 @@ test('map detail shows one category and each activity, preserves facts, and open
   expect(pageOrder).toBe(true);
   await expect(page.locator('.location-preview .map')).toHaveAttribute('data-pin-loaded', 'true');
   await expect(page.locator('.public-record')).toContainText('Less than 1,000 animals');
-  await expect(page.getByRole('button', { name: 'Copy facility link' })).toBeVisible();
-  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
-  const copyButton = page.locator('.public-record h1 .share');
-  const layout = () => page.evaluate(() => {
-    const heading = document.querySelector('.public-record h1')!.getBoundingClientRect();
-    const button = document.querySelector('.public-record h1 .share')!.getBoundingClientRect();
-    return { heading: [heading.x, heading.y, heading.width, heading.height], button: [button.x, button.y, button.width, button.height] };
-  });
-  const initialLayout = await layout();
-  const originalIcon = await copyButton.locator('svg path').getAttribute('d');
-  await copyButton.click();
-  await expect(page.locator('.public-record h1 [role="status"]')).toHaveText('Link copied');
-  expect(await layout()).toEqual(initialLayout);
-  await expect.poll(() => copyButton.locator('svg path').getAttribute('d'), { timeout: 5000 }).toBe(originalIcon);
-  expect(await layout()).toEqual(initialLayout);
-  await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { value: { writeText: async () => { throw new Error('synthetic clipboard rejection'); } }, configurable: true }));
-  await copyButton.click();
-  await expect(page.locator('.public-record h1 [role="status"]')).toHaveText('Could not copy facility link');
-  expect(await layout()).toEqual(initialLayout);
-  await expect.poll(() => copyButton.locator('svg path').getAttribute('d'), { timeout: 5000 }).toBe(originalIcon);
-  expect(await layout()).toEqual(initialLayout);
+  await expect(page.getByRole('button', { name: 'Copy facility link' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Back to map', exact: true })).toHaveAttribute('href', new RegExp(`selected=${id}.*release_id=${release}`));
   await expect(page.locator('.public-record').getByText('Processing and preparation', { exact: true })).toHaveCount(1);
   await expect(page.locator('.public-record')).not.toContainText(/synthetic-taxonomy-version|not independently/);
   await expect(page.getByRole('link', { name: 'Open facility page', exact: true })).toHaveCount(0);
@@ -278,7 +276,7 @@ test('Spanish processing summary is deduplicated in map detail and the full reco
   await expect(fullActivities).not.toHaveText(/(?:^|,\s*)Procesamiento(?:,\s*|$)/);
 });
 
-for (const width of [320,1440]) test(`APHIS carrier explanation is readable at ${width}px and keeps original classification collapsed`,async({page})=>{
+for (const width of [320,1440]) test(`APHIS carrier explanation is readable at ${width}px with original classification in Details`,async({page})=>{
   await page.setViewportSize({width,height:900});
   await mockPublicRecord(page,{provenance_source_id:'us.aphis',category:'other_regulated_premises',taxonomy_display_category:'other_regulated_premises',taxonomy_primary_categories:['other_regulated_premises'],taxonomy_leaf_activities:[{key:'general_food_business',label:'General food business'}],taxonomy_assignments:[],native_activity_code:'Class T',native_activity_label:'Class T - Carrier',processing_activities:{},species_slaughtered:{},derived_source_volume_ranges:undefined});
   await page.goto(`./#/records/${id}?profile=official&release_id=${release}`);
@@ -286,10 +284,11 @@ for (const width of [320,1440]) test(`APHIS carrier explanation is readable at $
   await expect(explanation).toHaveText('APHIS Class T carriers transport regulated animals for hire, including by road, air, rail or sea.');
   await expect(explanation).not.toContainText(/laborator|Recorded activities/);
   await expect(page.getByText('Local V2 list response was rejected.',{exact:true})).toHaveCount(0);
-  const classificationDetails=detail.locator('.classification-overview details').first();
-  await expect(classificationDetails).not.toHaveAttribute('open','');
+  const classificationDetails=detail.locator('.classification-disclosure details');
+  await expect(classificationDetails).toBeHidden();
   if(process.env.UEC_CLASSIFICATION_CAPTURE_DIR) await page.screenshot({path:`${process.env.UEC_CLASSIFICATION_CAPTURE_DIR}/classification-carrier-${width}.png`});
-  await classificationDetails.locator('summary').click();
+  await detail.getByRole('tab', { name: 'Details', exact: true }).click();
+  await expect(classificationDetails).toHaveAttribute('open','');
   await expect(classificationDetails).toContainText('Class T - Carrier');
   await expect(detail.getByRole('link',{name:'APHIS classification guide',exact:true})).toHaveAttribute('href','https://www.aphis.usda.gov/animal_welfare/downloads/graybook.pdf');
   expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
@@ -318,10 +317,7 @@ test('city-level geocoding keeps its approximation and actual provider score in 
   await panel.getByRole('link', { name: 'View full record', exact: true }).click();
   const full = page.locator('.public-record');
   await expect(full).toContainText('Approximate location');
-  await full.locator('#location-heading').click();
-  await expect(full.locator('.location-details')).not.toHaveAttribute('open', '');
-  await expect(full.getByText('55, 10', { exact: true })).toBeHidden();
-  await full.locator('.location-details > summary').click();
+  await expect(full.locator('.location-details')).toHaveAttribute('open', '');
   await expect(full.getByText('Geoapify forward', { exact: true })).toBeVisible();
   await expect(full.getByText('Synthetic geocoder', { exact: true })).toBeVisible();
   await expect(full.getByText('55, 10', { exact: true })).toBeVisible();
@@ -512,4 +508,29 @@ test('APHIS source records load both report lists automatically and retry indepe
   await expect(reports).toBeFocused();
   await expect(annual.getByText('Annual report · FY2025', { exact: true })).toBeVisible();
   expect(kinds).toEqual(['annual_reports', 'inspections', 'annual_reports']);
+});
+
+for (const [certificateClass, kinds] of [
+  ['Class R', ['annual_reports', 'annual_reports', 'inspections']],
+  ['Class T', ['inspections']],
+] as const) test(`APHIS ${certificateClass} loads applicable report history automatically`, async ({ page }) => {
+  const requests: (string | null)[] = [];
+  page.on('request', request => {
+    const url = new URL(request.url());
+    if (url.pathname === `/api/v2/locations/${id}/aphis-report-links`) requests.push(url.searchParams.get('kind'));
+  });
+  await mockPublicRecord(page, {
+    provenance_source_id: 'us.aphis', native_activity_code: certificateClass,
+    establishment_id: `aphis-registration:00-${certificateClass.slice(-1)}-0000`,
+  }, { annualHistory: true });
+  await page.goto(`./#/records/${id}?profile=official&release_id=${release}`);
+  const annual = page.getByRole('region', { name: 'Annual reports', exact: true });
+  await expect(page.getByText('Inspection · 2025-02-03', { exact: true })).toBeVisible();
+  if (certificateClass === 'Class R') {
+    await expect(annual.getByText('Annual report · FY2025', { exact: true })).toBeVisible();
+    await expect(annual.getByText('Annual report · FY2024', { exact: true })).toBeVisible();
+  } else {
+    await expect(annual.getByText('Annual reports are for research facilities.', { exact: true })).toBeVisible();
+  }
+  expect(requests).toEqual(kinds);
 });

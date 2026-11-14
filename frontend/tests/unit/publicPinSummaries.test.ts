@@ -1,22 +1,22 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createPinHoverLabels, individualHoverPin } from '../../src/design-lab/pinHoverLabels';
+import { createPublicPinSummaries } from '../../src/design-lab/publicPinSummaries';
 import { createSearchBoundsArea } from '../../src/design-lab/components/mapSurfaceLayers';
-import type { PinHoverResolver } from '../../src/design-lab/contract';
+import type { PublicPinSummaryResolver } from '../../src/design-lab/contract';
 
 const id = '550e8400-e29b-41d4-a716-446655440000';
 const other = '550e8400-e29b-41d4-a716-446655440001';
 const label = { name: 'Synthetic public name', categoryKey: 'slaughter' };
 const signal = () => new AbortController().signal;
-describe('public pin hover labels', () => {
+describe('public pin summary cache', () => {
   it('keeps missing-name provenance in cached labels without storing translated text', async () => {
     const read = vi.fn(async () => ({ ...label, name: 'Name not provided', nameProvided: false }));
-    const cache = createPinHoverLabels(read); cache.setContext('synthetic-release');
+    const cache = createPublicPinSummaries(read); cache.setContext('synthetic-release');
     await cache.resolve(id, signal());
     expect(await cache.resolve(id, signal())).toMatchObject({ name: 'Name not provided', nameProvided: false });
     expect(read).toHaveBeenCalledTimes(1);
   });
   it('requires an active verified context and individual UUID before any read', async () => {
-    const read = vi.fn(async () => label), cache = createPinHoverLabels(read);
+    const read = vi.fn(async () => label), cache = createPublicPinSummaries(read);
     expect(await cache.resolve(id, signal())).toBeNull();
     cache.setContext('release:manifest:restriction:filters');
     expect(await cache.resolve('a'.repeat(32), signal())).toBeNull();
@@ -24,7 +24,7 @@ describe('public pin hover labels', () => {
   });
   it('retains only a bounded, short-lived label cache and expires without refreshing TTL', async () => {
     let now = 0;
-    const read = vi.fn(async () => label), cache = createPinHoverLabels(read, () => now, 1, 30);
+    const read = vi.fn(async () => label), cache = createPublicPinSummaries(read, () => now, 1, 30);
     cache.setContext('first');
     await cache.resolve(id, signal()); now = 20; await cache.resolve(id, signal());
     expect(read).toHaveBeenCalledTimes(1);
@@ -35,7 +35,7 @@ describe('public pin hover labels', () => {
   });
   it('immediately exposes cached or matching-context loaded labels without a read', async () => {
     let now = 0;
-    const read = vi.fn(async () => label), cache = createPinHoverLabels(read, () => now, 2, 30);
+    const read = vi.fn(async () => label), cache = createPublicPinSummaries(read, () => now, 2, 30);
     expect(cache.remember(id, label, cache.contextToken())).toBeNull(); expect(cache.peek(id)).toBeNull();
     cache.setContext('verified-release:manifest:restrictions:filters');
     expect(cache.remember(id, { ...label, name: '  Synthetic public name  ' }, cache.contextToken())).toEqual(label);
@@ -49,7 +49,7 @@ describe('public pin hover labels', () => {
     cache.remember(id, label, cache.contextToken()); cache.setContext(null); expect(cache.peek(id)).toBeNull();
   });
   it('keeps names as inert text and copies only allowed label fields', () => {
-    const cache = createPinHoverLabels(async () => null); cache.setContext('verified');
+    const cache = createPublicPinSummaries(async () => null); cache.setContext('verified');
     const text = '<img src=x onerror="alert(1)"> & "Synthetic"';
     const value = cache.remember(id, { ...label, name: text, privateDetail: 'must not be copied' } as typeof label, cache.contextToken());
     expect(value).toEqual({ name: text, categoryKey: 'slaughter' });
@@ -60,7 +60,7 @@ describe('public pin hover labels', () => {
     expect(cache.remember('cluster:42', label, cache.contextToken())).toBeNull();
   });
   it('rejects loaded-label seeding from an old generation even when a previous context returns', () => {
-    const cache = createPinHoverLabels(async () => null);
+    const cache = createPublicPinSummaries(async () => null);
     cache.setContext('first'); const oldToken = cache.contextToken();
     cache.setContext('second'); cache.setContext('first');
     expect(cache.remember(id, label, oldToken)).toBeNull(); expect(cache.peek(id)).toBeNull();
@@ -68,8 +68,8 @@ describe('public pin hover labels', () => {
     cache.setContext(null); expect(cache.contextToken()).toBeNull();
   });
   it('supports synchronous loaded/cache resolver results and an asynchronous uncached fallback', async () => {
-    const read = vi.fn(async () => label), cache = createPinHoverLabels(read); cache.setContext('verified');
-    const resolver: PinHoverResolver = (id, incoming) => incoming.aborted ? null : cache.peek(id) ?? cache.resolve(id, incoming);
+    const read = vi.fn(async () => label), cache = createPublicPinSummaries(read); cache.setContext('verified');
+    const resolver: PublicPinSummaryResolver = (id, incoming) => incoming.aborted ? null : cache.peek(id) ?? cache.resolve(id, incoming);
     cache.remember(id, label, cache.contextToken());
     expect(resolver(id, signal())).toEqual(label); expect(read).not.toHaveBeenCalled();
     const pending = resolver(other, signal()); expect(pending).toBeInstanceOf(Promise);
@@ -80,7 +80,7 @@ describe('public pin hover labels', () => {
     let finish!: (value: typeof label) => void;
     let pendingSignal!: AbortSignal;
     const read = vi.fn((_id: string, incoming: AbortSignal) => { pendingSignal = incoming; return new Promise<typeof label>(resolve => { finish = resolve; }); });
-    const cache = createPinHoverLabels(read);
+    const cache = createPublicPinSummaries(read);
     cache.setContext('first'); const pending = cache.resolve(id, signal());
     cache.setContext('new-restrictions'); expect(pendingSignal.aborted).toBe(true);
     finish(label); expect(await pending).toBeNull();
@@ -90,26 +90,26 @@ describe('public pin hover labels', () => {
     const controller = new AbortController();
     const read = vi.fn().mockRejectedValueOnce(new Error('404')).mockResolvedValueOnce({ ...label, categoryKey: 'private_key' })
       .mockResolvedValueOnce({ ...label, name: '' }).mockResolvedValue(label);
-    const cache = createPinHoverLabels(read); cache.setContext('first');
+    const cache = createPublicPinSummaries(read); cache.setContext('first');
     for (let index = 0; index < 3; index++) expect(await cache.resolve(id, signal())).toBeNull();
     controller.abort(); expect(await cache.resolve(id, controller.signal)).toBeNull();
     expect(await cache.resolve(id, signal())).toEqual(label);
     expect(read).toHaveBeenCalledTimes(4);
   });
-  it('cancels a read when pointer leaves even if the transport ignores abort', async () => {
+  it('cancels a read when its consumer closes even if the transport ignores abort', async () => {
     const controller = new AbortController();
     let finish!: (value: typeof label) => void;
-    const cache = createPinHoverLabels(() => new Promise(resolve => { finish = resolve; }));
+    const cache = createPublicPinSummaries(() => new Promise(resolve => { finish = resolve; }));
     cache.setContext('first'); const pending = cache.resolve(id, controller.signal);
     controller.abort(); finish(label); expect(await pending).toBeNull();
   });
-  it('allows ordinary source/approximate pin UUIDs but rejects clusters and opaque aggregate keys', () => {
-    const point = { geometry: { type: 'Point', coordinates: [1, 50] }, properties: { key: id, kind: 'reference', weight: 1 } };
-    expect(individualHoverPin(point)).toEqual({ id, coordinates: [1, 50] });
-    for (const properties of [{ key: 'a'.repeat(32) }, { key: id, cluster: true }, { key: id, cluster_id: 3 }, { key: id, kind: 'aggregate' }, { key: id, weight: 2 }]) {
-      expect(individualHoverPin({ ...point, properties })).toBeNull();
-    }
-    expect(individualHoverPin({ ...point, geometry: { type: 'Polygon', coordinates: [] } })).toBeNull();
+  it('retains bounded public locality text for a cached popup', () => {
+    const cache = createPublicPinSummaries(async () => null);
+    cache.setContext('verified');
+    const token = cache.contextToken();
+    expect(cache.remember(id, { ...label, locality: '  Sample city  ', country: 'US' }, token))
+      .toEqual({ ...label, locality: 'Sample city', country: 'US' });
+    expect(cache.remember(id, { ...label, locality: 'x'.repeat(513), country: 'invalid' }, token)).toEqual(label);
   });
 });
 describe('snapshot area perimeter', () => {

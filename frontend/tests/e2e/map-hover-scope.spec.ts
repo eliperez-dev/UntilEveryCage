@@ -5,30 +5,22 @@ import { expect, test, type Page } from '@playwright/test';
 const release = 'synthetic-hover-scope';
 const id = '550e8400-e29b-41d4-a716-446655440000';
 const point: [number, number] = [5, 45];
-async function install(page: Page, precision = 'source_reported', filters = '', category = 'slaughter', loadedPin = false) {
-  const state = { details: 0, delay: 0, status: 200, generation: 1, feeds: 0 };
+async function install(page: Page, precision = 'source_reported', filters = '', category = 'slaughter') {
+  const state = { details: 0, pendingDetail: undefined as Promise<void> | undefined, feeds: 0 };
   const meta = { profile: 'official', release_id: release, ruleset_version: 'synthetic-rules', release_created_at: '2026-01-01T00:00:00Z' };
   const row = { facility_id: id, canonical_name: 'Synthetic <img src=x onerror=alert(1)> facility', country_code: 'BE', city: 'Synthetic city', category, taxonomy_display_category: category, taxonomy_primary_categories: [category], publication_profile: 'official', factual_review_status: 'reviewed', privacy_screening_status: 'passed', project_approval: 'approved', reviewer_role: null, publication_warning: null, display_precision: precision, latitude: point[1], longitude: point[0], first_observed_at: null, last_observed_at: null, observation_count: 1, lifecycle_status: 'status_unknown', source_type: 'official', source_rights_status: 'cleared', provenance_source: null, release_id: release, release_ruleset_version: 'synthetic-rules', provenance_source_id: 'synthetic-source', provenance_source_name: 'Synthetic source', provenance_source_url: 'https://example.test/source', provenance_retrieved_at: '2026-01-01T00:00:00Z' };
-  await page.addInitScript(() => {
-    // Repositories capture fetch at construction, so instrument before the app.
-    const originalFetch = window.fetch;
-    window.fetch = function (input, init) {
-      if (new URL(String(input), location.origin).pathname.startsWith('/api/v2/locations/')) window.dispatchEvent(new Event('synthetic-hover-request'));
-      return originalFetch.call(window, input, init);
-    };
-  });
   await page.route('https://**/*', route => route.abort());
   await page.route('**/api/v2/**', async route => {
     const url = new URL(route.request().url()), path = url.pathname;
-    const identity = { profile: 'official', release_id: release, manifest_sha256: 'a'.repeat(64), suppression_generation: state.generation };
+    const identity = { profile: 'official', release_id: release, manifest_sha256: 'a'.repeat(64), suppression_generation: 1 };
     if (path === '/api/v2/releases/manifest') return route.fulfill({ json: { api_version: 'v2', data: { ...identity, manifest: {} } } });
     if (path === '/api/v2/map/feed') { state.feeds++; return route.fulfill({ json: { api_version: 'v2', data: { type: 'FeatureCollection', features: [{ type: 'Feature', id, geometry: { type: 'Point', coordinates: point }, properties: { facility_id: id, source_id: 'synthetic-source', country_code: 'BE', category_key: category, category_keys: [category], precision, weight: 1 } }] }, meta: { ...identity, feature_count: 1, public_record_count: 1, unmapped_count: 0, release_label: 'Synthetic release', dataset_version: 'synthetic' } } }); }
     // Simulate a public pin outside the already loaded result page.
-    if (path === '/api/v2/locations') return route.fulfill({ json: { api_version: 'v2', data: loadedPin ? [row] : [{ ...row, facility_id: '550e8400-e29b-41d4-a716-446655440001', canonical_name: 'Another synthetic result' }], meta: { ...meta, coverage_note: 'Synthetic renderer checks.', next_cursor: null, total_count: 2 } } });
+    if (path === '/api/v2/locations') return route.fulfill({ json: { api_version: 'v2', data: [{ ...row, facility_id: '550e8400-e29b-41d4-a716-446655440001', canonical_name: 'Another synthetic result' }], meta: { ...meta, coverage_note: 'Synthetic renderer checks.', next_cursor: null, total_count: 2 } } });
     if (path === `/api/v2/locations/${id}`) {
       state.details++; expect(url.searchParams.get('release_id')).toBe(release);
-      if (state.delay) await new Promise(resolve => setTimeout(resolve, state.delay));
-      return route.fulfill({ status: state.status, json: state.status === 200 ? { api_version: 'v2', data: row, meta } : {} }).catch(() => {});
+      await state.pendingDetail;
+      return route.fulfill({ json: { api_version: 'v2', data: row, meta } });
     }
     if (path === '/api/v2/map/matches') return route.fulfill({ json: { api_version: 'v2', data: { facility_ids: [id] }, meta: { ...identity, total_count: 1, mapped_count: 1 } } });
     return route.fulfill({ status: 404, json: {} });
@@ -44,7 +36,7 @@ async function install(page: Page, precision = 'source_reported', filters = '', 
   });
   return state;
 }
-async function hoverPin(page: Page, verticalOffset = 14) {
+async function pointAtPin(page: Page, verticalOffset = 14) {
   const pixel = await page.evaluate(coordinates => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__, p = map.project(coordinates), box = map.getCanvas().getBoundingClientRect();
     return { x: p.x + box.x, y: p.y + box.y };
@@ -53,87 +45,26 @@ async function hoverPin(page: Page, verticalOffset = 14) {
   return { ...pixel, y: pixel.y - verticalOffset };
 }
 
-// Measure within one page event loop, excluding automation/HTTP round-trip time.
-async function timedHover(page: Page, phase: 'request' | 'label') {
-  return page.evaluate(({ coordinates, phase }) => new Promise<number>((resolve, reject) => {
-    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__, canvas = map.getCanvas();
-    const pixel = map.project(coordinates), box = canvas.getBoundingClientRect();
-    let timer: ReturnType<typeof setTimeout>;
-    const started = performance.now();
-    const observer = new MutationObserver(() => {
-      if (phase === 'label' && document.querySelector('[role="tooltip"]')) finish();
-    });
-    function clean() { clearTimeout(timer); observer.disconnect(); window.removeEventListener('synthetic-hover-request', finish); }
-    function finish() { const elapsed = performance.now() - started; clean(); resolve(elapsed); }
-    if (phase === 'request') window.addEventListener('synthetic-hover-request', finish);
-    else observer.observe(document.body, { childList: true, subtree: true });
-    timer = setTimeout(() => { clean(); reject(new Error(`Hover ${phase} did not occur`)); }, 3000);
-    canvas.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: box.x + pixel.x, clientY: box.y + pixel.y - 14 }));
-  }), { coordinates: point, phase });
-}
-
-test('cold hover starts its one request immediately and cached names render within100ms', async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
-  const state = await install(page);
-  expect(await timedHover(page, 'request')).toBeLessThan(100);
-  await expect(page.getByRole('tooltip')).toContainText('Synthetic <img src=x onerror=alert(1)> facility');
-  expect(state.details).toBe(1);
-  await page.keyboard.press('Escape'); await expect(page.getByRole('tooltip')).toHaveCount(0);
-  expect(await timedHover(page, 'label')).toBeLessThan(100); expect(state.details).toBe(1);
-});
-
-test('a verified loaded search result has an immediate hover name without a detail request', async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
-  const state = await install(page, 'source_reported', '', 'slaughter', true);
-  await expect(page.locator(`#record-list [data-record-id="${id}"]`)).toHaveCount(1);
-  expect(await timedHover(page, 'label')).toBeLessThan(100); expect(state.details).toBe(0);
-});
-test('hover shows safe name/category without moving the camera, caches labels and leaves a cold approximate click intact', async ({ page }, testInfo) => {
+test('pointer movement leaves the map quiet and a cold approximate click opens the vetted summary', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   const state = await install(page, 'approximate');
-  const camera = await page.evaluate(() => { const m = (window as any).__UEC_LOCAL_PREVIEW_MAP__; return [m.getCenter().toArray(), m.getZoom(), m.getPitch(), m.getBearing()]; });
-  const pixel = await hoverPin(page);
-  const tooltip = page.getByRole('tooltip');
-  await expect(tooltip).toContainText('Synthetic <img src=x onerror=alert(1)> facility');
-  await expect(tooltip).toContainText('Slaughter'); await expect(tooltip.locator('img, i')).toHaveCount(0);
-  expect(await tooltip.evaluate(element => parseFloat(getComputedStyle(element).borderRadius))).toBeGreaterThanOrEqual(6);
-  await page.screenshot({ path: testInfo.outputPath('public-pin-hover.png') });
-  await page.getByRole('button', { name: 'Dark theme', exact: true }).click();
-  await hoverPin(page); await expect(tooltip).toBeVisible();
-  const contrast = await tooltip.evaluate(element => {
-    const css = getComputedStyle(element);
-    const luminance = (value: string) => { const channels = value.match(/[\d.]+/g)!.slice(0, 3).map(v => { const channel = Number(v) / 255; return channel <= .04045 ? channel / 12.92 : ((channel + .055) / 1.055) ** 2.4; }); return .2126 * channels[0]! + .7152 * channels[1]! + .0722 * channels[2]!; };
-    const bg = luminance(css.backgroundColor), fg = luminance(css.color);
-    return { background: bg, ratio: (Math.max(bg, fg) + .05) / (Math.min(bg, fg) + .05) };
-  });
-  expect(contrast.background).toBeGreaterThan(.5); expect(contrast.ratio).toBeGreaterThan(4.5);
-  await page.screenshot({ path: testInfo.outputPath('public-pin-hover-light.png') });
-  expect(state.details).toBe(1); expect(new URL(page.url()).hash).not.toContain('selected=');
-  expect(await page.evaluate(() => { const m = (window as any).__UEC_LOCAL_PREVIEW_MAP__; return [m.getCenter().toArray(), m.getZoom(), m.getPitch(), m.getBearing()]; })).toEqual(camera);
-  await page.mouse.move(10, 300); await expect(tooltip).toHaveCount(0);
-  await hoverPin(page); await expect(tooltip).toBeVisible(); expect(state.details).toBe(1);
-  await page.keyboard.press('Escape'); await expect(tooltip).toHaveCount(0);
+  const pixel = await pointAtPin(page);
+  await page.waitForTimeout(300);
+  expect(state.details).toBe(0);
+  await expect(page.getByRole('tooltip')).toHaveCount(0);
+  await expect(page.locator('.pin-hover-halo')).toHaveCount(0);
+
+  let finishDetail!: () => void;
+  state.pendingDetail = new Promise(resolve => { finishDetail = resolve; });
+  const summary = page.locator('.map-summary');
   await page.mouse.click(pixel.x, pixel.y);
-  await expect.poll(() => new URL(page.url()).hash).toContain(`selected=${id}`);
-  await expect(page.locator('.reading-sheet[aria-label="Record evidence"]')).toBeVisible();
-  await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getSource('approximate-reference-area')?.getData().then((data: any) => data.features.length))).toBe(1);
-  await page.waitForFunction(() => !(window as any).__UEC_LOCAL_PREVIEW_MAP__.isMoving());
-  await page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.panBy([-250, 0], { duration: 0 }));
-  await page.mouse.move(10, 300);
-  await hoverPin(page); await expect(tooltip).toBeVisible();
-  await page.keyboard.press('Escape'); await expect(tooltip).toHaveCount(0);
-  expect(new URL(page.url()).hash).toContain(`selected=${id}`);
-});
-test('leaving or moving the camera cancels slow hover; a restricted response never leaves a label', async ({ page }) => {
-  const state = await install(page); state.delay = 500;
-  await hoverPin(page); await expect.poll(() => state.details).toBe(1);
-  await page.mouse.move(10, 300); await page.waitForTimeout(600); await expect(page.getByRole('tooltip')).toHaveCount(0);
-  await hoverPin(page); await expect.poll(() => state.details).toBe(2);
-  await page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.panBy([40, 0], { duration: 0 }));
-  await page.waitForTimeout(600); await expect(page.getByRole('tooltip')).toHaveCount(0);
-  state.delay = 0; state.status = 404;
-  await hoverPin(page); await expect.poll(() => state.details).toBe(3);
-  await page.waitForTimeout(220); await expect(page.getByRole('tooltip')).toHaveCount(0);
+  await expect.poll(() => state.details).toBeGreaterThan(0);
+  await expect(summary).toHaveCount(0);
+  finishDetail();
+  await expect(summary.locator('strong')).toHaveText('Synthetic <img src=x onerror=alert(1)> facility');
+  await expect(summary.locator('img')).toHaveCount(0);
+  await expect(summary.locator('p')).toHaveText(['Slaughter', 'Synthetic city, Belgium']);
+  await expect(summary.getByRole('link', { name: 'View full record' })).toBeVisible();
 });
 test('area search outlines the exact snapshot through pan and basemap changes, opens results and clears its scope', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
@@ -155,17 +86,10 @@ test('area search outlines the exact snapshot through pan and basemap changes, o
   await expect(handle).toHaveAttribute('data-sheet-state', 'middle');
 });
 
-test('hover stays readable near map edges and pin-size tuning changes art without changing the source', async ({ page }) => {
+test('pin-size tuning changes art without changing the source', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   const state = await install(page);
   await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getLayoutProperty('v1-source-pins', 'icon-size'))).toBe(0.4);
-  for (const offset of [[-690, 0], [1380, 0], [-690, 310]]) {
-    await page.evaluate(delta => (window as any).__UEC_LOCAL_PREVIEW_MAP__.panBy(delta, { duration: 0 }), offset);
-    await hoverPin(page); await expect(page.getByRole('tooltip')).toBeVisible();
-    const box = await page.getByRole('tooltip').boundingBox(), canvas = await page.locator('.maplibregl-canvas').boundingBox();
-    expect(box!.x).toBeGreaterThanOrEqual(canvas!.x); expect(box!.x + box!.width).toBeLessThanOrEqual(canvas!.x + canvas!.width);
-    expect(box!.y).toBeGreaterThanOrEqual(canvas!.y); expect(box!.y + box!.height).toBeLessThanOrEqual(canvas!.y + canvas!.height);
-  }
   await page.getByRole('button', { name: 'More tools', exact: true }).click();
   await page.getByRole('checkbox', { name: 'Enable debug menu', exact: true }).check();
   await page.getByRole('button', { name: 'More tools', exact: true }).click();
@@ -203,7 +127,7 @@ for (const precision of ['source_reported', 'approximate', 'city']) test(`ordina
   expect(await page.evaluate(() => (window as any).__syntheticDisplayChanges)).toEqual({ data: 0, clusters: 0 });
   expect(await page.evaluate(() => { const m = (window as any).__UEC_LOCAL_PREVIEW_MAP__; return [m.getCenter().toArray(), m.getZoom(), m.getPitch(), m.getBearing()]; })).toEqual(camera);
   expect(new URL(page.url()).hash).toBe(beforeHash); expect(state.feeds).toBe(1);
-  await more.click(); const pixel = await hoverPin(page, 0); await expect(page.getByRole('tooltip')).toContainText('Slaughter');
+  await more.click(); const pixel = await pointAtPin(page, 0);
   await page.mouse.click(pixel.x, pixel.y); await expect.poll(() => new URL(page.url()).hash).toContain(`selected=${id}`);
   await more.click(); await page.locator('#map-clustering-choice').selectOption('off');
   await expect.poll(() => page.evaluate(() => (window as any).__syntheticDisplayChanges.clusters)).toBe(1);
@@ -221,15 +145,6 @@ for (const precision of ['source_reported', 'approximate', 'city']) test(`ordina
   expect(new URL(page.url()).hash).toContain('category=slaughter'); expect(new URL(page.url()).hash).toContain('country=BE'); expect(state.feeds).toBe(1);
 });
 
-test.describe('touch hover exclusion', () => {
-  test.use({ hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } });
-  test('does not request or display hover details on touch pointers', async ({ page }) => {
-    const state = await install(page); await hoverPin(page);
-    await page.waitForTimeout(300); expect(state.details).toBe(0); await expect(page.getByRole('tooltip')).toHaveCount(0);
-  });
-});
-
-
 for (const precision of ['source_reported','approximate','city']) test(`Processing keeps graphite artwork in ${precision} pins and optimized dots`, async ({ page }, testInfo) => {
   await page.setViewportSize({ width:1440, height:900 });
     await install(page, precision, '', 'processing_and_preparation');
@@ -238,9 +153,7 @@ for (const precision of ['source_reported','approximate','city']) test(`Processi
       return map.queryRenderedFeatures({ layers:['v1-source-pins','approx-reference-pins','approx-reference-points'] })
         .some((feature:any)=>map.style.getLayer(feature.layer.id).layout.get('icon-image').evaluate(feature).name==='v1-pin-graphite');
     })).toBe(true);
-    await hoverPin(page); await expect(page.getByRole('tooltip')).toContainText('Processing and preparation');
-    await expect(page.getByRole('tooltip').locator('i,img')).toHaveCount(0);
-    if (precision==='source_reported') await page.screenshot({path:testInfo.outputPath('processing-graphite-hover.png')});
+    if (precision==='source_reported') await page.screenshot({path:testInfo.outputPath('processing-graphite-pin.png')});
     await page.mouse.move(1400,800);
     await page.getByRole('button',{name:'More tools',exact:true}).click();
     await page.getByRole('checkbox',{name:'Use optimized pins',exact:true}).check();

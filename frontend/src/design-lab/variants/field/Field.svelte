@@ -38,7 +38,6 @@
   import MobileSearchRecords from '../../../features/search/MobileSearchRecords.svelte';
   import { recordNamePresentation } from '../../../features/locations/recordNamePresentation';
   import { requestDeviceLocation } from '../../../features/search/nearbySearch';
-  import { precisionPresentation } from '../../../features/locations/precisionPresentation';
   let {
     active = true,
     state: mapState,
@@ -64,7 +63,8 @@
     mapMatchesSearchKey = null,
     onRetryMapMatches,
     onRetrySearch,
-    resolvePinHover,
+    resolvePinSummary,
+    selectedPinSummary = null,
     mapDiagnostics,
     onMapTiming,
     detailRecord = null,
@@ -135,7 +135,17 @@
   const publicMap = $derived(mode === 'public-release');
   const popupLocation = $derived(publicMap && selected?.id === mapState.selectedId && selected?.longitude != null && selected.latitude != null
     ? { longitude: selected.longitude, latitude: selected.latitude } : null);
-  const popupSource = $derived(selected?.sourceName ?? (selected?.sourceId ? sourceName(selected.sourceId) : ''));
+  const popupRecord = $derived(selected?.id === mapState.selectedId && selected ? {
+    name: selected.name, nameProvided: selected.nameProvided, categoryKey: selected.taxonomy?.displayCategory ?? selected.category,
+    locality: selected.locality, country: selected.country,
+  } : selectedPinSummary?.id === mapState.selectedId ? selectedPinSummary.label : null);
+  const popupError = $derived(detailStatus === 'error' || detailStatus === 'unauthorized');
+  const popupLocality = $derived.by(() => {
+    const locality = popupRecord?.locality?.trim();
+    const country = popupRecord?.country && countryName(popupRecord.country);
+    return [locality !== popupRecord?.country && locality !== country ? locality : '', country].filter(Boolean).join(', ');
+  });
+  let overlapOpen = $state(false);
   let popupAnchor = $state<{ x: number; y: number } | null>(null);
   let mapSummary = $state<HTMLElement>();
   let popupHeight = $state(184);
@@ -439,7 +449,7 @@
       // Wait for evidence loading to finish: the loading and ready rails are
       // separate branches, so focusing the loading close button would leave
       // focus on BODY when that branch is replaced.
-      if (pendingRailFocusId === mapState.selectedId && (publicMap || detailStatus !== "loading")) {
+      if (pendingRailFocusId === mapState.selectedId && (publicMap ? !overlapOpen && (popupRecord || popupError) : detailStatus !== "loading")) {
         const id = mapState.selectedId;
         void tick().then(() => {
           if (mapState.selectedId === id) {
@@ -554,13 +564,6 @@
     autocompleteOpen.set(false);
     if ($filterDisclosure) $filterDisclosure.open = false;
     dispatch({ type: 'list', value: false });
-  }
-  function revealOverlapGroup() {
-    // Make room for the existing ring without changing selection or camera.
-    if (mapState.selectedId) {
-      detailMapPreview.set(true);
-      detailSheetSnap.set('collapsed');
-    } else collapseMobileSearch();
   }
   async function showSelectedOnMap() {
     if (!selected || selected.latitude === null || selected.longitude === null) return;
@@ -999,7 +1002,7 @@
         {publicReleaseIdentity}
         {publicReleaseManifestIdentity}
         {onMapFeedMeta}
-        {...(resolvePinHover ? { resolvePinHover } : {})}
+        {...(resolvePinSummary ? { resolvePinSummary } : {})}
         onCandidatePreviewLabel={(label) => { candidatePreviewLabel.set(label); onCandidatePreviewLabel?.(label); }}
         {mapStatus}
         {mapError}
@@ -1026,7 +1029,7 @@
         referenceLoading={aggregateLoading}
         onmaptiming={(timing) => onMapTiming?.(timing)}
         onselect={selectRecord}
-        onrevealoverlap={revealOverlapGroup}
+        onOverlapOpenChange={(open) => { overlapOpen = open; }}
         onaggregate={(ids) => dispatch({ type: "aggregate", value: ids })}
         onreference={(key, sourceId) => onMapReference?.(key, sourceId)}
         onbasemap={(value) => {
@@ -1055,24 +1058,20 @@
       >
         {dataError}
       </div>{/if}
-    {#if active && publicMap && mapState.selectedId}
+    {#if active && publicMap && mapState.selectedId && !overlapOpen && (popupRecord || popupError)}
       <section class="map-summary" class:map-summary-anchored={popupTop !== null} class:map-summary-below={popupBelow}
         bind:this={mapSummary} bind:offsetHeight={popupHeight} tabindex="-1" aria-label={tr('Location', $language)}
         style:--popup-x={`${popupLeft}px`} style:--popup-y={popupTop === null ? undefined : `${popupTop}px`}
         style:--popup-arrow={popupAnchor ? `clamp(12px, calc(50% + ${popupAnchor.x - popupLeft}px), 100% - 12px)` : undefined}>
         <button class="summary-close" type="button" aria-label={tr('Close record detail', $language)} onclick={dismissSelection}>×</button>
-        {#if detailStatus === 'error' || detailStatus === 'unauthorized'}
+        {#if popupError}
           <p role="alert">{tr(detailError, $language)}</p>
-        {:else if selected?.id === mapState.selectedId}
-          <strong>{recordNamePresentation(selected, label => tr(label, $language))}</strong>
-          <p>{[categoryName(selected.category), selected.locality, selected.country ? countryName(selected.country) : ''].filter(Boolean).join(' · ')}</p>
-          {#if popupSource}<p class="summary-source" title={popupSource}>{popupSource}</p>{/if}
-          {#if selected.precision !== 'approximate'}<p>{tr(precisionPresentation(selected.precision), $language)}</p>{/if}
-        {:else}
-          <p role="status">{tr('Loading record…', $language)}</p>
+        {:else if popupRecord}
+          <strong>{recordNamePresentation(popupRecord, label => tr(label, $language))}</strong>
+          <p>{categoryName(popupRecord.categoryKey)}</p>
+          <p>{popupLocality || tr('Location unavailable', $language)}</p>
+          <a href={serializeRoute({ kind: 'record', facilityId: mapState.selectedId, profile: 'official', ...(publicReleaseId ? { releaseId: publicReleaseId } : {}), returnMapHref: mapHref })}>{tr('View full record', $language)}</a>
         {/if}
-        <a href={serializeRoute({ kind: 'record', facilityId: mapState.selectedId, profile: 'official', ...(publicReleaseId ? { releaseId: publicReleaseId } : {}), returnMapHref: mapHref })}>{tr('View full record', $language)}</a>
-        {#if mapState.listOpen || previousResultsOpen}<button class="summary-back" type="button" onclick={dismissSelection}>{tr('Back to results', $language)}</button>{/if}
       </section>
     {/if}
     </main>
@@ -1104,7 +1103,7 @@
       {#if active && !publicMap}<MapNavigation ready={$mapControlsReady} basemap={mapState.basemap} pitch={$mapCameraPitch} onbasemap={(value) => dispatch({type:'basemap',value})} onviewtoggle={toggleMapCameraView} />{/if}
       </div>
     {#if publicMap && $mobileFiltersOpen && !phoneSearchOpen}{@render publicFilters()}{/if}
-    <aside class="results" inert={phoneSearchOpen || ($debugOpen && $mobileLayout)} aria-hidden={$debugOpen && $mobileLayout ? true : undefined} class:rail-collapsed={!workspaceOpen} class:map-preview={detailCollapsed} class:behind-filters={publicMap && $mobileFiltersOpen} class:typing={phoneSearchOpen} style:--results-height={$resultsSheetSnap === 'expanded' ? '88%' : '55%'} id="field-record-list" aria-label={tr('Search, filters, and results', $language)}>
+    <aside class="results" inert={overlapOpen || phoneSearchOpen || ($debugOpen && $mobileLayout)} aria-hidden={$debugOpen && $mobileLayout ? true : undefined} class:rail-collapsed={!workspaceOpen || overlapOpen} class:map-preview={detailCollapsed} class:behind-filters={publicMap && $mobileFiltersOpen} class:typing={phoneSearchOpen} style:--results-height={$resultsSheetSnap === 'expanded' ? '88%' : '55%'} id="field-record-list" aria-label={tr('Search, filters, and results', $language)}>
       {#if !publicMap}<div class="mobile-sheet-control"><MobileSearchSheet open={workspaceOpen && !detailCollapsed} snap={mapState.selectedId ? $detailSheetSnap : $resultsSheetSnap} detail={Boolean(mapState.selectedId)} preview={Boolean(mapState.selectedId)} available={$workspaceHeight} middlePercent={$layoutTuning.mobileSheetPercent ?? 60} expandedPercent={$layoutTuning.mobileExpandedPercent ?? 90} onchange={changeMobileSheet} onheight={height => sheetHeight.set(height)} /></div>{/if}
       <button class="rail-resize" type="button" aria-label={tr('Resize search panel', $language)} title={tr('Use left and right arrows to resize', $language)} onpointerdown={resizeRail} onkeydown={resizeRailKey}></button>
       <header hidden={Boolean(mapState.selectedId) || !workspaceOpen}><strong>{tr('Search records', $language)}</strong><button type="button" aria-label={tr('Close workspace', $language)} onclick={closeWorkspace}>×</button></header>
@@ -1315,12 +1314,10 @@
   .map-summary-below::after { top: auto; bottom: 100%; border-top-color: transparent; border-bottom-color: #faf8f1; }
   .map-summary strong { display: block; padding-right: 2rem; font-weight: 650; }
   .map-summary p { margin: .25rem 0; color: #4d4943; font-size: .8125rem; }
-  .summary-source { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
   .map-summary a, .map-summary button { color: inherit; font: inherit; }
-  .map-summary a, .summary-back { display: inline-flex; align-items: center; min-height: 44px; }
-  .summary-close, .summary-back { border: 0; background: none; cursor: pointer; }
+  .map-summary a { display: inline-flex; align-items: center; min-height: 44px; }
+  .summary-close { border: 0; background: none; cursor: pointer; }
   .summary-close { position: absolute; top: 0; right: 0; width: 44px; height: 44px; }
-  .summary-back { padding: 0; margin-left: .7rem; text-decoration: underline; }
   @media (max-width:40rem) {
     .public-map .map-toolbar { inset: .65rem .65rem auto; width: auto; max-width: none; transform: none; }
     .public-map .desktop-search { display: grid; }

@@ -35,182 +35,136 @@ async function install(page: Page, count: number, labelDelay = 0) {
   await expect.poll(() => page.evaluate(() => { const m = (window as any).__UEC_LOCAL_PREVIEW_MAP__; return m.queryRenderedFeatures({ layers: ['v1-source-pins', 'approx-reference-pins'] }).length; })).toBeGreaterThan(0);
   return state;
 }
-async function clickPoint(page: Page) {
-  const p = await page.evaluate(coordinates => { const m = (window as any).__UEC_LOCAL_PREVIEW_MAP__, p = m.project(coordinates), r = m.getCanvas().getBoundingClientRect(); return { x: r.x + p.x, y: r.y + p.y - 13 }; }, point);
+async function clickPoint(page: Page, verticalOffset = 13) {
+  const p = await page.evaluate(({ coordinates, verticalOffset }) => { const m = (window as any).__UEC_LOCAL_PREVIEW_MAP__, p = m.project(coordinates), r = m.getCanvas().getBoundingClientRect(); return { x: r.x + p.x, y: r.y + p.y - verticalOffset }; }, { coordinates: point, verticalOffset });
   await page.mouse.click(p.x, p.y);
 }
 async function camera(page: Page) { return page.evaluate(() => { const m = (window as any).__UEC_LOCAL_PREVIEW_MAP__; return [m.getCenter().toArray(), m.getZoom(), m.getPitch(), m.getBearing()]; }); }
 
-for (const mobile of [false, true]) test(`ring opens exact public members and preserves camera on ${mobile ? 'phone' : 'desktop'}`, async ({ page }, info) => {
+const overlap = (page: Page) => page.locator('.public-overlap-panel');
+const members = (page: Page) => page.locator('.overlap-member');
+const marker = (page: Page) => page.locator('.overlap-keyboard-marker');
+
+async function waitForMarker(page: Page, count: number) {
+  await expect.poll(() => page.evaluate(expected => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    return map.hasImage('public-pin-stack-' + expected)
+      && map.getLayer('public-pin-stack-count')
+      && map.queryRenderedFeatures({ layers: ['public-pin-stack-count'] }).some((feature: any) => feature.properties.count === expected);
+  }, count)).toBe(true);
+  await expect(marker(page)).toHaveCount(1);
+}
+
+for (const mobile of [false, true]) test(`overlap marker opens its records with a fixed camera on ${mobile ? 'phone' : 'desktop'}`, async ({ page }, info) => {
   await page.setViewportSize(mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 });
-  const state = await install(page, 8), before = await camera(page);
+  const state = await install(page, 8);
+  await waitForMarker(page, 8);
+  const before = await camera(page);
   await clickPoint(page);
-  const ring = page.locator('.public-pin-ring'); await expect(ring).toBeVisible();
-  await expect(page.locator('.ring-heading')).toContainText('8');
-  expect(new URL(page.url()).hash).not.toContain('selected=');
+  await expect(overlap(page)).toBeVisible();
+  await expect(overlap(page).getByRole('heading')).toContainText('8');
+  await expect(members(page)).toHaveCount(8);
+  await expect(members(page).nth(1)).toContainText('Synthetic facility 2');
+  await expect(members(page).first()).toBeFocused();
+  const frame = (await overlap(page).boundingBox())!;
+  const canvas = (await page.locator('.maplibregl-canvas').boundingBox())!;
+  if (mobile) {
+    expect(frame.width).toBeCloseTo(canvas.width, 0);
+    expect(frame.y + frame.height).toBeCloseTo(canvas.y + canvas.height, 0);
+  } else {
+    const pin = (await marker(page).boundingBox())!;
+    expect(frame.x).toBeGreaterThan(pin.x + pin.width / 2);
+    expect(frame.width).toBeLessThanOrEqual(304);
+  }
   expect(await camera(page)).toEqual(before);
-  await expect.poll(() => page.locator('.ring-member img').evaluateAll(images => images.every(image => (image as HTMLImageElement).complete && (image as HTMLImageElement).naturalWidth > 0))).toBe(true);
-  await expect(page.locator('.ring-guides circle')).toHaveCount(1);
-  // The pin tips, guide and connector endpoints share one display coordinate.
-  await expect.poll(() => page.evaluate(() => {
-    const ring = document.querySelector('.public-pin-ring')!.getBoundingClientRect();
-    const pins = [...document.querySelectorAll<HTMLImageElement>('.ring-member img')];
-    const lines = [...document.querySelectorAll<SVGLineElement>('.ring-connections line')];
-    return Math.max(...pins.map((pin, i) => {
-      const art = pin.getBoundingClientRect(), line = lines[i]!;
-      return Math.max(Math.abs(art.x + art.width / 2 - ring.x - line.x2.baseVal.value), Math.abs(art.bottom - ring.y - line.y2.baseVal.value));
-    }));
-  })).toBeLessThan(1);
-  await page.screenshot({ path: info.outputPath(mobile ? 'ring-phone.png' : 'ring-desktop.png') });
-  // Stable ordering makes the second member the approximate record, even when a different pin is painted on top.
-  await page.locator('.ring-member').nth(1).click();
+  await page.screenshot({ path: info.outputPath(mobile ? 'overlap-phone.png' : 'overlap-desktop.png') });
+  await members(page).nth(1).click();
+  await expect(overlap(page)).toHaveCount(0);
   await expect.poll(() => new URL(page.url()).hash).toContain(`selected=${id(2)}`);
-  await expect(page.locator('.reading-sheet[aria-label="Record evidence"]')).toBeVisible();
-  await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getSource('approximate-reference-area')?.getData().then((d: any) => d.features.length))).toBe(1);
-  expect(await camera(page)).toEqual(before); expect(state.feeds).toBe(1); expect(state.privateRequests).toBe(0);
-  await page.screenshot({ path: info.outputPath(mobile ? 'ring-detail-phone.png' : 'ring-detail-desktop.png') });
+  await expect(page.locator('.map-summary')).toContainText('Synthetic facility 2');
+  expect(await camera(page)).toEqual(before);
+  expect(state.feeds).toBe(1);
+  expect(state.privateRequests).toBe(0);
 });
 
-for (const count of [214, 614]) test(`large overlap lists reach all ${count} public records without rebuilding the native source`, async ({ page }, info) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
-  const state = await install(page, count); await clickPoint(page);
-  await expect(page.locator('.public-pin-ring')).toBeVisible();
-  await page.evaluate(() => { const s = (window as any).__UEC_LOCAL_PREVIEW_MAP__.getSource('locations'), original = s.setData.bind(s); (window as any).__ringSourceWrites = 0; s.setData = (...args: any[]) => { (window as any).__ringSourceWrites++; return original(...args); }; });
+for (const count of [214, 614]) test(`${count} records stay keyboard reachable without rebuilding the map source`, async ({ page }) => {
+  await page.setViewportSize(count === 614 ? { width: 320, height: 568 } : { width: 1440, height: 900 });
+  const state = await install(page, count);
+  await waitForMarker(page, count);
   const before = await camera(page);
-  await expect(page.locator('.ring-heading')).toContainText(String(count));
-  await expect(page.locator('.ring-pager')).toHaveCount(0);
-  await expect(page.locator('.ring-member')).toHaveCount(count);
-  await expect(page.locator('.ring-zoom')).toHaveCount(0);
-  await page.locator('.ring-member').first().press('End');
-  const last = page.locator(`.ring-member[data-record-id="${id(count)}"]`);
-  await expect(last).toBeFocused(); await expect(last).toBeVisible();
-  await last.press('ArrowLeft'); await expect(page.locator(`.ring-member[data-record-id="${id(count - 1)}"]`)).toBeFocused();
-  await page.keyboard.press('Home'); await expect(page.locator(`.ring-member[data-record-id="${id(1)}"]`)).toBeFocused();
+  await marker(page).press('Enter');
+  await expect(overlap(page)).toBeVisible();
+  await page.evaluate(() => {
+    const source = (window as any).__UEC_LOCAL_PREVIEW_MAP__.getSource('locations');
+    const original = source.setData.bind(source);
+    (window as any).__overlapSourceWrites = 0;
+    source.setData = (...args: any[]) => { (window as any).__overlapSourceWrites++; return original(...args); };
+  });
+  await expect(members(page)).toHaveCount(count);
+  await members(page).first().press('End');
+  const last = members(page).last();
+  await expect(last).toBeFocused();
+  await expect(last).toBeInViewport();
+  await last.press('ArrowUp');
+  await expect(members(page).nth(count - 2)).toBeFocused();
+  await page.keyboard.press('Home');
+  await expect(members(page).first()).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(overlap(page)).toHaveCount(0);
+  await expect(marker(page)).toBeFocused();
   expect(await camera(page)).toEqual(before);
-  await page.screenshot({ path: info.outputPath(`concentric-${count}.png`) });
-  await page.keyboard.press('End'); await last.click();
-  await expect.poll(() => new URL(page.url()).hash).toContain(`selected=${id(count)}`);
-  expect(await page.evaluate(() => (window as any).__ringSourceWrites)).toBe(0);
-  expect(state.feeds).toBe(1); expect(state.privateRequests).toBe(0);
+  expect(await page.evaluate(() => (window as any).__overlapSourceWrites)).toBe(0);
+  expect(state.feeds).toBe(1);
+  expect(state.privateRequests).toBe(0);
+  expect(state.detailRequests).toBeLessThan(30);
 });
 
 test('single records stay direct', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  await install(page, 1); await clickPoint(page);
+  await install(page, 1);
+  await clickPoint(page);
   await expect.poll(() => new URL(page.url()).hash).toContain(`selected=${id(1)}`);
-  await expect(page.locator('.public-pin-ring')).toHaveCount(0);
+  await expect(overlap(page)).toHaveCount(0);
 });
 
-test('optimized dots and coincident native clusters open the ring', async ({ page }) => {
+test('optimized overlap markers and coincident native clusters open the list', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await install(page, 18);
   const more = page.getByRole('button', { name: 'More tools', exact: true });
-  await more.click(); await page.getByRole('checkbox', { name: 'Use optimized pins', exact: true }).check(); await page.locator('#map-clustering-choice').selectOption('off'); await more.click();
-  await page.waitForFunction(() => !(window as any).__UEC_LOCAL_PREVIEW_MAP__.isMoving());
-  await expect.poll(() => page.evaluate(() => { const m = (window as any).__UEC_LOCAL_PREVIEW_MAP__; return m.getLayoutProperty('source-coordinate-points', 'visibility') === 'visible' && m.isSourceLoaded('locations'); })).toBe(true);
-  const p = await page.evaluate(coordinates => { const m = (window as any).__UEC_LOCAL_PREVIEW_MAP__, p = m.project(coordinates), r = m.getCanvas().getBoundingClientRect(); return { x: r.x + p.x, y: r.y + p.y }; }, point);
-  await page.mouse.click(p.x, p.y); await expect(page.locator('.ring-dot').first()).toBeVisible();
-  expect(await page.locator('.ring-dot').count()).toBeGreaterThan(12);
-  await page.keyboard.press('Escape'); await expect(page.locator('.public-pin-ring')).toHaveCount(0);
-  await more.click(); await page.locator('#map-clustering-choice').selectOption('on'); await more.click();
+  await more.click();
+  await page.getByText('Advanced', { exact: true }).click();
+  await page.getByRole('checkbox', { name: 'Use optimized pins', exact: true }).check();
+  await page.locator('#map-clustering-choice').selectOption('off');
+  await more.click();
+  await waitForMarker(page, 18);
+  await clickPoint(page, 5);
+  await expect(members(page)).toHaveCount(18);
+  await page.keyboard.press('Escape');
+  await expect(overlap(page)).toHaveCount(0);
+  await more.click();
+  await page.getByText('Advanced', { exact: true }).click();
+  await page.locator('#map-clustering-choice').selectOption('on');
+  await more.click();
   await page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.jumpTo({ zoom: 4 }));
-  await expect.poll(() => page.evaluate(() => { const m = (window as any).__UEC_LOCAL_PREVIEW_MAP__; return m.queryRenderedFeatures({ layers: ['clusters'] }).length; })).toBeGreaterThan(0);
-  const before = await camera(page); const c = await page.evaluate(coordinates => { const m = (window as any).__UEC_LOCAL_PREVIEW_MAP__, p = m.project(coordinates), r = m.getCanvas().getBoundingClientRect(); return { x: r.x + p.x, y: r.y + p.y }; }, point);
-  await page.mouse.click(c.x, c.y); await expect(page.locator('.public-pin-ring')).toBeVisible(); expect(await camera(page)).toEqual(before);
+  await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.queryRenderedFeatures({ layers: ['clusters'] }).length)).toBeGreaterThan(0);
+  const before = await camera(page);
+  await clickPoint(page, 0);
+  await expect(members(page)).toHaveCount(18);
+  expect(await camera(page)).toEqual(before);
 });
 
-test('new query membership clears the old ring and counts', async ({ page }) => {
+test('new query membership clears the old overlap and count', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  const state = await install(page, 81); await clickPoint(page);
-  await expect(page.locator('.public-pin-ring')).toBeVisible();
+  const state = await install(page, 81);
+  await waitForMarker(page, 81);
+  await clickPoint(page);
+  await expect(overlap(page)).toBeVisible();
   state.onlyFirst = true;
-  await page.getByRole('button', { name: 'Search map', exact: true }).click();
   await page.locator('#field-search').fill('only first');
-  await expect(page.locator('.public-pin-ring')).toHaveCount(0);
+  await page.locator('#field-search').press('Enter');
+  await expect(overlap(page)).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getSource('locations').getData().then((d: any) => d.features.length))).toBe(1);
   await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getSource('public-pin-stacks').getData().then((d: any) => d.features.length))).toBe(0);
-  await clickPoint(page);
-  await expect(page.locator('.public-pin-ring')).toHaveCount(0);
-  await expect.poll(() => new URL(page.url()).hash).toContain(`selected=${id(1)}`);
+  await expect(marker(page)).toHaveCount(0);
   expect(state.privateRequests).toBe(0);
-});
-
-test('short phones retain an explicit way back to the ring after selection', async ({ page }, info) => {
-  await page.setViewportSize({ width: 375, height: 667 });
-  await install(page, 8); await clickPoint(page);
-  await expect(page.locator('.ring-member').first()).toBeVisible();
-  await page.locator('.ring-member').nth(1).click();
-  await expect.poll(() => new URL(page.url()).hash).toContain(`selected=${id(2)}`);
-  const before = await camera(page);
-  const reopen = page.getByRole('button', { name: '8 Open overlapping records', exact: true });
-  await expect(reopen).toBeVisible();
-  await page.screenshot({ path: info.outputPath('ring-short-phone-detail.png') });
-  await reopen.click();
-  await expect(page.locator('.ring-member').first()).toBeVisible();
-  expect(await camera(page)).toEqual(before);
-  expect(new URL(page.url()).hash).toContain(`selected=${id(2)}`);
-  await page.screenshot({ path: info.outputPath('ring-short-phone-reopened.png') });
-});
-
-test('compact rings keep the same position through keyboard navigation and selection', async ({ page }, info) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await install(page, 36); await clickPoint(page);
-  await expect(page.locator('.ring-member')).toHaveCount(36);
-  await expect(page.locator('.ring-guides circle')).toHaveCount(3);
-  await expect(page.locator('.ring-zoom')).toHaveCount(0);
-  await expect(page.locator('.public-pin-ring')).not.toHaveClass(/opening/);
-  const before = await camera(page);
-  const positions = () => page.locator('.ring-member').evaluateAll(elements => elements.map(el => [el.getAttribute('data-record-id'), (el as HTMLElement).style.left, (el as HTMLElement).style.top]));
-  const original = await positions();
-  const guide = await page.locator('.ring-guides circle').first().evaluate(el => [el.getAttribute('cx'), el.getAttribute('cy')]);
-  await page.locator('.ring-member').first().press('End');
-  await expect(page.locator(`.ring-member[data-record-id="${id(36)}"]`)).toBeFocused();
-  expect(await positions()).toEqual(original);
-  const bounds = await page.locator('.ring-viewport').boundingBox();
-  expect(bounds!.width).toBeLessThan(450); expect(bounds!.height).toBeLessThan(450);
-  await page.locator('.ring-member').nth(1).click();
-  await expect.poll(() => new URL(page.url()).hash).toContain(`selected=${id(2)}`);
-  expect(await positions()).toEqual(original);
-  expect(await page.locator('.ring-guides circle').first().evaluate(el => [el.getAttribute('cx'), el.getAttribute('cy')])).toEqual(guide);
-  expect(await camera(page)).toEqual(before);
-  await page.screenshot({ path: info.outputPath('compact-fixed-rings.png') });
-});
-
-test('large groups scroll on a German phone without ring zoom controls', async ({ page }, info) => {
-  await page.setViewportSize({ width: 375, height: 812 });
-  await install(page, 614);
-  await page.locator('.language-action').click();
-  await page.getByRole('button', { name: 'Deutsch', exact: true }).click();
-  await clickPoint(page);
-  const before = await camera(page);
-  await expect(page.locator('.ring-member')).toHaveCount(614);
-  await expect(page.locator('.ring-zoom')).toHaveCount(0);
-  await page.locator('.ring-member').first().press('End');
-  const last = page.locator(`.ring-member[data-record-id="${id(614)}"]`);
-  await expect(last).toBeFocused(); await expect(last).toBeInViewport();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  expect(await camera(page)).toEqual(before);
-  await page.screenshot({ path: info.outputPath('compact-phone-german.png') });
-  await last.click();
-  await expect.poll(() => new URL(page.url()).hash).toContain(`selected=${id(614)}`);
-});
-
-test('ring labels warm before hover without flashing numbered placeholders', async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
-  const state = await install(page, 8, 300);
-  await page.evaluate(() => {
-    (window as any).__numberedRingLabel = false;
-    new MutationObserver(() => {
-      if (/^Record\s+\d+$/.test(document.querySelector('.ring-tooltip strong')?.textContent ?? '')) (window as any).__numberedRingLabel = true;
-    }).observe(document.body, { subtree: true, childList: true, characterData: true });
-  });
-  await clickPoint(page);
-  const second = page.locator(`.ring-member[data-record-id="${id(2)}"]`);
-  await second.hover();
-  await expect(page.locator('.ring-tooltip')).toContainText('Synthetic facility 2');
-  await expect.poll(() => page.locator(`.ring-member[data-record-id="${id(8)}"]`).getAttribute('aria-label')).toContain('Synthetic facility 8');
-  expect(state.detailRequests).toBeLessThanOrEqual(8);
-  await page.locator(`.ring-member[data-record-id="${id(8)}"]`).hover();
-  await expect(page.locator('.ring-tooltip')).toContainText('Synthetic facility 8');
-  expect(await page.evaluate(() => (window as any).__numberedRingLabel)).toBe(false);
 });

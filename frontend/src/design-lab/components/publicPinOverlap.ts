@@ -1,9 +1,9 @@
-import { PUBLIC_PIN_ID } from '../pinHoverLabels';
+import { PUBLIC_PIN_ID } from '../publicPinSummaries';
 import type { JsonMapCollection, JsonMapFeature } from './jsonMapFallback';
 
 export type OverlapMember = Readonly<{ id: string; coordinates: [number, number]; feature: JsonMapFeature }>;
 export type ScreenPoint = Readonly<{ x: number; y: number }>;
-export type RingBounds = Readonly<{ left: number; top: number; right: number; bottom: number }>;
+export type OverlapBounds = Readonly<{ left: number; top: number; right: number; bottom: number }>;
 export const OVERLAP_LAYERS = ['v1-source-pins', 'source-coordinate-points', 'approx-reference-pins', 'approx-reference-points', 'approx-reference-circles'];
 export const OVERLAP_BADGE_SOURCE = 'public-pin-stacks';
 export const OVERLAP_BADGE_LAYER = 'public-pin-stack-count';
@@ -73,58 +73,44 @@ export function collectPublicOverlap(index: PublicOverlapIndex, rendered: readon
   return [...result.values()].sort((a, b) => a.id.localeCompare(b.id));
 }
 
-export type RingPosition = ScreenPoint & Readonly<{ index: number; ring: number }>;
-export type ConcentricRingLayout = Readonly<{ positions: readonly RingPosition[]; ringCounts: readonly number[]; ringRadii: readonly number[]; radius: number }>;
-export type RingViewport = Readonly<{ bounds: RingBounds; center: ScreenPoint; usable: boolean; overflow: boolean; width: number; height: number }>;
-export const MAX_PINS_PER_RING = 12;
-const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
-
-/** Display coordinates only. At most twelve evenly spaced pins per ring.
- * Balance populations so a sparse final ring never becomes a lone outer pin. */
-export function createConcentricRingLayout(total: number, step = 44): ConcentricRingLayout {
-  const positions: RingPosition[] = [];
-  const ringCounts: number[] = [];
-  const ringRadii: number[] = [];
-  const spacing = Math.max(44, step);
-  const rings = Math.max(1, Math.ceil(total / MAX_PINS_PER_RING));
-  const baseCount = Math.floor(total / rings);
-  const remainder = total % rings;
-  // Keep a 44px target without a separate group zoom budget.
-  const firstCount = baseCount + (remainder > 0 ? 1 : 0);
-  const firstRadius = Math.max(spacing, Math.ceil(44 / (2 * Math.sin(Math.PI / Math.max(2, firstCount)))));
-  let index = 0, ring = 0;
-  while (index < total) {
-    ring++;
-    const count = baseCount + (ring <= remainder ? 1 : 0);
-    const radius = firstRadius + spacing * (ring - 1);
-    ringCounts.push(count);
-    ringRadii.push(radius);
-    const phase = ring % 2 === 0 ? Math.PI / count : 0;
-    for (let i = 0; i < count; i++) {
-      const angle = -Math.PI / 2 + i * Math.PI * 2 / count + phase;
-      positions.push({ index: index++, ring, x: Math.cos(angle) * radius, y: Math.sin(angle) * radius });
-    }
-  }
-  return { positions, ringCounts, ringRadii, radius: ringRadii.at(-1) ?? 0 };
+/** Neutral pin art shared by groups of the same size. */
+export function createOverlapBadgeImage(count: number): ImageData | null {
+  const canvas = document.createElement('canvas');
+  canvas.width = 88;
+  canvas.height = 96;
+  const context = canvas.getContext('2d');
+  if (!context) return null;
+  context.scale(2, 2);
+  context.beginPath();
+  context.moveTo(22, 47);
+  context.bezierCurveTo(16, 37, 5, 29, 5, 19);
+  context.arc(22, 19, 17, Math.PI, 0);
+  context.bezierCurveTo(39, 29, 28, 37, 22, 47);
+  context.closePath();
+  context.fillStyle = '#302e2b';
+  context.fill();
+  context.strokeStyle = '#fff8e9';
+  context.lineWidth = 2;
+  context.lineJoin = 'round';
+  context.stroke();
+  context.fillStyle = '#fff8e9';
+  context.font = `700 ${count < 1000 ? 13 : 10}px system-ui, sans-serif`;
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  context.fillText(String(count), 22, 19, 28);
+  return context.getImageData(0, 0, canvas.width, canvas.height);
 }
 
-/** Fixed rings fit completely; oversized groups use a bounded member list.
- * The caller has already excluded map controls, sheets and attribution. */
-export function ringViewport(bounds: RingBounds, anchor: ScreenPoint, radius: number): RingViewport {
-  const availableWidth = Math.max(0, bounds.right - bounds.left);
-  const availableHeight = Math.max(0, bounds.bottom - bounds.top - 52);
-  const diameter = Math.max(192, radius * 2 + 88);
-  const overflow = diameter > Math.min(760, availableWidth, 600, availableHeight);
-  const width = Math.max(0, Math.min(overflow ? 360 : diameter, availableWidth));
-  const height = Math.max(0, Math.min(overflow ? 420 : diameter, availableHeight));
-  const usable = width >= 188 && height >= (overflow ? 128 : 172);
-  const center = {
-    x: clamp(anchor.x, bounds.left + width / 2, bounds.right - width / 2),
-    y: clamp(anchor.y, bounds.top + 52 + height / 2, bounds.bottom - height / 2),
+export function overlapPanelFrame(bounds: OverlapBounds, anchor: ScreenPoint, count: number) {
+  const width = Math.max(0, Math.min(304, bounds.right - bounds.left));
+  const height = Math.max(0, Math.min(382, bounds.bottom - bounds.top));
+  const visibleHeight = Math.min(height, 52 + 48 * count);
+  const right = anchor.x + 25;
+  const preferred = right + width <= bounds.right ? right : anchor.x - 25 - width;
+  return {
+    left: Math.max(bounds.left, Math.min(preferred, bounds.right - width)),
+    top: Math.max(bounds.top, Math.min(anchor.y - 47, bounds.bottom - visibleHeight)),
+    width,
+    maxHeight: height,
   };
-  return { center, bounds: { left: center.x - width / 2, right: center.x + width / 2, top: center.y - height / 2, bottom: center.y + height / 2 }, usable, overflow, width, height };
-}
-
-export function projectRingPoint(position: ScreenPoint, center: ScreenPoint): ScreenPoint {
-  return { x: center.x + position.x, y: center.y + position.y };
 }
