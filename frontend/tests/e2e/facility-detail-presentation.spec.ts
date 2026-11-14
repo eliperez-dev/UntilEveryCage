@@ -67,7 +67,8 @@ for (const width of [1440, 375]) test(`direct evidence access and optional locat
   await panel.getByRole('link', { name: 'View full record', exact: true }).click();
   const full = page.locator('.public-record');
   await expect(full.locator('.compact-source .direct-source')).toHaveAttribute('href', row.provenance_source_url);
-  await expect(full.locator('.compact-source .direct-source')).toBeVisible();
+  await expect(full.locator('.compact-source .direct-source')).toBeHidden();
+  await full.locator('#location-heading').click();
   await expect(full.getByText('Precision', { exact: true })).toBeVisible();
   await expect(full.locator('.location-details')).not.toHaveAttribute('open');
   await expect(full.getByText('Geocoding provider', { exact: true })).toBeHidden();
@@ -86,6 +87,7 @@ for (const width of [1440, 375]) test(`direct evidence access and optional locat
   await expect(full.getByText('Government-sourced', { exact: true })).toBeHidden();
   await sourceReview.locator('summary').click();
   await expect(full.getByText('Government-sourced', { exact: true })).toBeVisible();
+  await expect(full.locator('.compact-source .direct-source')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
@@ -101,7 +103,7 @@ test('long reference-provider attributions remain readable in mobile list and de
   await expect(panel.getByText(provider,{exact:true})).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   await panel.getByRole('link',{name:'Open facility page',exact:true}).click();
-  const full=page.locator('.public-record');await full.locator('.location-details > summary').click();
+  const full=page.locator('.public-record');await full.locator('#location-heading').click();await full.locator('.location-details > summary').click();
   await expect(full.getByText(provider,{exact:true})).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
@@ -219,12 +221,12 @@ test('map detail shows one category and each activity, preserves facts, and open
   await expect(page.locator('.public-record h1')).toHaveText(row.canonical_name);
   await expect(page.locator('.location-preview')).toHaveAttribute('aria-label', 'Satellite location preview');
   const pageOrder = await page.locator('.public-record').evaluate(root => {
-    const location = root.querySelector('#location-heading');
+    const tabs = root.querySelector('.record-tabs');
     const preview = root.querySelector('.location-preview');
     const activities = root.querySelector('#activities-heading');
-    return Boolean(location && preview && activities &&
-      (activities.compareDocumentPosition(location) & Node.DOCUMENT_POSITION_FOLLOWING) &&
-      (location.compareDocumentPosition(preview) & Node.DOCUMENT_POSITION_FOLLOWING));
+    return Boolean(tabs && preview && activities &&
+      (activities.compareDocumentPosition(preview) & Node.DOCUMENT_POSITION_FOLLOWING) &&
+      (preview.compareDocumentPosition(tabs) & Node.DOCUMENT_POSITION_FOLLOWING));
   });
   expect(pageOrder).toBe(true);
   await expect(page.locator('.location-preview .map')).toHaveAttribute('data-pin-loaded', 'true');
@@ -315,6 +317,7 @@ test('city-level geocoding keeps its approximation and actual provider score in 
   await panel.getByRole('link', { name: 'View full record', exact: true }).click();
   const full = page.locator('.public-record');
   await expect(full).toContainText('Approximate location');
+  await full.locator('#location-heading').click();
   await expect(full.locator('.location-details')).not.toHaveAttribute('open', '');
   await expect(full.getByText('55, 10', { exact: true })).toBeHidden();
   await full.locator('.location-details > summary').click();
@@ -322,19 +325,22 @@ test('city-level geocoding keeps its approximation and actual provider score in 
   await expect(full.getByText('Synthetic geocoder', { exact: true })).toBeVisible();
   await expect(full.getByText('55, 10', { exact: true })).toBeVisible();
   await expect(full.getByText('Address', { exact: true })).toHaveCount(0);
-  await expect(full.locator('.location-preview')).toHaveAttribute('aria-label', 'Approximate road map preview');
+  await expect(full.locator('.location-preview')).toHaveAttribute('aria-label', 'Satellite location preview');
   const pageOrder = await full.evaluate(root => {
-    const location = root.querySelector('#location-heading');
+    const tabs = root.querySelector('.record-tabs');
     const preview = root.querySelector('.location-preview');
     const activities = root.querySelector('#activities-heading');
-    return Boolean(location && preview && activities &&
-      (activities.compareDocumentPosition(location) & Node.DOCUMENT_POSITION_FOLLOWING) &&
-      (location.compareDocumentPosition(preview) & Node.DOCUMENT_POSITION_FOLLOWING));
+    return Boolean(tabs && preview && activities &&
+      (activities.compareDocumentPosition(preview) & Node.DOCUMENT_POSITION_FOLLOWING) &&
+      (preview.compareDocumentPosition(tabs) & Node.DOCUMENT_POSITION_FOLLOWING));
   });
   expect(pageOrder).toBe(true);
   await expect(full.locator('.location-preview .map')).toHaveAttribute('data-pin-loaded', 'true');
   await expect(full.getByText('0.72 (provider score) · Medium', { exact: true })).toBeVisible();
-  await expect(full.getByRole('heading', { name: 'Location', exact: true })).toHaveCount(1);
+  await expect(full.locator('#location-heading')).toHaveText('Location');
+  await full.locator('.location-preview').getByRole('link', { name: 'Open in Map', exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`#/map\\?.*selected=${id}.*release_id=${release}`));
+  await expect(page.locator('.map-summary strong')).toHaveText(row.canonical_name);
 });
 
 test('mobile detail shares the middle-height sheet with the map and preserves scrolling and dismissal', async ({ page }) => {
@@ -488,5 +494,21 @@ test('APHIS source records load both report lists automatically and retry indepe
   await annual.getByRole('button', { name: 'Retry' }).click();
   await expect(annual.getByText('Annual report · FY2025', { exact: true })).toBeVisible();
   await expect(annual.getByRole('link', { name: 'Open report', exact: true })).toBeVisible();
+  expect(kinds).toEqual(['annual_reports', 'inspections', 'annual_reports']);
+  const reports = page.getByRole('tab', { name: 'Reports', exact: true });
+  await expect(reports).toHaveAttribute('aria-selected', 'true');
+  await reports.focus();
+  await reports.press('ArrowRight');
+  const connections = page.getByRole('tab', { name: 'Connections', exact: true });
+  await expect(connections).toBeFocused();
+  await expect(page.getByRole('tabpanel', { name: 'Connections' })).toBeVisible();
+  await expect(annual).not.toBeVisible();
+  await connections.press('End');
+  const details = page.getByRole('tab', { name: 'Details', exact: true });
+  await expect(details).toBeFocused();
+  await expect(page.getByRole('tabpanel', { name: 'Details' })).toBeVisible();
+  await details.press('Home');
+  await expect(reports).toBeFocused();
+  await expect(annual.getByText('Annual report · FY2025', { exact: true })).toBeVisible();
   expect(kinds).toEqual(['annual_reports', 'inspections', 'annual_reports']);
 });

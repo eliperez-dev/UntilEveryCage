@@ -68,7 +68,16 @@ export function reduceLabState(state: LabState, action: LabAction): LabState {
     case 'direction': return { ...state, direction: action.value };
     case 'scenario': return { ...state, scenario: action.value };
     case 'query': return { ...state, query: action.value, selectedId: null, listOpen: true };
-    case 'search': return { ...state, query: action.value.query, filters: { categories: unique(action.value.filters.categories), precisions: unique(action.value.filters.precisions), countries: unique(action.value.filters.countries), sources: unique(action.value.filters.sources), activities: unique(action.value.filters.activities) }, searchScope: action.value.scope === undefined ? state.searchScope : action.value.scope, selectedId: null, aggregateMemberIds: null, listOpen: true };
+    case 'search': return {
+      ...state,
+      query: action.value.query,
+      filters: { categories: unique(action.value.filters.categories), precisions: unique(action.value.filters.precisions), countries: unique(action.value.filters.countries), sources: unique(action.value.filters.sources), activities: unique(action.value.filters.activities) },
+      searchScope: action.value.scope === undefined ? state.searchScope : action.value.scope,
+      sourceId: action.value.sourceId === undefined ? state.sourceId : action.value.sourceId,
+      selectedId: null,
+      aggregateMemberIds: null,
+      listOpen: true,
+    };
     case 'scope': return isSearchScope(action.value) ? action.preserveWorkspace
       ? { ...state, searchScope: action.value, listOpen: action.value !== null || state.listOpen }
       : { ...state, searchScope: action.value, selectedId: null, aggregateMemberIds: null, listOpen: true } : state;

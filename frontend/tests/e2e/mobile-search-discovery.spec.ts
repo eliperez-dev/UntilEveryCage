@@ -18,7 +18,7 @@ const rows = Array.from({length:132}, (_, index) => ({
   taxonomy_display_category:categories[index % 6], taxonomy_primary_categories:[categories[index % 6]], taxonomy_leaf_activities:[], taxonomy_assignments:[],
 }));
 
-async function install(page:Page) {
+async function install(page:Page, busyOnceFor?: string) {
   await page.route('https://**/*', route => process.env.UEC_MOBILE_CAPTURE_DIR && /^https:\/\/(?:tile\.openstreetmap\.org|server\.arcgisonline\.com)\//.test(route.request().url()) ? route.continue() : route.abort());
   const identity = {profile:'official',release_id:release,manifest_sha256:'a'.repeat(64),suppression_generation:1};
   const meta = {profile:'official',release_id:release,ruleset_version:'synthetic-rules',release_created_at:stamp};
@@ -27,6 +27,11 @@ async function install(page:Page) {
     const request = route.request(), url = new URL(request.url()), path = url.pathname;
     const params = Object.fromEntries(url.searchParams);
     calls.push({path,method:request.method(),params});
+    if (busyOnceFor && params.q === busyOnceFor &&
+      (path === '/api/v2/locations' || path === '/api/v2/map/matches') &&
+      calls.filter(call => call.path === path && call.params.q === busyOnceFor).length === 1) {
+      return route.fulfill({status:503,json:{error:{code:'search_busy',message:'Search is busy. Try again shortly.'}}});
+    }
     const filtered = rows.filter(row => (!params.q || row.canonical_name.toLowerCase().includes(String(params.q).toLowerCase())) &&
       (!params.category_keys || String(params.category_keys).split(',').includes(row.category!)) &&
       (!params.display_precision || String(params.display_precision).split(',').includes(row.display_precision)) &&
@@ -34,7 +39,10 @@ async function install(page:Page) {
       (!params.radius_km || row.latitude !== null) && (!params.us_state || row.latitude !== null));
     let body:unknown;
     if(path === '/api/v2/releases/manifest') body = {api_version:'v2',data:{...identity,manifest:{}}};
-    else if(path === '/api/v2/locations') body = {api_version:'v2',data:filtered.slice(params.cursor ? 100 : 0,params.cursor ? 200 : 100),meta:{...meta,total_count:filtered.length,next_cursor:filtered.length > 100 && !params.cursor ? 'synthetic-page-two' : null,coverage_note:'Synthetic interface checks.'}};
+    else if(path === '/api/v2/locations') {
+      const start = Number(params.cursor ?? 0), end = start + Number(params.limit ?? 100);
+      body = {api_version:'v2',data:filtered.slice(start,end),meta:{...meta,total_count:filtered.length,next_cursor:end < filtered.length ? String(end) : null,coverage_note:'Synthetic interface checks.'}};
+    }
     else if(path.startsWith('/api/v2/locations/')) body = {api_version:'v2',data:rows.find(row => row.facility_id === path.split('/').pop()),meta};
     else if(path === '/api/v2/map/feed') body = {api_version:'v2',data:{type:'FeatureCollection',features:rows.filter(row => row.latitude !== null).map(row => ({type:'Feature',id:row.facility_id,geometry:{type:'Point',coordinates:[row.longitude,row.latitude]},properties:{facility_id:row.facility_id,source_id:row.provenance_source_id,category_key:row.category,category_keys:[row.category],precision:row.display_precision,weight:1}}))},meta:{...identity,feature_count:130,public_record_count:132,unmapped_count:2,release_label:'Synthetic area fixture',dataset_version:'synthetic'}};
     else if(path === '/api/v2/map/matches') body = {api_version:'v2',data:{facility_ids:filtered.filter(row => row.latitude !== null).map(row => row.facility_id)},meta:{...identity,total_count:filtered.length,mapped_count:filtered.filter(row => row.latitude !== null).length}};
@@ -65,7 +73,8 @@ for (const width of [320, 390, 1440]) {
     expect(filterBox.height).toBeGreaterThanOrEqual(44);
 
     await query.fill('e');
-    await expect(results).toBeHidden();
+    if (width === 1440) await expect(results).toBeVisible();
+    else await expect(results).toBeHidden();
     await query.press('Enter');
     await expect(page.getByRole('status').filter({ hasText: 'Enter at least 3 letters or numbers.' })).toBeVisible();
     expect(calls.filter(call => call.params.q)).toHaveLength(0);
@@ -77,7 +86,7 @@ for (const width of [320, 390, 1440]) {
       await expect(phoneSearch.getByRole('button', { name: 'Cancel' })).toBeVisible();
       await expect(page.locator('.map-stage')).toHaveAttribute('inert', '');
       await expect(page.locator('.field-masthead')).toHaveAttribute('inert', '');
-      await expect(filters).toBeHidden();
+      await expect(filters).toBeVisible();
       await page.evaluate(() => {
         const viewport = window.visualViewport!;
         // Phone keyboards shrink the visual viewport without resizing the layout viewport.
@@ -153,13 +162,13 @@ test.describe('touch search', () => {
   });
 });
 
-test('filters stage changes and use readable activity labels', async ({ page }) => {
+test('filters apply immediately and use readable activity labels', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 812 });
   const calls = await install(page);
   await open(page);
   const count = () => calls.filter(call => call.path === '/api/v2/locations').length;
   await expect.poll(count).toBeGreaterThan(0);
-  const filters = page.getByRole('button', { name: 'Filters', exact: true });
+  const filters = page.getByRole('button', { name: /^Filters/ });
   const panel = page.getByRole('region', { name: 'Filters', exact: true });
   const slaughter = panel.getByRole('checkbox', { name: 'Slaughter', exact: true });
   const before = count();
@@ -168,12 +177,38 @@ test('filters stage changes and use readable activity labels', async ({ page }) 
   expect(await slaughter.locator('..').evaluate(node => getComputedStyle(node).fontSize)).toBe('15px');
   await slaughter.check();
   await expect(panel.getByText('Location precision', { exact: true })).toHaveCount(0);
-  await panel.getByRole('button', { name: 'Close', exact: true }).click();
-  expect(count()).toBe(before);
-  await filters.click();
-  await expect(slaughter).not.toBeChecked();
-  await slaughter.check();
-  await panel.getByRole('button', { name: 'Apply filters', exact: true }).click();
   await expect.poll(count).toBe(before + 1);
-  await expect(page.locator('.mobile-record-list [data-record-id]')).toHaveCount(22);
+  await expect(panel).toBeVisible();
+  await expect(panel.getByRole('button', { name: 'Apply filters', exact: true })).toHaveCount(0);
+  await panel.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(page.locator('#field-record-list [data-record-id]')).toHaveCount(20);
+  await page.getByRole('button', { name: 'Load more (20 of 22)' }).click();
+  await expect(page.locator('#field-record-list [data-record-id]')).toHaveCount(22);
+  await filters.click();
+  await expect(slaughter).toBeChecked();
+  await panel.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Search across public release records' }).click();
+  const focusedSearch = page.getByRole('region', { name: 'Search records', exact: true });
+  await expect(focusedSearch.getByRole('button', { name: 'Remove filter: Slaughter' })).toBeVisible();
+  await expect(focusedSearch.locator('[data-record-id]')).toHaveCount(20);
+  await filters.click();
+  await panel.getByRole('button', { name: 'Clear filters' }).click();
+  await expect(slaughter).not.toBeChecked();
+});
+
+test('a busy search retries the list before asking for map matches', async ({ page }) => {
+  const term = 'Synthetic facility 00';
+  const calls = await install(page, term);
+  await open(page);
+  const query = page.getByRole('combobox', { name: 'Search across public release records' });
+  await query.fill(term);
+  await query.press('Enter');
+  await expect.poll(() => calls.filter(call => call.params.q === term).map(call => call.path)).toEqual([
+    '/api/v2/locations',
+    '/api/v2/locations',
+    '/api/v2/map/matches',
+    '/api/v2/map/matches',
+  ]);
+  await expect(page.locator('#field-record-list [data-record-id]')).toHaveCount(9);
+  await expect(page.getByText(/Search unavailable|Matching map locations could not be loaded/)).toHaveCount(0);
 });

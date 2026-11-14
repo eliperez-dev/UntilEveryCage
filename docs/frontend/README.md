@@ -192,9 +192,10 @@ API schemas own supported fields. They are not additional roadmaps.
   source, and precision. View full record opens the release-pinned page for
   location methods and coordinates, source evidence, and connections.
   Search results keep their existing scope and pagination. Filters include
-  Activity category, Country, and Source. Checkbox selections are staged until
-  Apply filters. Clear filters clears the draft, and closing discards changes
-  that have not been applied. Search text is preserved when filters are applied.
+  Activity category, Country, and Source. Each checkbox applies immediately.
+  Clear filters resets the selections, and closing keeps the applied filters.
+  Opening search shows the current filters and a paginated first set of records,
+  even without search text.
 
 ## Map
 
@@ -345,9 +346,11 @@ API schemas own supported fields. They are not additional roadmaps.
   Do not repeat the promoted range inside Source facts. Processing monthly
   volume remains in Source facts.
 
-- Full page order: facility name and chain-icon Copy facility link action;
-  Classification; APHIS reports where applicable; Connections when available;
-  Location with the single-record map; collapsed Source facts and Source and review.
+- Full pages start with the facility name, location, classification summary and
+  satellite preview. The preview opens the same release on the map with the
+  facility selected. Reports, Connections and Details use tabs, with Reports
+  available for applicable APHIS facilities. Location information, detailed
+  classification, Source facts and Source and review remain under Details.
   The full page keeps released annual counts and dated inspection evidence in
   the Report details disclosure within APHIS reports.
   A compact source/date line near the title links directly to the already
@@ -587,8 +590,8 @@ that metadata and translate only when rendered. Generated Swagger references and
 strings may remain English. Extend the existing dictionary rather than
 creating another localization path or rewriting approved English copy.
 
-The actual map search entry has a thin theme-ink outline, white in dark mode and
-dark in light mode, with its stronger focus outline retained. Public geometry
+The map search entry opens the results workspace and uses theme ink to mark
+keyboard focus. Public geometry
 provider metadata accepts source-reference attributions up to 500 characters;
 all other provenance bounds and the closed field allowlist remain in force.
 

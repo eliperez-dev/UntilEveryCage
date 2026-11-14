@@ -2535,7 +2535,7 @@
   }
   .pin-hover-label { position:absolute; z-index:3; pointer-events:none; transform:translate(-50%,calc(-100% - var(--hover-pin-height))); width:max-content; max-width:min(16rem,calc(100% - 20px)); padding:.45rem .65rem; box-sizing:border-box; background:var(--panel,#1c1c1c); color:var(--ink,#f2f0e8); border:1px solid color-mix(in srgb,var(--line,#494949) 60%,transparent); border-radius:8px; box-shadow:0 4px 14px #0003; font-size:.78rem; line-height:1.3; }
   .pin-hover-label.below { transform:translate(-50%,12px); }
-  .pin-hover-label strong { display:-webkit-box; -webkit-line-clamp:2; line-clamp:2; -webkit-box-orient:vertical; max-height:2.7em; overflow:hidden; overflow-wrap:anywhere; text-overflow:ellipsis; font-weight:600; }
+  .pin-hover-label strong { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; max-height:2.7em; overflow:hidden; overflow-wrap:anywhere; text-overflow:ellipsis; font-weight:600; }
   .pin-hover-label span { display:block; margin-top:.18rem; color:var(--muted,#b9b9b1); font-size:.7rem; }
   .terrain-status { top:6.8rem; left:.65rem; transform:none; }
   .feature-list-toggle,

@@ -8,7 +8,7 @@ const responseSchema = z.object({
   meta: z.object({ profile: z.literal('official'), release_id: z.string(), manifest_sha256: z.string().regex(/^[a-f0-9]{64}$/), suppression_generation: z.number().int().nonnegative(), total_count: z.number().int().nonnegative(), mapped_count: z.number().int().nonnegative() }).strict(),
 }).strict();
 export class PublicMapMatchesError extends Error {
-  constructor(message = 'Matching map locations could not be loaded. Try again.') { super(message); this.name = 'PublicMapMatchesError'; }
+  constructor(message = 'Matching map locations could not be loaded. Try again.', readonly code?: string) { super(message); this.name = 'PublicMapMatchesError'; }
 }
 export type PublicMapMatches = Readonly<{ facilityIds: readonly string[]; totalCount: number; mappedCount: number }>;
 
@@ -29,7 +29,13 @@ export class PublicMapMatchesRepository {
       if (signal?.aborted || (error instanceof DOMException && error.name === 'AbortError')) throw error;
       throw new PublicMapMatchesError();
     }
-    if (!response.ok) throw new PublicMapMatchesError();
+    if (!response.ok) {
+      if (response.status === 429 || response.status === 503) {
+        const body = await response.json().catch(() => null);
+        if (body?.error?.code === 'search_busy') throw new PublicMapMatchesError(undefined, 'search_busy');
+      }
+      throw new PublicMapMatchesError();
+    }
     let raw: unknown;
     try { raw = await response.json(); } catch { throw new PublicMapMatchesError(); }
     const parsed = responseSchema.safeParse(raw);

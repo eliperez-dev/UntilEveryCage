@@ -31,8 +31,7 @@ describe('public record connections', () => {
     expect(component).toContain('<p class="empty">{tr(\'None\', $language)}</p>');
   });
 
-  it('omits empty public sections while keeping active filters and other states available', () => {
-    expect(publicRecord).toContain('{profile} hideWhenEmpty');
+  it('keeps availability and empty states separate from active filters', () => {
     expect(component).toContain('!hideWhenEmpty || loading || error || rows.length || hasFilters || nextCursor');
     expect(component).toContain("kind !== 'all' || confidence !== 'all' || (!loading && !error && rows.length > 0)");
     expect(component).toContain('<p class="empty">{tr(\'None\', $language)}</p>');

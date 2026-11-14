@@ -10,6 +10,7 @@
   import { FacetsRepository } from '../api/FacetsRepository';
   import { PublicMapMatchesRepository } from '../api/PublicMapMatchesRepository';
   import { canSearchRecords, publicSearchFilters } from '../features/search/powerSearch';
+  import { retrySearchBusy } from '../features/search/retrySearchBusy';
   import { PublicReleaseRepository, type PublicReleaseIdentity } from '../api/PublicReleaseRepository';
   import { TestReleaseRepository, type CandidateFacets } from '../api/TestReleaseRepository';
   import { TestReleaseDetailRepository } from '../api/TestReleaseDetailRepository';
@@ -17,7 +18,7 @@
   import { CATEGORY_PRESENTATIONS } from '../features/locations/categoryPresentation';
   import { publicReleaseLabel } from '../features/locations/releasePresentation';
   import type { PublicMapFeed } from '../api/PublicMapFeedRepository';
-  import { selectDesignLabDataMode, shouldScheduleListLoad } from './dataMode';
+  import { PUBLIC_SEARCH_PAGE_SIZE, selectDesignLabDataMode, shouldScheduleListLoad } from './dataMode';
   import Field from './variants/field/Field.svelte';
   import PreviewMasthead from '../app/PreviewMasthead.svelte';
   import { createMapResumeGuard, releaseIdentityKey } from './mapResume';
@@ -250,10 +251,12 @@
     } else pageLoading = true;
     try {
       if (mode === 'public-release') {
-        if (!$publicReleaseId) return;
+        const releaseId = $publicReleaseId;
+        if (!releaseId) return;
         const requestedIdentity = $publicReleaseIdentity;
         const filters = publicSearchFilters({ ...labState, query });
-        const page = await publicLocationRepository.list('official', { ...filters, cursor: reset ? undefined : nextCursor ?? undefined, limit: 100 }, controller.signal, $publicReleaseId);
+        const pageFilters = { ...filters, cursor: reset ? undefined : nextCursor ?? undefined, limit: PUBLIC_SEARCH_PAGE_SIZE };
+        const page = await retrySearchBusy(() => publicLocationRepository.list('official', pageFilters, controller.signal, releaseId), controller.signal);
         if (controller.signal.aborted || requestedIdentity !== $publicReleaseIdentity) return;
         const mapped = page.locations.map(mapPublicLocation);
         apiRecords = reset ? mapped : [...new Map([...apiRecords, ...mapped].map(record => [record.id, record])).values()];
@@ -338,6 +341,7 @@
     if (!dataActive) return;
     const listKey = `${labState.query}\u0000${sourceId ?? ''}\u0000${labState.filters.categories.join(',')}\u0000${labState.filters.precisions.join(',')}\u0000${labState.filters.countries.join(',')}\u0000${labState.filters.sources.join(',')}\u0000${labState.filters.activities.join(',')}\u0000${JSON.stringify(labState.searchScope)}\u0000${mode === 'public-release' ? $publicReleaseIdentity ?? '' : ''}`;
     if (shouldScheduleListLoad(mode, $publicReleaseId, observedListKey, listKey)) {
+      const initial = observedListKey === undefined;
       observedListKey = listKey;
       if (searchTimer) clearTimeout(searchTimer);
       listAbort?.abort();
@@ -346,8 +350,7 @@
       $dataError = '';
       if (!apiRecords.length) $dataStatus = 'loading';
       const query = labState.query;
-      if (mode === 'public-release') untrack(() => void loadPage(query, true));
-      else searchTimer = setTimeout(() => void loadPage(query, true), 180);
+      searchTimer = setTimeout(() => void loadPage(query, true), mode === 'public-release' && initial ? 0 : 180);
     }
   });
 
@@ -384,15 +387,21 @@
     // This comparison is transient request coordination, never a search cache.
     const requestKey = JSON.stringify([identity.releaseId, identity.manifestSha256, identity.suppressionGeneration, filters, mapMatchesAttempt]);
     if (requestKey === observedMatchKey) return;
-    observedMatchKey = requestKey;
     mapMatchesSearchKey = null; mapMatchesTotalCount = null; mapMatchesMappedCount = null;
     if (matchesTimer) clearTimeout(matchesTimer);
     matchesAbort?.abort();
+    mapMatchingIds = []; mapMatchesStatus = 'loading'; mapMatchesError = '';
+    // List and map matching use the same search predicates. Give the visible
+    // list the first slot and coalesce rapid filter edits before either request.
+    if (listRefreshing) {
+      observedMatchKey = undefined;
+      return;
+    }
+    observedMatchKey = requestKey;
     const controller = new AbortController();
     matchesAbort = controller;
-    mapMatchingIds = []; mapMatchesStatus = 'loading'; mapMatchesError = '';
     matchesTimer = setTimeout(() => {
-      void publicMapMatchesRepository.get(filters, identity, controller.signal).then(matches => {
+      void retrySearchBusy(() => publicMapMatchesRepository.get(filters, identity, controller.signal), controller.signal).then(matches => {
         if (controller.signal.aborted || matchesAbort !== controller || $publicReleaseManifestIdentity?.releaseId !== identity.releaseId || $publicReleaseManifestIdentity.manifestSha256 !== identity.manifestSha256 || $publicReleaseManifestIdentity.suppressionGeneration !== identity.suppressionGeneration) return;
         mapMatchingIds = matches.facilityIds;
         mapMatchesSearchKey = JSON.stringify([identity.releaseId, identity.manifestSha256, identity.suppressionGeneration, filters]);
@@ -470,6 +479,8 @@
     if (mode === 'public-release') {
       summaryAbort = new AbortController();
       const invalidate = () => {
+        if (searchTimer) clearTimeout(searchTimer);
+        if (matchesTimer) clearTimeout(matchesTimer);
         $publicReleaseId = null; $publicReleaseManifestIdentity = null; $publicReleaseIdentity = null; $publicMapMeta = null;
         apiRecords = []; nextCursor = null; candidateTotalCount = null; detailRecord = null; aggregateMemberRecords = [];
         mapMatchingIds = []; mapMatchesStatus = 'loading'; observedMatchKey = undefined;

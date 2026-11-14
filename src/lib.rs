@@ -5280,9 +5280,11 @@ async fn get_v2_locations_response(
     let effective_offset = if cursor.is_some() { 0 } else { offset };
     let filtered_discovery = !params.facets_are_unfiltered() || map_matches;
     let _discovery_permit = if filtered_discovery {
-        match PUBLIC_DISCOVERY_LIMITER.try_acquire() {
-            Ok(permit) => Some(permit),
-            Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "search_busy", "Search is busy. Try again shortly."),
+        // Superseded requests and the map projection can briefly occupy both
+        // slots. Limit both the number of queries and the wait for a slot.
+        match tokio::time::timeout(Duration::from_secs(2), PUBLIC_DISCOVERY_LIMITER.acquire()).await {
+            Ok(Ok(permit)) => Some(permit),
+            _ => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "search_busy", "Search is busy. Try again shortly."),
         }
     } else {
         None
@@ -5323,7 +5325,7 @@ async fn get_v2_locations_response(
         }
     };
     let settings = if filtered_discovery {
-        "SET LOCAL jit = off; SET LOCAL statement_timeout = '8s'"
+        "SET LOCAL jit = off; SET LOCAL statement_timeout = '12s'"
     } else {
         "SET LOCAL jit = off"
     };

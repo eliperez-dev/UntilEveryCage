@@ -16,6 +16,27 @@ const REFERENCES = {
   taxonomy: { label: 'Classification methodology', href: '#/about' },
 } as const;
 type ReferenceKey = keyof typeof REFERENCES;
+const ukFoodSources = new Set(['fsa_approved_establishments', 'fss_approved_establishments']);
+const euFoodSources = new Set([
+  'be.locations', 'de.locations', 'es.locations', 'fr.dgal.section-i', 'fr.dgal.section-ii',
+  'it.853-2004', 'pl.giw.approved-food',
+]);
+function categoryReference(key: ReferenceKey, sourceId: string): ReferenceKey {
+  switch (key) {
+    case 'products':
+      return euFoodSources.has(sourceId) ? key : 'taxonomy';
+    case 'food':
+    case 'slaughter':
+    case 'meatRequirements':
+      return ukFoodSources.has(sourceId) ? key : 'taxonomy';
+    case 'awa':
+    case 'definitions':
+    case 'register':
+      return sourceId === 'us.aphis' ? key : 'taxonomy';
+    default:
+      return key;
+  }
+}
 type Template = Readonly<{ text: string; references: readonly ReferenceKey[] }>;
 const entry = (text: string, ...references: ReferenceKey[]): Template => ({ text, references });
 
@@ -204,9 +225,12 @@ export function classificationExplanation(record: ClassificationRecord, translat
     }
   }
   const templates = keys.map(key => CLASSIFICATION_EXPLANATIONS[key]);
-  const references: Array<{ label: string; href: string }> = [...new Set(templates.flatMap(template => template.references))].map(key => REFERENCES[key]);
-  if (activityFact && !references.some(reference => reference.href === REFERENCES.products.href) && products.length) references.push(REFERENCES.products);
-  if (activityFact && !references.some(reference => reference.href === REFERENCES.food.href) && species.length) references.push(REFERENCES.food);
+  const referenceKeys = templates.flatMap(template => template.references);
+  if (activityFact && products.length) referenceKeys.push('products');
+  if (activityFact && species.length) referenceKeys.push('food');
+  const references: Array<{ label: string; href: string }> = [
+    ...new Set(referenceKeys.map(key => categoryReference(key, record.sourceId ?? ''))),
+  ].map(key => REFERENCES[key]);
   let fact = '';
   if (record.sourceId === 'us.aphis' && keys.some(key => ['aphis_r', 'aphis_f', 'aphis_g', 'aphis_v', 'research'].includes(key))) {
     const reports = (record.sourceFacts?.aphisAnnualReports ?? []).filter(report => /^\d{4}$/.test(report.fiscalYear))

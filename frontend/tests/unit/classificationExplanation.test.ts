@@ -57,7 +57,7 @@ describe('classification explanations', () => {
 
   it('uses affirmative structured slaughter flags, without inferring a particular killing method', () => {
     const sourceFacts={speciesSlaughtered:{young_chicken_slaughter:'Yes',beef_cow_slaughter:'No',duck_slaughter:false}};
-    const result=classificationExplanation({category:'slaughter',sourceFacts});
+    const result=classificationExplanation({sourceId:'fsa_approved_establishments',category:'slaughter',sourceFacts});
     expect(result.keys).toEqual(['poultry_slaughter']);
     expect(result.text).toContain('The source lists slaughter of chickens.');
     expect(result.text.split(/\.\s|\.$/).filter(Boolean)).toHaveLength(2);
@@ -72,6 +72,13 @@ describe('classification explanations', () => {
     const record={category:'processing_and_preparation',sourceFacts:{processingActivities:{poultry_processing:'unknown',meat_cutting:'false'}}};
     expect(classificationExplanation(record).keys).toEqual(['processing_and_preparation']);
     expect(classificationExplanation({...record,sourceFacts:{processingActivities:{poultry_processing:'Y'}}}).keys).toEqual(['poultry_processing']);
+  });
+
+  it('uses jurisdiction-specific definition links only for matching sources', () => {
+    const processing = { category: 'processing_and_preparation', sourceFacts: { processingActivities: { poultry_processing: true } } };
+    expect(classificationExplanation({ ...processing, sourceId: 'mx.locations' }).references.map(item => item.href)).toEqual(['#/about']);
+    expect(classificationExplanation({ ...processing, sourceId: 'it.853-2004' }).references[0]?.href).toContain('eur-lex.europa.eu');
+    expect(classificationExplanation({ category: 'research_and_animal_use', sourceId: 'another.registry' }).references.map(item => item.href)).toEqual(['#/about']);
   });
 
   it('keeps source-code meanings scoped to the documented source', () => {

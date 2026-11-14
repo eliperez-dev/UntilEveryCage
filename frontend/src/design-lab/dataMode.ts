@@ -1,4 +1,5 @@
 export type DesignLabDataMode = 'synthetic' | 'real-preview' | 'candidate-preview' | 'public-release';
+export const PUBLIC_SEARCH_PAGE_SIZE = 20;
 
 export function selectDesignLabDataMode(isDevelopment: boolean, serverMode: string | null, privatePreview = false): DesignLabDataMode {
   if (!isDevelopment) return 'public-release';
