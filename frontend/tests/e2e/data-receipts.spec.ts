@@ -112,16 +112,17 @@ test('an explicit public record stays public under the combined preview marker',
   await expect(page.getByText('PRIVATE DEVELOPMENT PREVIEW · NOT PUBLICATION-APPROVED',{exact:true})).toHaveCount(0);
 });
 
-test('public records with no connections show None without relationship filters', async ({ page }) => {
+test('public records omit the connections section after an empty lookup', async ({ page }) => {
   await isolate(page);
   await page.route(`**/api/v2/locations/${id}?**`, route => route.fulfill({ contentType:'application/json', body:JSON.stringify({ api_version:'v2', data:publicWire, meta:{ release_id:'synthetic-release', ruleset_version:'synthetic-rules', profile:'official', release_created_at:'2026-01-01T00:00:00Z' } }) }));
   await page.route('**/api/v2/graph/connections?**', route => route.fulfill({ contentType:'application/json', body:JSON.stringify({ api_version:'v2-graph-v1', data:[], meta:{ release_id:'synthetic-release', ruleset_version:'synthetic-rules', profile:'official', limit:20, page_max:100, next_cursor:null, public_projection:true } }) }));
+  const emptyLookup = page.waitForResponse(response => new URL(response.url()).pathname === '/api/v2/graph/connections');
   await page.goto(`./#/records/${id}?profile=official&release_id=synthetic-release`);
-  await expect(page.getByRole('region', { name:'Public record' }).getByRole('heading', { name:'Synthetic public record' })).toBeVisible();
-  const connections = page.getByRole('region', { name:'Connections' });
-  await expect(connections.getByText('None', { exact:true })).toBeVisible();
-  await expect(connections.getByLabel('Relationship')).toHaveCount(0);
-  await expect(connections.getByLabel('Confidence')).toHaveCount(0);
+  const record = page.getByRole('region', { name: 'Public record' });
+  await expect(record.getByRole('heading', { name: 'Synthetic public record' })).toBeVisible();
+  await emptyLookup;
+  await expect(record.getByRole('region', { name: 'Connections' })).toHaveCount(0);
+  await expect(record.getByLabel('Relationship')).toHaveCount(0);
 });
 
 test('Downloads scope and community warning are explicit and FAQ remains compact on mobile', async ({ page }) => {

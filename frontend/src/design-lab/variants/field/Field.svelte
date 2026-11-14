@@ -176,6 +176,8 @@
   const workspaceHeight = writable(0);
   const detailMapPreview = writable(false);
   const mobileLayout = writable(false);
+  let phoneSearchOpen = $state(false);
+  let visualViewport = $state({ top: 0, height: 0 });
   const resultsSheetSnap = writable<SheetSnap>('middle');
   const detailSheetSnap = writable<SheetSnap>('middle');
   const mobileFiltersOpen = writable(false);
@@ -213,8 +215,11 @@
     const measure = () => {
       mapWidth = node.clientWidth;
       mobileLayout.set(matchMedia('(max-width:40rem)').matches);
-      const viewportBottom = window.visualViewport ? window.visualViewport.offsetTop + window.visualViewport.height : window.innerHeight;
-      const available = Math.max(0, viewportBottom - node.getBoundingClientRect().top);
+      const viewport = window.visualViewport;
+      const top = viewport?.offsetTop ?? 0;
+      const height = viewport?.height ?? window.innerHeight;
+      if (visualViewport.top !== top || visualViewport.height !== height) visualViewport = { top, height };
+      const available = Math.max(0, top + height - node.getBoundingClientRect().top);
       workspaceHeight.set(available);
     };
     const observer = new ResizeObserver(measure);
@@ -361,6 +366,9 @@
   let searchFocused = $state(false);
   const committedQuery = $derived(mapState.query);
   $effect(() => { searchDraft = committedQuery; });
+  $effect(() => {
+    if (!active || !$mobileLayout) phoneSearchOpen = false;
+  });
   const flightTarget = writable<{
     id: number;
     longitude: number;
@@ -388,7 +396,7 @@
   let placeSearchModule: Promise<typeof import("../../../features/placeSearch/placeSearch")> | undefined;
   // The gazetteer is lazy and local: typing a place never contacts a geocoder.
   $effect(() => {
-    const query = (publicMap && searchFocused ? searchDraft : committedQuery).trim();
+    const query = (publicMap && (searchFocused || phoneSearchOpen) ? searchDraft : committedQuery).trim();
     placesExpanded.set(false);
     placeSuggestions.set([]);
     if (!active || (!publicMap && !mapState.listOpen) || query.length < 2 || aggregateOpen) {
@@ -630,6 +638,11 @@
       void tick().then(() => document.querySelector<HTMLInputElement>("#field-search")?.focus());
       return;
     }
+    if (event.key === 'Escape' && phoneSearchOpen) {
+      event.preventDefault();
+      cancelPhoneSearch();
+      return;
+    }
     if (event.key === "Escape" && $autocompleteOpen) {
       event.preventDefault(); autocompleteOpen.set(false); return;
     }
@@ -714,8 +727,42 @@
   }
   function applyParsedSearch() {
     const parsed = parseSearch(publicMap ? searchDraft : mapState.query, mapState.filters, candidateFacets, $language, publicMap);
+    if (phoneSearchOpen && parsed.query === searchDraft.trim() && !parsed.scope) {
+      const city = $placeSuggestions.find(place => place.name.localeCompare(parsed.query, $language, { sensitivity: 'base' }) === 0);
+      if (city) {
+        searchNear(city);
+        return;
+      }
+    }
     if (parsed.filters.countries !== mapState.filters.countries && mapState.searchScope?.kind === 'state' && !parsed.scope) parsed.scope = null;
     submitSearch(parsed);
+  }
+  function closePhoneSearch() {
+    phoneSearchOpen = false;
+    autocompleteOpen.set(false);
+    document.querySelector<HTMLInputElement>('#field-search')?.blur();
+  }
+  function cancelPhoneSearch() {
+    searchDraft = committedQuery;
+    shortQuery = false;
+    closePhoneSearch();
+    get(searchToggle)?.focus({ preventScroll: true });
+  }
+  function focusSearch() {
+    searchFocused = true;
+    autocompleteOpen.set(true);
+    suggestionIndex.set(-1);
+    if (publicMap) {
+      phoneSearchOpen = $mobileLayout;
+      if (phoneSearchOpen) mobileFiltersOpen.set(false);
+    } else if (mapState.selectedId) openSearchResults();
+    else if (!$mobileLayout) openMobileSearch();
+  }
+  function blurSearch(event: FocusEvent) {
+    searchFocused = false;
+    if (!phoneSearchOpen && (!(event.relatedTarget instanceof HTMLElement) || !event.relatedTarget.closest('.search-autocomplete'))) {
+      autocompleteOpen.set(false);
+    }
   }
   function submitSearch(selection: ReturnType<typeof parseSearch>) {
     if (publicMap && selection.query && !canSearchRecords(selection.query)) {
@@ -728,11 +775,12 @@
     detailMapPreview.set(false);
     dispatch({ type: 'search', value: selection });
     searchDraft = selection.query;
-    autocompleteOpen.set(false);
-    if (publicMap) document.querySelector<HTMLInputElement>('#field-search')?.blur();
+    if (publicMap) closePhoneSearch();
+    else autocompleteOpen.set(false);
   }
   function applySuggestion(suggestion: SearchSuggestion | PlaceSuggestion) {
-    if (suggestion.kind === 'place') selectPlace(suggestion);
+    if (suggestion.kind === 'place' && phoneSearchOpen) searchNear(suggestion);
+    else if (suggestion.kind === 'place') selectPlace(suggestion);
     else submitSearch(applySearchSuggestion(suggestion, mapState.filters, candidateFacets, $language));
   }
   function editSearch(value: string) {
@@ -744,7 +792,7 @@
   }
   function clearSearchInput() {
     editSearch('');
-    if (mapState.query) submitSearch({ query: '', filters: mapState.filters });
+    if (!phoneSearchOpen && mapState.query) submitSearch({ query: '', filters: mapState.filters });
     void tick().then(() => document.querySelector<HTMLInputElement>('#field-search')?.focus());
   }
   function clearSearch() {
@@ -774,7 +822,10 @@
     const fromFilter = Boolean(focused?.closest('.scope-filter'));
     const fromChip = Boolean(focused?.closest('.scope-chip'));
     scopeError.set(''); dispatch({type:'scope',value:null,preserveWorkspace:true});
-    if(fromFilter || fromChip) void tick().then(() => document.querySelector<HTMLElement>(fromFilter ? '.filters > summary' : publicMap ? '#field-search' : '.map-navigation .area-button')?.focus({preventScroll:true}));
+    if (fromFilter || fromChip) void tick().then(() => {
+      const target = fromFilter ? '.filters > summary' : publicMap ? '.map-toolbar .search-toggle' : '.map-navigation .area-button';
+      document.querySelector<HTMLElement>(target)?.focus({ preventScroll: true });
+    });
   }
   function runRadiusSearch() {
     openSearchResults();
@@ -828,13 +879,11 @@
     dispatch({ type:'filters', value:{ ...mapState.filters, categories } });
   }
   function searchNear(place: PlaceSuggestion) {
-    openSearchResults();
     scopeError.set('');
-    dispatch({ type: 'search', value: { query: '', filters: mapState.filters } });
-    dispatch({ type: 'scope', value: { kind: 'radius', label: place.label, latitude: place.latitude, longitude: place.longitude, radiusKm: $nearbyRadius } });
-    dispatch({ type: 'results' });
+    submitSearch({ query: '', filters: mapState.filters, scope: {
+      kind: 'radius', label: place.label, latitude: place.latitude, longitude: place.longitude, radiusKm: $nearbyRadius,
+    } });
     flyTo(place.longitude, place.latitude, 10);
-    autocompleteOpen.set(false);
   }
 
 </script>
@@ -846,10 +895,15 @@
             <label for="field-search">{tr(mode === "public-release" ? 'Search across public release records' : 'Search across preview records', $language)}</label>
             {#if publicMap || !$mobileLayout}<button class="search-toggle" bind:this={$searchToggle} type={publicMap ? 'submit' : 'button'} aria-label={tr($detailMapPreview ? 'View facility details' : 'Search map', $language)} aria-controls="field-record-list" onclick={publicMap ? undefined : openMobileSearch}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg></button>{:else}<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg>{/if}
             <input id="field-search" type="search" role="combobox" aria-autocomplete="list" aria-haspopup="listbox" maxlength="120" enterkeyhint="search" placeholder={tr(publicMap || !workspaceOpen ? 'Search map' : 'Name, activity, source, or place', $language)}
-              value={publicMap ? searchDraft : mapState.query} aria-invalid={shortQuery || undefined} aria-describedby={shortQuery ? 'search-query-hint' : undefined} aria-activedescendant={$autocompleteOpen && suggestions[$suggestionIndex] ? `field-suggestion-${$suggestionIndex}` : undefined} aria-expanded={$autocompleteOpen && !shortQuery && suggestions.length > 0} aria-controls={$autocompleteOpen && !shortQuery && suggestions.length > 0 ? 'search-suggestions' : undefined} onfocus={() => { searchFocused = true; if (!publicMap && mapState.selectedId) openSearchResults(); else if (!publicMap && !$mobileLayout) openMobileSearch(); autocompleteOpen.set(true); suggestionIndex.set(-1); }} onblur={(event) => { searchFocused = false; if (!(event.relatedTarget instanceof HTMLElement) || !event.relatedTarget.closest('.search-autocomplete')) autocompleteOpen.set(false); }} oninput={(event) => editSearch(event.currentTarget.value)} onkeydown={(event) => {
+              value={publicMap ? searchDraft : mapState.query} aria-invalid={shortQuery || undefined} aria-describedby={shortQuery ? 'search-query-hint' : undefined} aria-activedescendant={$autocompleteOpen && !shortQuery && suggestions[$suggestionIndex] ? `field-suggestion-${$suggestionIndex}` : undefined} aria-expanded={$autocompleteOpen && !shortQuery && suggestions.length > 0} aria-controls={$autocompleteOpen && !shortQuery && suggestions.length > 0 ? 'search-suggestions' : undefined} onfocus={focusSearch} onblur={blurSearch} oninput={(event) => editSearch(event.currentTarget.value)} onkeydown={(event) => {
                 if (event.isComposing) return;
-                if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && suggestions.length) { event.preventDefault(); autocompleteOpen.set(true); suggestionIndex.update(index => index === -1 ? (event.key === 'ArrowDown' ? 0 : suggestions.length - 1) : (index + (event.key === 'ArrowDown' ? 1 : -1) + suggestions.length) % suggestions.length); }
-                if (event.key === 'Enter' && $autocompleteOpen && suggestions[$suggestionIndex]) { event.preventDefault(); applySuggestion(suggestions[$suggestionIndex]!); }
+                if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && suggestions.length && !shortQuery) {
+                  event.preventDefault();
+                  autocompleteOpen.set(true);
+                  suggestionIndex.update(index => index === -1 ? (event.key === 'ArrowDown' ? 0 : suggestions.length - 1) : (index + (event.key === 'ArrowDown' ? 1 : -1) + suggestions.length) % suggestions.length);
+                  void tick().then(() => document.getElementById(`field-suggestion-${$suggestionIndex}`)?.scrollIntoView({ block: 'nearest' }));
+                }
+                if (event.key === 'Enter' && $autocompleteOpen && !shortQuery && suggestions[$suggestionIndex]) { event.preventDefault(); applySuggestion(suggestions[$suggestionIndex]!); }
               }} />
             {#if publicMap && searchDraft}<button class="mobile-clear-query" type="button" aria-label={tr('Clear search',$language)} onclick={clearSearchInput}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>{/if}
             </div>
@@ -857,7 +911,7 @@
           {#if shortQuery}<p class="search-autocomplete query-hint" id="search-query-hint" role="status">{tr('Enter at least 3 letters or numbers.', $language)}</p>
           {:else if $autocompleteOpen && suggestions.length > 0}<div id="search-suggestions" class="search-autocomplete" role="listbox" aria-label={tr('Search suggestions', $language)}>
             {#each suggestions as suggestion, index (`${suggestion.kind}:${suggestion.kind === 'place' ? suggestion.id : suggestion.value}`)}
-              <button id={`field-suggestion-${index}`} role="option" aria-selected={$suggestionIndex === index} tabindex="-1" type="button" onpointerdown={(event) => event.preventDefault()} onclick={() => applySuggestion(suggestion)}><strong>{suggestion.label}</strong><small>{tr(suggestion.kind === 'country' ? 'Country' : suggestion.kind === 'state' ? 'State' : suggestion.kind === 'place' ? 'City' : suggestion.kind === 'category' ? 'Category' : 'Source', $language)}</small></button>
+              <button id={`field-suggestion-${index}`} role="option" aria-selected={$suggestionIndex === index} tabindex="-1" type="button" onmousedown={(event) => event.preventDefault()} onclick={() => applySuggestion(suggestion)}><strong>{suggestion.label}</strong><small>{tr(suggestion.kind === 'country' ? 'Country' : suggestion.kind === 'state' ? 'State' : suggestion.kind === 'place' ? 'City' : suggestion.kind === 'category' ? 'Category' : 'Source', $language)}</small></button>
             {/each}
           </div>{/if}
 
@@ -896,9 +950,9 @@
   {/if}
 {/snippet}
 <section class="field-view">
-  {#if active}<PreviewMasthead privateTools={mode === "real-preview" || mode === "candidate-preview"} publicReleaseLabel={mode === "candidate-preview" ? $candidatePreviewLabel : publicReleaseLabel(publicMapMeta?.releaseId, publicMapMeta?.releaseLabel)} releaseDescription={mode === "candidate-preview" && $candidatePreviewLabel ? 'Configured private candidate release.' : null} {releaseOptions} selectedReleaseId={mode === "public-release" ? selectedPublicReleaseId : null} {...(onreleasechange ? { onreleasechange } : {})} current="map" {mapHref} {databaseHref} debugEnabled={$debugEnabled} ondebugchange={(enabled) => { debugEnabled.set(enabled); if (!enabled) debugOpen.set(false); }} mapControlsReady={$mapControlsReady} mapDisplaySettings={$mapDisplaySettings} onmapdisplaychange={changeMapDisplay} {mapTools} />{/if}
+  {#if active}<div class="field-masthead" inert={phoneSearchOpen}><PreviewMasthead privateTools={mode === "real-preview" || mode === "candidate-preview"} publicReleaseLabel={mode === "candidate-preview" ? $candidatePreviewLabel : publicReleaseLabel(publicMapMeta?.releaseId, publicMapMeta?.releaseLabel)} releaseDescription={mode === "candidate-preview" && $candidatePreviewLabel ? 'Configured private candidate release.' : null} {releaseOptions} selectedReleaseId={mode === "public-release" ? selectedPublicReleaseId : null} {...(onreleasechange ? { onreleasechange } : {})} current="map" {mapHref} {databaseHref} debugEnabled={$debugEnabled} ondebugchange={(enabled) => { debugEnabled.set(enabled); if (!enabled) debugOpen.set(false); }} mapControlsReady={$mapControlsReady} mapDisplaySettings={$mapDisplaySettings} onmapdisplaychange={changeMapDisplay} {mapTools} /></div>{/if}
   <div class="workspace" use:measureWorkspace class:public-map={publicMap} class:workspace-open={workspaceOpen && !detailCollapsed} class:detail-active={showingDetail} class:debug-active={$debugOpen} class:mobile-discovery={$mobileLayout&&mode==='public-release'} style:--mobile-sheet-height={`${$sheetHeight}px`} style:--visual-workspace-height={`${$workspaceHeight}px`} style:--workspace-width={$railWidth === null ? `${$layoutTuning.panelWidthPercent}vw` : `${$railWidth}px`} style:--result-row-padding={`${$layoutTuning.rowPadding}px`} style:--result-type-scale={$layoutTuning.typeScale}>
-    <main class="map-stage" aria-label={tr('Investigative map field', $language)}>
+    <main class="map-stage" inert={phoneSearchOpen} aria-label={tr('Investigative map field', $language)}>
     {#if mode === "synthetic" && mapState.scenario === "loading"}<div class="status" role="status">
         {tr('Loading records…', $language)}
       </div>{:else if mode === "synthetic" && mapState.scenario === "error"}<div
@@ -986,7 +1040,7 @@
           <strong>{recordNamePresentation(selected, label => tr(label, $language))}</strong>
           <p>{[categoryName(selected.category), selected.locality, selected.country ? countryName(selected.country) : ''].filter(Boolean).join(' · ')}</p>
           {#if popupSource}<p class="summary-source" title={popupSource}>{popupSource}</p>{/if}
-          <p>{tr(precisionPresentation(selected.precision), $language)}</p>
+          {#if selected.precision !== 'approximate'}<p>{tr(precisionPresentation(selected.precision), $language)}</p>{/if}
         {:else}
           <p role="status">{tr('Loading record…', $language)}</p>
         {/if}
@@ -996,13 +1050,18 @@
     {/if}
     </main>
     <div class="map-tool-shell">
-      <div class="map-toolbar" class:toolbar-hidden={!publicMap && $mobileLayout && $workspaceHeight - $sheetHeight < 100}>
+      <div class="map-toolbar" class:phone-search={phoneSearchOpen} class:toolbar-hidden={!publicMap && $mobileLayout && $workspaceHeight - $sheetHeight < 100}
+        style:--search-top={phoneSearchOpen ? `${visualViewport.top}px` : undefined}
+        style:--search-height={phoneSearchOpen ? `${visualViewport.height}px` : undefined}>
         <div class="desktop-search search-tools">{#if publicMap || !$mobileLayout}{@render searchInput()}{/if}</div>
-      {#if publicMap}<button class="public-filter-button" type="button" aria-expanded={$mobileFiltersOpen} aria-controls="public-map-filters" onclick={openMobileFilters}>{tr('Filters', $language)}{#if retainedFilterCount} <span>{retainedFilterCount}</span>{/if}</button>{/if}
+      {#if publicMap}
+        <button class="public-filter-button" type="button" hidden={phoneSearchOpen} aria-expanded={$mobileFiltersOpen} aria-controls="public-map-filters" onclick={openMobileFilters}>{tr('Filters', $language)}{#if retainedFilterCount} <span>{retainedFilterCount}</span>{/if}</button>
+        {#if phoneSearchOpen}<button class="phone-search-cancel" type="button" onmousedown={(event) => event.preventDefault()} onclick={cancelPhoneSearch}>{tr('Cancel', $language)}</button>{/if}
+      {/if}
       {#if active && !publicMap}<MapNavigation ready={$mapControlsReady} basemap={mapState.basemap} pitch={$mapCameraPitch} onbasemap={(value) => dispatch({type:'basemap',value})} onviewtoggle={toggleMapCameraView} />{/if}
       </div>
     {#if publicMap && $mobileFiltersOpen}<div class="public-filter-panel" id="public-map-filters"><MobileSearchFilters filters={mapState.filters} sourceId={mapState.sourceId} facets={candidateFacets} {facetsStatus} onapply={applyMobileFilters} onclose={closeMobileFilters}/></div>{/if}
-    <aside class="results" inert={$debugOpen && $mobileLayout} aria-hidden={$debugOpen && $mobileLayout ? true : undefined} class:rail-collapsed={!workspaceOpen} class:map-preview={detailCollapsed} class:behind-filters={publicMap && $mobileFiltersOpen} class:typing={publicMap && searchFocused} style:--results-height={$resultsSheetSnap === 'expanded' ? '88%' : '55%'} id="field-record-list" aria-label={tr('Search, filters, and results', $language)}>
+    <aside class="results" inert={phoneSearchOpen || ($debugOpen && $mobileLayout)} aria-hidden={$debugOpen && $mobileLayout ? true : undefined} class:rail-collapsed={!workspaceOpen} class:map-preview={detailCollapsed} class:behind-filters={publicMap && $mobileFiltersOpen} class:typing={phoneSearchOpen} style:--results-height={$resultsSheetSnap === 'expanded' ? '88%' : '55%'} id="field-record-list" aria-label={tr('Search, filters, and results', $language)}>
       {#if !publicMap}<div class="mobile-sheet-control"><MobileSearchSheet open={workspaceOpen && !detailCollapsed} snap={mapState.selectedId ? $detailSheetSnap : $resultsSheetSnap} detail={Boolean(mapState.selectedId)} preview={Boolean(mapState.selectedId)} available={$workspaceHeight} middlePercent={$layoutTuning.mobileSheetPercent ?? 60} expandedPercent={$layoutTuning.mobileExpandedPercent ?? 90} onchange={changeMobileSheet} onheight={height => sheetHeight.set(height)} /></div>{/if}
       <button class="rail-resize" type="button" aria-label={tr('Resize search panel', $language)} title={tr('Use left and right arrows to resize', $language)} onpointerdown={resizeRail} onkeydown={resizeRailKey}></button>
       <header hidden={Boolean(mapState.selectedId) || !workspaceOpen}><strong>{tr('Search records', $language)}</strong><button type="button" aria-label={tr('Close workspace', $language)} onclick={closeWorkspace}>×</button></header>
@@ -1124,7 +1183,7 @@
           >Open member records</button
         >
       </details>{/if}
-        {#if $placeSuggestions.length > 0}
+        {#if !phoneSearchOpen && (!$mobileLayout || !publicMap) && $placeSuggestions.length > 0}
           <section class="place-suggestions" aria-label={tr('Places', $language)}>
             <div class="results-heading"><strong>{tr('Places', $language)}</strong><label class="radius-choice">{tr('Radius', $language)} <select bind:value={$nearbyRadius}>{#each [5,25,50,100] as km}<option value={km}>{nearbyRadiusLabel(km)}</option>{/each}</select></label>{#if $placeSuggestions.length > 1}<button class="places-expand" type="button" aria-label={tr('Places', $language)} aria-expanded={$placesExpanded} onclick={() => placesExpanded.update(value => !value)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d={$placesExpanded ? 'm6 15 6-6 6 6' : 'm6 9 6 6 6-6'}/></svg></button>{/if}</div>
             <ol>
@@ -1202,10 +1261,10 @@
   .public-map .map-toolbar { z-index: 7; gap: 0; }
   .public-map .desktop-search { position: relative; }
   .public-map .desktop-search .search { margin: 0; padding: 0; outline: none; }
-  .public-map .desktop-search .search:focus-within { outline: 2px solid var(--focus); outline-offset: -2px; }
+  .public-map .desktop-search .search:focus-within { box-shadow: inset 0 -2px var(--focus); }
   .public-map .desktop-search .query-box { display: flex; align-items: center; width: 100%; min-width: 0; padding: 0; border: 0; outline: 0; }
   .public-map .desktop-search .query-box input { flex: 1; min-width: 0; padding-inline: .25rem; outline: 0; }
-  .public-map .desktop-search .search-autocomplete { top: 100%; left: 0; right: 0; max-height: min(20rem, max(2.75rem, calc(var(--visual-workspace-height) - 4rem))); }
+  .public-map .desktop-search .search-autocomplete { top: 100%; left: 0; right: 0; max-height: min(20rem, max(2.75rem, calc(var(--visual-workspace-height) - 4rem))); overscroll-behavior: contain; }
   .public-map .desktop-search .query-hint { margin: 0; padding: .65rem; }
   .public-filter-button { min-height: 44px; padding: 0 .85rem; border: 0; border-left: 1px solid var(--line); background: var(--panel); color: var(--ink); font: inherit; cursor: pointer; }
   .public-filter-button:hover, .public-filter-button[aria-expanded="true"] { background: var(--panel-hover); }
@@ -1229,7 +1288,44 @@
   @media (max-width:40rem) {
     .public-map .map-toolbar { inset: .65rem .65rem auto; width: auto; max-width: none; transform: none; }
     .public-map .desktop-search { display: grid; }
-    .public-map .desktop-search .search input { font-size: 16px; }
+    .public-map .desktop-search .search input { appearance: none; font-size: 16px; }
+    .public-map .map-toolbar.phone-search {
+      position: fixed;
+      inset: var(--search-top, 0px) 0 auto;
+      z-index: 10;
+      height: var(--search-height, 100dvh);
+      align-items: flex-start;
+      padding: max(.65rem, env(safe-area-inset-top)) max(.65rem, env(safe-area-inset-right)) 0 max(.65rem, env(safe-area-inset-left));
+      border: 0;
+      box-shadow: none;
+    }
+    .phone-search .desktop-search { position: static; }
+    .public-map .phone-search .desktop-search .search {
+      background: var(--panel-hover);
+      border-radius: .25rem;
+      overflow: hidden;
+    }
+    .public-map .phone-search .desktop-search .search-autocomplete {
+      inset: calc(max(.65rem, env(safe-area-inset-top)) + 3.25rem) max(.65rem, env(safe-area-inset-right)) env(safe-area-inset-bottom) max(.65rem, env(safe-area-inset-left));
+      max-height: none;
+      padding: 0;
+      border: 0;
+      box-shadow: none;
+    }
+    .public-map .phone-search .desktop-search .query-hint { padding: .6rem .7rem; }
+    .phone-search .search-autocomplete button { min-height: 48px; border-bottom: 1px solid var(--line); }
+    .phone-search .search-autocomplete strong { min-width: 0; font-size: .9375rem; overflow-wrap: anywhere; }
+    .phone-search-cancel {
+      flex: 0 0 auto;
+      min-height: 44px;
+      min-width: 44px;
+      padding: 0 .6rem;
+      border: 0;
+      color: var(--ink);
+      background: var(--panel);
+      font: inherit;
+      cursor: pointer;
+    }
     .workspace.public-map .map-tool-shell .results.typing { display: none; }
     .workspace.public-map .map-tool-shell .results { height: min(var(--results-height), max(0px, calc(var(--visual-workspace-height) - 4.25rem))); }
     .public-map .public-filter-panel { inset: 3.75rem .65rem auto; width: auto; max-width: none; max-height: calc(100% - 4.4rem); }
@@ -1258,6 +1354,7 @@
     font: .875rem/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
   }
   .field-view * { box-sizing: border-box; }
+  .field-masthead { flex: 0 0 auto; }
   .field-view :global(.masthead) { position: relative; z-index: 6; flex: 0 0 auto; }
   .map-stage { position: relative; flex: 1 1 auto; min-height: 0; padding: 0; }
   .map-stage :global(.map-surface), .map-stage :global(.map-host) { position: absolute; inset: 0; }
@@ -1497,13 +1594,6 @@
   .mobile-clear-query,.mobile-results-heading{display:none}
   @media(max-width:40rem){
     .mobile-discovery .results>header{display:none}
-    .mobile-discovery .search{height:44px;margin:0 .75rem;padding:0;gap:.45rem;outline:0}
-    .mobile-discovery .search:focus-within{outline:0}
-    .mobile-discovery .query-box{display:flex;align-items:center;flex:1;min-width:0;height:44px;padding-left:.6rem;border:1px solid var(--ink);border-radius:3px}
-    .mobile-discovery .query-box:focus-within{outline:1px solid var(--ink);outline-offset:1px}
-    .mobile-discovery .query-box>svg{width:15px;height:15px}
-    .mobile-discovery .query-box input{min-width:0;height:42px;font-size:16px;padding:0 .4rem}
-    .mobile-discovery .query-box input:focus-visible{outline:0}
     .mobile-discovery .query-box input::-webkit-search-cancel-button{appearance:none}
     .mobile-clear-query{display:grid;place-items:center;flex:none;width:44px;height:44px;border:0;background:none;color:var(--muted);padding:0}
     .mobile-clear-query svg{width:12px;height:12px;stroke:currentColor}
@@ -1511,7 +1601,6 @@
     .mobile-results-heading strong{font:500 .75rem/1.35 system-ui,sans-serif}
     .mobile-results-heading button{display:flex;align-items:center;gap:.3rem;max-width:48%;min-width:44px;min-height:44px;padding:.25rem 0;border:0;background:none;color:var(--muted);font:inherit;font-size:.625rem;text-align:right}
     .mobile-results-heading svg{width:13px;height:13px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5}
-    .mobile-discovery .search-autocomplete{top:44px;left:.75rem;right:.75rem}
     .mobile-discovery .search-error{font-size:.75rem;margin:.45rem .8rem}
     .mobile-discovery .list-empty{font-size:.75rem;margin:.8rem}
   }

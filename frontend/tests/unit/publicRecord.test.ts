@@ -11,7 +11,7 @@ describe('public record detail facts', () => {
     expect(component).toContain('Establishment ID');
     expect(component).not.toContain('Source volume categories');
     expect(component).toContain(".join(', ')");
-    expect(component).toContain('record.sourceFacts.speciesSlaughtered');
+    expect(component).toContain('affirmativeEntries(sourceFacts?.speciesSlaughtered)');
     expect(component).toContain('<ClassificationSummary {record} />');
   });
 

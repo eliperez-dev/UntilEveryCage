@@ -73,18 +73,33 @@ for (const width of [320, 390, 1440]) {
     await query.fill('California');
     await expect(page.getByRole('option', { name: 'California State' })).toBeVisible();
     if (width !== 1440) {
+      const phoneSearch = page.locator('.phone-search');
+      await expect(phoneSearch.getByRole('button', { name: 'Cancel' })).toBeVisible();
+      await expect(page.locator('.map-stage')).toHaveAttribute('inert', '');
+      await expect(page.locator('.field-masthead')).toHaveAttribute('inert', '');
+      await expect(filters).toBeHidden();
       await page.evaluate(() => {
         const viewport = window.visualViewport!;
         // Phone keyboards shrink the visual viewport without resizing the layout viewport.
-        Object.defineProperty(viewport, 'height', { configurable: true, value: 400 });
+        Object.defineProperty(viewport, 'height', { configurable: true, value: 230 });
+        Object.defineProperty(viewport, 'offsetTop', { configurable: true, value: 96 });
+        viewport.dispatchEvent(new Event('scroll'));
         viewport.dispatchEvent(new Event('resize'));
       });
       const california = page.getByRole('option', { name: 'California State' });
       await expect(california).toBeInViewport();
+      await expect(query).toBeFocused();
+      await expect(query).toHaveValue('California');
+      await expect.poll(() => phoneSearch.boundingBox()).toMatchObject({ y: 96, height: 230 });
       await expect(results).toBeHidden();
+      await phoneSearch.getByRole('button', { name: 'Cancel' }).click();
+      await expect(filters).toBeVisible();
+      await expect(query).toHaveValue('');
+      await expect(page.locator('.map-stage')).not.toHaveAttribute('inert', '');
       await page.evaluate(() => {
         const viewport = window.visualViewport!;
         Reflect.deleteProperty(viewport, 'height');
+        Reflect.deleteProperty(viewport, 'offsetTop');
         viewport.dispatchEvent(new Event('resize'));
       });
     }
@@ -115,6 +130,28 @@ for (const width of [320, 390, 1440]) {
       .toEqual(['/api/v2/locations', '/api/v2/map/matches']);
   });
 }
+
+test.describe('touch search', () => {
+  test.use({ viewport: { width: 390, height: 812 }, hasTouch: true, isMobile: true });
+  test.skip(({ browserName }) => browserName === 'firefox', 'Firefox does not support Playwright mobile emulation.');
+
+  test('a phone city suggestion searches nearby and returns to the map', async ({ page }) => {
+    const calls = await install(page);
+    await open(page);
+    const query = page.getByRole('combobox', { name: 'Search across public release records' });
+    await query.tap();
+    await query.fill('San Diego');
+    const suggestion = page.getByRole('option', { name: /^San Diego, California, United States City$/ });
+    await expect(suggestion).toBeVisible();
+    expect(calls.some(call => call.params.q || call.params.radius_km)).toBe(false);
+    await suggestion.tap();
+    await expect(page.locator('.phone-search')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Clear map area: San Diego, California, United States · 16 miles' })).toBeVisible();
+    await expect.poll(() => calls.filter(call => call.params.radius_km === '25').map(call => call.path).sort())
+      .toEqual(['/api/v2/locations', '/api/v2/map/matches']);
+    expect(calls.some(call => call.params.q)).toBe(false);
+  });
+});
 
 test('filters stage changes and use readable activity labels', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 812 });

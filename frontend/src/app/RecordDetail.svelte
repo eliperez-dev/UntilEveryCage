@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
   import { language, tr } from './language';
+  import AphisReports from './AphisReports.svelte';
   import RecordConnections from './RecordConnections.svelte';
   import LocationPreview from './LocationPreview.svelte';
   import { externalMapLink } from '../features/locations/externalMapLink';
@@ -370,6 +371,17 @@
   {#if nameWithheld}
     <dl class="identity"><div><dt>{tr('Name', $language)}</dt><dd>{tr('Name not shown, privacy review pending', $language)}</dd></div></dl>
   {/if}
+  {#if publicRelease && publicReleaseId && id}
+    <AphisReports facilityId={id} releaseId={publicReleaseId} profile="official" sourceId={sourceId ?? undefined} {sourceFacts} />
+    {#if presentation === 'rail'}
+      <details class="connections-disclosure" open={connectionsState.count > 0 || connectionsState.error}>
+        <summary>{tr('Connections', $language)}{#if connectionsState.loading}<span class="connection-state">{tr('Loading…', $language)}</span>{/if}</summary>
+        <RecordConnections facilityId={id} releaseId={publicReleaseId} rail onstatechange={updateConnectionsState} />
+      </details>
+    {:else}
+      <RecordConnections facilityId={id} releaseId={publicReleaseId} hideWhenEmpty />
+    {/if}
+  {/if}
   <section aria-labelledby="location-heading">
     <h2 id="location-heading">{tr('Location', $language)}</h2>
     <dl>
@@ -410,13 +422,6 @@
         {#if sourceFacts.aphisAnnualReports?.length}{#each sourceFacts.aphisAnnualReports as report (report.fiscalYear)}<div><dt>{tr('FY ', $language)}{report.fiscalYear} {tr('reported animals', $language)}</dt><dd><ul>{#each report.speciesCounts as species (species.species)}<li>{sourceFactLabel(species.species)}: {annualSpeciesCount(species.count)}</li>{/each}</ul>{#if safeHttps(report.sourceUrl)}<a href={safeHttps(report.sourceUrl) ?? ''} target="_blank" rel="noopener noreferrer">{tr('Source report', $language)}</a>{/if}</dd></div>{/each}{/if}
         {#if sourceFacts.aphisDatedInspections?.length}{#each sourceFacts.aphisDatedInspections as inspection (inspection.inspectionDate)}<div><dt>{tr('APHIS inspection', $language)}</dt><dd>{inspection.inspectionDate}{#if safeHttps(inspection.sourceUrl)} <a href={safeHttps(inspection.sourceUrl) ?? ''} target="_blank" rel="noopener noreferrer">{tr('Source record', $language)}</a>{/if}</dd></div>{/each}{/if}
       </dl>
-    </svelte:element>
-  {/if}
-
-  {#if publicRelease && publicReleaseId && id}
-    <svelte:element this={presentation === 'rail' ? 'details' : 'div'} class="connections-disclosure" open={presentation === 'rail' && (connectionsState.count > 0 || connectionsState.error)}>
-    {#if presentation === 'rail'}<summary>{tr('Connections', $language)}{#if connectionsState.loading}<span class="connection-state">{tr('Loading…', $language)}</span>{/if}</summary>{/if}
-    <RecordConnections facilityId={id} releaseId={publicReleaseId} sourceId={sourceId ?? undefined} sourceFacts={sourceFacts} rail={presentation === 'rail'} onstatechange={presentation === 'rail' ? updateConnectionsState : undefined} />
     </svelte:element>
   {/if}
 

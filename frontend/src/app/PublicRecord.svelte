@@ -6,6 +6,7 @@
   import { mapHrefFromParams, safeMapHref, serializeRoute } from './routeState';
   import { precisionPresentation } from '../features/locations/precisionPresentation';
   import { publicReleaseLabel } from '../features/locations/releasePresentation';
+  import AphisReports from './AphisReports.svelte';
   import RecordConnections from './RecordConnections.svelte';
   import CategoryBadge from '../features/locations/CategoryBadge.svelte';
   import ClassificationSummary from '../features/locations/ClassificationSummary.svelte';
@@ -77,6 +78,9 @@
   const slaughterRangeText = $derived(slaughterRanges(record?.sourceFacts?.derivedSourceVolumeRanges).map(range => formattedRangeLocalized(range) ? `${formattedRangeLocalized(range)} ${tr('animals', $language)}` : null).filter(Boolean).join(', '));
   const slaughterCodebooks = $derived([...new Set(slaughterRanges(record?.sourceFacts?.derivedSourceVolumeRanges).map(range => { try { const url=new URL(range.sourceCodebookUrl); return url.protocol === 'https:' ? url.href : null; } catch { return null; } }).filter((url):url is string=>Boolean(url)))]);
   const processingRanges = (ranges: readonly DerivedSourceVolumeRange[] | undefined) => ranges?.filter(range => range.unit === 'pounds' && range.period === 'month') ?? [];
+  const sourceFacts = $derived(record?.sourceFacts);
+  const slaughteredSpecies = $derived(affirmativeEntries(sourceFacts?.speciesSlaughtered));
+  const processingRangeText = $derived(processingRanges(sourceFacts?.derivedSourceVolumeRanges).map(formattedRangeLocalized).filter(Boolean).map(range => `${range} ${tr('pounds/month', $language)}`).join(', '));
   const annualSpeciesCount = (count: number) => new Intl.NumberFormat($language).format(count);
   const recordLink = $derived(`${window.location.origin}${window.location.pathname}${serializeRoute({kind:'record',facilityId:id,profile,...(currentRelease ? {releaseId:currentRelease} : {}),returnMapHref})}`);
   const openMapHref = $derived(record && record.lat !== null && record.lon !== null ? (() => {
@@ -100,14 +104,37 @@
 <svelte:head><title>{record ? recordNamePresentation(record, label => tr(label, $language)) : tr('Record', $language)} · Until Every Cage</title></svelte:head>
 <section class="public-record" aria-label={tr('Public record', $language)}>
   {#if profile === 'community'}<p class="warning"><strong>{tr("Unreviewed community claim: not verified by Until Every Cage.", $language)}</strong> {tr("Privacy screening is not factual review or project approval. Community counts are separate.", $language)}</p>{/if}
-  {#if busy}<p role="status">{tr('Loading record…', $language)}</p>{:else if error}<h1>{tr("Record unavailable", $language)}</h1><p role="alert">{tr(error, $language)}</p><button type="button" onclick={() => retry += 1}>{tr("Retry", $language)}</button><p><a href="#/database">{tr("Browse records", $language)}</a></p>{:else if record}<h1>{recordNamePresentation(record, label => tr(label, $language))} <button class="share" type="button" aria-label={tr('Copy facility link', $language)} title={tr('Copy facility link', $language)} onclick={copyRecordLink}><svg aria-hidden="true" viewBox="0 0 24 24">{#if copyFeedback === 'copied'}<path d="m5 12 4 4L19 6"/>{:else if copyFeedback === 'failed'}<path d="M6 6l12 12M18 6 6 18"/>{:else}<path d="M10 13a5 5 0 0 0 7.1 0l3-3A5 5 0 0 0 13 2.9l-1.7 1.7m2.7 6.4a5 5 0 0 0-7.1 0l-3 3A5 5 0 0 0 11 21.1l1.7-1.7"/>{/if}</svg></button><span class="sr-only" role="status" aria-live="polite">{copyFeedback === 'copied' ? tr('Link copied', $language) : copyFeedback === 'failed' ? tr('Could not copy facility link', $language) : ''}</span></h1>
+  {#if busy}<p role="status">{tr('Loading record…', $language)}</p>{:else if error}<h1>{tr("Record unavailable", $language)}</h1><p role="alert">{tr(error, $language)}</p><button type="button" onclick={() => retry += 1}>{tr("Retry", $language)}</button><p><a href="#/database">{tr("Browse records", $language)}</a></p>{:else if record}
+    <h1 class="record-heading" aria-labelledby="public-record-name">
+      <span id="public-record-name">{recordNamePresentation(record, label => tr(label, $language))}</span>
+      <button class="share" type="button" aria-label={tr('Copy facility link', $language)} title={tr('Copy facility link', $language)} onclick={copyRecordLink}><svg aria-hidden="true" viewBox="0 0 24 24">{#if copyFeedback === 'copied'}<path d="m5 12 4 4L19 6"/>{:else if copyFeedback === 'failed'}<path d="M6 6l12 12M18 6 6 18"/>{:else}<path d="M10 13a5 5 0 0 0 7.1 0l3-3A5 5 0 0 0 13 2.9l-1.7 1.7m2.7 6.4a5 5 0 0 0-7.1 0l-3 3A5 5 0 0 0 11 21.1l1.7-1.7"/>{/if}</svg></button>
+      <span class="sr-only" role="status" aria-live="polite">{copyFeedback === 'copied' ? tr('Link copied', $language) : copyFeedback === 'failed' ? tr('Could not copy facility link', $language) : ''}</span>
+    </h1>
+    {#if record.source || directSourceUrl || sourceDate}<p class="compact-source">{#if directSourceUrl}<a class="direct-source" href={directSourceUrl} target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer"><span>{record.source || tr('Source', $language)}</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6m0-6L10 14M10 4H4v16h16v-6"/></svg><span class="sr-only"> ({tr('opens in a new tab', $language)})</span></a>{:else if record.source}<span>{record.source}</span>{/if}{#if sourceDate}<span>{record.source || directSourceUrl ? ' · ' : ''}{tr(sourceObserved ? 'Observed' : 'Retrieved', $language)} <time datetime={sourceDate} title={sourceDate}>{shortDate(sourceDate)}</time></span>{/if}</p>{/if}
     <section class="classification-overview" aria-labelledby="activities-heading">
-      <h2 id="activities-heading" class="sr-only">{tr('Activities and classification', $language)}</h2>
+      <h2 id="activities-heading">{tr('Classification', $language)}</h2>
       <div class="record-category"><CategoryBadge {record} /></div>
       <ClassificationSummary {record} />
       {#if slaughterRangeText}<section class="slaughter-estimate" aria-label={tr('Estimated animals slaughtered (last 360 days)', $language)}><p>{tr('Estimated animals slaughtered (last 360 days)', $language)}</p><strong>{slaughterRangeText}</strong>{#each slaughterCodebooks as href}<a href={href} target="_blank" rel="noopener noreferrer">{tr('Source codebook', $language)}</a>{/each}</section>{/if}
     </section>
-    {#if record.source || directSourceUrl || sourceDate}<p class="compact-source">{#if directSourceUrl}<a class="direct-source" href={directSourceUrl} target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer"><span>{record.source || tr('Source', $language)}</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6m0-6L10 14M10 4H4v16h16v-6"/></svg><span class="sr-only"> ({tr('opens in a new tab', $language)})</span></a>{:else if record.source}<span>{record.source}</span>{/if}{#if sourceDate}<span>{record.source || directSourceUrl ? ' · ' : ''}{tr(sourceObserved ? 'Observed' : 'Retrieved', $language)} <time datetime={sourceDate} title={sourceDate}>{shortDate(sourceDate)}</time></span>{/if}</p>{/if}
+    <AphisReports facilityId={record.id} releaseId={currentRelease} {profile} sourceId={record.sourceId} {sourceFacts}>
+      {#if sourceFacts?.aphisAnnualReports?.length || sourceFacts?.aphisDatedInspections?.length}
+        <details class="report-facts">
+          <summary>{tr('Report details', $language)}</summary>
+          <dl>
+            {#each sourceFacts.aphisAnnualReports ?? [] as report (report.fiscalYear)}
+              {@const href = safeHttps(report.sourceUrl)}
+              <div><dt>{tr('FY', $language)}{report.fiscalYear} {tr('reported animals', $language)}</dt><dd><ul>{#each report.speciesCounts as species (species.species)}<li>{sourceFlagLabel(species.species)}: {annualSpeciesCount(species.count)}</li>{/each}</ul>{#if href}<a href={href} target="_blank" rel="noopener noreferrer">{tr('Source report', $language)}</a>{/if}</dd></div>
+            {/each}
+            {#each sourceFacts.aphisDatedInspections ?? [] as inspection (inspection.inspectionDate)}
+              {@const href = safeHttps(inspection.sourceUrl)}
+              <div><dt>{tr('APHIS inspection', $language)}</dt><dd>{inspection.inspectionDate}{#if href} <a href={href} target="_blank" rel="noopener noreferrer">{tr('Source record', $language)}</a>{/if}</dd></div>
+            {/each}
+          </dl>
+        </details>
+      {/if}
+    </AphisReports>
+    <RecordConnections facilityId={record.id} releaseId={currentRelease} {profile} hideWhenEmpty />
     <section aria-labelledby="location-heading">
       <h2 id="location-heading">{tr('Location', $language)}</h2>
       <dl>
@@ -131,31 +158,23 @@
       </p>{/if}
     </section>
     {#if record.lat !== null && record.lon !== null}<LocationPreview latitude={record.lat} longitude={record.lon} precision={record.evidence?.displayPrecision ?? 'unmapped'} category={record.taxonomy?.primaryCategories[0] ?? record.category} />{/if}
-    {#if record.sourceFacts}
-      <section class="source-facts" aria-labelledby="source-facts-heading">
-        <h2 id="source-facts-heading">{tr('Source facts', $language)}</h2>
+    {#if sourceFacts && (sourceFacts.alternateNames?.length || sourceFacts.establishmentId || sourceFacts.establishmentNumber || sourceFacts.grantDate || slaughteredSpecies.length || processingRangeText)}
+      <details class="source-disclosure">
+        <summary>{tr('Source facts', $language)}</summary>
         <dl>
-          {#if record.sourceFacts.alternateNames?.length}<div><dt>{tr('Also known as', $language)}</dt><dd>{record.sourceFacts.alternateNames.join(' · ')}</dd></div>{/if}
-          {#if record.sourceFacts.establishmentId}<div><dt>{tr('Establishment ID', $language)}</dt><dd>{record.sourceFacts.establishmentId}</dd></div>{/if}
-          {#if record.sourceFacts.establishmentNumber}<div><dt>{tr('Establishment number', $language)}</dt><dd>{record.sourceFacts.establishmentNumber}</dd></div>{/if}
-          {#if record.sourceFacts.grantDate}<div><dt>{tr('Grant date', $language)}</dt><dd>{record.sourceFacts.grantDate}</dd></div>{/if}
-          {#if affirmativeEntries(record.sourceFacts.speciesSlaughtered).length}<div><dt>{tr('Species slaughtered', $language)}</dt><dd>{affirmativeEntries(record.sourceFacts.speciesSlaughtered).map(([key, value]) => `${sourceFlagLabel(key)}${typeof value === 'string' ? `: ${sourceFlag(value)}` : ''}`).join(', ')}</dd></div>{/if}
-          {#if processingRanges(record.sourceFacts.derivedSourceVolumeRanges).length}<div><dt>{tr('Estimated product volume (pounds/month)', $language)}</dt><dd>{processingRanges(record.sourceFacts.derivedSourceVolumeRanges).map(range => formattedRangeLocalized(range) ? `${formattedRangeLocalized(range)} ${tr('pounds/month', $language)}` : null).filter(Boolean).join(', ')}</dd></div>{/if}
-          {#if record.sourceFacts.aphisAnnualReports?.length}{#each record.sourceFacts.aphisAnnualReports as report (report.fiscalYear)}<div><dt>{tr('FY', $language)}{report.fiscalYear} {tr('reported animals', $language)}</dt><dd><ul>{#each report.speciesCounts as species (species.species)}<li>{sourceFlagLabel(species.species)}: {annualSpeciesCount(species.count)}</li>{/each}</ul><a href={report.sourceUrl} target="_blank" rel="noopener noreferrer">{tr('Source report', $language)}</a></dd></div>{/each}{/if}
-          {#each record.sourceFacts.aphisDatedInspections ?? [] as inspection (inspection.inspectionDate)}
-            {@const href = safeHttps(inspection.sourceUrl)}
-            <div><dt>{tr('APHIS inspection', $language)}</dt><dd>{inspection.inspectionDate}
-              {#if href}<a href={href} target="_blank" rel="noopener noreferrer">{tr('Source record', $language)}</a>{/if}
-            </dd></div>
-          {/each}
+          {#if sourceFacts.alternateNames?.length}<div><dt>{tr('Also known as', $language)}</dt><dd>{sourceFacts.alternateNames.join(' · ')}</dd></div>{/if}
+          {#if sourceFacts.establishmentId}<div><dt>{tr('Establishment ID', $language)}</dt><dd>{sourceFacts.establishmentId}</dd></div>{/if}
+          {#if sourceFacts.establishmentNumber}<div><dt>{tr('Establishment number', $language)}</dt><dd>{sourceFacts.establishmentNumber}</dd></div>{/if}
+          {#if sourceFacts.grantDate}<div><dt>{tr('Grant date', $language)}</dt><dd>{sourceFacts.grantDate}</dd></div>{/if}
+          {#if slaughteredSpecies.length}<div><dt>{tr('Species slaughtered', $language)}</dt><dd>{slaughteredSpecies.map(([key, value]) => `${sourceFlagLabel(key)}${typeof value === 'string' ? `: ${sourceFlag(value)}` : ''}`).join(', ')}</dd></div>{/if}
+          {#if processingRangeText}<div><dt>{tr('Estimated product volume (pounds/month)', $language)}</dt><dd>{processingRangeText}</dd></div>{/if}
         </dl>
-      </section>
+      </details>
     {/if}
-    <RecordConnections facilityId={record.id} releaseId={currentRelease} {profile} sourceId={record.sourceId} sourceFacts={record.sourceFacts} />
-    <section aria-labelledby="source-heading">
-      <h2 id="source-heading">{tr('Source and review', $language)}</h2>
+    <details class="source-disclosure">
+      <summary>{tr('Source and review', $language)}</summary>
       <dl><div><dt>{tr('Source', $language)}</dt><dd>{record.source} {#if directSourceUrl}<a href={directSourceUrl} target="_blank" rel="noopener noreferrer">{tr('Open source', $language)}</a>{/if}</dd></div><div><dt>{tr('Source origin', $language)}</dt><dd>{record.evidence?.sourceType === 'user_submitted' ? tr('Community-submitted', $language) : record.evidence?.sourceType === 'secondary' ? tr('Secondary source', $language) : tr('Government-sourced', $language)}</dd></div>{#if record.observed !== 'unknown'}<div><dt>{tr('Observed', $language)}</dt><dd>{record.observed}</dd></div>{/if}{#if record.evidence?.retrievedAt}<div><dt>{tr('Retrieved', $language)}</dt><dd>{record.evidence.retrievedAt}</dd></div>{/if}<div><dt>{tr('Publication', $language)}</dt><dd>{tr(profile === 'official' ? 'Curated records' : profile === 'community' ? 'Community submissions' : 'Secondary sources', $language)} · {publicReleaseLabel(currentRelease)}</dd></div></dl>
-    </section>
+    </details>
     <nav aria-label={tr('Record contribution actions', $language)}>{#each [['evidence','Add evidence'],['correction','Suggest a correction'],['privacy-removal','Privacy or removal']] as [type,label]}<a href={`#/contribute/${type}?target=${encodeURIComponent(record.id)}`}>{tr(label ?? '', $language)}</a>{/each}</nav>
   {/if}
 </section>
@@ -165,31 +184,35 @@
   .slaughter-estimate strong { display:block;font-size:1rem;font-weight:650; }
   .slaughter-estimate a { display:inline-flex;align-items:center;min-height:44px; }
   .public-record { width: min(100% - 3rem, 46rem); margin: auto; padding: 1.5rem 0 2rem; color: var(--ink); font: .9375rem/1.5 system-ui, sans-serif; }
-  h1 { margin: 0 0 .75rem; font-size: clamp(1.5rem, 4vw, 1.875rem); font-weight: 650; line-height: 1.2; overflow-wrap: anywhere; }
-  h2 { margin: 1.5rem 0 0; font-size: 1rem; font-weight: 650; }
+  h1 { margin: 0 0 .25rem; font-size: clamp(1.5rem, 4vw, 1.875rem); font-weight: 650; line-height: 1.2; overflow-wrap: anywhere; }
+  .record-heading { display: flex; align-items: flex-start; gap: .55rem; }
+  .record-heading > span:first-child { min-width: 0; }
+  .public-record > section { margin-top: 1rem; padding-top: .8rem; border-top: 1px solid var(--line); }
+  h2 { margin: 0 0 .35rem; font-size: 1rem; font-weight: 600; }
   p { color: var(--ink-secondary); }
-  .compact-source { display:flex;flex-wrap:wrap;align-items:center;column-gap:.3rem;color:var(--muted);margin:.3rem 0 .8rem;overflow-wrap:anywhere; }
+  .compact-source { display:flex;flex-wrap:wrap;align-items:center;column-gap:.3rem;color:var(--ink-muted);margin:0 0 .75rem;font-size:.8125rem;overflow-wrap:anywhere; }
   .direct-source { display:inline-flex;align-items:center;gap:.35rem;min-width:0;max-width:100%;min-height:44px;padding:.25rem 0; }
   .direct-source > span:first-child { min-width:0;overflow-wrap:anywhere; }
   .direct-source svg { width:.9rem;height:.9rem;flex:none;fill:none;stroke:currentColor;stroke-width:1.5; }
-  .location-details { margin:.35rem 0; }
-  .location-details > summary { min-height:44px;padding:.65rem 0;cursor:pointer; }
-  .location-details > dl { margin:0 0 .6rem; }
-  .map-action { display:flex;flex-wrap:wrap;gap:0 1rem; }.map-action a { display:inline-flex;align-items:center;gap:.5rem;min-height:2.75rem; }.map-action svg { width:1rem;height:1rem;flex:none;fill:none;stroke:currentColor;stroke-width:1.5; }
+  .source-disclosure { border-top:1px solid var(--line); }
+  .source-disclosure:not(.source-disclosure + .source-disclosure) { margin-top:.85rem; }
+  .source-disclosure:last-of-type { border-bottom:1px solid var(--line); }
+  details > summary { min-height:2.75rem;padding:.65rem 0;cursor:pointer;font-size:.875rem; }
+  details > dl { margin:0 0 .7rem; }
+  .map-action { display:flex;flex-wrap:wrap;gap:0 1rem;margin:0; }.map-action a { display:inline-flex;align-items:center;gap:.5rem;min-height:2.75rem; }.map-action svg { width:1rem;height:1rem;flex:none;fill:none;stroke:currentColor;stroke-width:1.5; }
   .record-category { margin: .25rem 0; }
-  dl { margin: 1.25rem 0; }
-  .source-facts dl { margin: .4rem 0; }
-  dl div { display: grid; grid-template-columns: 9rem minmax(0, 1fr); gap: 1rem; padding: .55rem 0; border-bottom: 1px solid var(--line); }
+  dl { margin: .25rem 0; }
+  dl div { display: grid; grid-template-columns: 9rem minmax(0, 1fr); gap: .75rem; padding: .3rem 0; }
   dt { font-weight: 600; }
   dd { margin: 0; overflow-wrap: anywhere; color: var(--ink-secondary); }
   ul { margin: 0; padding-left: 1.1rem; }
   nav { display: flex; flex-wrap: wrap; gap: .6rem 1rem; margin-top: 1.25rem; }
   a { color: var(--link); text-underline-offset: .2em; }
   button { min-height: 2.75rem; padding: .4rem .6rem; background: var(--panel); border: 1px solid var(--line); color: var(--ink); font: inherit; }
-  .share { display: inline-grid; place-items: center; vertical-align: middle; width: 2.75rem; padding: .3rem; }
+  .share { display: inline-grid; place-items: center; flex: none; width: 2.75rem; padding: .3rem; }
   .share svg { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
   .sr-only { position: absolute; width: 1px; height: 1px; clip: rect(0, 0, 0, 0); overflow: hidden; white-space: nowrap; }
   .warning { padding: .75rem; border-left: 3px solid var(--focus); background: var(--panel); color: var(--ink); }
-  a:focus-visible, button:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+  a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
   @media (max-width: 40rem) { .public-record { width: calc(100% - 2rem); } dl div { grid-template-columns: 1fr; gap: .15rem; } }
 </style>

@@ -346,9 +346,10 @@ API schemas own supported fields. They are not additional roadmaps.
   volume remains in Source facts.
 
 - Full page order: facility name and chain-icon Copy facility link action;
-  category and classification overview; Location facts; single-record map;
-  remaining facts. The map panel uses the same overview before Location,
-  with Open facility page at the bottom of the map detail.
+  Classification; APHIS reports where applicable; Connections when available;
+  Location with the single-record map; collapsed Source facts and Source and review.
+  The full page keeps released annual counts and dated inspection evidence in
+  the Report details disclosure within APHIS reports.
   A compact source/date line near the title links directly to the already
   eligible HTTPS source-record URL when available, otherwise the source URL.
   Public full pages use their available validated source URL. Missing links
@@ -410,14 +411,16 @@ API schemas own supported fields. They are not additional roadmaps.
   confidence bands. Use `Exact source`, `Inferred`, and `Source` for the
   source-assertion method. Keep real evidence/signals accessible, not repeated
   general disclaimer paragraphs. No human-confirmed connection state.
-- A loaded record with no connections shows `None`, without Relationship or
-  Confidence controls. Keep controls when filters caused an otherwise nonempty
-  list to have no matches. Loading, errors and empty results remain distinct.
+- A successful, unfiltered empty connection lookup omits the Connections section
+  on the full page. The existing rail disclosure retains `None` without filters.
+  Keep controls when filters caused an otherwise nonempty list to have no matches.
+  Loading, errors and empty results remain distinct.
 - Use only public graph routes and supported entity mappings. An organization
   summary does not gain a fabricated facility page. A canvas limit or API page
   bound is not a graph storage cap.
-- APHIS controls appear only for relevant APHIS records, fetch on request and
-  retain error/retry states. The release-scoped lookup combines released
+- APHIS reports appear for relevant APHIS records. Opening a record loads
+  annual and inspection reports automatically. Each list has its own retry
+  and pagination controls. The release-scoped lookup combines released
   evidence references with additional official historical document links for
   that same source identifier. Keep those origins structured and distinct.
   Successful empty searches are not errors; source pages are not report files.

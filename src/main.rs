@@ -251,7 +251,31 @@ pub fn app(state: uec_api::ApiState, proxy: private_environment::ProxyConfig) ->
         .layer(cors)
         .layer(Extension(metrics))
         .layer(axum::middleware::from_fn(community_no_store))
+        .layer(axum::middleware::from_fn(revalidate_html))
         .with_state(state)
+}
+
+// A return visit must revalidate the HTML entry point, which names the
+// current deployment's hashed assets. Keep asset and API caching independent.
+async fn revalidate_html(
+    request: Request<axum::body::Body>,
+    next: axum::middleware::Next,
+) -> Response<axum::body::Body> {
+    let path = request.uri().path();
+    let is_document_path = !path.starts_with("/api/") && !path.starts_with("/dev/")
+        && std::path::Path::new(path).extension().is_none_or(|extension| extension == "html");
+    let mut response = next.run(request).await;
+    if response.headers().get(axum::http::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.split(';').next() == Some("text/html"))
+        || (is_document_path && response.status() == StatusCode::NOT_MODIFIED)
+    {
+        response.headers_mut().insert(
+            axum::http::header::CACHE_CONTROL,
+            HeaderValue::from_static("no-cache"),
+        );
+    }
+    response
 }
 
 // Cover outer middleware failures and preflights as well as handler responses.
@@ -1144,6 +1168,25 @@ mod config_tests {
     #[test]
     fn api_database_statements_have_a_bounded_timeout() {
         assert_eq!(API_STATEMENT_TIMEOUT, "30s");
+    }
+
+    #[tokio::test]
+    async fn html_entry_point_revalidates_without_changing_asset_cache() {
+        let router = axum::Router::new()
+            .route("/", axum::routing::get(|| async { axum::response::Html("<html></html>") }))
+            .route("/records/sample", axum::routing::get(|| async { StatusCode::NOT_MODIFIED }))
+            .route("/assets/app.js", axum::routing::get(|| async { StatusCode::NOT_MODIFIED }))
+            .layer(axum::middleware::from_fn(super::revalidate_html));
+        for (path, expected) in [("/", Some("no-cache")), ("/records/sample", Some("no-cache")), ("/assets/app.js", None)] {
+            let response = router.clone().oneshot(
+                axum::http::Request::builder().uri(path).body(Body::empty()).unwrap()
+            ).await.unwrap();
+            assert_eq!(
+                response.headers().get(axum::http::header::CACHE_CONTROL).and_then(|value| value.to_str().ok()),
+                expected,
+                "{path}",
+            );
+        }
     }
 
     #[tokio::test]

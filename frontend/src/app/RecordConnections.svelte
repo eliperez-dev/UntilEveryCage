@@ -4,22 +4,21 @@
   import { LocalLocationRepository, type LocalProfile } from '../api/LocalLocationRepository';
   import { PublicGraphRepository, type GraphFilters } from '../api/PublicGraphRepository';
   import type { PublicGraphConnection } from '../api/publicGraphSchema';
-  import type { LocationSourceFacts } from '../domain/location';
-  import AphisReports from './AphisReports.svelte';
   import { serializeRoute } from './routeState';
 
-  let { facilityId, releaseId, profile = 'official', sourceId, sourceFacts, rail = false, onstatechange }: { facilityId: string; releaseId: string; profile?: LocalProfile; sourceId?: string | undefined; sourceFacts?: LocationSourceFacts | undefined; rail?: boolean; onstatechange?: ((state: { count:number; loading:boolean; error:boolean }) => void) | undefined } = $props();
+  let { facilityId, releaseId, profile = 'official', rail = false, hideWhenEmpty = false, onstatechange }: { facilityId: string; releaseId: string; profile?: LocalProfile; rail?: boolean; hideWhenEmpty?: boolean; onstatechange?: ((state: { count:number; loading:boolean; error:boolean }) => void) | undefined } = $props();
   const graph = new PublicGraphRepository();
   const locations = new LocalLocationRepository();
   let rows = $state<readonly PublicGraphConnection[]>([]);
   let names = $state<Readonly<Record<string, string>>>({});
   let nextCursor = $state<string | null>(null);
-  let loading = $state(false);
+  let loading = $state(true);
   let loadingMore = $state(false);
   let error = $state(false);
   let kind = $state<'all' | 'exact' | 'inferred'>('all');
   let confidence = $state<'all' | 'high' | 'medium' | 'low'>('all');
   let retry = $state(0);
+  const hasFilters = $derived(kind !== 'all' || confidence !== 'all');
   let controller: AbortController | undefined;
   let requestVersion = 0;
   $effect(() => {
@@ -47,6 +46,7 @@
       nextCursor = null;
       error = false;
       loading = true;
+      loadingMore = false;
     } else {
       loadingMore = true;
     }
@@ -111,6 +111,7 @@
   });
 </script>
 
+{#if !hideWhenEmpty || loading || error || rows.length || hasFilters || nextCursor}
 <section class="connections" class:rail aria-labelledby="connections-heading">
   <h2 id="connections-heading">{tr('Connections', $language)}</h2>
   {#if kind !== 'all' || confidence !== 'all' || (!loading && !error && rows.length > 0)}<div class="controls">
@@ -144,11 +145,34 @@
   </ul>
   {#if nextCursor}<button class="more" type="button" disabled={loadingMore} onclick={() => void load(false)}>{tr(loadingMore ? 'Loading…' : 'Load more', $language)}</button>{/if}
   {/if}
-  <AphisReports {facilityId} {releaseId} {profile} {sourceId} {sourceFacts} />
 </section>
+{/if}
 
 <style>
-  .connections{margin-top:1rem;padding-top:.8rem;border-top:1px solid #3c4640;color:#edf0e9;font:.82rem/1.45 system-ui,sans-serif}.connections h2{margin:0 0 .35rem;font:600 1rem/1.3 Georgia,serif}.empty{margin:.35rem 0;color:#b9c3b7}.controls{display:flex;flex-wrap:wrap;gap:.55rem;margin:.6rem 0}.controls label{display:flex;align-items:center;gap:.35rem;color:#c6d0c5}.controls select{max-width:9rem;min-height:2rem;padding:.25rem .4rem;background:#202523;border:1px solid #59615c;color:#edf0e9;font:inherit}.connections ul{list-style:none;margin:.5rem 0;padding:0}.connections li{padding:.6rem 0;border-top:1px solid #303a33}.row-heading{display:flex;justify-content:space-between;gap:.65rem;align-items:baseline}.row-heading a,.connections a{color:#dce8d9;text-underline-offset:.2em}.relationship{color:#d0c7b3}.meta{display:flex;flex-wrap:wrap;gap:.25rem .8rem;margin:.2rem 0;color:#b9c3b7;font-size:.75rem;font-variant-numeric:tabular-nums}.connections details{margin-top:.25rem}.connections summary{width:fit-content;color:#c6d0c5;cursor:pointer;text-underline-offset:.2em}.connections dl{margin:.35rem 0}.connections dl div{display:grid;grid-template-columns:5.5rem minmax(0,1fr);gap:.5rem;padding:.12rem 0}.connections dt{color:#b9c3b7}.connections dd{margin:0;overflow-wrap:anywhere}.connections button{min-height:2rem;padding:.25rem .45rem;background:#252f28;border:1px solid #657466;color:#edf0e9;font:inherit;cursor:pointer}.more{margin-top:.35rem}.connections a:focus-visible,.connections button:focus-visible,.connections select:focus-visible,.connections summary:focus-visible{outline:2px solid #eee7d6;outline-offset:3px}@media(max-width:34rem){.row-heading{align-items:flex-start;flex-direction:column;gap:.1rem}.connections dl div{grid-template-columns:1fr;gap:0}}
+  .connections { margin-top: 1rem; padding-top: .8rem; border-top: 1px solid var(--line); color: var(--ink); }
+  .connections h2 { margin: 0 0 .35rem; font-size: 1rem; font-weight: 600; }
+  .empty { margin: .35rem 0; }
+  .controls { display: flex; flex-wrap: wrap; gap: .6rem 1rem; margin: .5rem 0; }
+  .controls label { display: flex; align-items: center; gap: .35rem; font-size: .8125rem; }
+  .controls select, .connections button { min-height: 2.75rem; padding: .25rem .5rem; border: 1px solid var(--line); color: var(--ink); background: var(--panel); font: inherit; }
+  .connections ul { list-style: none; margin: .5rem 0; padding: 0; }
+  .connections li { padding: .55rem 0; border-top: 1px solid var(--line); }
+  .row-heading { display: flex; justify-content: space-between; gap: .65rem; align-items: baseline; overflow-wrap: anywhere; }
+  .connections a { color: var(--link); text-underline-offset: .2em; }
+  .empty, .controls label, .meta, .relationship, summary, dt { color: var(--ink-secondary); }
+  .meta { display: flex; flex-wrap: wrap; gap: .25rem .8rem; margin: .2rem 0; font-size: .8125rem; font-variant-numeric: tabular-nums; }
+  summary { width: fit-content; min-height: 2.75rem; padding: .6rem 0; cursor: pointer; font-size: .8125rem; }
+  .connections dl { margin: 0 0 .35rem; }
+  .connections dl div { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); gap: .5rem; padding: .12rem 0; }
+  .connections dd { margin: 0; overflow-wrap: anywhere; }
+  .connections button { cursor: pointer; }
+  .connections button:hover { background: var(--panel-hover); }
+  .more { margin-top: .35rem; }
+  .connections :is(a, button, select, summary):focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+  @media (max-width: 34rem) {
+    .row-heading { align-items: flex-start; flex-direction: column; gap: .1rem; }
+    .connections dl div { grid-template-columns: 1fr; gap: 0; }
+  }
   .connections.rail { margin-top: .95rem; padding-top: .8rem; border-color: var(--ui-line); color: var(--ui-ink); font: .8125rem/1.55 system-ui, sans-serif; }
   .rail h2 { margin: 0 0 .4rem; font: 500 .875rem/1.4 system-ui, sans-serif; letter-spacing: -.015em; }
   .rail .empty, .rail .controls label, .rail .meta, .rail .relationship, .rail summary, .rail dt { color: var(--ui-muted); }
@@ -160,22 +184,13 @@
   .rail .row-heading a { font-weight: 500; }
   .rail .relationship, .rail .meta { font-size: .75rem; }
   .rail a { color: var(--ui-ink); text-underline-offset: .25rem; }
-  .rail details { margin-top: .25rem; }
-  .rail summary { min-height: 1.75rem; font-size: .75rem; }
+  .rail summary { font-size: .75rem; }
   .rail dl { margin: .35rem 0; padding-left: .65rem; border-left: 1px solid var(--ui-line); font-size: .75rem; }
   .rail dl div { grid-template-columns: 4.5rem minmax(0, 1fr); padding: .18rem 0; }
   .rail button { min-height: 2.5rem; padding: .4rem .65rem; border-color: var(--ui-line); color: var(--ui-ink); background: var(--ui-raised); }
   .rail button:hover { background: var(--ui-hover); }
   .rail a:focus-visible, .rail button:focus-visible, .rail select:focus-visible, .rail summary:focus-visible { outline-color: var(--ui-ink); }
-  .rail :global(.aphis-reports) { border-color: var(--ui-line); margin-top: .8rem; padding-top: .7rem; }
-  .rail :global(.aphis-reports h3) { font: 500 .875rem/1.4 system-ui, sans-serif; }
-  .rail :global(.aphis-reports p) { color: var(--ui-muted); }
-  .rail :global(.aphis-reports li) { border-color: var(--ui-line); }
-  .rail :global(.aphis-reports a) { color: var(--ui-ink); }
-  .rail :global(.aphis-reports button) { min-height: 2.5rem; border-color: var(--ui-line); color: var(--ui-ink); background: var(--ui-raised); }
-  .rail :global(.aphis-reports button:hover) { background: var(--ui-hover); }
-  .rail :global(.aphis-reports button:focus-visible), .rail :global(.aphis-reports a:focus-visible) { outline-color: var(--ui-ink); }
   @media (max-width: 40rem) {
-    .rail .controls select, .rail button, .rail summary, .rail :global(.aphis-reports button) { min-height: 2.75rem; }
+    .rail .controls select, .rail button { min-height: 2.75rem; }
   }
 </style>

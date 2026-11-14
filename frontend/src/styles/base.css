@@ -201,12 +201,7 @@ button { min-height: 2.75rem; padding: .5rem 1rem; color: inherit; background: v
 :root[data-theme="light"] .estimate h2,
 :root[data-theme="light"] .estimate-number { color:var(--ink); }
 :root[data-theme="light"] .estimate-list li { color:var(--ink-secondary); border-color:var(--line); }
-:root[data-theme="light"] .aphis-reports { border-color:var(--line); }
-:root[data-theme="light"] .aphis-reports p { color:var(--ink-secondary); }
-:root[data-theme="light"] .aphis-reports a,
 :root[data-theme="light"] .connections a { color:var(--link); }
-:root[data-theme="light"] .aphis-reports li { border-color:var(--line); }
-:root[data-theme="light"] .aphis-reports button,
 :root[data-theme="light"] .connections button { background:var(--panel-hover); color:var(--ink); border-color:var(--line-strong); }
 :root[data-theme="light"] .connections { border-color:var(--line); }
 :root[data-theme="light"] .connections :is(.empty,.controls label,.relationship,.meta,summary,dt) { color:var(--ink-secondary); }

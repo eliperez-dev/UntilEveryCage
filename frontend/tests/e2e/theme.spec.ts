@@ -234,7 +234,6 @@ for (const viewport of viewports) {
           expect(contrast(operationStyle.color, operationStyle.background), `Swagger operation ${theme} contrast`).toBeGreaterThanOrEqual(4.5);
         }
         if (view.label === 'full facility detail' && theme === 'light') {
-          await page.getByRole('button', { name: 'Fetch annual reports', exact: true }).click();
           const reportLink = page.locator('.public-record .aphis-reports a').first();
           await expect(reportLink).toBeVisible();
           const reportLinkStyle = await reportLink.evaluate(element => {

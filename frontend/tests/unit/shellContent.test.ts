@@ -133,7 +133,7 @@ describe('normal shell content', () => {
     expect(aphisReports).toContain('FY${reference.event_period}');
     expect(aphisReports).toContain('${reference.event_date}');
     expect(publicRecord).toContain("tr('Loading record…', $language)");
-    expect(publicRecord).toContain("<h2 id=\"source-heading\">{tr('Source and review', $language)}</h2>");
+    expect(publicRecord).toContain("<summary>{tr('Source and review', $language)}</summary>");
     expect(language).toContain("'Annual report': 'Informe anual'");
     expect(language).toContain("'Inspection': 'Inspección'");
     expect(tr('Annual report', 'en')).toBe('Annual report');

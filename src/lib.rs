@@ -8081,6 +8081,8 @@ pub async fn get_v2_aphis_report_links_handler(
     if transaction.commit().await.is_err() {
         return aphis_report_link_error(StatusCode::SERVICE_UNAVAILABLE, "aphis_report_unavailable", "APHIS report references unavailable");
     }
+    // Upstream report lookup can take seconds. Release the pool slot first.
+    drop(client);
     let page_index = i64::from(history_page.unwrap_or(0));
     let lookup_limit = if history_page.is_none() && !refs.is_empty() { APHIS_PUBLIC_REPORT_PAGE_MAX } else { limit };
     let upstream = match aphis_public_report_links(&certificate, kind, page_index, lookup_limit).await {

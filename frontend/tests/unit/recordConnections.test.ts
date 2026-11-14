@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 const component = readFileSync(resolve(process.cwd(), 'src/app/RecordConnections.svelte'), 'utf8');
 const aphisReports = readFileSync(resolve(process.cwd(), 'src/app/AphisReports.svelte'), 'utf8');
+const publicRecord = readFileSync(resolve(process.cwd(), 'src/app/PublicRecord.svelte'), 'utf8');
 
 describe('public record connections', () => {
   it('pins requests and linked facility records to the selected release and profile', () => {
@@ -30,17 +31,18 @@ describe('public record connections', () => {
     expect(component).toContain('<p class="empty">{tr(\'None\', $language)}</p>');
   });
 
-  it('shows None without filters for an empty record, while keeping active filters available', () => {
+  it('omits empty public sections while keeping active filters and other states available', () => {
+    expect(publicRecord).toContain('{profile} hideWhenEmpty');
+    expect(component).toContain('!hideWhenEmpty || loading || error || rows.length || hasFilters || nextCursor');
     expect(component).toContain("kind !== 'all' || confidence !== 'all' || (!loading && !error && rows.length > 0)");
     expect(component).toContain('<p class="empty">{tr(\'None\', $language)}</p>');
     expect(component).toContain("tr('Loading connections…', $language)");
   });
 
-  it('delegates relevance-gated APHIS reports to the on-demand report component without generic copy', () => {
-    expect(component).toContain("import AphisReports from './AphisReports.svelte'");
-    expect(component).toContain('<AphisReports {facilityId} {releaseId} {profile} {sourceId} {sourceFacts} />');
+  it('keeps relevance-gated APHIS reports independent of connections', () => {
+    expect(publicRecord).toContain("import AphisReports from './AphisReports.svelte'");
+    expect(component).not.toContain('<AphisReports');
     expect(aphisReports).toContain('isAphisRelevant(sourceId, sourceFacts)');
-    expect(aphisReports).toContain('onclick={() => void load(kind)}');
     expect(aphisReports).toContain("tr('Loading reports…', $language)");
     expect(aphisReports).toContain("tr('Reports could not be loaded.', $language)");
     expect(aphisReports).toContain('Open APHIS source page');
@@ -48,15 +50,11 @@ describe('public record connections', () => {
     expect(aphisReports).not.toContain('No APHIS evidence references are approved');
   });
 
-  it('offers explicit annual and inspection fetches and prevents duplicate or stale requests', () => {
-    expect(aphisReports).toContain("kind === 'annual_reports' ? 'Fetch annual reports' : 'Fetch inspection reports'");
-    expect(aphisReports).toContain("tr(selected === 'annual_reports' ? 'No annual reports found.' : 'No inspection reports found.', $language)");
-    expect(aphisReports).toContain('if (loading) return;');
-    expect(aphisReports).toContain('if (selected === kind && !next && !error && fetched) return;');
-    expect(aphisReports).toContain('const queryKey = $derived(`${facilityId}\\u0000${releaseId}\\u0000${profile}`)');
-    expect(aphisReports).toContain('request !== version');
-    expect(aphisReports).toContain('page.releaseId !== releaseId');
-    expect(aphisReports).toContain('onclick={() => void load(selected!, retryCursor ?? undefined)}');
-    expect(aphisReports).toContain('fetched = false;');
+  it('loads both report lists automatically and aborts obsolete lookups', () => {
+    expect(aphisReports).toContain("fetchPage('annual_reports', active).then(() => fetchPage('inspections', active))");
+    expect(aphisReports).toContain('return () => { active.abort(); }');
+    expect(aphisReports).toContain('if (active.signal.aborted) return;');
+    expect(aphisReports).not.toContain('Fetch annual reports');
+    expect(aphisReports).not.toContain('Fetch inspection reports');
   });
 });
