@@ -133,6 +133,9 @@
     onDisplaySettingsChange,
     onAreaSummary,
     fitResultsRequest = 0,
+    automaticBasemap = false,
+    popupLocation = null,
+    onPopupAnchor,
   }: {
     active?: boolean;
     records: readonly LabRecord[];
@@ -183,9 +186,21 @@
     onDisplaySettingsChange?(settings: MapDisplaySettings): void;
     onAreaSummary?(summary: AreaSummary): void;
     fitResultsRequest?: number;
+    automaticBasemap?: boolean;
+    popupLocation?: { longitude: number; latitude: number } | null;
+    onPopupAnchor?(point: { x: number; y: number } | null): void;
   } = $props();
   let host: HTMLDivElement;
   let map: MapLibreMap | undefined;
+  const targetBasemap = $derived(automaticBasemap ? (mapState.viewport.zoom > 13 ? "satellite" : "vector") : mapState.basemap);
+  let failedBasemap = $state<Basemap | null>(null);
+  function publishPopupAnchor() {
+    if (!active || !map || !popupLocation) { onPopupAnchor?.(null); return; }
+    const { x, y } = projectOverlap([popupLocation.longitude, popupLocation.latitude]);
+    const { clientWidth, clientHeight } = host;
+    onPopupAnchor?.(x >= 0 && x <= clientWidth && y >= 0 && y <= clientHeight ? { x, y } : null);
+  }
+  $effect(() => { if (onPopupAnchor) publishPopupAnchor(); });
   let hoverLabel = $state<(PinHoverLabel & { x: number; y: number; below: boolean }) | null>(null);
   let hoverMark = $state<{ x: number; y: number } | null>(null);
   let hoverPin: ReturnType<typeof individualHoverPin> = null;
@@ -584,7 +599,7 @@
   maplibregl.setWorkerUrl(mapLibreWorkerUrl);
 
   function style(): any {
-    return createBaseStyle(mapState.basemap);
+    return createBaseStyle(targetBasemap);
   }
   function setTerrain(enabled: boolean, explicitRetry = false): void {
     const instance = map;
@@ -695,7 +710,7 @@
       applyBaseAppearance(instance, basemap);
       appliedBasemap = basemap;
       basemapError = "";
-      onbasemap(basemap);
+      if (!automaticBasemap) onbasemap(basemap);
       return;
     }
     const request = ++basemapRequest;
@@ -725,7 +740,7 @@
       );
       await waitForRaster(instance, "candidate-base", controller.signal);
       if (request !== basemapRequest || map !== instance) return;
-      if (mapState.basemap !== basemap) controller.abort();
+      if (targetBasemap !== basemap) controller.abort();
       controller.signal.throwIfAborted();
       instance.setPaintProperty("candidate-base", "raster-opacity", 1);
       const base = instance.getSource("base") as any;
@@ -734,7 +749,7 @@
       baseChanged = true;
       await waitForRaster(instance, "base", controller.signal);
       if (request !== basemapRequest || map !== instance) return;
-      if (mapState.basemap !== basemap) controller.abort();
+      if (targetBasemap !== basemap) controller.abort();
       controller.signal.throwIfAborted();
       applyBaseAppearance(instance, basemap);
       // Source-loaded precedes the raster's first fade completing. Keep the
@@ -742,10 +757,10 @@
       if (!terrainEnabled && cacheTuning.tileFadeMs > 0)
         await new Promise<void>(resolve => setTimeout(resolve, cacheTuning.tileFadeMs));
       if (request !== basemapRequest || map !== instance) return;
-      if (mapState.basemap !== basemap) controller.abort();
+      if (targetBasemap !== basemap) controller.abort();
       controller.signal.throwIfAborted();
       appliedBasemap = basemap;
-      onbasemap(basemap);
+      if (!automaticBasemap) onbasemap(basemap);
     } catch {
       if (map === instance && request === basemapRequest) {
         if (baseChanged) {
@@ -755,8 +770,9 @@
         }
         // A superseded request must never overwrite the latest toolbar/URL
         // intent. Its candidate is removed before the next handoff starts.
-        if (!controller.signal.aborted && mapState.basemap === basemap) {
-          onbasemap(previous);
+        if (!controller.signal.aborted && targetBasemap === basemap) {
+          if (automaticBasemap) failedBasemap = basemap;
+          else onbasemap(previous);
           basemapError = `${basemapLabel(basemap)} imagery is unavailable. ${basemapLabel(previous)} remains selected.`;
         }
       }
@@ -802,11 +818,12 @@
     });
   }
   function clusterImage(outerColor: string, innerColor: string) {
-    const size = 44,
+    const size = 132,
       canvas = document.createElement("canvas");
     canvas.width = size;
     canvas.height = size;
     const context = canvas.getContext("2d")!;
+    context.scale(3, 3);
     context.beginPath();
     context.arc(22, 22, 20, 0, Math.PI * 2);
     context.fillStyle = outerColor;
@@ -824,15 +841,15 @@
     // Cluster colors express size only; category colors stay on facility pins.
     // Blue distinguishes approximate-only groups and outlines mixed precision.
     if (!map.hasImage("cluster-low"))
-      map.addImage("cluster-low", clusterImage("#b5e28c99", "#6ecc39b8"));
+      map.addImage("cluster-low", clusterImage("#b5e28c99", "#70bf49"), { pixelRatio: 3 });
     if (!map.hasImage("cluster-mid"))
-      map.addImage("cluster-mid", clusterImage("#f1d35799", "#f0c20cb8"));
+      map.addImage("cluster-mid", clusterImage("#f1d35799", "#efcc51"), { pixelRatio: 3 });
     if (!map.hasImage("cluster-high"))
-      map.addImage("cluster-high", clusterImage("#fd9c7399", "#f18017b8"));
+      map.addImage("cluster-high", clusterImage("#fd9c7399", "#f39a50"), { pixelRatio: 3 });
     if (!map.hasImage("cluster-very-high"))
-      map.addImage("cluster-very-high", clusterImage("#ed8b7599", "#de6d3fb8"));
+      map.addImage("cluster-very-high", clusterImage("#ed8b7599", "#df886a"), { pixelRatio: 3 });
     if (!map.hasImage("reference-marker"))
-      map.addImage("reference-marker", clusterImage("#ff695ce6", "#d8473fe6"));
+      map.addImage("reference-marker", clusterImage("#ff695ce6", "#d8473fe6"), { pixelRatio: 3 });
   }
   function scheduleClusterSettings() {
     nativeMotionController?.invalidate();
@@ -1946,7 +1963,7 @@
     });
   }
   onMount(() => {
-    appliedBasemap = mapState.basemap;
+    appliedBasemap = targetBasemap;
     const unsubscribeTiles = subscribeTileCacheDiagnostics(value => { tileCacheDiagnostic = value; });
     const unsubscribeWorld = subscribeWorldBaselineDiagnostics(value => { worldCacheDiagnostic = value; });
     if (typeof BroadcastChannel !== 'undefined') {
@@ -1994,6 +2011,9 @@
       return cleanupFailedInitialization;
     }
     map = instance;
+    instance.on("move", publishPopupAnchor);
+    instance.on("resize", publishPopupAnchor);
+    publishPopupAnchor();
     instance.on('mousemove', updatePinHover);
     host.addEventListener('pointerleave', clearPinHover);
     instance.on('click', () => { clearPinHover(); closeOverlapRing(); });
@@ -2050,7 +2070,7 @@
       updateMapTileMemoryCache(instance, cacheTuning.ramTiles);
       if (instance.getLayer('base')) instance.setPaintProperty('base', 'raster-fade-duration', cacheTuning.tileFadeMs);
       if (instance.getLayer('world-land')) instance.setPaintProperty('world-land', 'fill-opacity', cacheTuning.baselineOpacity);
-      applyWorldBaselineBasemap(instance, appliedBasemap ?? mapState.basemap);
+      applyWorldBaselineBasemap(instance, appliedBasemap ?? targetBasemap);
       applyWorldBaselineOpacity(instance, cacheTuning.baselineOpacity);
       nativeStyleGeneration++;
       // These local sprites belong to the style, independently of whether
@@ -2280,10 +2300,11 @@
     });
   });
   $effect(() => {
-    const basemap = mapState.basemap;
+    const basemap = targetBasemap;
+    if (failedBasemap && failedBasemap !== basemap) failedBasemap = null;
     if (active && nativeStyleReady && map) {
       if (basemapSwitching && pendingBasemap !== basemap) basemapAbort?.abort();
-      else if (!basemapSwitching && appliedBasemap !== basemap) void applyBasemapTiles(basemap);
+      else if (!basemapSwitching && appliedBasemap !== basemap && failedBasemap !== basemap) void applyBasemapTiles(basemap);
     }
   });
   $effect(() => {

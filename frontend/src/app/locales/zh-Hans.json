@@ -1004,5 +1004,8 @@
   "{count} activities": "{count} 项活动",
   "{count} filters": "{count} 项筛选",
   "{count} record": "{count} 条记录",
-  "{count} filter": "{count} 项筛选"
+  "{count} filter": "{count} 项筛选",
+  "Theme": "主题",
+  "Advanced": "高级选项",
+  "View full record": "查看完整记录"
 }

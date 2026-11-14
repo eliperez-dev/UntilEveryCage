@@ -13,6 +13,7 @@
   import LocationPreview from './LocationPreview.svelte';
   import { locationPreviewZoom } from '../features/locations/locationPreview';
   import { recordNamePresentation } from '../features/locations/recordNamePresentation';
+  import { externalMapLink } from '../features/locations/externalMapLink';
   let copyFeedback = $state<'copied' | 'failed' | ''>('');
   let copyResetTimer: ReturnType<typeof setTimeout> | undefined;
   let copyAttempt = 0;
@@ -48,6 +49,11 @@
   };
   const sourcePrecisionDetail = $derived(record?.evidence?.geometryProvenance?.source_precision && !['source-provided', 'source_reported', 'source_provided_unverified'].includes(record.evidence.geometryProvenance.source_precision) ? translatedGenerated(record.evidence.geometryProvenance.source_precision) : null);
   const coordinateReviewDetail = $derived(record?.evidence?.geometryProvenance?.coordinate_review_status && record.evidence.geometryProvenance.coordinate_review_status !== 'source_confirmed' ? translatedGenerated(record.evidence.geometryProvenance.coordinate_review_status) : null);
+  const externalMapHref = $derived(profile === 'official' ? externalMapLink({
+    latitude: record?.lat, longitude: record?.lon, precision: record?.evidence?.displayPrecision,
+    coordinatePrecision: record?.evidence?.geometryProvenance?.source_precision,
+    sourceLocationRole: record?.evidence?.sourceLocationRole,
+  }) : null);
   function safeHttps(raw: string | null | undefined): string | null {
     if (!raw) return null;
     try { const url = new URL(raw); return url.protocol === 'https:' && !url.username && !url.password ? url.href : null; }
@@ -107,6 +113,7 @@
       <dl>
         <div><dt>{tr('Locality', $language)}</dt><dd>{[record.region, record.countryCode].filter(Boolean).join(', ')}</dd></div>
         <div><dt>{tr('Precision', $language)}</dt><dd>{tr(precision, $language)}</dd></div>
+        {#if record.evidence?.sourceLocationRole === 'aphis_mailing_locality'}<div><dt>{tr('Location role', $language)}</dt><dd>{tr('APHIS mailing locality: approximate locality, not an operating-site location', $language)}</dd></div>{/if}
       </dl>
       {#if record.lat !== null && record.lon !== null || sourcePrecisionDetail || coordinateReviewDetail || locationMethod(record) || record.evidence?.geometryProvenance?.provider || geocodingConfidence(record) !== null || record.evidence?.geometryProvenance?.confidence_band}
         <details class="location-details"><summary>{tr('Location details', $language)}</summary><dl>
@@ -118,7 +125,10 @@
           {#if geocodingConfidence(record) !== null || record.evidence?.geometryProvenance?.confidence_band}<div><dt>{tr('Geocoding confidence', $language)}</dt><dd>{#if geocodingConfidence(record) !== null}{geocodingConfidence(record)} ({tr('provider score', $language)}){/if}{#if record.evidence?.geometryProvenance?.confidence_band}{geocodingConfidence(record) !== null ? ' · ' : ''}{translatedGenerated(record.evidence.geometryProvenance.confidence_band)}{/if}</dd></div>{/if}
         </dl></details>
       {/if}
-      {#if openMapHref}<p class="map-action"><a href={openMapHref}><svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/><path d="M12 2v4m0 12v4M2 12h4m12 0h4"/></svg>{tr('Open in Map', $language)}</a></p>{/if}
+      {#if openMapHref || externalMapHref}<p class="map-action">
+        {#if openMapHref}<a href={openMapHref}><svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/><path d="M12 2v4m0 12v4M2 12h4m12 0h4"/></svg>{tr('Open in Map', $language)}</a>{/if}
+        {#if externalMapHref}<a href={externalMapHref} target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">{tr('Open in maps', $language)}</a>{/if}
+      </p>{/if}
     </section>
     {#if record.lat !== null && record.lon !== null}<LocationPreview latitude={record.lat} longitude={record.lon} precision={record.evidence?.displayPrecision ?? 'unmapped'} category={record.taxonomy?.primaryCategories[0] ?? record.category} />{/if}
     {#if record.sourceFacts}
@@ -132,6 +142,12 @@
           {#if affirmativeEntries(record.sourceFacts.speciesSlaughtered).length}<div><dt>{tr('Species slaughtered', $language)}</dt><dd>{affirmativeEntries(record.sourceFacts.speciesSlaughtered).map(([key, value]) => `${sourceFlagLabel(key)}${typeof value === 'string' ? `: ${sourceFlag(value)}` : ''}`).join(', ')}</dd></div>{/if}
           {#if processingRanges(record.sourceFacts.derivedSourceVolumeRanges).length}<div><dt>{tr('Estimated product volume (pounds/month)', $language)}</dt><dd>{processingRanges(record.sourceFacts.derivedSourceVolumeRanges).map(range => formattedRangeLocalized(range) ? `${formattedRangeLocalized(range)} ${tr('pounds/month', $language)}` : null).filter(Boolean).join(', ')}</dd></div>{/if}
           {#if record.sourceFacts.aphisAnnualReports?.length}{#each record.sourceFacts.aphisAnnualReports as report (report.fiscalYear)}<div><dt>{tr('FY', $language)}{report.fiscalYear} {tr('reported animals', $language)}</dt><dd><ul>{#each report.speciesCounts as species (species.species)}<li>{sourceFlagLabel(species.species)}: {annualSpeciesCount(species.count)}</li>{/each}</ul><a href={report.sourceUrl} target="_blank" rel="noopener noreferrer">{tr('Source report', $language)}</a></dd></div>{/each}{/if}
+          {#each record.sourceFacts.aphisDatedInspections ?? [] as inspection (inspection.inspectionDate)}
+            {@const href = safeHttps(inspection.sourceUrl)}
+            <div><dt>{tr('APHIS inspection', $language)}</dt><dd>{inspection.inspectionDate}
+              {#if href}<a href={href} target="_blank" rel="noopener noreferrer">{tr('Source record', $language)}</a>{/if}
+            </dd></div>
+          {/each}
         </dl>
       </section>
     {/if}
@@ -144,36 +160,36 @@
   {/if}
 </section>
 <style>
-  .slaughter-estimate { margin:1rem 0;padding:.7rem 0 .7rem 1rem;border-left:2px solid var(--line,#3c4640); }
-  .slaughter-estimate p { margin:0 0 .35rem;font-size:.8rem; }
-  .slaughter-estimate strong { display:block;font:400 1.65rem/1.3 Georgia,serif; }
-  .slaughter-estimate a { display:inline-flex;align-items:center;min-height:36px;font-size:.75rem; }
-  .public-record { width: min(100% - 3rem, 46rem); margin: auto; padding: 1.5rem 0 2rem; color: #edf0e9; font: .9rem/1.5 system-ui, sans-serif; }
-  h1 { margin: 0 0 .75rem; font: 500 2rem/1.2 Georgia, serif; overflow-wrap: anywhere; }
-  h2 { margin: 1.5rem 0 0; font: 600 1.05rem/1.3 Georgia, serif; }
-  p { color: #c6d0c5; }
-  .compact-source { display:flex;flex-wrap:wrap;align-items:center;column-gap:.3rem;color:#b8c1b6;font-size:.75rem;line-height:1.5;margin:.3rem 0 .8rem;overflow-wrap:anywhere; }
+  .slaughter-estimate { margin:1rem 0;padding:.7rem 0 .7rem 1rem;border-left:2px solid var(--line); }
+  .slaughter-estimate p { margin:0 0 .35rem; }
+  .slaughter-estimate strong { display:block;font-size:1rem;font-weight:650; }
+  .slaughter-estimate a { display:inline-flex;align-items:center;min-height:44px; }
+  .public-record { width: min(100% - 3rem, 46rem); margin: auto; padding: 1.5rem 0 2rem; color: var(--ink); font: .9375rem/1.5 system-ui, sans-serif; }
+  h1 { margin: 0 0 .75rem; font-size: clamp(1.5rem, 4vw, 1.875rem); font-weight: 650; line-height: 1.2; overflow-wrap: anywhere; }
+  h2 { margin: 1.5rem 0 0; font-size: 1rem; font-weight: 650; }
+  p { color: var(--ink-secondary); }
+  .compact-source { display:flex;flex-wrap:wrap;align-items:center;column-gap:.3rem;color:var(--muted);margin:.3rem 0 .8rem;overflow-wrap:anywhere; }
   .direct-source { display:inline-flex;align-items:center;gap:.35rem;min-width:0;max-width:100%;min-height:44px;padding:.25rem 0; }
   .direct-source > span:first-child { min-width:0;overflow-wrap:anywhere; }
   .direct-source svg { width:.9rem;height:.9rem;flex:none;fill:none;stroke:currentColor;stroke-width:1.5; }
   .location-details { margin:.35rem 0; }
-  .location-details > summary { min-height:44px;padding:.65rem 0;cursor:pointer;font-size:.85rem; }
+  .location-details > summary { min-height:44px;padding:.65rem 0;cursor:pointer; }
   .location-details > dl { margin:0 0 .6rem; }
-  .map-action a { display:inline-flex;align-items:center;gap:.5rem;min-height:2.75rem; }.map-action svg { width:1rem;height:1rem;flex:none;fill:none;stroke:currentColor;stroke-width:1.5; }
+  .map-action { display:flex;flex-wrap:wrap;gap:0 1rem; }.map-action a { display:inline-flex;align-items:center;gap:.5rem;min-height:2.75rem; }.map-action svg { width:1rem;height:1rem;flex:none;fill:none;stroke:currentColor;stroke-width:1.5; }
   .record-category { margin: .25rem 0; }
   dl { margin: 1.25rem 0; }
   .source-facts dl { margin: .4rem 0; }
-  dl div { display: grid; grid-template-columns: 9rem minmax(0, 1fr); gap: 1rem; padding: .55rem 0; border-bottom: 1px solid #3c4640; }
+  dl div { display: grid; grid-template-columns: 9rem minmax(0, 1fr); gap: 1rem; padding: .55rem 0; border-bottom: 1px solid var(--line); }
   dt { font-weight: 600; }
-  dd { margin: 0; overflow-wrap: anywhere; color: #c6d0c5; }
+  dd { margin: 0; overflow-wrap: anywhere; color: var(--ink-secondary); }
   ul { margin: 0; padding-left: 1.1rem; }
   nav { display: flex; flex-wrap: wrap; gap: .6rem 1rem; margin-top: 1.25rem; }
-  a { color: #dce8d9; text-underline-offset: .2em; }
-  button { min-height: 2.25rem; padding: .4rem .6rem; background: #252f28; border: 1px solid #657466; color: #edf0e9; font: inherit; }
-  .share { display: inline-grid; place-items: center; vertical-align: middle; min-height: 2rem; width: 2rem; padding: .3rem; }
+  a { color: var(--link); text-underline-offset: .2em; }
+  button { min-height: 2.75rem; padding: .4rem .6rem; background: var(--panel); border: 1px solid var(--line); color: var(--ink); font: inherit; }
+  .share { display: inline-grid; place-items: center; vertical-align: middle; width: 2.75rem; padding: .3rem; }
   .share svg { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
   .sr-only { position: absolute; width: 1px; height: 1px; clip: rect(0, 0, 0, 0); overflow: hidden; white-space: nowrap; }
-  .warning { padding: .75rem; border-left: 3px solid #cf9a66; background: #282723; color: #eee4ce; }
-  a:focus-visible, button:focus-visible { outline: 2px solid #eee7d6; outline-offset: 3px; }
-  @media (max-width: 40rem) { .public-record { width: calc(100% - 2rem); } h1 { font-size: 1.65rem; } dl div { grid-template-columns: 1fr; gap: .15rem; } }
+  .warning { padding: .75rem; border-left: 3px solid var(--focus); background: var(--panel); color: var(--ink); }
+  a:focus-visible, button:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+  @media (max-width: 40rem) { .public-record { width: calc(100% - 2rem); } dl div { grid-template-columns: 1fr; gap: .15rem; } }
 </style>

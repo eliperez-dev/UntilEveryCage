@@ -1004,5 +1004,8 @@
   "{count} activities": "{count} activiteiten",
   "{count} filters": "{count} filters",
   "{count} record": "{count} record",
-  "{count} filter": "{count} filter"
+  "{count} filter": "{count} filter",
+  "Theme": "Thema",
+  "Advanced": "Geavanceerd",
+  "View full record": "Volledig record bekijken"
 }

@@ -62,12 +62,12 @@ async function mockSanitizedApi(page: Page) {
 }
 
 async function selectTheme(page: Page, theme: 'dark' | 'light') {
-  const button = page.locator('.masthead .theme-toggle');
-  if ((await button.getAttribute('aria-pressed')) !== String(theme === 'light')) await button.click();
-  await expect(button).toHaveAttribute('aria-pressed', String(theme === 'light'));
+  await page.getByRole('button', { name: 'More tools', exact: true }).click();
+  const field = page.getByLabel('Theme', { exact: true });
+  await field.selectOption(theme);
+  await expect(field).toHaveValue(theme);
   await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
-  await expect(button.locator('svg')).toHaveAttribute('data-current-theme', theme);
-  await expect(button.locator('svg circle')).toHaveCount(theme === 'light' ? 1 : 0);
+  await page.getByRole('button', { name: 'Close more tools', exact: true }).click();
 }
 
 const contrast = (foreground: string, background: string) => {
@@ -136,28 +136,17 @@ test('saved theme is applied before the app module starts', async ({ page }) => 
   await expect(page.getByRole('heading', { name: 'About Until Every Cage is Empty' })).toBeVisible();
 });
 
-test('masthead theme toggle is square, before language and Tools, and outside the Tools menu', async ({ page }) => {
+test('the masthead keeps the theme control inside More tools', async ({ page }) => {
   await page.goto('./#/about');
-  const toggle = page.locator('.masthead .theme-toggle');
   const tools = page.getByRole('button', { name: 'More tools', exact: true });
-  const boxes = await page.evaluate(() => {
-    const toggleRect = document.querySelector('.masthead .theme-toggle')!.getBoundingClientRect();
-    const languageRect = document.querySelector('.masthead .language-action')!.getBoundingClientRect();
-    const toolsRect = document.querySelector('.masthead .tools-action')!.getBoundingClientRect();
-    return { width: toggleRect.width, height: toggleRect.height, gap: languageRect.left - toggleRect.right, languageWidth: languageRect.width, toolsGap: toolsRect.left - languageRect.right };
-  });
-  expect(Math.abs(boxes.width - boxes.height)).toBeLessThan(1);
-  expect(boxes.gap).toBeGreaterThanOrEqual(0);
-  expect(boxes.languageWidth).toBeGreaterThanOrEqual(44);
-  expect(boxes.toolsGap).toBeGreaterThanOrEqual(0);
+  await expect(page.getByLabel('Theme', { exact: true })).toHaveCount(0);
   await tools.click();
-  await expect(page.locator('#shared-tools-menu').getByRole('button', { name: /Light theme|Dark theme/ })).toHaveCount(0);
-  await expect(toggle).toBeVisible();
+  await expect(page.locator('#shared-tools-menu').getByLabel('Theme', { exact: true })).toBeVisible();
 });
 
 const viewports = [{ name: 'desktop', width: 1280, height: 900 }, { name: 'mobile', width: 390, height: 844 }] as const;
 const publicViews = [
-  { route: `./#/map?release_id=${release}`, surface: '.map-navigation', label: 'map controls' },
+  { route: `./#/map?release_id=${release}`, surface: '.map-toolbar', label: 'map controls' },
   { route: './#/map?list=open', surface: '.results', label: 'map search' },
   { route: `./#/records/${id}?release_id=${release}`, surface: '.public-record', label: 'full facility detail' },
   { route: './#/contribute/bug', surface: '.intake', label: 'contribute form' },

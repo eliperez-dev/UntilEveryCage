@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { getTheme, setTheme, subscribeTheme, type Theme } from '../features/theme/theme';
   import { language, tr } from './language';
+  let { menu = false }: { menu?: boolean } = $props();
 
   let theme = $state<Theme>('dark');
   const nextTheme = $derived(theme === 'dark' ? 'light' : 'dark');
@@ -11,6 +12,14 @@
   });
 </script>
 
+{#if menu}
+  <label class="theme-field">{tr('Theme', $language)}
+    <select aria-label={tr('Theme', $language)} value={theme} onchange={(event) => setTheme(event.currentTarget.value === 'light' ? 'light' : 'dark')}>
+      <option value="dark">{tr('Dark theme', $language)}</option>
+      <option value="light">{tr('Light theme', $language)}</option>
+    </select>
+  </label>
+{:else}
 <button class="theme-toggle" type="button" aria-label={tr(theme === 'light' ? 'Light theme' : 'Dark theme', $language)} aria-pressed={theme === 'light'} title={tr(theme === 'light' ? 'Light theme' : 'Dark theme', $language)} onclick={() => setTheme(nextTheme)}>
   <svg viewBox="0 0 24 24" aria-hidden="true" data-current-theme={theme}>
     {#if theme === 'dark'}
@@ -21,8 +30,11 @@
     {/if}
   </svg>
 </button>
+{/if}
 
 <style>
+  .theme-field { display: grid; gap: .35rem; font-size: .8125rem; }
+  select { width: 100%; min-height: 44px; padding: .45rem .6rem; background: var(--ui-raised); color: var(--ui-ink); border: 1px solid var(--ui-line); font: inherit; }
   .theme-toggle { display:grid; place-items:center; flex:none; width:2.75rem; height:2.75rem; min-height:2.75rem; aspect-ratio:1; padding:0; border:1px solid transparent; border-radius:0; background:var(--ui-surface); color:var(--ui-ink); cursor:pointer; }
   .theme-toggle:hover { background:var(--ui-hover); }
   .theme-toggle:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }

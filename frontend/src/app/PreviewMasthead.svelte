@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick } from "svelte";
+  import { tick, type Snippet } from "svelte";
   import type { MapDisplaySettings } from '../design-lab/contract';
   import { language, tr, LANGUAGE_OPTIONS, languageLoadState, selectLanguage, type Language } from './language';
   import ThemeControl from './ThemeControl.svelte';
@@ -17,6 +17,7 @@
     mapControlsReady = false,
     mapDisplaySettings = null,
     onmapdisplaychange,
+    mapTools,
   }: {
     current: "landing" | "map" | "database" | "api" | "methodology" | "about" | "faq" | "contribute";
     mapHref: string;
@@ -32,6 +33,7 @@
     mapControlsReady?: boolean;
     mapDisplaySettings?: MapDisplaySettings | null;
     onmapdisplaychange?(patch: Partial<MapDisplaySettings>): void;
+    mapTools?: Snippet;
   } = $props();
 
   const logo = `${import.meta.env.BASE_URL}assets/icon.png`;
@@ -93,7 +95,6 @@
     <a href={aboutHref} aria-current={current === 'about' || current === 'methodology' ? 'page' : undefined}>{tr('About', $language)}</a>
   </nav>
   <div class="masthead-actions" bind:this={actionArea}>
-    <ThemeControl />
     <button bind:this={languageButton} type="button" class="header-action language-action" aria-label={tr('Language', $language)} aria-expanded={languageOpen} aria-controls="shared-language-menu" onclick={toggleLanguages}>
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 8 6 6M4 5h12M10 3v2M13 5c-1 6-5 10-9 12m11 4 4-10 4 10m-7-3h6" /></svg>
     </button>
@@ -107,7 +108,10 @@
     </div>{/if}
     {#if toolsOpen}<aside id="shared-tools-menu" class="header-menu tools-menu" aria-label={tr('More tools', $language)}>
       <header><strong><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> {tr('More tools', $language)}</strong><button type="button" aria-label={tr('Close more tools', $language)} onclick={() => closeTools(true)}>×</button></header>
-      {#if current === 'map' && mapDisplaySettings && onmapdisplaychange}<section class="map-display-tools" role="group" aria-label={tr('Map display', $language)}>
+      <section><ThemeControl menu /></section>
+      {@render mapTools?.()}
+      {#if current === 'map' && (mapDisplaySettings || onreleasechange)}<details class="advanced-tools"><summary>{tr('Advanced', $language)}</summary>
+      {#if mapDisplaySettings && onmapdisplaychange}<section class="map-display-tools" role="group" aria-label={tr('Map display', $language)}>
         <h2>{tr('Map display', $language)}</h2>
         <label for="map-clustering-choice">{tr('Clustering', $language)}</label>
         <select id="map-clustering-choice" disabled={!mapControlsReady} value={mapDisplaySettings.clusterMode} onchange={event => onmapdisplaychange?.({ clusterMode: event.currentTarget.value as MapDisplaySettings['clusterMode'] })}><option value="auto">{tr('Automatic', $language)}</option><option value="on">{tr('On', $language)}</option><option value="off">{tr('Off', $language)}</option></select>
@@ -115,8 +119,9 @@
         <label class="size-label" for="map-pin-size"><span>{tr(sizeLabel, $language)}</span><output for="map-pin-size">{sizeText}</output></label>
         <input id="map-pin-size" type="range" aria-label={tr(sizeLabel, $language)} aria-valuetext={sizeText} disabled={!mapControlsReady} min={mapDisplaySettings.optimizedPins ? 3 : .6} max={mapDisplaySettings.optimizedPins ? 12 : 1.6} step={mapDisplaySettings.optimizedPins ? .5 : .05} value={sizeValue} oninput={event => resizePins(event.currentTarget.value)} />
       </section>{/if}
-      <section><label for="release-choice">{tr('Current release', $language)}</label><select id="release-choice" aria-label={tr('Current release', $language)} title={displayedReleaseLabel} value={selectedReleaseId ?? ''} disabled={!releaseOptions.length || !onreleasechange} onchange={event => onreleasechange?.(event.currentTarget.value)}>{#if selectedReleaseId && !releaseOptions.some(release => release.id === selectedReleaseId)}<option value={selectedReleaseId} disabled>{tr('Selected release unavailable', $language)}</option>{/if}{#if releaseOptions.length}{#each releaseOptions as release}<option value={release.id}>{displayReleaseLabel(release.label)}</option>{/each}{:else}<option value="">{tr(displayedReleaseLabel, $language)}</option>{/if}</select><small>{tr(releaseDescription ?? (publicReleaseLabel ? 'Release metadata from the active public map.' : 'Release selection is available from the map.'), $language)}</small></section>
+      <section><label for="release-choice">{tr('Current release', $language)}</label><select id="release-choice" aria-label={tr('Current release', $language)} title={displayedReleaseLabel} value={selectedReleaseId ?? ''} disabled={!releaseOptions.length || !onreleasechange} onchange={event => onreleasechange?.(event.currentTarget.value)}>{#if selectedReleaseId && !releaseOptions.some(release => release.id === selectedReleaseId)}<option value={selectedReleaseId} disabled>{tr('Selected release unavailable', $language)}</option>{/if}{#if releaseOptions.length}{#each releaseOptions as release}<option value={release.id}>{displayReleaseLabel(release.label)}</option>{/each}{:else}<option value="">{tr(displayedReleaseLabel, $language)}</option>{/if}</select></section>
       {#if current === 'map'}<section><label class="toggle"><input type="checkbox" checked={debugEnabled} onchange={(event) => ondebugchange?.(event.currentTarget.checked)} /> {tr('Enable debug menu', $language)}</label><small>{tr('Map diagnostics and rendering controls.', $language)}</small></section>{/if}
+      </details>{/if}
     </aside>{/if}
   </div>
 </div>
@@ -173,6 +178,10 @@
   .header-menu header button:hover { background:var(--ui-hover); }
   .header-menu section { display:grid; gap:.5rem; padding:1rem; border-bottom:1px solid var(--ui-line); }
   .header-menu section:last-child { border-bottom:0; }
+  .advanced-tools > summary { padding: .85rem 1rem; min-height: 44px; cursor: pointer; font-size: .8125rem; }
+  .tools-menu :global(.map-tool-settings) { display: grid; gap: .65rem; padding: 1rem; border-bottom: 1px solid var(--ui-line); }
+  .tools-menu :global(.map-tool-settings label) { display: grid; gap: .35rem; font-size: .8125rem; }
+  .tools-menu :global(.map-tool-settings button) { min-height: 44px; background: transparent; border: 1px solid var(--ui-line); color: inherit; font: inherit; cursor: pointer; }
   .header-menu label, .header-menu h2 { margin:0; font-size:.75rem; line-height:1.4; font-weight:500; }
   .header-menu .toggle { display:flex; align-items:center; gap:.625rem; min-height:2.75rem; cursor:pointer; }
   .toggle input { width:1rem; height:1rem; margin:0; accent-color:var(--ui-ink); }

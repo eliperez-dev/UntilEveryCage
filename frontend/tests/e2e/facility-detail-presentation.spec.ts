@@ -45,10 +45,10 @@ for (const [width, canonicalName] of [[320, null], [1440, null], [320, 'Name not
   await expect(result.locator('strong')).toHaveText(name);
   await expect(result).toContainText(de[width <= 640 ? 'Unmapped' : 'Unmapped · no public point']);
   await result.click();
-  const panel = page.locator('.reading-sheet');
-  await expect(panel.locator('.record-name')).toHaveText(name);
+  const panel = page.locator('.map-summary');
+  await expect(panel.locator('strong')).toHaveText(name);
   await expect(panel.getByRole('link', { name: de['Open in maps'], exact: true })).toHaveCount(0);
-  await panel.getByRole('link', { name: de['Open facility page'], exact: true }).click();
+  await panel.getByRole('link', { name: de['View full record'], exact: true }).click();
   await expect(page.locator('.public-record > h1')).toContainText(name);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
@@ -59,20 +59,12 @@ for (const width of [1440, 375]) test(`direct evidence access and optional locat
     origin: 'provider_derived', method: 'geoapify_rooftop', provider: 'Geoapify', confidence: '0.8', confidence_band: 'medium',
   } });
   await page.goto(`./#/map?selected=${id}&release_id=${release}`);
-  const panel = page.locator('.reading-sheet[aria-label="Record evidence"]');
-  await expect(panel.locator('.compact-source .direct-source')).toHaveAttribute('href', row.provenance_source_url);
-  await expect(panel.locator('.compact-source .direct-source')).toBeVisible();
-  await expect(panel.locator('.compact-source .direct-source')).toHaveAttribute('rel', /noopener.*noreferrer/);
-  await expect(panel.locator('.evidence-section')).not.toHaveAttribute('open');
-  await expect(panel.getByText('Precision', { exact: true })).toBeVisible();
-  await expect(panel.locator('.location-details')).not.toHaveAttribute('open');
-  await expect(panel.getByText('Geocoding provider', { exact: true })).toBeHidden();
-  await panel.locator('.location-details > summary').focus(); await page.keyboard.press('Enter');
-  await expect(panel.locator('.location-details')).toHaveAttribute('open', '');
-  await expect(panel.getByText('Geoapify', { exact: true })).toBeVisible();
-  await expect(panel.locator('.location-details')).toContainText('provider score');
-  await expect(panel.getByRole('link', { name: 'Open in maps', exact: true })).toHaveCount(0);
-  await panel.getByRole('link', { name: 'Open facility page', exact: true }).click();
+  const panel = page.locator('.map-summary');
+  await expect(panel.getByText(row.provenance_source_name, { exact: true })).toBeVisible();
+  await expect(panel.getByText('Approximate location', { exact: true })).toBeVisible();
+  await expect(panel.locator('.location-details')).toHaveCount(0);
+  await expect(page.locator('#field-record-list')).toBeHidden();
+  await panel.getByRole('link', { name: 'View full record', exact: true }).click();
   const full = page.locator('.public-record');
   await expect(full.locator('.compact-source .direct-source')).toHaveAttribute('href', row.provenance_source_url);
   await expect(full.locator('.compact-source .direct-source')).toBeVisible();
@@ -82,6 +74,7 @@ for (const width of [1440, 375]) test(`direct evidence access and optional locat
   await full.locator('.location-details > summary').click();
   await expect(full.getByText('Geoapify', { exact: true })).toBeVisible();
   await expect(full.locator('.location-details')).toContainText('provider score');
+  await expect(full.getByRole('link', { name: 'Open in maps', exact: true })).toHaveCount(0);
   await expect(full.getByRole('link', { name: 'Open in Map', exact: true })).toHaveAttribute('href', new RegExp(`release_id=${release}`));
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });

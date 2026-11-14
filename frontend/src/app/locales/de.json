@@ -1004,5 +1004,8 @@
   "{count} activities": "{count} Tätigkeiten",
   "{count} filters": "{count} Filter",
   "{count} record": "{count} Datensatz",
-  "{count} filter": "{count} Filter"
+  "{count} filter": "{count} Filter",
+  "Theme": "Design",
+  "Advanced": "Erweitert",
+  "View full record": "Vollständigen Datensatz ansehen"
 }

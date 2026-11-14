@@ -30,16 +30,16 @@ describe('search UI repair contract', () => {
     expect(field).toContain(`<fieldset aria-label="{tr('Source', $language)}">`);
     expect(field).toContain(`<summary><span>{tr('Country', $language)}</span>`);
     expect(field).toContain(`<summary><span>{tr('Source', $language)}</span>`);
-    expect(field).toContain("state.filters.countries.map(countryName).join(', ')");
-    expect(field).toContain("state.filters.sources.map(sourceName).join(', ')");
+    expect(field).toContain("mapState.filters.countries.map(countryName).join(', ')");
+    expect(field).toContain("mapState.filters.sources.map(sourceName).join(', ')");
     expect(field).toMatch(/<fieldset><legend>\{tr\('Activity category', \$language\)\}<\/legend>/);
     expect(field).toMatch(/<label><input type="checkbox"/);
     expect(field).toContain('min-height: 2.75rem');
   });
 
   it('offers the single clear action whenever a query, source, or filter is active', () => {
-    expect(field).toContain('(state.query.trim() ? 1 : 0)');
-    expect(field).toContain('(state.sourceId ? 1 : 0)');
+    expect(field).toContain('(mapState.query.trim() ? 1 : 0)');
+    expect(field).toContain('(mapState.sourceId ? 1 : 0)');
     expect(field).toContain('onclick={clearSearch}');
     expect(field).toContain("dispatch({ type: 'reset-filters' });");
   });

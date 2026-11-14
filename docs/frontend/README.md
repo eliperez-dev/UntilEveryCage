@@ -160,31 +160,20 @@ API schemas own supported fields. They are not additional roadmaps.
   old FAQ links retain their section and map context. API and downloads remain
   available from Data; map search has no CSV shortcut.
   Existing informational/download routes remain compatible aliases.
-- A horizontal map toolbar sits 24px from the desktop map's left edge and 16px
-  below its top. It joins Search map with one Street/Satellite switch, 2D/3D,
-  Your location, Search this area and Search settings. Settings choose visible
-  map bounds or a radius, with a 5–250-mile radius control. Changing settings
-  reruns an active search at its original radius center or current map bounds.
-  The style switch shows the current style
-  and exposes the next style in its tooltip. Search input stays in place as
-  results, detail and filters open flush below the entire toolbar width.
-  Resizing the panel changes both joined widths; bounds keep the controls usable
-  at narrow desktop and zoomed layouts. On mobile, compact style, 2D/3D and
-  location controls sit near the map top. Search this area is an explicit
-  action above the exposed bottom sheet; scope and box/radius settings belong
-  in the sheet's scope control. Keep 44px touch targets and native gestures.
-  The 3D view uses a 60-degree pitch; 2D looks straight down and resets bearing
-  to north, preserving geographic focus and zoom. More tools contains
-  release selection, clustering, icon size, optimized dots and diagnostics;
-  map style and camera controls are not duplicated in that menu.
+- On the public map, the toolbar has independent Search map and Filters controls
+  on desktop and mobile. The theme, basemap, and area search live in More tools.
+  Automatic basemap shows Street through zoom 13 and Satellite above it. Visitors
+  can choose Street or Satellite from the same menu. Advanced holds clustering,
+  pin appearance, release selection, and diagnostics.
+  Area searches use the visible bounds or a 5–250-mile radius. They apply from
+  More tools. Panning alone does not apply an area search.
 - Resize applicable panels by dragging edges, not plus/minus width buttons.
   Do not change panel layout without the maintainer's specific approval.
 - The map stage fills the space below the header, including when navigation
   wraps. On desktop Search opens its anchored resizable workspace at one-third
   width, with a 448px minimum for the joined toolbar and a viewport-safe maximum;
   the map remains full-size underneath it. Opening, closing or resizing the
-  overlay preserves the map canvas, camera and marker positions. Search,
-  filters, results and facility detail share that overlay.
+  overlay preserves the map canvas, camera and marker positions. Search results and filters use that overlay independently.
   Temporary record-search failures never unmount the map or replace its basemap with an
   error screen. Show a translated inline Search unavailable / Retry action,
   including above the collapsed sheet. Retry keeps camera, filters and sheet
@@ -193,55 +182,19 @@ API schemas own supported fields. They are not additional roadmaps.
   Existing release,
   suppression and invalid-contract revalidation remains effective; failed or
   pending scope matches do not show stale pins as current results.
-  Back to results restores the list and its scroll position. Mobile uses a
-  bottom search sheet with collapsed, middle and expanded positions. The
-  collapsed sheet is a 56px pull handle plus the safe area. Fresh search says
-  Search map; active searches retain scope/filter context. A retained selection
-  says View details with the facility name. Tapping, keyboard steps or dragging
-  that handle opens it. Normal result
-  scrolling never drags the sheet. The sheet overlays the unchanged map canvas;
-  its handle stays reachable even when expanded. Toolbar and attribution sit
-  above the mobile sheet; the toolbar can hide when a short viewport leaves
-  no usable map strip. The middle position defaults to 60% of the remaining
-  map workspace, and expanded to 90%. The middle and expanded height settings
-  are bounded, temporary controls under Layout & density in the debug menu.
-  Every search action opens results. Preserve an already expanded mobile sheet;
-  reopening a collapsed sheet starts at middle. Short scoped-search viewports
-  compact summary actions and row padding while retaining the middle height.
-  One outer results scroller owns records and pagination; record rows never
-  shrink into a zero-height nested scroller.
-  Mobile detail uses the same three sheet positions and replaces all search,
-  filters, totals and download chrome, including while loading or reporting a
-  detail error. A new selection preserves an expanded sheet; from collapsed
-  or middle it opens at middle. Cold selected deep links start at middle.
-  Its handle remains visible and draggable. Collapsing retains the
-  selected record, and expanding retains its detail. Back restores the previous
-  results position and list context. Show on map
-  collapses the sheet while retaining the selection; View facility details
-  returns to that record. Unmapped records have no Show on map action.
-  On mobile, query entry and the labelled Filters button share one outlined
-  row, without a duplicate Search map heading above it. The next row shows
-  Everywhere, This map area or the named radius/Near me scope with its clear
-  action and compact category context. Panning never silently applies a scope.
-  Scope/settings menus fit the visual viewport and scroll internally on short screens.
-  A short record count and Expand action lead compact name/category/location
-  rows; pagination retains its loaded/total context below the list. Keep at
-  least three complete records visible in the middle sheet at ordinary 320px
-  and 390px phone sizes. Desktop keeps Filters and count below Search.
-  Keep detail dense and
-  readable, with a white `Open facility page` action with black text at the bottom.
-  Keep checkbox multi-selection, totals/pagination, evidence and relationship
-  controls. Public category filters use short translated labels and existing
-  semantic color swatches in two columns. Country and Source use multi-select
-  disclosures that show their current selections. Location preserves explicit
-  precision choices; Mapped expands to supported mapped precision values,
-  with an indeterminate state for partial selection. Filters fill the available
-  workspace, with a scrolling options region and fixed footer. Mobile choices
-  are staged in memory: Apply filters submits them together, Clear filters
-  clears the draft, and closing cancels unsubmitted changes. Query text is
-  preserved. Desktop retains immediate checkbox changes and Show results.
-  Opening filters on mobile expands the sheet; closing them restores its
-  previous results height.
+  Back to results restores the list and its scroll position. On phones the
+  results sheet opens at middle height and expands through its Expand action.
+  Closing it returns to the always-visible Search and Filters controls. The
+  existing result scroller owns records and pagination.
+  Selecting a public pin or result opens a compact summary over the map.
+  Mapped summaries follow the selected point within the viewport. Unmapped
+  results use the same summary without a pin. Show the name, activity, locality,
+  source, and precision. View full record opens the release-pinned page for
+  location methods and coordinates, source evidence, and connections.
+  Search results keep their existing scope and pagination. Filters include
+  Activity category, Country, and Source. Checkbox selections are staged until
+  Apply filters. Clear filters clears the draft, and closing discards changes
+  that have not been applied. Search text is preserved when filters are applied.
 
 ## Map
 

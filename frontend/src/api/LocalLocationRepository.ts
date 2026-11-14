@@ -75,7 +75,7 @@ export const mapWireLocation = (r: WireLocation | WireDetailLocation): Location 
   privacyScreeningStatus: r.privacy_screening_status, projectApproval: r.project_approval,
     publicationProfile: r.publication_profile, publicationWarning: r.publication_warning,
     sourceId: r.provenance_source_id, sourceUrl: r.provenance_source_url, provenanceSource: r.provenance_source, sourceRightsStatus: r.source_rights_status,
-    retrievedAt: r.provenance_retrieved_at, displayPrecision: r.display_precision, ...(r.geometry_provenance ? { geometryProvenance: r.geometry_provenance } : {}), lifecycleStatus: r.lifecycle_status, observationCount: r.observation_count,
+    retrievedAt: r.provenance_retrieved_at, displayPrecision: r.display_precision, ...(r.source_location_role ? { sourceLocationRole: r.source_location_role } : {}), ...(r.geometry_provenance ? { geometryProvenance: r.geometry_provenance } : {}), lifecycleStatus: r.lifecycle_status, observationCount: r.observation_count,
   },
   ...(sourceFacts && Object.keys(sourceFacts).length ? { sourceFacts } : {}),
 };

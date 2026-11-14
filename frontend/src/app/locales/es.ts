@@ -691,6 +691,7 @@ export const es = {
   "{count} filters": "{count} filtros",
   "{count} record": "{count} registro",
   "{count} filter": "{count} filtro",
+  'Theme': 'Tema', 'Advanced': 'Opciones avanzadas', 'View full record': 'Ver ficha completa',
 } satisfies Record<string, string>;
 export type TranslationKey = keyof typeof es;
 export type LocaleMessages = Record<TranslationKey, string>;

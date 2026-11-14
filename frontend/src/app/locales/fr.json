@@ -1004,5 +1004,8 @@
   "{count} activities": "{count} activités",
   "{count} filters": "{count} filtres",
   "{count} record": "{count} fiche",
-  "{count} filter": "{count} filtre"
+  "{count} filter": "{count} filtre",
+  "Theme": "Thème",
+  "Advanced": "Options avancées",
+  "View full record": "Voir la fiche complète"
 }

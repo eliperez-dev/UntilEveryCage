@@ -1004,5 +1004,8 @@
   "{count} activities": "{count} aktiviteter",
   "{count} filters": "{count} filtre",
   "{count} record": "{count} post",
-  "{count} filter": "{count} filter"
+  "{count} filter": "{count} filter",
+  "Theme": "Tema",
+  "Advanced": "Avanceret",
+  "View full record": "Se hele posten"
 }

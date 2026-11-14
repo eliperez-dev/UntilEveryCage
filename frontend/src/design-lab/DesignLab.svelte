@@ -127,6 +127,7 @@
       latitude: location.lat,
       longitude: location.lon,
       ...(geometry?.method ? { coordinateMethod: geometry.method } : {}),
+      ...(location.evidence?.sourceLocationRole ? { sourceLocationRole: location.evidence.sourceLocationRole } : {}),
       ...(geometry?.provider ? { coordinateProvider: geometry.provider } : {}),
       ...(Number.isFinite(confidence) && confidence >= 0 && confidence <= 1 ? { coordinateConfidence: confidence } : {}),
       ...(geometry?.confidence_band === 'high' || geometry?.confidence_band === 'medium' || geometry?.confidence_band === 'low' ? { coordinateConfidenceBand: geometry.confidence_band } : {}),

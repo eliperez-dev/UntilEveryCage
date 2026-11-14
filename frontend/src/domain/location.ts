@@ -21,6 +21,7 @@ export type LocationEvidence = Readonly<{
   sourceRightsStatus: string;
   retrievedAt: string;
   displayPrecision: 'exact' | 'city' | 'source_reported' | 'approximate' | 'provider_locality_approximate' | 'unmapped';
+  sourceLocationRole?: 'aphis_mailing_locality';
   geometryProvenance?: GeometryProvenance;
   lifecycleStatus: 'active_observed' | 'explicitly_closed' | 'not_seen_recently' | 'status_unknown';
   observationCount: number | null;
