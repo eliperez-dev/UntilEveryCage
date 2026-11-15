@@ -6,12 +6,12 @@
   import type { PublicPinSummary, PublicPinSummaryResolver } from '../contract';
   import { overlapPanelFrame, type OverlapBounds, type OverlapMember, type ScreenPoint } from './publicPinOverlap';
 
-  let { members, anchor, bounds, resolveLabel, onselect, onclose }: {
+  let { members, anchor, bounds, resolveLabel, hrefFor, onclose }: {
     members: readonly OverlapMember[];
     anchor: ScreenPoint;
     bounds: OverlapBounds;
     resolveLabel?: PublicPinSummaryResolver | undefined;
-    onselect(member: OverlapMember): void;
+    hrefFor(id: string): string;
     onclose(): void;
   } = $props();
 
@@ -53,7 +53,7 @@
   }
 
   function focusMember(index: number) {
-    const button = list.querySelector<HTMLButtonElement>(`[data-record-index="${index}"]`);
+    const button = list.querySelector<HTMLAnchorElement>(`[data-record-index="${index}"]`);
     if (!button) return;
     button.focus({ preventScroll: true });
     const item = button.getBoundingClientRect();
@@ -102,8 +102,8 @@
       {@const label = labels[member.id]}
       {@const appearance = categoryPresentation(label?.categoryKey ?? category(member))}
       <li>
-        <button type="button" class="overlap-member" data-record-id={member.id} data-record-index={index}
-          onfocus={() => loadLabel(member)} onkeydown={event => onNavigation(event, index)} onclick={() => onselect(member)}>
+        <a href={hrefFor(member.id)} class="overlap-member" data-record-id={member.id} data-record-index={index}
+          onfocus={() => loadLabel(member)} onkeydown={event => onNavigation(event, index)}>
           <span class="activity-dot" style:background={appearance.color} aria-hidden="true"></span>
           <span class="member-text">
             {#if label}
@@ -117,7 +117,7 @@
             <small>{tr(appearance.label, $language)}</small>
           </span>
           <span class="chevron" aria-hidden="true">›</span>
-        </button>
+        </a>
       </li>
     {/each}
   </ul>
@@ -144,11 +144,11 @@
   header { display: flex; align-items: center; justify-content: space-between; gap: .25rem; padding: .2rem .25rem .2rem .8rem; border-bottom: 1px solid #e0d9cd; }
   h2 { margin: 0; font-size: .95rem; line-height: 1.3; font-weight: 650; }
   button { border: 0; color: inherit; background: transparent; font: inherit; cursor: pointer; touch-action: manipulation; }
-  button:focus-visible { outline: 2px solid #8d413d; outline-offset: -3px; }
+  button:focus-visible, a:focus-visible { outline: 2px solid #8d413d; outline-offset: -3px; }
   .close { flex: 0 0 44px; height: 44px; padding: 0; font-size: 1.25rem; line-height: 1; }
   ul { min-height: 0; margin: 0; padding: 0; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; list-style: none; }
   li + li { border-top: 1px solid #e7e0d4; }
-  .overlap-member { display: grid; grid-template-columns: 8px minmax(0, 1fr) min-content; align-items: center; gap: .65rem; width: 100%; min-height: 48px; padding: .4rem .8rem; text-align: left; }
+  .overlap-member { display: grid; grid-template-columns: 8px minmax(0, 1fr) min-content; align-items: center; gap: .65rem; width: 100%; min-height: 48px; padding: .4rem .8rem; text-align: left; color: inherit; text-decoration: none; }
   .close:hover, .overlap-member:hover { background: #eee8dc; }
   .activity-dot { width: 7px; height: 7px; border-radius: 50%; }
   .member-text { overflow-wrap: anywhere; }

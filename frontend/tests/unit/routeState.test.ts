@@ -69,6 +69,8 @@ describe('routeState', () => {
     expect(mapHrefFromHash('#/database?lat=100&lon=181&z=99&pitch=90&bearing=181&list=closed&release_id=bad/value')).toBe('#/map');
     expect(safeMapHref('#/map?lat=44.5&lon=8.1&q=private&f1a=field')).toBe('#/map?lat=44.5&lon=8.1');
     expect(safeMapHref('#/database?lat=44.5')).toBeUndefined();
+    expect(safeMapHref('#/map?overlap=550e8400-e29b-41d4-a716-446655440000')).toBe('#/map?overlap=550e8400-e29b-41d4-a716-446655440000');
+    expect(safeMapHref('#/map?overlap=arbitrary-text')).toBe('#/map');
   });
 
   it('keeps API and downloads aliases with map context', () => {

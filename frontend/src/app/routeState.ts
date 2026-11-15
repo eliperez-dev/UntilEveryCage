@@ -46,6 +46,8 @@ export function mapHrefFromParams(params: URLSearchParams, releaseOverride?: str
   if (source && /^[A-Za-z0-9.-]{1,80}$/.test(source)) safe.set('source', source);
   const selected = selectedOverride;
   if (selected && /^[a-z0-9-]{1,80}$/i.test(selected)) safe.set('selected', selected);
+  const overlap = params.get('overlap');
+  if (!selected && overlap && /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(overlap)) safe.set('overlap', overlap);
   const releaseId = releaseOverride ?? params.get('release_id') ?? undefined;
   if (releaseId && releaseIdPattern.test(releaseId)) safe.set('release_id', releaseId);
   return `#/map${safe.size ? `?${safe}` : ''}`;

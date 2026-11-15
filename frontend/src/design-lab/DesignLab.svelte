@@ -34,6 +34,8 @@
   const resumeGuard = createMapResumeGuard();
 
   let labState = $state<LabState>(decodeLabHash(typeof location === 'undefined' ? '' : location.hash));
+  const overlapFromHash = () => location.hash.startsWith('#/map?') ? new URLSearchParams(location.hash.split('?')[1]).get('overlap') : null;
+  let restoreOverlapId = $state(typeof location === 'undefined' ? null : overlapFromHash());
   let pendingSelectionDismissalCamera: Pick<LabState, 'viewport' | 'navigationViewport' | 'basemap' | 'listOpen' | 'filters'> | null = null;
   const serverMode = typeof document === 'undefined' ? null : document.querySelector<HTMLMetaElement>('meta[name="uec-local-data-mode"]')?.content ?? null;
   // A configured candidate server is itself the explicit local preview
@@ -471,6 +473,7 @@
     }
     const sync = () => {
       if (location.hash.startsWith('#/map')) {
+        restoreOverlapId = overlapFromHash();
         const decodedHash = decodeLabHash(location.hash);
         const decoded = { ...decodedHash, query: new URLSearchParams(location.hash.split('?')[1] ?? '').has('q') ? decodedHash.query : labState.query, searchScope: labState.searchScope, ...(labState.navigationViewport ? { navigationViewport: labState.navigationViewport, viewport: labState.viewport } : {}) };
         // Browser Back and the dossier close button both leave a selected
@@ -594,6 +597,7 @@
     <Field active={dataActive} state={labState} {coverageOpen} records={mode !== 'synthetic' ? apiRecords : model.listRecords} mapRecords={mode !== 'synthetic' ? [] : model.mapRecords} {mode} publicReleaseId={$publicReleaseId} selectedPublicReleaseId={$publicReleaseId ?? $pinnedPublicReleaseId ?? null} publicReleaseIdentity={$publicReleaseIdentity} publicReleaseManifestIdentity={$publicReleaseManifestIdentity} publicMapMeta={$publicMapMeta} releaseOptions={publicReleaseOptions} onreleasechange={selectPublicRelease} onMapFeedMeta={(meta) => { $publicMapMeta = meta; }}
       dataStatus={$dataStatus} dataError={$dataError} {listRefreshing} {mapMatchingIds} {mapMatchesStatus} {mapMatchesError} {mapMatchesSearchKey} {mapMatchesTotalCount} {mapMatchesMappedCount} onRetryMapMatches={() => mapMatchesAttempt += 1} onRetrySearch={() => { listRefreshing = true; if (mapMatchesStatus === 'error') mapMatchesAttempt += 1; void loadPage(labState.query, true); }}
       {detailRecord} {detailStatus} {detailError} {nextCursor} {pageLoading} {resolvePinSummary} {selectedPinSummary}
+      {restoreOverlapId} onOverlapRestored={() => { restoreOverlapId = null; }}
       {facets} {facetsStatus} {candidateFacets} {candidateTotalCount} {mapDiagnostics} {aggregateMemberRecords} {aggregateNextCursor} {aggregateLoading} {aggregateError} onMapTiming={timing=>{sourceMaterializeMs=timing.sourceMaterializeMs;clusterReadyMs=timing.clusterReadyMs;if(timing.zoomSettleMs!==undefined)zoomSettleMs=timing.zoomSettleMs;}} onLoadMore={() => void loadPage(labState.query, false)} onMapReference={(key, refSourceId) => void loadReference(key, true, refSourceId)} onLoadMoreAggregate={() => { if (aggregateReferenceKey) void loadReference(aggregateReferenceKey, false); }} {dispatch}/>
     {/if}
     </div>

@@ -64,6 +64,8 @@
     onRetryMapMatches,
     onRetrySearch,
     resolvePinSummary,
+    restoreOverlapId = null,
+    onOverlapRestored,
     selectedPinSummary = null,
     mapDiagnostics,
     onMapTiming,
@@ -691,6 +693,12 @@
     })(),
   );
   const mapHref = $derived(encodeMapNavigationHash(databaseHref, mode === "public-release" ? undefined : mapState.scenario));
+  function overlapRecordHref(facilityId: string, groupId: string) {
+    const params = new URLSearchParams(mapHref.split('?')[1]);
+    params.set('overlap', groupId);
+    return serializeRoute({ kind: 'record', facilityId, profile: 'official',
+      ...(publicReleaseId ? { releaseId: publicReleaseId } : {}), returnMapHref: `#/map?${params}` });
+  }
 
   const currentBounds = writable<ViewportBounds | null>(null);
   const autocompleteOpen = writable(false);
@@ -1030,6 +1038,7 @@
         onmaptiming={(timing) => onMapTiming?.(timing)}
         onselect={selectRecord}
         onOverlapOpenChange={(open) => { overlapOpen = open; }}
+        {overlapRecordHref} {restoreOverlapId} {...(onOverlapRestored ? { onOverlapRestored } : {})}
         onaggregate={(ids) => dispatch({ type: "aggregate", value: ids })}
         onreference={(key, sourceId) => onMapReference?.(key, sourceId)}
         onbasemap={(value) => {

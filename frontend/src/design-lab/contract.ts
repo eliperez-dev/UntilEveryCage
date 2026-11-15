@@ -79,6 +79,8 @@ export interface DirectionViewProps {
   records: readonly LabRecord[];
   mapRecords?: readonly LabRecord[];
   resolvePinSummary?: PublicPinSummaryResolver;
+  restoreOverlapId?: string | null;
+  onOverlapRestored?(): void;
   selectedPinSummary?: Readonly<{ id: string; label: PublicPinSummary }> | null;
   mode?: 'synthetic' | 'real-preview' | 'candidate-preview' | 'public-release';
   publicReleaseId?: string | null;

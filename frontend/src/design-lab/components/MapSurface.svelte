@@ -124,6 +124,9 @@
     onbounds,
     resolvePinSummary,
     onOverlapOpenChange,
+    overlapRecordHref,
+    restoreOverlapId = null,
+    onOverlapRestored,
     displaySettingsRequest = null,
     onDisplaySettingsChange,
     onAreaSummary,
@@ -177,6 +180,9 @@
     onbounds?(bounds: ViewportBounds): void;
     resolvePinSummary?: PublicPinSummaryResolver;
     onOverlapOpenChange?(open: boolean): void;
+    overlapRecordHref?(facilityId: string, groupId: string): string;
+    restoreOverlapId?: string | null;
+    onOverlapRestored?(): void;
     displaySettingsRequest?: MapDisplaySettingsRequest | null;
     onDisplaySettingsChange?(settings: MapDisplaySettings): void;
     onAreaSummary?(summary: AreaSummary): void;
@@ -278,7 +284,7 @@
   let overlapBadgeIndex: PublicOverlapIndex | undefined;
   let overlapLayoutObserver: ResizeObserver | undefined;
   let overlapLayoutFrame: number | undefined;
-  let overlapList = $state.raw<{ members: readonly OverlapMember[]; anchor: ScreenPoint; bounds: OverlapBounds; triggerId: string } | null>(null);
+  let overlapList = $state.raw<{ members: readonly OverlapMember[]; anchor: ScreenPoint; bounds: OverlapBounds; triggerId: string; restored: boolean } | null>(null);
   let overlapKeyboardMarkers = $state.raw<readonly { id: string; count: number; point: ScreenPoint }[]>([]);
   let overlapKeyboardSignature = '';
   let overlapKeyboardNeedsRefresh = true;
@@ -349,10 +355,10 @@
     for (const target of [workspace?.querySelector('.map-toolbar'), host.querySelector('.maplibregl-ctrl-attrib')])
       if (target) overlapLayoutObserver.observe(target);
   }
-  function openOverlap(members: readonly OverlapMember[], anchor: ScreenPoint, triggerId = members[0]?.id): boolean {
+  function openOverlap(members: readonly OverlapMember[], anchor: ScreenPoint, triggerId = members[0]?.id, restored = false): boolean {
     if (members.length < 2 || !map) return false;
     closeOverlapList();
-    overlapList = { members, anchor, bounds: overlapBounds(), triggerId: triggerId ?? members[0]!.id };
+    overlapList = { members, anchor, bounds: overlapBounds(), triggerId: triggerId ?? members[0]!.id, restored };
     onOverlapOpenChange?.(true);
     observeOverlapLayout();
     return true;
@@ -368,24 +374,37 @@
     if (event.originalEvent) overlapHandledEvents.add(event.originalEvent);
     return true;
   }
-  function selectOverlapMember(member: OverlapMember) {
-    if (!currentOverlapIndex()?.byId.has(member.id)) { closeOverlapList(); return; }
-    const precision = member.feature.properties.precision;
-    selectedReferenceKey = precision === 'approximate' || precision === 'city' || precision === 'city_reference_approximate' ? member.id : null;
-    selectionFocus = null;
-    pendingSelectionFocus = null;
-    closeOverlapList();
-    updateVisualSettings(); onselect(member.id);
-  }
   function openOverlapBadge(key: string) {
     if (activeFlight || mode !== 'public-release') return false;
     const group = currentOverlapIndex()?.group(key);
     return Boolean(group && group.length > 1 && openOverlap(group, projectOverlap(group[0]!.coordinates), key));
   }
+  function restoreOverlapList() {
+    if (!restoreOverlapId || !map || resumePending || map.isMoving() || overlapList) return;
+    const group = currentOverlapIndex()?.group(restoreOverlapId);
+    if (!group || group.length < 2) return;
+    const point = projectOverlap(group[0]!.coordinates);
+    if (point.x < 0 || point.x > host.clientWidth || point.y < 0 || point.y > host.clientHeight) return;
+    if (openOverlap(group, point, group[0]!.id, true)) onOverlapRestored?.();
+  }
+  $effect(() => {
+    if (active && restoreOverlapId) void tick().then(restoreOverlapList);
+  });
+  let sharedPointPinLoad: Promise<Awaited<ReturnType<MapLibreMap['loadImage']>>['data'] | null> | undefined;
   function refreshOverlapBadges(instance: MapLibreMap) {
     if (mode !== 'public-release' || !active || !instance.getSource('locations')) return;
     const index = currentOverlapIndex();
     if (!index) return;
+    if (!instance.hasImage('v1-pin-shared-point')) {
+      if (!sharedPointPinLoad) sharedPointPinLoad = instance.loadImage(`${import.meta.env.BASE_URL}v1-pins/marker-icon-2x-shared-point.png`)
+        .then(({ data }) => data, () => null);
+      void sharedPointPinLoad.then(data => {
+        if (!data || instance !== map || !instance.getSource('locations') || instance.hasImage('v1-pin-shared-point')) return;
+        instance.addImage('v1-pin-shared-point', data);
+        refreshOverlapBadges(instance);
+      });
+      return;
+    }
     const minzoom = appliedNativeClustering
       ? Math.ceil(clusterMaxZoom) - (useRoundedClusterTiles(clusterMaxZoom) && roundedClusterTilesAvailable ? .5 : 0) : 0;
     const signature = String(minzoom);
@@ -393,16 +412,16 @@
       instance.addSource(OVERLAP_BADGE_SOURCE, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
       overlapBadgeIndex = undefined;
     }
-    if (!instance.hasImage('cluster-shared-point'))
-      instance.addImage('cluster-shared-point', clusterImage('#93a8dd99', '#9daee0'), { pixelRatio: 3 });
     if (!instance.getLayer(OVERLAP_BADGE_LAYER)) instance.addLayer({
       id: OVERLAP_BADGE_LAYER, type: 'symbol', source: OVERLAP_BADGE_SOURCE,
       layout: {
-        'icon-image': 'cluster-shared-point', 'icon-allow-overlap': true, 'icon-ignore-placement': true,
-        'text-field': ['to-string', ['get', 'count']], 'text-font': ['Open Sans Bold'], 'text-size': 12,
+        'icon-image': 'v1-pin-shared-point', 'icon-size': .4, 'icon-anchor': 'bottom',
+        'icon-allow-overlap': true, 'icon-ignore-placement': true,
+        'text-field': ['to-string', ['get', 'count']], 'text-font': ['Open Sans Bold'],
+        'text-size': ['step', ['get', 'count'], 10, 100, 8, 1000, 7],
         'text-allow-overlap': true, 'text-ignore-placement': true,
       },
-      paint: { 'text-color': '#172019' },
+      paint: { 'text-color': '#fff', 'text-translate': [0, -22], 'text-translate-anchor': 'viewport' },
     });
     if (signature !== overlapBadgeSignature) {
       overlapBadgeSignature = signature;
@@ -2127,7 +2146,9 @@
       }
     });
     instance.on("movestart", (event: any) => {
-      closeOverlapList();
+      // A retained map emits a synthetic move when its canvas is resized on
+      // return. Keep the restored list through that layout work.
+      if (!overlapList?.restored || event?.originalEvent) closeOverlapList();
       overlapKeyboardSignature = ''; overlapKeyboardMarkers = [];
       nativeMotionController?.onMoveStart();
       if (event?.originalEvent) { pendingSelectionFocus = null; selectionFocus = null; }
@@ -2169,6 +2190,7 @@
     instance.on("idle", () => {
       settlePendingSelectionFocus();
       refreshOverlapBadges(instance);
+      restoreOverlapList();
       if (isNativeMap()) {
         updateVisibleApproximateCount(instance);
         if (startupStage === "rendering" && instance.isSourceLoaded("locations")) startupStage = "ready";
@@ -2188,6 +2210,11 @@
     });
     instance.on("moveend", () => {
       overlapKeyboardNeedsRefresh = true;
+      if (overlapList?.restored) {
+        const anchor = projectOverlap(overlapList.members[0]!.coordinates);
+        if (anchor.x < 0 || anchor.x > host.clientWidth || anchor.y < 0 || anchor.y > host.clientHeight) closeOverlapList();
+        else overlapList = { ...overlapList, anchor, bounds: overlapBounds() };
+      }
       if (settlingSelectionFocus) return;
       activeFlight = false;
       settlePendingSelectionFocus();
@@ -2308,7 +2335,12 @@
       if (!active || map !== instance) return;
       if (nativeStyleReady && (instance.getPitch() > 0.5 || terrainEnabled)) setTerrain(true);
       instance.resize(); instance.triggerRepaint();
-      requestAnimationFrame(() => { if (active && map === instance) resumePending = false; });
+      requestAnimationFrame(() => {
+        if (active && map === instance) {
+          resumePending = false;
+          if (restoreOverlapId) restoreOverlapList();
+        }
+      });
     });
   });
   $effect(() => {
@@ -2418,15 +2450,15 @@
   <div class="map-host" bind:this={host}></div>
   {#each overlapKeyboardMarkers as marker (marker.id)}
     <button class="overlap-keyboard-marker" type="button" data-overlap-key={marker.id}
-      style:left={`${marker.point.x}px`} style:top={`${marker.point.y}px`}
+      style:left={`${marker.point.x}px`} style:top={`${marker.point.y - 22}px`}
       aria-label={`${marker.count.toLocaleString($language)} ${tr('Records at this map point', $language)}`}
       aria-expanded={overlapList?.triggerId === marker.id} aria-controls={overlapList ? 'public-overlap-panel' : undefined}
       tabindex={overlapList ? -1 : 0} onclick={() => openOverlapBadge(marker.id)}></button>
   {/each}
-  {#if overlapList}
+  {#if overlapList && overlapRecordHref}
     {#key overlapList.triggerId}
       <PublicOverlapList members={overlapList.members} anchor={overlapList.anchor} bounds={overlapList.bounds}
-        resolveLabel={resolvePinSummary} onselect={selectOverlapMember} onclose={dismissOverlapPanel} />
+        resolveLabel={resolvePinSummary} hrefFor={(id) => overlapRecordHref(id, overlapList!.triggerId)} onclose={dismissOverlapPanel} />
     {/key}
   {/if}
   {#if rendererUnavailable}<p class="map-status" role="alert">{tr('Map unavailable in this browser.', $language)}</p>{/if}

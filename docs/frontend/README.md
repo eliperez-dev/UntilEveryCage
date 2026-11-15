@@ -246,10 +246,10 @@ API schemas own supported fields. They are not additional roadmaps.
   On selection/inspection, show a red geographic area 500 metres across
   (250-metre radius), not a fixed-pixel circle or invented confidence interval.
   Use supported source extent where available. No permanent approximation legend.
-- Shared public points use a blue cluster-style circle with the count inside. Clicking it
-  opens an anchored member list on desktop and a bottom list on mobile.
-  Opening the list and selecting a member preserve the camera and record
-  coordinates. Each blue circle replaces the individual pins at that exact point.
+- Shared public points use the standard pin shape in teal with a count in its head.
+  The pin replaces the individual pins at that exact point and opens an anchored
+  member list on desktop and a bottom list on mobile without moving the camera.
+  Each row opens the full record. Back to map restores the view and member list.
   Visible rows load names from the verified public detail projection using
   bounded requests. Escape, background clicks, camera movement and context
   changes dismiss the list. Membership uses the current filtered public feed.

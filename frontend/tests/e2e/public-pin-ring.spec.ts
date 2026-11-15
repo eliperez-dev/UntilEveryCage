@@ -48,7 +48,7 @@ const marker = (page: Page) => page.locator('.overlap-keyboard-marker');
 async function waitForMarker(page: Page, count: number) {
   await expect.poll(() => page.evaluate(expected => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
-    return map.hasImage('cluster-shared-point')
+    return map.hasImage('v1-pin-shared-point')
       && map.getLayer('public-pin-stack-count')
       && map.queryRenderedFeatures({ layers: ['public-pin-stack-count'] }).some((feature: any) => feature.properties.count === expected);
   }, count)).toBe(true);
@@ -85,8 +85,13 @@ for (const mobile of [false, true]) test(`overlap marker opens its records with 
   await page.screenshot({ path: info.outputPath(mobile ? 'overlap-phone.png' : 'overlap-desktop.png') });
   await members(page).nth(1).click();
   await expect(overlap(page)).toHaveCount(0);
-  await expect.poll(() => new URL(page.url()).hash).toContain(`selected=${id(2)}`);
-  await expect(page.locator('.map-summary')).toContainText('Synthetic facility 2');
+  await expect.poll(() => new URL(page.url()).hash).toContain(`#/records/${id(2)}`);
+  await expect(page.getByRole('heading', { name: 'Synthetic facility 2', exact: true })).toBeVisible();
+  await expect(page.locator('.map-summary')).toHaveCount(0);
+  const back = page.getByRole('link', { name: 'Back to map' });
+  await expect(back).toHaveAttribute('href', new RegExp(`overlap=${id(1)}`));
+  await back.click();
+  await expect(overlap(page)).toBeVisible();
   expect(await camera(page)).toEqual(before);
   expect(state.feeds).toBe(1);
   expect(state.privateRequests).toBe(0);
@@ -150,7 +155,7 @@ test('optimized overlap markers and coincident native clusters open the list', a
   await page.locator('#map-clustering-choice').selectOption('off');
   await more.click();
   await waitForMarker(page, 18);
-  await clickPoint(page, 5);
+  await clickPoint(page, 22);
   await expect(members(page)).toHaveCount(18);
   await page.keyboard.press('Escape');
   await expect(overlap(page)).toHaveCount(0);

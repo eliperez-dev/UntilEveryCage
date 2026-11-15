@@ -122,6 +122,7 @@
   })() : null);
   const backMapHref = $derived.by(() => {
     const params = new URLSearchParams(mapContext);
+    if (params.has('overlap')) return mapHrefFromParams(params, currentRelease || releaseId);
     if (!params.has('lat') && !params.has('lon') && !params.has('z') && openMapHref) return openMapHref;
     return mapHrefFromParams(params, currentRelease || releaseId, record?.id);
   });
