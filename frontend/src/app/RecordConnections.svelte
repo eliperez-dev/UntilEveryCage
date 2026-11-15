@@ -6,7 +6,7 @@
   import type { PublicGraphConnection } from '../api/publicGraphSchema';
   import { serializeRoute } from './routeState';
 
-  let { facilityId, releaseId, profile = 'official', rail = false, hideWhenEmpty = false, onstatechange }: { facilityId: string; releaseId: string; profile?: LocalProfile; rail?: boolean; hideWhenEmpty?: boolean; onstatechange?: ((state: { count:number; loading:boolean; error:boolean }) => void) | undefined } = $props();
+  let { facilityId, releaseId, profile = 'official', rail = false, hideWhenEmpty = false, onstatechange }: { facilityId: string; releaseId: string; profile?: LocalProfile; rail?: boolean; hideWhenEmpty?: boolean; onstatechange?: ((state: { count:number; loading:boolean; error:boolean; available:boolean }) => void) | undefined } = $props();
   const graph = new PublicGraphRepository();
   const locations = new LocalLocationRepository();
   let rows = $state<readonly PublicGraphConnection[]>([]);
@@ -22,7 +22,7 @@
   let controller: AbortController | undefined;
   let requestVersion = 0;
   $effect(() => {
-    const state = { count:rows.length, loading, error };
+    const state = { count:rows.length, loading, error, available: Boolean(rows.length || nextCursor || hasFilters || error) };
     untrack(() => onstatechange?.(state));
   });
 

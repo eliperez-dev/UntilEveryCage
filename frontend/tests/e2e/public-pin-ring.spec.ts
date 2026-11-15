@@ -3,12 +3,12 @@ import { expect, test, type Page } from '@playwright/test';
 const point: [number, number] = [5, 45];
 const id = (i: number) => `550e8400-e29b-41d4-a716-${i.toString(16).padStart(12, '0')}`;
 const categories = ['slaughter', 'processing_and_preparation', 'research_and_animal_use'];
-async function install(page: Page, count: number, labelDelay = 0) {
+async function install(page: Page, count: number, labelDelay = 0, spacing = 0) {
   const release = `synthetic-overlap-${count}`;
   page.on('pageerror', error => console.log('Synthetic ring page error:', error.message));
   const state = { feeds: 0, privateRequests: 0, detailRequests: 0, onlyFirst: false };
   const meta = { profile: 'official', release_id: release, ruleset_version: 'synthetic-rules', release_created_at: '2026-01-01T00:00:00Z' };
-  const rows = Array.from({ length: count }, (_, i) => ({ facility_id: id(i + 1), canonical_name: `Synthetic facility ${i + 1}`, country_code: 'BE', city: 'Synthetic city', category: categories[i % 3], taxonomy_display_category: categories[i % 3], taxonomy_primary_categories: [categories[i % 3]], publication_profile: 'official', factual_review_status: 'reviewed', privacy_screening_status: 'passed', project_approval: 'approved', reviewer_role: null, publication_warning: null, display_precision: i % 2 ? 'approximate' : 'source_reported', latitude: point[1], longitude: point[0], first_observed_at: null, last_observed_at: null, observation_count: 1, lifecycle_status: 'status_unknown', source_type: 'official', source_rights_status: 'cleared', provenance_source: null, release_id: release, release_ruleset_version: 'synthetic-rules', provenance_source_id: 'synthetic-source', provenance_source_name: 'Synthetic source', provenance_source_url: 'https://example.test/source', provenance_retrieved_at: '2026-01-01T00:00:00Z' }));
+  const rows = Array.from({ length: count }, (_, i) => ({ facility_id: id(i + 1), canonical_name: `Synthetic facility ${i + 1}`, country_code: 'BE', city: 'Synthetic city', category: categories[i % 3], taxonomy_display_category: categories[i % 3], taxonomy_primary_categories: [categories[i % 3]], publication_profile: 'official', factual_review_status: 'reviewed', privacy_screening_status: 'passed', project_approval: 'approved', reviewer_role: null, publication_warning: null, display_precision: i % 2 ? 'approximate' : 'source_reported', latitude: point[1], longitude: point[0] + i * spacing, first_observed_at: null, last_observed_at: null, observation_count: 1, lifecycle_status: 'status_unknown', source_type: 'official', source_rights_status: 'cleared', provenance_source: null, release_id: release, release_ruleset_version: 'synthetic-rules', provenance_source_id: 'synthetic-source', provenance_source_name: 'Synthetic source', provenance_source_url: 'https://example.test/source', provenance_retrieved_at: '2026-01-01T00:00:00Z' }));
   await page.route('https://**/*', route => route.abort());
   await page.route('**/api/private/**', route => { state.privateRequests++; return route.fulfill({ status: 404, json: {} }); });
   await page.route('**/api/v2/**', async route => {
@@ -18,7 +18,7 @@ async function install(page: Page, count: number, labelDelay = 0) {
     if (path === '/api/v2/releases/manifest') return route.fulfill({ json: { api_version: 'v2', data: { ...identity, manifest: {} } } });
     if (path === '/api/v2/map/feed') {
       state.feeds++;
-      return route.fulfill({ json: { api_version: 'v2', data: { type: 'FeatureCollection', features: rows.map(row => ({ type: 'Feature', id: row.facility_id, geometry: { type: 'Point', coordinates: point }, properties: { facility_id: row.facility_id, source_id: 'synthetic-source', country_code: 'BE', category_key: row.category, category_keys: [row.category], precision: row.display_precision, weight: 1 } })) }, meta: { ...identity, feature_count: count, public_record_count: count, unmapped_count: 0, release_label: 'Synthetic release', dataset_version: 'synthetic' } } });
+      return route.fulfill({ json: { api_version: 'v2', data: { type: 'FeatureCollection', features: rows.map(row => ({ type: 'Feature', id: row.facility_id, geometry: { type: 'Point', coordinates: [row.longitude, row.latitude] }, properties: { facility_id: row.facility_id, source_id: 'synthetic-source', country_code: 'BE', category_key: row.category, category_keys: [row.category], precision: row.display_precision, weight: 1 } })) }, meta: { ...identity, feature_count: count, public_record_count: count, unmapped_count: 0, release_label: 'Synthetic release', dataset_version: 'synthetic' } } });
     }
     if (path === '/api/v2/locations') return route.fulfill({ json: { api_version: 'v2', data: state.onlyFirst ? rows.slice(0, 1) : rows, meta: { ...meta, coverage_note: 'Synthetic renderer checks.', next_cursor: null, total_count: state.onlyFirst ? 1 : count } } });
     const detail = rows.find(row => path === `/api/v2/locations/${row.facility_id}`);
@@ -32,7 +32,7 @@ async function install(page: Page, count: number, labelDelay = 0) {
   });
   await page.goto(`./#/map?release_id=${release}&lat=45&lon=5&z=12`);
   await page.waitForFunction(() => { const m = (window as any).__UEC_LOCAL_PREVIEW_MAP__; return m?.getLayer('v1-source-pins') && m.isSourceLoaded('locations') && !m.isMoving(); }, undefined, { timeout: 15000 }).catch(async error => { console.log('Synthetic map startup:', await page.locator('body').innerText(), await page.evaluate(() => ({ map: !!(window as any).__UEC_LOCAL_PREVIEW_MAP__, href: location.href }))); throw error; });
-  await expect.poll(() => page.evaluate(() => { const m = (window as any).__UEC_LOCAL_PREVIEW_MAP__; return m.queryRenderedFeatures({ layers: ['v1-source-pins', 'approx-reference-pins'] }).length; })).toBeGreaterThan(0);
+  await expect.poll(() => page.evaluate(() => { const m = (window as any).__UEC_LOCAL_PREVIEW_MAP__; return m.queryRenderedFeatures({ layers: ['v1-source-pins', 'approx-reference-pins', 'public-pin-stack-count'].filter(id => m.getLayer(id)) }).length; })).toBeGreaterThan(0);
   return state;
 }
 async function clickPoint(page: Page, verticalOffset = 13) {
@@ -48,11 +48,16 @@ const marker = (page: Page) => page.locator('.overlap-keyboard-marker');
 async function waitForMarker(page: Page, count: number) {
   await expect.poll(() => page.evaluate(expected => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
-    return map.hasImage('public-pin-stack-' + expected)
+    return map.hasImage('cluster-shared-point')
       && map.getLayer('public-pin-stack-count')
       && map.queryRenderedFeatures({ layers: ['public-pin-stack-count'] }).some((feature: any) => feature.properties.count === expected);
   }, count)).toBe(true);
   await expect(marker(page)).toHaveCount(1);
+  const originalPins = await page.evaluate(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    return map.queryRenderedFeatures({ layers: ['v1-source-pins', 'v1-source-shadows', 'approx-reference-pins', 'approx-reference-shadows', 'source-coordinate-points'] }).length;
+  });
+  expect(originalPins).toBe(0);
 }
 
 for (const mobile of [false, true]) test(`overlap marker opens its records with a fixed camera on ${mobile ? 'phone' : 'desktop'}`, async ({ page }, info) => {
@@ -117,6 +122,14 @@ for (const count of [214, 614]) test(`${count} records stay keyboard reachable w
   expect(state.feeds).toBe(1);
   expect(state.privateRequests).toBe(0);
   expect(state.detailRequests).toBeLessThan(30);
+});
+
+test('nearby pins at distinct coordinates stay separate', async ({ page }) => {
+  await install(page, 2, 0, 0.00001);
+  await expect(marker(page)).toHaveCount(0);
+  await clickPoint(page);
+  await expect(overlap(page)).toHaveCount(0);
+  await expect(page.locator('.map-summary')).toBeVisible();
 });
 
 test('single records stay direct', async ({ page }) => {

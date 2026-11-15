@@ -4,7 +4,7 @@
   import { categoryPresentation, CATEGORY_PRIMARY_BY_SOURCE_KEY } from '../../features/locations/categoryPresentation';
   import { recordNamePresentation } from '../../features/locations/recordNamePresentation';
   import type { PublicPinSummary, PublicPinSummaryResolver } from '../contract';
-  import { coordinateKey, overlapPanelFrame, type OverlapBounds, type OverlapMember, type ScreenPoint } from './publicPinOverlap';
+  import { overlapPanelFrame, type OverlapBounds, type OverlapMember, type ScreenPoint } from './publicPinOverlap';
 
   let { members, anchor, bounds, resolveLabel, onselect, onclose }: {
     members: readonly OverlapMember[];
@@ -16,8 +16,7 @@
   } = $props();
 
   const frame = $derived(overlapPanelFrame(bounds, anchor, members.length));
-  const samePoint = $derived(members.every(member => coordinateKey(member.coordinates) === coordinateKey(members[0]!.coordinates)));
-  const title = $derived(tr(samePoint ? 'Records at this map point' : 'Overlapping records', $language));
+  const title = $derived(tr('Records at this map point', $language));
   let list: HTMLUListElement;
   let labels = $state<Record<string, PublicPinSummary | null>>({});
   const queue: OverlapMember[] = [];

@@ -119,7 +119,7 @@ test('an explicit public record stays public under the combined preview marker',
   await expect(page.getByText('PRIVATE DEVELOPMENT PREVIEW · NOT PUBLICATION-APPROVED',{exact:true})).toHaveCount(0);
 });
 
-test('empty public connections stay in their own tab without relationship filters', async ({ page }) => {
+test('empty public connections omit the Connections tab', async ({ page }) => {
   await isolate(page);
   await page.route(`**/api/v2/locations/${id}?**`, route => route.fulfill({ contentType:'application/json', body:JSON.stringify({ api_version:'v2', data:publicWire, meta:{ release_id:'synthetic-release', ruleset_version:'synthetic-rules', profile:'official', release_created_at:'2026-01-01T00:00:00Z' } }) }));
   await page.route('**/api/v2/graph/connections?**', route => route.fulfill({ contentType:'application/json', body:JSON.stringify({ api_version:'v2-graph-v1', data:[], meta:{ release_id:'synthetic-release', ruleset_version:'synthetic-rules', profile:'official', limit:20, page_max:100, next_cursor:null, public_projection:true } }) }));
@@ -130,10 +130,7 @@ test('empty public connections stay in their own tab without relationship filter
   await emptyLookup;
   await expect(record.getByRole('tabpanel', { name: 'Details' })).toBeVisible();
   await expect(record.getByRole('tabpanel', { name: 'Connections' })).toHaveCount(0);
-  await record.getByRole('tab', { name: 'Connections' }).click();
-  const connections = record.getByRole('tabpanel', { name: 'Connections' });
-  await expect(connections.getByText('None', { exact: true })).toBeVisible();
-  await expect(connections.getByLabel('Relationship')).toHaveCount(0);
+  await expect(record.getByRole('tab', { name: 'Connections' })).toHaveCount(0);
 });
 
 test('Downloads scope and community warning are explicit and FAQ remains compact on mobile', async ({ page }) => {

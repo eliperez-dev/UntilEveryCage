@@ -19,7 +19,7 @@
   import { onMount, tick, untrack } from "svelte";
   import * as maplibregl from "maplibre-gl";
   import mapLibreWorkerUrl from "../../map/persistentMapWorker.ts?worker&url";
-  import type { GeoJSONSource, Map as MapLibreMap } from "maplibre-gl";
+  import type { FilterSpecification, GeoJSONSource, Map as MapLibreMap } from "maplibre-gl";
   import "maplibre-gl/dist/maplibre-gl.css";
   import type {
     LabRecord,
@@ -82,7 +82,7 @@
   import { canSearchRecords, publicSearchFilters } from '../../features/search/powerSearch';
   import { nearbyCameraBounds } from '../../features/search/nearbySearch';
   import PublicOverlapList from './PublicOverlapList.svelte';
-  import { collectPublicOverlap, createPublicOverlapIndex, createOverlapBadgeImage, OVERLAP_BADGE_LAYER, OVERLAP_BADGE_SOURCE, OVERLAP_LAYERS, publicOverlapMember, type OverlapMember, type PublicOverlapIndex, type OverlapBounds, type ScreenPoint } from './publicPinOverlap';
+  import { createPublicOverlapIndex, OVERLAP_BADGE_LAYER, OVERLAP_BADGE_SOURCE, publicOverlapMember, type OverlapMember, type PublicOverlapIndex, type OverlapBounds, type ScreenPoint } from './publicPinOverlap';
 
   let {
     active = true,
@@ -255,6 +255,25 @@
   let overlapIndexCollection: JsonMapCollection | undefined;
   let overlapIndex: PublicOverlapIndex | undefined;
   let overlapGeneration = 0;
+  const originalPinFilters = new Map<string, FilterSpecification>();
+  const categoryPinLayers = ['v1-source-pins', 'v1-source-shadows', 'source-coordinate-points'];
+  const sharedPointPinLayers = [...categoryPinLayers,
+    'approx-reference-pins', 'approx-reference-shadows', 'approx-reference-points', 'approx-reference-circles'];
+  function hideSharedPointPins(instance: MapLibreMap, groups: readonly (readonly OverlapMember[])[]) {
+    const hiddenIds = Object.fromEntries(groups.flatMap(group => group.map(member => [member.id, true])));
+    for (const id of sharedPointPinLayers) {
+      if (!instance.getLayer(id)) continue;
+      const filter = originalPinFilters.get(id) ?? instance.getFilter(id);
+      if (!filter) continue;
+      originalPinFilters.set(id, filter);
+      instance.setFilter(id, groups.length ? ['all', filter, ['!', ['has', ['get', 'key'], ['literal', hiddenIds]]]] as FilterSpecification : filter);
+    }
+  }
+  function updatePublicPinCategoryFilter(instance: MapLibreMap) {
+    setRealPreviewCategoryFilter(instance, mapMatchingIds === null ? publicCategoryFilterKeys() : []);
+    for (const id of categoryPinLayers) originalPinFilters.delete(id);
+    if (overlapBadgeIndex) hideSharedPointPins(instance, overlapBadgeIndex.sharedGroups());
+  }
   let overlapBadgeSignature = '';
   let overlapBadgeIndex: PublicOverlapIndex | undefined;
   let overlapLayoutObserver: ResizeObserver | undefined;
@@ -343,15 +362,9 @@
     if (event.originalEvent && overlapHandledEvents.has(event.originalEvent)) return true;
     const index = currentOverlapIndex();
     if (!index) return false;
-    const layers = OVERLAP_LAYERS.filter(id => !!map?.getLayer(id));
-    const point = event.point;
-    const rendered = map.queryRenderedFeatures([[point.x - 20, point.y - 20], [point.x + 20, point.y + 20]], { layers });
     const first = publicOverlapMember(event.features?.[0], true);
-    const firstMember = first && index.byId.get(first.id);
-    // A pin's pointed bottom and its click body differ by up to 32 pixels.
-    const center = firstMember ? projectOverlap(firstMember.coordinates) : point;
-    const members = collectPublicOverlap(index, [...(event.features ?? []), ...rendered], center, projectOverlap, useV1Pins ? 36 * pinScale + 8 : coordinateRadius * 2 + 8);
-    if (!openOverlap(members, center)) return false;
+    const group = first ? index.group(first.id) : [];
+    if (group.length < 2 || !openOverlap(group, projectOverlap(group[0]!.coordinates))) return false;
     if (event.originalEvent) overlapHandledEvents.add(event.originalEvent);
     return true;
   }
@@ -375,19 +388,25 @@
     if (!index) return;
     const minzoom = appliedNativeClustering
       ? Math.ceil(clusterMaxZoom) - (useRoundedClusterTiles(clusterMaxZoom) && roundedClusterTilesAvailable ? .5 : 0) : 0;
-    const signature = `${useV1Pins}:${pinScale}:${coordinateRadius}:${minzoom}`;
+    const signature = String(minzoom);
     if (!instance.getSource(OVERLAP_BADGE_SOURCE)) {
       instance.addSource(OVERLAP_BADGE_SOURCE, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
       overlapBadgeIndex = undefined;
     }
-    if (!instance.getLayer(OVERLAP_BADGE_LAYER)) instance.addLayer({ id: OVERLAP_BADGE_LAYER, type: 'symbol', source: OVERLAP_BADGE_SOURCE,
-      layout: { 'icon-image': ['get', 'icon'], 'icon-allow-overlap': true, 'icon-ignore-placement': true } });
+    if (!instance.hasImage('cluster-shared-point'))
+      instance.addImage('cluster-shared-point', clusterImage('#93a8dd99', '#9daee0'), { pixelRatio: 3 });
+    if (!instance.getLayer(OVERLAP_BADGE_LAYER)) instance.addLayer({
+      id: OVERLAP_BADGE_LAYER, type: 'symbol', source: OVERLAP_BADGE_SOURCE,
+      layout: {
+        'icon-image': 'cluster-shared-point', 'icon-allow-overlap': true, 'icon-ignore-placement': true,
+        'text-field': ['to-string', ['get', 'count']], 'text-font': ['Open Sans Bold'], 'text-size': 12,
+        'text-allow-overlap': true, 'text-ignore-placement': true,
+      },
+      paint: { 'text-color': '#172019' },
+    });
     if (signature !== overlapBadgeSignature) {
       overlapBadgeSignature = signature;
       instance.setLayerZoomRange(OVERLAP_BADGE_LAYER, minzoom, 24);
-      const scale = useV1Pins ? Math.max(1, pinScale / .8) : Math.max(1, coordinateRadius / 11);
-      instance.setLayoutProperty(OVERLAP_BADGE_LAYER, 'icon-size', scale);
-      instance.setLayoutProperty(OVERLAP_BADGE_LAYER, 'icon-anchor', useV1Pins ? 'bottom' : 'center');
       instance.setLayoutProperty(OVERLAP_BADGE_LAYER, 'visibility', 'visible');
       overlapKeyboardNeedsRefresh = true;
     }
@@ -395,16 +414,15 @@
     overlapBadgeIndex = index;
     overlapKeyboardNeedsRefresh = true;
     // Native viewport culling handles the count markers throughout movement.
-    (instance.getSource(OVERLAP_BADGE_SOURCE) as GeoJSONSource).setData({ type: 'FeatureCollection', features: index.sharedGroups().flatMap(group => {
-      const count = group.length;
-      const icon = `public-pin-stack-${count}`;
-      if (!instance.hasImage(icon)) {
-        const image = createOverlapBadgeImage(count);
-        if (!image) return [];
-        instance.addImage(icon, image, { pixelRatio: 2 });
-      }
-      return [{ type: 'Feature', geometry: { type: 'Point', coordinates: group[0]!.coordinates }, properties: { key: group[0]!.id, count, icon } }];
-    }) });
+    const groups = index.sharedGroups();
+    hideSharedPointPins(instance, groups);
+    (instance.getSource(OVERLAP_BADGE_SOURCE) as GeoJSONSource).setData({
+      type: 'FeatureCollection',
+      features: groups.map(group => ({
+        type: 'Feature', geometry: { type: 'Point', coordinates: group[0]!.coordinates },
+        properties: { key: group[0]!.id, count: group.length },
+      })),
+    });
   }
   function refreshOverlapKeyboardMarkers(instance: MapLibreMap, index: PublicOverlapIndex) {
     const markers = new Map<string, { id: string; count: number; point: ScreenPoint }>();
@@ -1206,7 +1224,7 @@
         && requestedPublicReleaseId === publicReleaseId
         && requestedPublicReleaseIdentity === publicReleaseIdentity) {
         restoreNativeProjection(map, filteredNativeCollection(nativeFullCollection));
-        setRealPreviewCategoryFilter(map, mapMatchingIds === null ? publicCategoryFilterKeys() : []);
+        updatePublicPinCategoryFilter(map);
         roundedClusterTilesAvailable = setClusterTileRounding(map, clusterMaxZoom);
         updateVisualSettings();
         startupStage = "rendering";
@@ -1300,7 +1318,7 @@
 
   $effect(() => {
     if (active && mode === "public-release" && map) {
-      setRealPreviewCategoryFilter(map, mapMatchingIds === null ? publicCategoryFilterKeys() : []);
+      updatePublicPinCategoryFilter(map);
     }
   });
   function publicCategoryFilterKeys(): string[] {
@@ -2400,7 +2418,7 @@
   <div class="map-host" bind:this={host}></div>
   {#each overlapKeyboardMarkers as marker (marker.id)}
     <button class="overlap-keyboard-marker" type="button" data-overlap-key={marker.id}
-      style:left={`${marker.point.x}px`} style:top={`${marker.point.y - (useV1Pins ? 29 * Math.max(1, pinScale / .8) : 5)}px`}
+      style:left={`${marker.point.x}px`} style:top={`${marker.point.y}px`}
       aria-label={`${marker.count.toLocaleString($language)} ${tr('Records at this map point', $language)}`}
       aria-expanded={overlapList?.triggerId === marker.id} aria-controls={overlapList ? 'public-overlap-panel' : undefined}
       tabindex={overlapList ? -1 : 0} onclick={() => openOverlapBadge(marker.id)}></button>
@@ -2526,7 +2544,7 @@
     inset: 0;
   }
   .overlap-keyboard-marker { position:absolute;z-index:4;width:44px;height:44px;transform:translate(-50%,-50%);padding:0;border:0;border-radius:50%;background:transparent;pointer-events:none; }
-  .overlap-keyboard-marker:focus-visible { outline:3px solid #302e2b;outline-offset:2px;box-shadow:0 0 0 2px #fff8e9; }
+  .overlap-keyboard-marker:focus-visible { outline:3px solid #324679;outline-offset:2px;box-shadow:0 0 0 2px #fff8e9; }
   .terrain-status { top:6.8rem; left:.65rem; transform:none; }
   .feature-list-toggle,
   .diagnostics-toggle {

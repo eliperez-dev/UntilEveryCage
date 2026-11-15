@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { collectPublicOverlap, coordinateKey, createPublicOverlapIndex, overlapPanelFrame, publicOverlapMember } from '../../src/design-lab/components/publicPinOverlap';
+import { coordinateKey, createPublicOverlapIndex, overlapPanelFrame, publicOverlapMember } from '../../src/design-lab/components/publicPinOverlap';
 import type { JsonMapCollection, JsonMapFeature } from '../../src/design-lab/components/jsonMapFallback';
 
 const point = (n: number, coordinates: [number, number] = [12, 34], precision = 'source_reported'): JsonMapFeature => ({
@@ -13,7 +13,7 @@ describe('public pin overlaps', () => {
   it('finds the complete shared-point group from a single rendered member and preserves individual precision', () => {
     const features = Array.from({ length: 81 }, (_, i) => point(i, [12, 34], i % 2 ? 'approximate' : 'source_reported'));
     const index = createPublicOverlapIndex(collection(...features));
-    const result = collectPublicOverlap(index, [features[75]], { x: 100, y: 100 }, () => ({ x: 100, y: 100 }));
+    const result = index.group(String(features[75]!.id));
     expect(result).toHaveLength(81);
     expect(new Set(result.map(member => member.feature.properties.precision)).size).toBe(2);
     expect(result[0]!.feature).toBe(features[0]);
@@ -24,7 +24,7 @@ describe('public pin overlaps', () => {
     const filtered = createPublicOverlapIndex(collection(second));
     expect(previous.group(String(second.id))).toHaveLength(2);
     expect(filtered.group(String(second.id))).toHaveLength(1);
-    expect(collectPublicOverlap(filtered, [first], { x: 0, y: 0 }, () => ({ x: 0, y: 0 }))).toEqual([]);
+    expect(filtered.group(String(first.id))).toEqual([]);
   });
   it('has stable deduplicated IDs and excludes clusters, private reference keys, weighted aggregates and invalid coordinates', () => {
     const first = point(1), second = point(2);
@@ -47,17 +47,15 @@ describe('public pin overlaps', () => {
     expect(coordinateKey([180, 0])).toBe(coordinateKey([-180, 0]));
     expect(index.group(String(feature.id))).toHaveLength(2);
     const wrapped = { ...feature, geometry: { type: 'Point', coordinates: [540, 0] } };
-    const matches = collectPublicOverlap(index, [wrapped], { x: 50, y: 50 }, () => ({ x: 50, y: 50 }));
+    const matches = index.group(publicOverlapMember(wrapped, true)!.id);
     expect(matches).toHaveLength(2);
     expect(matches.find(member => member.id === feature.id)?.coordinates).toEqual([180, 0]);
   });
-  it('expands visible nearby overlaps but excludes unrelated marks and unfiltered rendered leftovers', () => {
-    const first = point(1, [1, 1]), second = point(2, [2, 2]), far = point(3, [100, 100]);
-    const stale = point(4, [1, 1]);
-    const index = createPublicOverlapIndex(collection(first, second, far));
-    const result = collectPublicOverlap(index, [first, second, far, stale], { x: 0, y: 0 }, coordinates => ({ x: coordinates[0] * 10, y: coordinates[1] * 10 }), 30);
-    expect(result.map(member => member.id)).toEqual([String(first.id), String(second.id)]);
-    expect(result.map(member => member.coordinates)).toEqual([[1, 1], [2, 2]]);
+  it('keeps nearby facilities at different points separate', () => {
+    const first = point(1, [1, 1]), second = point(2, [1.00001, 1]);
+    const index = createPublicOverlapIndex(collection(first, second));
+    expect(index.sharedGroups()).toEqual([]);
+    expect(index.group(String(first.id)).map(member => member.id)).toEqual([String(first.id)]);
   });
 });
 

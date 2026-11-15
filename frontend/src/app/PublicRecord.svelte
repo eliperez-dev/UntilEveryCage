@@ -29,9 +29,10 @@
   ] as const;
   type TabId = typeof tabItems[number]['id'];
   let chosenTab = $state<TabId>();
+  let showConnections = $state(false);
   const hasReports = $derived(isAphisRelevant(record?.sourceId, record?.sourceFacts));
-  const tabs = $derived(tabItems.filter(tab => tab.id !== 'reports' || hasReports));
-  const activeTab = $derived(chosenTab ?? (hasReports ? 'reports' : 'details'));
+  const tabs = $derived(tabItems.filter(tab => (tab.id !== 'reports' || hasReports) && (tab.id !== 'connections' || showConnections)));
+  const activeTab = $derived(tabs.some(tab => tab.id === chosenTab) ? chosenTab : hasReports ? 'reports' : 'details');
   const countryNames = $derived(new Intl.DisplayNames($language, { type: 'region' }));
   const locality = $derived.by(() => {
     const region = record?.region?.trim();
@@ -44,6 +45,7 @@
     void retry;
     const controller = new AbortController(); record = null; busy = true; error = '';
     chosenTab = undefined;
+    showConnections = false;
     currentRelease = '';
     void repository.detail(id, profile, controller.signal, releaseId).then(result => { if (!controller.signal.aborted) { record = result.location; currentRelease = result.releaseId; onrelease?.(result.releaseId); } }).catch(cause => { if (!controller.signal.aborted) error = cause && typeof cause === 'object' && 'kind' in cause && cause.kind === 'restricted' ? 'This record is unavailable in the selected public release.' : 'This record could not be loaded. Try again.'; }).finally(() => { if (!controller.signal.aborted) busy = false; });
     return () => controller.abort();
@@ -165,8 +167,9 @@
         </AphisReports>
       </div>
     {/if}
-    <div class="record-tab-content" role="tabpanel" id="record-panel-connections" aria-labelledby="record-tab-connections" tabindex="0" hidden={activeTab !== 'connections'}>
-      <RecordConnections facilityId={record.id} releaseId={currentRelease} {profile} />
+    <div class="record-tab-content" role="tabpanel" id="record-panel-connections" aria-labelledby={showConnections ? 'record-tab-connections' : undefined} tabindex="0" hidden={activeTab !== 'connections'}>
+      <RecordConnections facilityId={record.id} releaseId={currentRelease} {profile}
+        onstatechange={({ available, loading }) => { if (available || !loading) showConnections = available; }} />
     </div>
     <div class="record-tab-content" role="tabpanel" id="record-panel-details" aria-labelledby="record-tab-details" tabindex="0" hidden={activeTab !== 'details'}>
       <details class="source-disclosure" open>

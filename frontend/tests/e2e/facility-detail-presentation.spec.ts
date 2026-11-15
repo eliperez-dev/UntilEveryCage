@@ -450,7 +450,7 @@ test('map detail keeps long-name copy beside its heading, classification above f
   expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
 });
 
-for(const state of ['empty','populated','error'] as const) test(`map connection disclosure defaults correctly for ${state} data`,async({page})=>{
+for(const state of ['empty','populated','error'] as const) test(`facility Connections tab reflects for ${state} data`,async({page})=>{
   await mockPublicRecord(page);
   await page.route('**/api/v2/graph/**',route=>{
     if(state==='error')return route.fulfill({status:503,json:{}});
@@ -458,11 +458,15 @@ for(const state of ['empty','populated','error'] as const) test(`map connection 
     const edge={connection_edge_id:'550e8400-e29b-41d4-a716-446655440009',from:endpoint('facility',id,'Synthetic facility'),to:endpoint('organization','550e8400-e29b-41d4-a716-446655440008','Synthetic research organization'),relationship_type:'source_assertion',connection_type:'exact',confidence:1,confidence_band:'exact',match_method:'exact_source_identifier',signals:{},contradictions:[],provenance:{source_ids:['synthetic-source'],observed_at:observed,release_id:release},source_references:[{source_id:'synthetic-source'}],observed_at:observed,computed_at:observed,ruleset:'synthetic-rules',conflicting:false,publication_warning:'Synthetic connection fixture',disclaimer:'Synthetic evidence only'};
     return route.fulfill({json:{api_version:'v2-graph-v1',data:state==='populated'?[edge]:[],meta:{...meta,limit:20,page_max:100,next_cursor:null,public_projection:true}}});
   });
-  await page.goto(`./#/map?selected=${id}&release_id=${release}`);
-  const disclosure=page.locator('.connections-disclosure');
-  if(state==='empty'){await expect(disclosure.locator('.empty')).toHaveText('None');await expect(disclosure).not.toHaveAttribute('open','');await disclosure.locator(':scope > summary').click();await expect(disclosure.getByText('None',{exact:true})).toBeVisible()}
-  else if(state==='populated'){await expect(disclosure.getByText('Synthetic research organization',{exact:true})).toBeVisible();await expect(disclosure).toHaveAttribute('open','');await expect(disclosure).toContainText('Exact source')}
-  else{await expect(disclosure.getByRole('alert')).toBeVisible();await expect(disclosure.getByRole('button',{name:'Retry',exact:true})).toBeVisible()}
+  const lookup = page.waitForResponse(response => new URL(response.url()).pathname === '/api/v2/graph/connections');
+  await page.goto(`./#/records/${id}?profile=official&release_id=${release}`);
+  await lookup;
+  const tab = page.getByRole('tab', { name: 'Connections', exact: true });
+  if (state === 'empty') { await expect(tab).toHaveCount(0); return; }
+  await tab.click();
+  const panel = page.getByRole('tabpanel', { name: 'Connections', exact: true });
+  if (state === 'populated') await expect(panel.getByText('Synthetic research organization', { exact: true })).toBeVisible();
+  else await expect(panel.getByRole('button', { name: 'Retry', exact: true })).toBeVisible();
 });
 
 test('a failed map image leaves the facility record readable and announces the map limitation', async ({ page }) => {
@@ -496,11 +500,8 @@ test('APHIS source records load both report lists automatically and retry indepe
   await expect(reports).toHaveAttribute('aria-selected', 'true');
   await reports.focus();
   await reports.press('ArrowRight');
-  const connections = page.getByRole('tab', { name: 'Connections', exact: true });
-  await expect(connections).toBeFocused();
-  await expect(page.getByRole('tabpanel', { name: 'Connections' })).toBeVisible();
+  await expect(page.getByRole('tab', { name: 'Connections', exact: true })).toHaveCount(0);
   await expect(annual).not.toBeVisible();
-  await connections.press('End');
   const details = page.getByRole('tab', { name: 'Details', exact: true });
   await expect(details).toBeFocused();
   await expect(page.getByRole('tabpanel', { name: 'Details' })).toBeVisible();

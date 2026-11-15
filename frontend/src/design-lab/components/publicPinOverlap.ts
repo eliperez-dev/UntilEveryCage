@@ -4,7 +4,6 @@ import type { JsonMapCollection, JsonMapFeature } from './jsonMapFallback';
 export type OverlapMember = Readonly<{ id: string; coordinates: [number, number]; feature: JsonMapFeature }>;
 export type ScreenPoint = Readonly<{ x: number; y: number }>;
 export type OverlapBounds = Readonly<{ left: number; top: number; right: number; bottom: number }>;
-export const OVERLAP_LAYERS = ['v1-source-pins', 'source-coordinate-points', 'approx-reference-pins', 'approx-reference-points', 'approx-reference-circles'];
 export const OVERLAP_BADGE_SOURCE = 'public-pin-stacks';
 export const OVERLAP_BADGE_LAYER = 'public-pin-stack-count';
 
@@ -56,50 +55,6 @@ export function createPublicOverlapIndex(collection: JsonMapCollection) {
   };
 }
 export type PublicOverlapIndex = ReturnType<typeof createPublicOverlapIndex>;
-
-/** Only public members in the current collection enter a visual overlap.
- * Expand exact-coordinate groups even when native placement returns one mark. */
-export function collectPublicOverlap(index: PublicOverlapIndex, rendered: readonly any[], clicked: ScreenPoint,
-  project: (coordinates: [number, number]) => ScreenPoint, radius = 26): readonly OverlapMember[] {
-  const result = new Map<string, OverlapMember>();
-  for (const feature of rendered) {
-    const candidate = publicOverlapMember(feature, true);
-    const member = candidate && index.byId.get(candidate.id);
-    if (!member) continue;
-    const projected = project(member.coordinates);
-    if (Math.hypot(projected.x - clicked.x, projected.y - clicked.y) > radius) continue;
-    for (const sibling of index.group(member.id)) result.set(sibling.id, sibling);
-  }
-  return [...result.values()].sort((a, b) => a.id.localeCompare(b.id));
-}
-
-/** Neutral pin art shared by groups of the same size. */
-export function createOverlapBadgeImage(count: number): ImageData | null {
-  const canvas = document.createElement('canvas');
-  canvas.width = 88;
-  canvas.height = 96;
-  const context = canvas.getContext('2d');
-  if (!context) return null;
-  context.scale(2, 2);
-  context.beginPath();
-  context.moveTo(22, 47);
-  context.bezierCurveTo(16, 37, 5, 29, 5, 19);
-  context.arc(22, 19, 17, Math.PI, 0);
-  context.bezierCurveTo(39, 29, 28, 37, 22, 47);
-  context.closePath();
-  context.fillStyle = '#302e2b';
-  context.fill();
-  context.strokeStyle = '#fff8e9';
-  context.lineWidth = 2;
-  context.lineJoin = 'round';
-  context.stroke();
-  context.fillStyle = '#fff8e9';
-  context.font = `700 ${count < 1000 ? 13 : 10}px system-ui, sans-serif`;
-  context.textAlign = 'center';
-  context.textBaseline = 'middle';
-  context.fillText(String(count), 22, 19, 28);
-  return context.getImageData(0, 0, canvas.width, canvas.height);
-}
 
 export function overlapPanelFrame(bounds: OverlapBounds, anchor: ScreenPoint, count: number) {
   const width = Math.max(0, Math.min(304, bounds.right - bounds.left));
