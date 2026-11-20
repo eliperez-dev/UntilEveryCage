@@ -13,9 +13,9 @@
 </script>
 
 <section class="scale-story" id="landing-scale-story" aria-label={text.introTitle} tabindex="-1">
-  <section class="line-chapter" aria-labelledby="line-claim-title">
-    <h3 id="line-claim-title">{text.lineClaim}</h3>
-    <MortalityComparison {mapHref} />
+  <section class="line-chapter" aria-labelledby="line-counter-title">
+    <h3 id="line-counter-title">{text.sinceOpened}</h3>
+    <MortalityComparison />
   </section>
   <section class="story-chapter land-chapter" aria-labelledby="land-chapter-title">
     <h3 id="land-chapter-title">{text.landSentence}</h3>
@@ -58,7 +58,7 @@
   .method-notes{padding-bottom:8px}.method-notes a{margin-left:4px}.comparison-sources{display:flex;flex-wrap:wrap;gap:0 20px}
   .scale-story{--story-bg:#141414;--story-ink:#f2f0e8;--story-muted:#b1b0aa;--story-line:#393936;background:var(--story-bg);color:var(--story-ink);padding:32px max(48px,calc((100% - 1100px)/2)) 24px;outline:none;scroll-margin-top:24px;font:14px/1.5 system-ui,sans-serif}
   :global(:root[data-theme="light"]) .scale-story{--story-bg:#f2f0e8;--story-ink:#141414;--story-muted:#5c5d57;--story-line:#c7c7bf}
-  h3,p{margin:0}h3{font:400 29px/1.25 Georgia,serif;letter-spacing:-.025em;max-width:1050px}.line-chapter>h3{margin-bottom:20px}.story-chapter{margin-top:48px}.annual{font:400 clamp(21px,2.7vw,36px)/1.3 Georgia,serif;letter-spacing:-.025em;margin-top:18px;max-width:850px}
+  h3,p{margin:0}h3{font:400 29px/1.25 Georgia,serif;letter-spacing:-.025em;max-width:1050px}.line-chapter>h3{margin-bottom:10px;font:14px/1.5 system-ui,sans-serif;letter-spacing:0;color:var(--story-muted)}.story-chapter{margin-top:48px}.annual{font:400 clamp(21px,2.7vw,36px)/1.3 Georgia,serif;letter-spacing:-.025em;margin-top:18px;max-width:850px}
   .comparisons{margin:18px 0 0}.comparison{padding:20px 0}.comparison-statement{font-size:22px;line-height:1.5;max-width:66ch}.comparison-emphasis{font-size:inherit;font-weight:700;text-transform:none}.comparison-details{margin-top:8px}.comparison-details>p{font-size:15px;max-width:55ch;line-height:1.5}.comparison small{display:block;font-size:12px;color:var(--story-muted);line-height:1.6;margin-top:8px}.pool-scale{display:flex;flex-wrap:wrap;gap:6px;padding:0 0 12px}.pool-scale>span{display:block;width:26px;height:12px;border:1px solid var(--story-ink);background:var(--story-ink)}
   .methods{border-top:1px solid var(--story-line);margin-top:16px}summary{list-style:none;cursor:pointer;min-height:48px;display:flex;justify-content:space-between;align-items:center;font-size:12px}summary::-webkit-details-marker{display:none}summary>span{font-size:21px;color:var(--story-muted)}.methods>div{max-width:820px;padding:5px 0 12px;font-size:12px;color:var(--story-muted)}.methods .comparison{padding:16px 0}.methods .comparison-statement{font-size:18px;color:var(--story-ink)}.methods p+p{margin-top:10px}.methods a{display:inline-flex;align-items:center;min-height:44px;color:var(--story-ink);text-underline-offset:4px}summary:focus-visible,a:focus-visible{outline:2px solid #d74749;outline-offset:4px}
   @media(max-width:700px){.scale-story{padding:28px 20px 20px}h3{font-size:26px}.story-chapter{margin-top:34px}.annual{font-size:25px}.comparison{padding:18px 0}.comparison-statement{font-size:19px}.comparison-details>p{font-size:15px}.pool-scale{gap:5px}.pool-scale>span{width:20px;height:10px}}

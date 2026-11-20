@@ -4,7 +4,6 @@
   import { storyMessages } from './messages';
   import { documentElapsedMilliseconds, estimateSinceDocumentOpen } from '../../features/counter/documentElapsed';
   import { ActiveStoryClock, CHICKEN_LINE_RATE, lineParticles } from './engine';
-  let { mapHref }: { mapHref: string } = $props();
   const text = $derived(storyMessages($language));
   const counterFormat = $derived(new Intl.NumberFormat($language, { maximumFractionDigits: 0 }));
   const humanTotal = $derived(estimateSinceDocumentOpen(2, $documentElapsedMilliseconds));
@@ -49,17 +48,33 @@
 </script>
 
 <div class="mortality-comparison">
-  <div class="lane-headings"><div><strong>{text.humans}</strong><span class="lane-rate">2<small>{text.deathsPerSecond}</small><span class="since-open" data-counter="human" data-total={humanTotal}>≈ {counterFormat.format(humanTotal)} {text.sinceOpened}</span></span><p class="lane-caption">{text.humanDate}</p></div><div><strong>{text.chickens}</strong><span class="lane-rate">≈ {CHICKEN_LINE_RATE.toLocaleString($language, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}<small>{text.chickensPerSecond}</small><span class="since-open" data-counter="chicken" data-total={chickenTotal}>≈ {counterFormat.format(chickenTotal)} {text.sinceOpened}</span></span><p class="lane-caption">{text.chickenRate}<br />{text.chickenDate}</p></div></div>
-  <p class="unit">{text.introExplanation}</p>
-  <div class="line-labels"><strong>{text.humanStreamTitle}</strong><strong>{text.chickenStreamTitle}</strong></div>
-  <div class="line-field" role="img" aria-label={text.lineCanvas}><canvas bind:this={canvas} aria-hidden="true"></canvas></div>
-  <div class="controls">{#if reduced}<span>{text.staticView}</span>{/if}<a class="map-link" href={mapHref}>{text.openMap}<span aria-hidden="true">↗</span></a></div>
+  <div class="lane-headings">
+    <div>
+      <strong class="lane-total" data-counter="human" data-total={humanTotal}>≈ {counterFormat.format(humanTotal)}</strong>
+      <p class="lane-rate">{text.deathsPerSecond.replace('{rate}', counterFormat.format(2))}</p>
+    </div>
+    <div>
+      <strong class="lane-total" data-counter="chicken" data-total={chickenTotal}>≈ {counterFormat.format(chickenTotal)}</strong>
+      <p class="lane-rate">{text.chickensPerSecond.replace('{rate}', counterFormat.format(CHICKEN_LINE_RATE))}</p>
+    </div>
+  </div>
+  <div class="line-field" aria-hidden="true"><canvas bind:this={canvas}></canvas></div>
 </div>
 
 <style>
-  .mortality-comparison{--line-label-red:#e87c7d}
-  :global(:root[data-theme="light"]) .mortality-comparison{--line-label-red:#a92a30}
-  .since-open{font:12px/1.5 system-ui,sans-serif;letter-spacing:0;color:var(--story-muted);font-variant-numeric:tabular-nums;max-width:100%}
-  .mortality-comparison{margin-top:0}.lane-headings{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:auto auto auto;column-gap:60px;row-gap:0}.lane-headings>div{display:grid;grid-template-rows:subgrid;grid-row:span 3;align-items:start;justify-items:start;padding-top:14px;min-width:0}.lane-headings strong{overflow-wrap:anywhere;hyphens:auto;font-size:18px;font-weight:500;line-height:1.4}.lane-rate{display:flex;flex-direction:column;align-items:flex-start;gap:6px;font:400 36px/1.2 Georgia,serif;letter-spacing:-.025em;padding-top:10px;max-width:100%}.lane-rate small{font:19px/1.4 system-ui,sans-serif;letter-spacing:0;max-width:100%}.lane-caption{font-size:12px;line-height:1.7;color:var(--story-muted);margin:10px 0 0}.unit{font-size:12px;line-height:1.5;color:var(--story-muted);margin:18px 0 8px}.line-field{height:220px;margin-top:8px;background:#141414}canvas{display:block;width:100%;height:100%}.line-labels{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:60px;font-size:14px;line-height:1.45;align-items:end}.line-labels>strong{overflow-wrap:anywhere;hyphens:auto;font-weight:400;color:var(--story-muted)}.line-labels>strong+strong{color:var(--line-label-red)}.controls{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:22px;padding:6px 0;font-size:12px}.controls>span{margin-right:auto;color:var(--story-muted)}a{font:inherit;color:inherit;min-height:44px}.map-link{display:flex;align-items:center;gap:22px;text-decoration:none;border-bottom:1px solid var(--story-muted)}a:focus-visible{outline:2px solid #d74749;outline-offset:4px}
-  @media(max-width:700px){.lane-headings,.line-labels{column-gap:22px}.lane-headings strong{font-size:16px;line-height:1.4}.lane-rate{font-size:30px;padding-top:10px}.lane-rate small{font-size:16px}.lane-caption{font-size:11px;line-height:1.6}.unit{font-size:11px}.line-field{height:200px}.line-labels{font-size:12px}.controls{gap:18px}}
+  .lane-headings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 60px; }
+  .lane-total {
+    display: block;
+    font: 700 clamp(30px, 5vw, 56px)/1.1 Georgia, serif;
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+  }
+  .lane-rate { color: var(--story-muted); font-size: 16px; line-height: 1.4; margin: 4px 0 0; }
+  .line-field { height: 220px; margin-top: 8px; background: #141414; }
+  canvas { display: block; width: 100%; height: 100%; }
+
+  @media (max-width: 700px) {
+    .lane-headings { gap: 22px; }
+    .line-field { height: 200px; }
+  }
 </style>

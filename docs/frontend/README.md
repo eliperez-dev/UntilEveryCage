@@ -52,30 +52,21 @@ API schemas own supported fields. They are not additional roadmaps.
   targets; long translations grow naturally without clipping.
   The hero keeps only the map and nearby actions; there is no `See the scale`
   button. Story and release statistics use spacing rather than repeated horizontal
-  separators; retain the source disclosure boundary and the comparison's labelled
-  outcome lines. Above the first two labelled columns, the claim
-  reads: `One U.S. chicken slaughter line can kill more birds per second than people
-  die worldwide from all causes.` It is localized across all seven story languages.
-  There is no additional introductory paragraph. Modest comparison
-  numerals use readable full-word units, with smaller scope labels directly above
-  the dots. Equal-sized dots compare worldwide human all-cause mortality with a single U.S. chicken
-  slaughter line, followed in natural scroll order by the worldwide land-animal
-  funnel with one human-population benchmark, then the separately dated fish
-  funnel leading into documented map coverage. Each
-  funnel explains its dot unit and red outcome before the animation; comparison
-  lane headings identify worldwide people versus one U.S. chicken line. There is no
-  population tab required to discover either funnel. The chicken example uses
-  140 birds per minute, with grey human outcomes and red chicken outcomes at
-  labelled lines; it does not describe every plant's measured throughput.
+  separators. The comparison opens with a short since-open label and two bold
+  running totals. Under each total, show the rounded rate and its scope in one
+  line of smaller copy. The dots illustrate worldwide all-cause human mortality
+  and one chicken slaughter line. Source details and the 140-chickens-per-minute
+  calculation are in the shared methods disclosure. The comparison leads into
+  the land and fish funnels, then documented map coverage.
   Land-animal slaughter (2024), estimated finfish capture/slaughter (2019) and
   the human mortality benchmark (January 2025) retain their distinct scopes and
   dates. They are not a single contemporary total, release totals or counts
-  attributed to mapped facilities. Each dot represents one individual. Restrained
+  attributed to mapped facilities. Restrained
   funnel chapter headings preserve the approved A visual direction; both funnels
   use the same moderate numeral scale and readable full-word units, with no
   fish-specific shrinkage or giant rate/tiny-unit pairing;
   do not duplicate each rate in a second headline or introductory stage.
-  Small approximate since-open totals accompany the human/chicken lanes and
+  Approximate since-open totals lead the human and chicken lanes and accompany
   both funnels. Show full locale-formatted integers, without compact K/M
   abbreviations. They use the existing dated rates and one document clock,
   update at 30 Hz (1 Hz with reduced motion), retain elapsed time across SPA

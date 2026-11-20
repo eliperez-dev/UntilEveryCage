@@ -13,7 +13,7 @@ async function installAggregates(page: Page) {
 test.beforeEach(async ({ page }) => installAggregates(page));
 
 test('offscreen story graphics do not initialize canvas or physics before totals load', async ({page}) => {
-  await page.setViewportSize({width:390,height:844});
+  await page.setViewportSize({width:390,height:560});
   await page.addInitScript(()=>{
     (window as any).__storyContexts=0;
     const get=HTMLCanvasElement.prototype.getContext;
@@ -48,6 +48,8 @@ test('since-open totals share document time across navigation and reset on refre
   await page.getByRole('link',{name:'Until Every Cage home',exact:true}).click();
   await expect(total('land')).toHaveAttribute('data-total','13895');
   await expect(total('fish')).toHaveAttribute('data-total','328355');
+  await expect(total('human')).toHaveText('≈ 10');
+  await expect(total('chicken')).toHaveText('≈ 11');
   await expect(total('land')).toHaveText('≈ 13,895 killed since you opened this page');
   await expect(total('fish')).toHaveText('≈ 328,355 caught or slaughtered since you opened this page');
   await page.reload();
@@ -82,23 +84,26 @@ test('direct dot comparison leads into both funnels while preserving the route, 
   await expect(page.getByRole('button', { name: 'See the scale', exact: true })).toHaveCount(0);
   const story = page.locator('.scale-story'); await story.scrollIntoViewIfNeeded(); expect(page.url()).toBe(route);
   await expect(story.locator('.story-intro')).toHaveCount(0);
-  await expect(story.locator('.line-chapter > h3')).toHaveText(englishStoryMessages.lineClaim);
-  await expect(story.getByText(englishStoryMessages.humans, { exact: true })).toBeVisible();
-  await expect(story.getByText(englishStoryMessages.chickens, { exact: true })).toBeVisible();
+  await expect(story.locator('.line-chapter > h3')).toHaveText(englishStoryMessages.sinceOpened);
+  await expect(story.locator('.line-chapter .lane-rate')).toHaveText([
+    '≈2 human deaths per second worldwide', '≈2 chickens killed per second on one line',
+  ]);
+  await expect(story.locator('.line-chapter a, .line-chapter .unit, .line-chapter .lane-caption')).toHaveCount(0);
   await expect(story.locator('.story-chapter > h3')).toHaveText([englishStoryMessages.landSentence, englishStoryMessages.fishSentence]);
   await expect(story.locator('.introductions')).toHaveCount(0);
   await expect(story.locator('canvas')).toHaveCount(3);
   await expect(story.getByRole('button', { name: 'Grid', exact: true })).toHaveCount(0);
   await expect(story.getByRole('button', { name: 'Funnel', exact: true })).toHaveCount(0);
   await expect(story.getByRole('button', { name: 'Fish', exact: true })).toHaveCount(0);
-  await expect(story.locator('.mortality-comparison .unit')).toHaveText(englishStoryMessages.introExplanation);
   for (const selector of ['.mortality-comparison', '.land-chapter .throughput', '.fish-chapter .throughput']) {
     const chapter = story.locator(selector), canvas = chapter.locator('canvas');
     await canvas.scrollIntoViewIfNeeded(); await expect(canvas).toHaveAttribute('data-state', 'running');
     await expect.poll(async () => Number(await canvas.getAttribute('data-emitted'))).toBeGreaterThan(0);
     await expect(chapter.getByRole('button', { name: /^(Pause|Resume)$/ })).toHaveCount(0);
-    if (selector !== '.mortality-comparison') await expect(chapter.locator('.canvas-wrap')).toHaveAttribute('data-mode', 'funnel');
-    await expect(chapter.locator('.map-link')).toHaveAttribute('href', '#/map?release_id=synthetic-story');
+    if (selector !== '.mortality-comparison') {
+      await expect(chapter.locator('.canvas-wrap')).toHaveAttribute('data-mode', 'funnel');
+      await expect(chapter.locator('.map-link')).toHaveAttribute('href', '#/map?release_id=synthetic-story');
+    }
   }
   await expect(story.locator('.fish-chapter .date')).toContainText('2019');
   await expect(story.locator('.fish-chapter .flow-caption')).toContainText('upper estimate');
@@ -119,7 +124,7 @@ test('all chapters have static reduced-motion equivalents and mobile controls in
   const story = page.locator('.scale-story'); await story.scrollIntoViewIfNeeded();
   expect((await page.locator('.hero').boundingBox())!.height).toBeLessThan(650);
   for (const canvas of await story.locator('canvas').all()) await expect(canvas).toHaveAttribute('data-state', 'static');
-  const labels = await story.locator('.line-labels').boundingBox(), field = await story.locator('.line-field').boundingBox();
+  const labels = await story.locator('.lane-headings').boundingBox(), field = await story.locator('.line-field').boundingBox();
   expect(labels!.y + labels!.height).toBeLessThanOrEqual(field!.y);
   await expect(story.getByRole('button', { name: 'Pause', exact: true })).toHaveCount(0);
   for (const canvas of await story.locator('.throughput canvas').all()) {
@@ -137,7 +142,11 @@ test('all chapters have static reduced-motion equivalents and mobile controls in
     })).toBe(true);
   }
   for (const theme of ['dark', 'light']) {
-    if (theme === 'light') await page.locator('.masthead .theme-toggle').click();
+    if (theme === 'light') {
+      await page.getByRole('button', { name: 'More tools', exact: true }).click();
+      await page.getByRole('combobox', { name: 'Theme', exact: true }).selectOption('light');
+      await page.getByRole('button', { name: 'Close more tools', exact: true }).click();
+    }
     for (const chapter of await story.locator('.throughput').all()) {
       await expect(chapter.locator('.canvas-wrap')).toHaveAttribute('data-mode', 'funnel');
       await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -166,25 +175,27 @@ test('direct opening and funnel chapters translate in every supported language a
     if (language !== 'en') { await page.locator('.masthead .language-action').click(); await page.locator(`#shared-language-menu button[lang="${language}"]`).click(); await expect(page.locator('#shared-language-menu')).toHaveCount(0); }
     const text = language === 'en' ? englishStoryMessages : storyTranslations[language];
     await expect(page.locator('.story-intro')).toHaveCount(0);
-    await expect(page.locator('.line-chapter > h3')).toHaveText(text.lineClaim);
-    await expect(page.locator('.scale-story').getByText(text.humans, { exact: true })).toBeVisible();
-    await expect(page.locator('.scale-story').getByText(text.chickens, { exact: true })).toBeVisible();
+    await expect(page.locator('.line-chapter > h3')).toHaveText(text.sinceOpened);
     await expect(page.locator('.scale-story .story-chapter > h3')).toHaveText([text.landSentence, text.fishSentence]);
-    await expect(page.locator('.mortality-comparison .unit')).toHaveText(text.introExplanation);
-    await expect(page.locator('.mortality-comparison')).toContainText(text.chickenRate);
-    const chickenRate = page.locator('.mortality-comparison .lane-headings>div').nth(1).locator('.lane-rate');
-    await expect(chickenRate).toContainText((140 / 60).toLocaleString(language, { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
-    const rates = await page.locator('.lane-rate').evaluateAll(elements => elements.map(element => {
-      const unit = element.querySelector('small')!;
-      return { top: element.getBoundingClientRect().top, unitTop: unit.getBoundingClientRect().top,
-        numberSize: parseFloat(getComputedStyle(element).fontSize), unitSize: parseFloat(getComputedStyle(unit).fontSize), unitText: unit.textContent!.trim() };
+    const displayRate = new Intl.NumberFormat(language, { maximumFractionDigits: 0 }).format(2);
+    await expect(page.locator('.line-chapter .lane-rate')).toHaveText([
+      text.deathsPerSecond.replace('{rate}', displayRate), text.chickensPerSecond.replace('{rate}', displayRate),
+    ]);
+    const counters = await page.locator('.lane-headings > div').evaluateAll(elements => elements.map(element => {
+      const total = element.querySelector('.lane-total')!;
+      const rate = element.querySelector('.lane-rate')!;
+      return {
+        totalTop: total.getBoundingClientRect().top,
+        totalBottom: total.getBoundingClientRect().bottom,
+        rateTop: rate.getBoundingClientRect().top,
+        totalSize: parseFloat(getComputedStyle(total).fontSize),
+        rateSize: parseFloat(getComputedStyle(rate).fontSize),
+      };
     }));
-    expect(Math.abs(rates[0]!.top - rates[1]!.top)).toBeLessThanOrEqual(1);
-    expect(Math.abs(rates[0]!.unitTop - rates[1]!.unitTop)).toBeLessThanOrEqual(1);
-    for (const rate of rates) {
-      expect(rate.unitSize).toBeGreaterThanOrEqual(16);
-      expect(rate.numberSize / rate.unitSize).toBeLessThanOrEqual(2.5);
-      expect(rate.unitText).not.toMatch(/^\/?\s*s$/);
+    expect(Math.abs(counters[0]!.totalTop - counters[1]!.totalTop)).toBeLessThanOrEqual(1);
+    for (const counter of counters) {
+      expect(counter.rateTop).toBeGreaterThanOrEqual(counter.totalBottom);
+      expect(counter.totalSize).toBeGreaterThan(counter.rateSize);
     }
     const funnelRates = await page.locator('.throughput .rate').evaluateAll(elements => elements.map(element => ({
       number: parseFloat(getComputedStyle(element).fontSize), unit: parseFloat(getComputedStyle(element.querySelector('span')!).fontSize),
@@ -208,7 +219,7 @@ test('direct opening and funnel chapters translate in every supported language a
       });
     });
     expect(heroActionsFit).toBe(true);
-    const labels = await page.locator('.line-labels').boundingBox(), field = await page.locator('.line-field').boundingBox(); expect(labels!.y + labels!.height).toBeLessThanOrEqual(field!.y);
+    const labels = await page.locator('.lane-headings').boundingBox(), field = await page.locator('.line-field').boundingBox(); expect(labels!.y + labels!.height).toBeLessThanOrEqual(field!.y);
     await expect(page.locator('.fish-chapter .flow-caption')).toHaveText(text.fishFlowCaption);
     const methods=page.locator('.methods');await methods.locator('summary').click();
     await expect(methods.locator('.method-notes > p')).toHaveCount(5);
