@@ -52,9 +52,9 @@ API schemas own supported fields. They are not additional roadmaps.
   targets; long translations grow naturally without clipping.
   The hero keeps only the map and nearby actions; there is no `See the scale`
   button. Story and release statistics use spacing rather than repeated horizontal
-  separators. The comparison opens with a short since-open label and two bold
-  running totals. Under each total, show the rounded rate and its scope in one
-  line of smaller copy. The dots illustrate worldwide all-cause human mortality
+  separators. The comparison opens with the U.S. slaughter-line claim, a
+  since-open label, and two bold running totals. Under each total, show the
+  rounded rate and its scope in smaller copy. The dots illustrate worldwide all-cause human mortality
   and one chicken slaughter line. Source details and the 140-chickens-per-minute
   calculation are in the shared methods disclosure. The comparison leads into
   the land and fish funnels, then documented map coverage.
@@ -62,12 +62,12 @@ API schemas own supported fields. They are not additional roadmaps.
   the human mortality benchmark (January 2025) retain their distinct scopes and
   dates. They are not a single contemporary total, release totals or counts
   attributed to mapped facilities. Restrained
-  funnel chapter headings preserve the approved A visual direction; both funnels
-  use the same moderate numeral scale and readable full-word units, with no
-  fish-specific shrinkage or giant rate/tiny-unit pairing;
-  do not duplicate each rate in a second headline or introductory stage.
-  Approximate since-open totals lead the human and chicken lanes and accompany
-  both funnels. Show full locale-formatted integers, without compact K/M
+  funnel chapter headings preserve the approved A visual direction. Fish
+  uses the same counter typography as the opening comparison, with the upper
+  since-open estimate in large type and the estimated per-second range beneath it.
+  The fish sources and explanation are in the shared methods disclosure.
+  Approximate since-open totals lead the human, chicken and fish counters and
+  accompany the land funnel. Show full locale-formatted integers, without compact K/M
   abbreviations. They use the existing dated rates and one document clock,
   update at 30 Hz (1 Hz with reduced motion), retain elapsed time across SPA
   navigation, and reset on document refresh. Hidden tabs stop rendering updates

@@ -50,12 +50,12 @@
 <div class="mortality-comparison">
   <div class="lane-headings">
     <div>
-      <strong class="lane-total" data-counter="human" data-total={humanTotal}>≈ {counterFormat.format(humanTotal)}</strong>
-      <p class="lane-rate">{text.deathsPerSecond.replace('{rate}', counterFormat.format(2))}</p>
+      <strong class="story-total" data-counter="human" data-total={humanTotal}>≈ {counterFormat.format(humanTotal)}</strong>
+      <p class="story-rate">{text.deathsPerSecond.replace('{rate}', counterFormat.format(2))}</p>
     </div>
     <div>
-      <strong class="lane-total" data-counter="chicken" data-total={chickenTotal}>≈ {counterFormat.format(chickenTotal)}</strong>
-      <p class="lane-rate">{text.chickensPerSecond.replace('{rate}', counterFormat.format(CHICKEN_LINE_RATE))}</p>
+      <strong class="story-total" data-counter="chicken" data-total={chickenTotal}>≈ {counterFormat.format(chickenTotal)}</strong>
+      <p class="story-rate">{text.chickensPerSecond.replace('{rate}', counterFormat.format(CHICKEN_LINE_RATE))}</p>
     </div>
   </div>
   <div class="line-field" aria-hidden="true"><canvas bind:this={canvas}></canvas></div>
@@ -63,13 +63,6 @@
 
 <style>
   .lane-headings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 60px; }
-  .lane-total {
-    display: block;
-    font: 700 clamp(30px, 5vw, 56px)/1.1 Georgia, serif;
-    font-variant-numeric: tabular-nums;
-    overflow-wrap: anywhere;
-  }
-  .lane-rate { color: var(--story-muted); font-size: 16px; line-height: 1.4; margin: 4px 0 0; }
   .line-field { height: 220px; margin-top: 8px; background: #141414; }
   canvas { display: block; width: 100%; height: 100%; }
 

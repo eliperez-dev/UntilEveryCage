@@ -51,7 +51,7 @@ test('since-open totals share document time across navigation and reset on refre
   await expect(total('human')).toHaveText('≈ 10');
   await expect(total('chicken')).toHaveText('≈ 11');
   await expect(total('land')).toHaveText('≈ 13,895 killed since you opened this page');
-  await expect(total('fish')).toHaveText('≈ 328,355 caught or slaughtered since you opened this page');
+  await expect(total('fish')).toHaveText('≈ 328,355');
   await page.reload();
   for(const population of ['human','chicken','land','fish']) await expect(total(population)).toHaveAttribute('data-total','0');
 });
@@ -84,8 +84,9 @@ test('direct dot comparison leads into both funnels while preserving the route, 
   await expect(page.getByRole('button', { name: 'See the scale', exact: true })).toHaveCount(0);
   const story = page.locator('.scale-story'); await story.scrollIntoViewIfNeeded(); expect(page.url()).toBe(route);
   await expect(story.locator('.story-intro')).toHaveCount(0);
-  await expect(story.locator('.line-chapter > h3')).toHaveText(englishStoryMessages.sinceOpened);
-  await expect(story.locator('.line-chapter .lane-rate')).toHaveText([
+  await expect(story.locator('.line-chapter > h3')).toHaveText(englishStoryMessages.lineClaim);
+  await expect(story.locator('.line-chapter .story-since-open')).toHaveText(englishStoryMessages.sinceOpened);
+  await expect(story.locator('.line-chapter .story-rate')).toHaveText([
     '≈2 human deaths per second worldwide', '≈2 chickens killed per second on one line',
   ]);
   await expect(story.locator('.line-chapter a, .line-chapter .unit, .line-chapter .lane-caption')).toHaveCount(0);
@@ -100,13 +101,13 @@ test('direct dot comparison leads into both funnels while preserving the route, 
     await canvas.scrollIntoViewIfNeeded(); await expect(canvas).toHaveAttribute('data-state', 'running');
     await expect.poll(async () => Number(await canvas.getAttribute('data-emitted'))).toBeGreaterThan(0);
     await expect(chapter.getByRole('button', { name: /^(Pause|Resume)$/ })).toHaveCount(0);
-    if (selector !== '.mortality-comparison') {
-      await expect(chapter.locator('.canvas-wrap')).toHaveAttribute('data-mode', 'funnel');
-      await expect(chapter.locator('.map-link')).toHaveAttribute('href', '#/map?release_id=synthetic-story');
-    }
+    if (selector !== '.mortality-comparison') await expect(chapter.locator('.canvas-wrap')).toHaveAttribute('data-mode', 'funnel');
   }
-  await expect(story.locator('.fish-chapter .date')).toContainText('2019');
-  await expect(story.locator('.fish-chapter .flow-caption')).toContainText('upper estimate');
+  await expect(story.locator('.land-chapter .map-link')).toHaveAttribute('href', '#/map?release_id=synthetic-story');
+  const fish = story.locator('.fish-chapter');
+  await expect(fish.locator('.story-since-open')).toHaveText(englishStoryMessages.fishSinceOpened);
+  await expect(fish.locator('.story-rate')).toHaveText('≈33,500–65,700 fish caught or slaughtered per second');
+  await expect(fish.locator('.date, .flow-caption, .unit, a')).toHaveCount(0);
   await expect(story.locator('.comparison-question')).toHaveCount(0);
   await expect(story.locator('.comparison-statement')).toHaveText(comparisonStatements(englishStoryMessages));
   await expect(story.locator('.comparison-emphasis')).toHaveText([englishStoryMessages.humanLandValue, englishStoryMessages.oneSecondValue, englishStoryMessages.waterLandValue]);
@@ -175,15 +176,17 @@ test('direct opening and funnel chapters translate in every supported language a
     if (language !== 'en') { await page.locator('.masthead .language-action').click(); await page.locator(`#shared-language-menu button[lang="${language}"]`).click(); await expect(page.locator('#shared-language-menu')).toHaveCount(0); }
     const text = language === 'en' ? englishStoryMessages : storyTranslations[language];
     await expect(page.locator('.story-intro')).toHaveCount(0);
-    await expect(page.locator('.line-chapter > h3')).toHaveText(text.sinceOpened);
+    await expect(page.locator('.line-chapter > h3')).toHaveText(text.lineClaim);
+    await expect(page.locator('.line-chapter .story-since-open')).toHaveText(text.sinceOpened);
     await expect(page.locator('.scale-story .story-chapter > h3')).toHaveText([text.landSentence, text.fishSentence]);
-    const displayRate = new Intl.NumberFormat(language, { maximumFractionDigits: 0 }).format(2);
-    await expect(page.locator('.line-chapter .lane-rate')).toHaveText([
+    const format = new Intl.NumberFormat(language, { maximumFractionDigits: 0 });
+    const displayRate = format.format(2);
+    await expect(page.locator('.line-chapter .story-rate')).toHaveText([
       text.deathsPerSecond.replace('{rate}', displayRate), text.chickensPerSecond.replace('{rate}', displayRate),
     ]);
-    const counters = await page.locator('.lane-headings > div').evaluateAll(elements => elements.map(element => {
-      const total = element.querySelector('.lane-total')!;
-      const rate = element.querySelector('.lane-rate')!;
+    await expect(page.locator('.fish-chapter .story-rate')).toHaveText(text.fishPerSecond.replace('{rate}', `${format.format(33_500)}–${format.format(65_700)}`));
+    const counters = await page.locator('.story-total').evaluateAll(totals => totals.map(total => {
+      const rate = total.nextElementSibling!;
       return {
         totalTop: total.getBoundingClientRect().top,
         totalBottom: total.getBoundingClientRect().bottom,
@@ -197,11 +200,9 @@ test('direct opening and funnel chapters translate in every supported language a
       expect(counter.rateTop).toBeGreaterThanOrEqual(counter.totalBottom);
       expect(counter.totalSize).toBeGreaterThan(counter.rateSize);
     }
-    const funnelRates = await page.locator('.throughput .rate').evaluateAll(elements => elements.map(element => ({
-      number: parseFloat(getComputedStyle(element).fontSize), unit: parseFloat(getComputedStyle(element.querySelector('span')!).fontSize),
-    })));
-    expect(funnelRates[0]!.number).toBe(funnelRates[1]!.number);
-    for (const rate of funnelRates) { expect(rate.unit).toBeGreaterThanOrEqual(16); expect(rate.number / rate.unit).toBeLessThanOrEqual(2.5); }
+    expect(counters).toHaveLength(3);
+    expect(counters[2]!.totalSize).toBe(counters[0]!.totalSize);
+    expect(counters[2]!.rateSize).toBe(counters[0]!.rateSize);
     await expect(page.locator('.land-chapter .comparison-statement')).toHaveText(comparisonStatements(text)[0]!);
     await expect(page.locator('.comparison-statement:visible')).toHaveCount(1);
     await expect(page.locator('.comparison-statement')).toHaveText(comparisonStatements(text));
@@ -220,7 +221,6 @@ test('direct opening and funnel chapters translate in every supported language a
     });
     expect(heroActionsFit).toBe(true);
     const labels = await page.locator('.lane-headings').boundingBox(), field = await page.locator('.line-field').boundingBox(); expect(labels!.y + labels!.height).toBeLessThanOrEqual(field!.y);
-    await expect(page.locator('.fish-chapter .flow-caption')).toHaveText(text.fishFlowCaption);
     const methods=page.locator('.methods');await methods.locator('summary').click();
     await expect(methods.locator('.method-notes > p')).toHaveCount(5);
     for(const note of [text.humanMethod,text.chickenMethod,text.landMethod,text.fishMethod,text.fishScope,text.motionMethod,text.comparisonMethod]) await expect(methods).toContainText(note);
@@ -230,13 +230,8 @@ test('direct opening and funnel chapters translate in every supported language a
     expect(sourceLinks.every(link=>link.href?.startsWith('https://')&&link.rel==='noreferrer'&&link.height>=44)).toBe(true);
     await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
     await methods.locator('summary').click();
-    for (const chapter of await page.locator('.throughput').all()) {
-      const unit = chapter.locator('.unit');
-      await expect(unit).toHaveCount(1);
-      const explanation = await unit.boundingBox(), visualization = await chapter.locator('.canvas-wrap').boundingBox();
-      expect(explanation!.y + explanation!.height).toBeLessThanOrEqual(visualization!.y);
-      await expect(chapter.locator('.controls .unit')).toHaveCount(0);
-    }
+    await expect(page.locator('.land-chapter .unit')).toHaveCount(1);
+    await expect(page.locator('.fish-chapter .unit')).toHaveCount(0);
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   }
 });
