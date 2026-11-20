@@ -109,12 +109,9 @@
     if (loaded) return publicPinSummaries.remember(id, pinSummary(loaded), token);
     return publicPinSummaries.peek(id) ?? publicPinSummaries.resolve(id, signal);
   };
-  const V0_ARCHIVE_RELEASE_ID = 'v0-candidate-2026-10-04-r3';
-  const v0ArchiveVerified = writable(false);
   let refreshPinnedPublicRelease: (() => void) | undefined;
   const publicReleaseOptions = $derived([
     ...($activePublicReleaseId ? [{ id: $activePublicReleaseId, label: publicReleaseLabel($activePublicReleaseId)! }] : []),
-    ...($v0ArchiveVerified && $activePublicReleaseId !== V0_ARCHIVE_RELEASE_ID ? [{ id: V0_ARCHIVE_RELEASE_ID, label: publicReleaseLabel(V0_ARCHIVE_RELEASE_ID)! }] : []),
   ]);
   const resumeMapHref = $derived(`${encodeLabHash(labState, false, true)}${$pinnedPublicReleaseId ? `&release_id=${encodeURIComponent($pinnedPublicReleaseId)}` : ''}`);
   function selectPublicRelease(releaseId: string) {
@@ -540,9 +537,6 @@
         });
       };
       refreshPinnedPublicRelease = checkRelease;
-      void publicReleaseRepository.current('official', summaryAbort.signal, V0_ARCHIVE_RELEASE_ID).then(archive => {
-        if (!summaryAbort?.signal.aborted) $v0ArchiveVerified = archive?.releaseId === V0_ARCHIVE_RELEASE_ID;
-      }).catch(() => { if (!summaryAbort?.signal.aborted) $v0ArchiveVerified = false; });
       const timer = setInterval(() => { if (active && !document.hidden) checkRelease(); }, 60_000);
       document.addEventListener('visibilitychange', () => { if (active && !document.hidden) checkRelease(); }, { signal: summaryAbort.signal });
       (summaryAbort as AbortController & { releaseTimer?: ReturnType<typeof setInterval> }).releaseTimer = timer;

@@ -16,8 +16,10 @@ frontend/src/app/App.svelte
       -> design-lab/components/MapSurface.svelte
 ```
 
-The folder name does not make it preview-only. Database and full record pages
-are `app/PublicDatabase.svelte` and `app/PublicRecord.svelte`. Trace active imports.
+`DesignLab.svelte` serves the public map and the local preview modes. Search and
+filters live in `Field.svelte`. The Data page uses `app/ApiPage.svelte` and full
+facility pages use `app/PublicRecord.svelte`. `app/DatabaseResearch.svelte` serves
+the private preview table.
 Technical setup/tests: [frontend/README.md](../../frontend/README.md).
 Wire contracts: [API index](../api/README.md), not duplicate frontend DTO docs.
 [V1 behavior inventory](v1-behavioral-contract.md) and its JSON retain tested
@@ -195,9 +197,8 @@ API schemas own supported fields. They are not additional roadmaps.
   display cache clears when the release, restrictions or search context changes.
 - Search this area captures fixed bounds and draws a native geographic perimeter.
   Panning, rotation and style changes retain those bounds. There is no separate
-  Searching this area indicator. With any box, radius or device-derived scope
-  active, the existing toolbar area action becomes a black X on white, labeled
-  Clear map area. Clearing removes only spatial scope and boundary, preserving
+  Searching this area indicator. When a spatial scope is active, More tools
+  offers Clear map area. Clearing removes the spatial scope and boundary, preserving
   query, other filters, selection, workspace position and private-camera marker.
   A removable This map area chip shares the Filters/count row, and the same
   checked applied filter appears inside Filters for every spatial mode.
@@ -245,16 +246,10 @@ API schemas own supported fields. They are not additional roadmaps.
   changes dismiss the list. Membership uses the current filtered public feed.
   Geographically coincident native clusters open the same list. Ordinary
   geographic clusters keep their expansion.
-- The Street/Satellite switch and adjacent 2D/3D toggle live in the map toolbar,
-  with accessible camera-gesture help. Do not duplicate them in More tools.
-  Keep the map navigation toolbar in the map column, above mobile sheets
-  and attribution; no separate gesture banner or default white MapLibre controls.
-- Native terrain is lazy, true-scale and has a usable flat fallback.
-  Initial 2D does not request elevation. The first 3D activation waits for
-  elevation before tilting; returning to 2D keeps healthy loaded terrain and
-  changes the viewing angle, preserving geographic focus. Terrain failures
-  clear elevation and leave a usable flat map.
-  Keep provider attribution; changing style/camera must not rebuild facility data.
+- More tools holds the public Map style setting with Automatic, Street, and
+  Satellite options. Local preview retains separate camera controls and lazy
+  terrain. Terrain failures leave a usable flat map. Keep provider attribution
+  and preserve the facility data and geographic focus when changing map style.
 - Clicking a real pin, PNG, cluster or search result must work on cold load.
   Pin selection, detail opening and camera focus must work with Search map
   collapsed as well as expanded, using the same existing selection behavior.

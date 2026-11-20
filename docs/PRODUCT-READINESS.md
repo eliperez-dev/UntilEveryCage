@@ -2,7 +2,7 @@
 
 **Canonical authority:** this document is the sole product-level readiness and overall V2 roadmap authority.
 
-**Owner:** project maintainer. **Updated:** 2026-11-09, Pacific.
+**Owner:** project maintainer. **Updated:** 2026-11-20, Pacific.
 Source readiness belongs in [source-status.json](source-status.json), frontend
 behavior in [the frontend guide](frontend/README.md), and data policy in
 [ETHICS.md](ETHICS.md). Update these owners rather than adding sprint reports.
@@ -22,9 +22,7 @@ The current dataset is **October 31, 2026**, `release-2026-10-31`.
 | Graph | 83,067 connections: 23,874 exact and 59,193 inferred; 1,024 APHIS evidence references |
 | Historical dataset | October 18 remains accessible, including all 69,526 original graph edges |
 | V0 | Retired from production at the maintainer's request; seven old projection copies removed, reclaiming 521,412,608 bytes. The local development baseline and source evidence remain |
-| Application | `128b6ae002e76cf95bd2ed0a4447d91ab67e835e` on `eli/v2` |
-| CI | All seven jobs passed in [run 42678002156](https://github.com/eliperez-dev/UntilEveryCage/actions/runs/42678002156) |
-| Render | Deployment `dep-dbp1q00n74is73abql10`, serving database `uec_serving_country_20261031`; Auto-Deploy remains off |
+| Application | [V2 branch](https://github.com/eliperez-dev/UntilEveryCage/tree/eli/v2) and [CI history](https://github.com/eliperez-dev/UntilEveryCage/actions?query=branch%3Aeli%2Fv2) |
 | Contributions | Existing intake and bug-report capabilities remain enabled; community data was not moved or modified |
 
 The country first pass is complete. Germany, national Spain, Catalonia, France,
@@ -138,7 +136,6 @@ October 27 snapshots were never published and are not the current release.
 - Generalize the exact canonical graph-alias rebinding used for reused private
   handoffs in this release. Original identifiers and evidence must remain intact.
 - Apply the human-readable French ICPE source label in the next source projection.
-- Remove the automatic retired-V0 archive-availability request on map entry.
 
 These are tracked follow-ups, not reasons to repeat the completed country
 geocoding pass or begin another broad backend redesign.

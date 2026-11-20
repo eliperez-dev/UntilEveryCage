@@ -25,7 +25,6 @@
   const repository = new PublicReleaseRepository();
   const base = import.meta.env.BASE_URL;
   const reference = `${base}reference/`;
-  const V0_ARCHIVE_RELEASE_ID = 'v0-candidate-2026-10-04-r3';
   const query = $derived(new URLSearchParams({ profile, ...(releaseId ? { release_id: releaseId } : {}) }).toString());
   const releaseLabel = (id: string, date?: string) => {
     const readableDate = date ? new Intl.DateTimeFormat($language, { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date(date)) : null;
@@ -47,15 +46,12 @@
     const controller = new AbortController(); releaseLoading = true; releaseError = ''; releaseId = null; releaseDate = null; releaseOptions = [];
     void (async () => {
       const active = await repository.current(profile, controller.signal);
-      const history = profile === 'official' && active?.releaseId !== V0_ARCHIVE_RELEASE_ID
-        ? await repository.current(profile, controller.signal, V0_ARCHIVE_RELEASE_ID) : null;
       if (controller.signal.aborted) return;
-      const available = [active, history].filter((item): item is NonNullable<typeof item> => item !== null);
+      const available = active ? [active] : [];
       const chosenId = requestedReleaseId ?? active?.releaseId ?? null;
       if (!requestedReleaseId && chosenId) selectedReleaseId = chosenId;
       const selected = chosenId === active?.releaseId ? active
-        : chosenId === history?.releaseId ? history
-          : chosenId ? await repository.current(profile, controller.signal, chosenId) : null;
+        : chosenId ? await repository.current(profile, controller.signal, chosenId) : null;
       if (controller.signal.aborted) return;
       releaseOptions = available.map(item => ({ id: item.releaseId, ...(item.mapGeneratedAt ? { generatedAt: item.mapGeneratedAt } : {}) }));
       if (selected && !available.some(item => item.releaseId === selected.releaseId)) {

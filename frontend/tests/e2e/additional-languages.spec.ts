@@ -55,7 +55,12 @@ test('six languages fit phone headers and contribution controls in both themes',
   await page.goto('./#/contribute?type=bug');
   for (const width of [320, 390]) for (const theme of ['dark', 'light']) {
     await page.setViewportSize({ width, height: 844 });
-    if (await page.locator('html').getAttribute('data-theme') !== theme) await page.locator('.theme-toggle').click();
+    if (await page.locator('html').getAttribute('data-theme') !== theme) {
+      await page.locator('.tools-action').click();
+      await page.locator('#shared-tools-menu .theme-field select').selectOption(theme);
+      await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+      await page.keyboard.press('Escape');
+    }
     for (const choice of choices) {
       await choose(page, choice.name);
       await expect(page.locator('html')).toHaveAttribute('lang', choice.code);
@@ -64,8 +69,8 @@ test('six languages fit phone headers and contribution controls in both themes',
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       const geometry = await page.evaluate(() => {
         const box = (selector: string) => document.querySelector(selector)!.getBoundingClientRect();
-        const brand = box('.wordmark'), theme = box('.theme-toggle'), language = box('.language-action'), tools = box('.tools-action');
-        return { ordered: brand.right <= theme.left && theme.right <= language.left && language.right <= tools.left, fits: tools.right <= innerWidth, target: language.width >= 44 && language.height >= 44 };
+        const brand = box('.wordmark'), language = box('.language-action'), tools = box('.tools-action');
+        return { ordered: brand.right <= language.left && language.right <= tools.left, fits: tools.right <= innerWidth, target: language.width >= 44 && language.height >= 44 };
       });
       expect(geometry).toEqual({ ordered: true, fits: true, target: true });
       await page.locator('.language-action').click();

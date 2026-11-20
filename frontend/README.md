@@ -7,8 +7,8 @@ The production client is Svelte 5/TypeScript with MapLibre, served by Rust/Axum.
 ## Routes and data modes
 
 - `/` and `#/`: outreach landing; Open the map leads to the separate map route.
-- `#/map`: map and selected facility detail.
-- `#/database`: search and paginated records; links open full pages.
+- `#/map`: map search, filters, and facility summaries.
+- `#/database` opens Map in the public app and the research table in private preview.
 - `#/records/:id`: full facility page; old location routes remain aliases.
 - `#/database/api`: downloads, paginated API and self-hosted Swagger.
 - `#/contribute`: facility/evidence/correction/duplicate/privacy and bug intake.

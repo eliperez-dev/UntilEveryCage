@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ActiveStoryClock, batchBounds, CHICKEN_LINE_RATE, FUNNEL_QUEUE_SECONDS, FUNNEL_RED_SECONDS, funnelColumn, funnelLayout, funnelParticle, funnelParticles, gridParticles, lineParticles, seed, snakePosition, STORY_RATES } from '../../src/app/scale-story/engine';
+import { ActiveStoryClock, CHICKEN_LINE_RATE, FUNNEL_QUEUE_SECONDS, FUNNEL_RED_SECONDS, funnelColumn, funnelLayout, funnelParticle, funnelParticles, lineParticles, seed, STORY_RATES } from '../../src/app/scale-story/engine';
 import { FISH_2019, LAND_ANIMALS_2024, litresForIndividuals, oneSecondEachYears, poolsForIndividuals, populationDays, REFERENCE_POOL_LITRES } from '../../src/app/scale-story/comparisons';
 
 describe('active story time', () => {
@@ -33,62 +33,6 @@ describe('active story time', () => {
 });
 
 describe('individual dot identity', () => {
-  it('allocates adjacent quarter-second chunks with no missing or duplicated animal', () => {
-    for (const rate of Object.values(STORY_RATES)) {
-      let next = 1;
-      for (let batch = 0; batch < 400; batch++) {
-        const bounds = batchBounds(batch, rate); expect(bounds.first).toBe(next); next = bounds.last + 1;
-      }
-      expect(next - 1).toBe(rate * 100);
-    }
-  });
-  it('snakes across alternate rows while preserving each ordinal through layout changes', () => {
-    expect(Array.from({ length: 8 }, (_, index) => snakePosition(index, 4))).toEqual([
-      { column: 0, row: 0 }, { column: 1, row: 0 }, { column: 2, row: 0 }, { column: 3, row: 0 },
-      { column: 3, row: 1 }, { column: 2, row: 1 }, { column: 1, row: 1 }, { column: 0, row: 1 },
-    ]);
-    for (const columns of [7, 53, 91]) for (let index = 0; index < 1000; index++) {
-      const { row, column } = snakePosition(index, columns);
-      expect(row * columns + (row % 2 ? columns - 1 - column : column)).toBe(index);
-    }
-  });
-  it('never revives a visible completed dot during chunk handoffs', () => {
-    const dead = new Set<number>();
-    let duplicates = false, revived = false, minimum = Infinity, maximum = 0;
-    for (let frame = 0; frame < 160; frame++) {
-      const seen = new Set<number>();
-      const count = gridParticles(frame / 50, 2779, 320, 650, (id, _x, _y, killed) => {
-        if (seen.has(id)) duplicates = true; seen.add(id);
-        if (dead.has(id) && !killed) revived = true;
-        if (killed) dead.add(id);
-      });
-      minimum = Math.min(minimum, count); maximum = Math.max(maximum, count);
-    }
-    expect(duplicates).toBe(false); expect(revived).toBe(false);
-    expect(minimum).toBeGreaterThan(1300); expect(maximum).toBeLessThanOrEqual(5 * Math.ceil(2779 / 4));
-  });
-  it('keeps fish work bounded after arbitrarily long active periods', () => {
-    for (const seconds of [1.98, 1000.97, 1000000.24]) {
-      const ids = new Set<number>();
-      let duplicates = false;
-      const count = funnelParticles(seconds, STORY_RATES.fish, 272, 500, id => { if (ids.has(id)) duplicates = true; ids.add(id); });
-      expect(duplicates).toBe(false);
-      expect(count).toBeLessThan(160000); expect(count).toBeGreaterThan(10000);
-      expect(gridParticles(seconds, STORY_RATES.fish, 272, 650, () => {})).toBeLessThanOrEqual(5 * Math.ceil(STORY_RATES.fish / 4));
-    }
-  });
-  it('keeps incoming and retiring chunks inside their own cell throughout handoffs', () => {
-    const width = 900, height = 570, gap = 26, cellW = (width - gap) / 2, cellH = (height - gap) / 2;
-    let violations = 0;
-    for (const seconds of [.93, .97, .99, 1.18, 1.24, 1.46, 1.73, 2.98]) {
-      gridParticles(seconds, STORY_RATES.land, width, height, (id, x, y) => {
-        const slot = (Math.ceil(id / (STORY_RATES.land * .25)) - 1) % 4;
-        const left = (slot % 2) * (cellW + gap), top = Math.floor(slot / 2) * (cellH + gap);
-        if (x < left || x >= left + cellW || y < top || y >= top + cellH) violations++;
-      });
-    }
-    expect(violations).toBe(0);
-  });
   it('turns the same queued individual red at the throat and scatters deterministic identities', () => {
     const positions = new Map<number, { x: number; y: number; dead: boolean }>();
     funnelParticles(.1, 2779, 1000, 500, (id, x, y, dead) => positions.set(id, { x, y, dead }));

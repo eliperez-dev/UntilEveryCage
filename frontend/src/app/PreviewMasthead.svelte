@@ -108,7 +108,7 @@
     </div>{/if}
     {#if toolsOpen}<aside id="shared-tools-menu" class="header-menu tools-menu" aria-label={tr('More tools', $language)}>
       <header><strong><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> {tr('More tools', $language)}</strong><button type="button" aria-label={tr('Close more tools', $language)} onclick={() => closeTools(true)}>×</button></header>
-      <section><ThemeControl menu /></section>
+      <section><ThemeControl /></section>
       {@render mapTools?.()}
       {#if current === 'map' && (mapDisplaySettings || onreleasechange)}<details class="advanced-tools"><summary>{tr('Advanced', $language)}</summary>
       {#if mapDisplaySettings && onmapdisplaychange}<section class="map-display-tools" role="group" aria-label={tr('Map display', $language)}>

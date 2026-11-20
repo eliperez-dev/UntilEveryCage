@@ -110,7 +110,6 @@ button { min-height: 2.75rem; padding: .5rem 1rem; color: inherit; background: v
 /* Light mode for the existing application surfaces. Map canvases and raster pins remain untouched. */
 :root[data-theme="light"] .about-page,
 :root[data-theme="light"] .public-record,
-:root[data-theme="light"] .public-database,
 :root[data-theme="light"] .contribute-page,
 :root[data-theme="light"] .faq-page { color: var(--ink); }
 :root[data-theme="light"] .about-page p,
@@ -118,21 +117,14 @@ button { min-height: 2.75rem; padding: .5rem 1rem; color: inherit; background: v
 :root[data-theme="light"] .public-record p,
 :root[data-theme="light"] .public-record dd,
 :root[data-theme="light"] .public-record .aphis-reports a,
-:root[data-theme="light"] .public-database .intro,
 :root[data-theme="light"] .faq-page p,
 :root[data-theme="light"] .contribute-page p { color: var(--ink-secondary); }
 :root[data-theme="light"] .public-record .warning { background: #f0eee7; color: #443d2d; border-color: #b7ad91; }
-:root[data-theme="light"] .public-database input,
-:root[data-theme="light"] .public-database select,
 :root[data-theme="light"] .contribute-page input,
 :root[data-theme="light"] .contribute-page select,
 :root[data-theme="light"] .contribute-page textarea { background: var(--page-raised); color: var(--ink); border-color: var(--line-strong); }
-:root[data-theme="light"] .public-database button,
 :root[data-theme="light"] .public-record button,
 :root[data-theme="light"] .contribute-page button { background: var(--panel-hover); color: var(--ink); border-color: var(--line-strong); }
-:root[data-theme="light"] .public-database .browse-layout,
-:root[data-theme="light"] .public-database .filters,
-:root[data-theme="light"] .public-database .result-count,
 :root[data-theme="light"] .public-record dl div,
 :root[data-theme="light"] .contribute-page fieldset,
 :root[data-theme="light"] .faq-page section { border-color: var(--line); }
@@ -151,9 +143,6 @@ button { min-height: 2.75rem; padding: .5rem 1rem; color: inherit; background: v
 :root[data-theme="light"] .database-research .quiet,
 :root[data-theme="light"] .database-research .intro,
 :root[data-theme="light"] .record-page .state { color: var(--ink-secondary); }
-:root[data-theme="light"] .public-database table td:first-child :is(a, button) { color: var(--ink); }
-:root[data-theme="light"] .public-database table tr:hover { background: var(--panel-hover); }
-:root[data-theme="light"] .bug-page { color: var(--ink); }
 :root[data-theme="light"] .contribute-page .task-nav a { color: var(--ink-muted); text-decoration-color: var(--line-strong); }
 :root[data-theme="light"] .contribute-page .task-nav a[aria-current] { color: var(--ink); }
 
@@ -162,11 +151,7 @@ button { min-height: 2.75rem; padding: .5rem 1rem; color: inherit; background: v
 
 :root[data-theme="light"] :is(input,select,textarea)::placeholder { color:var(--ink-muted); opacity:1; }
 :root[data-theme="light"] :is(button,input,select,textarea):disabled { color:var(--ink-muted); opacity:.72; }
-:root[data-theme="light"] :is(.about-subnav,.aphis-reports,.connections,.record-table) { color:var(--ink); }
-:root[data-theme="light"] .about-subnav { border-color:var(--line); }
-:root[data-theme="light"] .about-subnav a,
-:root[data-theme="light"] .about-subnav a[aria-current] { color:var(--link); }
-:root[data-theme="light"] .about-subnav a:focus-visible { outline-color:var(--focus); }
+:root[data-theme="light"] :is(.aphis-reports,.connections,.record-table) { color:var(--ink); }
 :root[data-theme="light"] .estimate { color:var(--ink); background:var(--panel); border-color:var(--line-strong); }
 :root[data-theme="light"] .estimate h2,
 :root[data-theme="light"] .estimate-number { color:var(--ink); }
@@ -195,38 +180,17 @@ button { min-height: 2.75rem; padding: .5rem 1rem; color: inherit; background: v
 :root[data-theme="light"] :is(.public-record,.record-page) .detail :is(a,.aphis-reports a,.connections a) { color:var(--link); }
 :root[data-theme="light"] :is(.public-record,.record-page) .detail :is(button,select) { background:var(--panel-hover); color:var(--ink); border-color:var(--line-strong); }
 :root[data-theme="light"] :is(.public-record,.record-page) .detail :is(dl div,.connections,.connections li,.aphis-reports li) { border-color:var(--line); }
-:root[data-theme="light"] .public-database table { color:var(--ink); }
-:root[data-theme="light"] .public-database table th,
-:root[data-theme="light"] .public-database table td,
-:root[data-theme="light"] .public-database table tr { color:var(--ink); border-color:var(--line); }
-:root[data-theme="light"] .public-database table td::before { color:var(--ink-muted); }
-:root[data-theme="light"] .public-database table tr.selected { background:#dce8d9; }
 :root[data-theme="light"] .public-record a { color:var(--link); }
-:root[data-theme="light"] .bug-page :is(.bug-form label,.intro,.issue-link) { color:var(--ink-secondary); }
-:root[data-theme="light"] .bug-page :is(input,textarea) { background:var(--page-raised); color:var(--ink); border-color:var(--line-strong); }
-:root[data-theme="light"] .bug-page .draft-link a { background:var(--panel); color:var(--link); }
-:root[data-theme="light"] .bug-page .bug-form button { background:#70412f; color:#fff; border-color:#70412f; }
-:root[data-theme="light"] :is(.public-record,.record-page,.public-database,.database-research,.contribute-page,.bug-page,.api-page,.faq-page,.about-page,.community-page) :focus-visible { outline-color:var(--focus); }
+:root[data-theme="light"] :is(.public-record,.record-page,.database-research,.contribute-page,.api-page,.faq-page,.about-page,.community-page) :focus-visible { outline-color:var(--focus); }
 :root[data-theme="light"] .shell-content .state,
 :root[data-theme="light"] .review-loading { background:var(--page-raised); color:var(--ink); border-color:var(--line-strong); }
 :root[data-theme="light"] .review-loading small { color:var(--ink-secondary); }
-:root[data-theme="light"] :is(.public-record,.api-page,.public-database,.database-research,.contribute-page,.bug-page,.community-page) :is([role="status"],[role="alert"],.error,.form-error) { color:var(--ink-secondary); }
+:root[data-theme="light"] :is(.public-record,.api-page,.database-research,.contribute-page,.community-page) :is([role="status"],[role="alert"],.error,.form-error) { color:var(--ink-secondary); }
 
-/* Development-only design-lab structure. Direction agents own composition polish. */
+/* Shared map and local preview styles. */
 .lab { min-height: 100vh; color: #eee9df; background: #151718; font-family: Georgia, serif; }
 .lab a { color: #e8c78b; }
 .sr-only { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border: 0 !important; }
-.lab-header { display: flex; align-items: center; gap: 1rem; min-height: 3.5rem; padding: .6rem 1rem; border-bottom: 1px solid #4a4e4e; font: .72rem/1.3 ui-monospace, monospace; letter-spacing: .08em; }
-.lab-header span { margin-left: auto; color: #bcb8ae; }
-.lab-wordmark { color: inherit; font: 700 1rem Georgia, serif; text-decoration: none; }
-.review-controls { display: flex; gap: 1rem; padding: .5rem 1rem; background: #202324; border-bottom: 1px solid #4a4e4e; }
-.review-controls label { font: .75rem ui-monospace, monospace; }
-.review-controls select { margin-left: .5rem; padding: .3rem; color: inherit; background: #151718; border: 1px solid #777; }
-.lab-main { position: relative; padding: 1rem; }
-.lab-main form { display: grid; gap: .3rem; max-width: 40rem; margin-bottom: 1rem; }
-.lab-main form > * { min-width: 0; }
-.lab-main form label { overflow-wrap: anywhere; }
-.lab-main input { width: 100%; padding: .7rem; color: #fff; background: #0e1011; border: 1px solid #777; font: inherit; }
 .lab-filters { max-width: 52rem; margin: 0 0 1rem; padding: .6rem; border: 1px solid #555; }
 .lab-filters summary { cursor: pointer; }
 .lab-filters summary span { margin-left: .5rem; color: #c8c8c2; }
@@ -276,11 +240,6 @@ button { min-height: 2.75rem; padding: .5rem 1rem; color: inherit; background: v
 .lab-state { padding: 2rem; border: 1px solid #777; }
 
 @media (max-width: 44rem) {
-  .lab-header { flex-wrap: wrap; }
-  .lab-header span { width: 100%; margin: 0; }
-  .lab-header nav { gap: .75rem; }
-  .review-controls { flex-wrap: wrap; }
-  .lab-main { padding: .75rem; }
   .workspace { grid-template-columns: minmax(0, 1fr); height: auto; }
   .map-surface { min-height: 55vh; }
   .record-list { max-height: 35vh; border-top: 1px solid #555; border-left: 0; }
@@ -294,12 +253,6 @@ button { min-height: 2.75rem; padding: .5rem 1rem; color: inherit; background: v
 .lab[data-scenario="mobile"] .record-list { max-height: 30vh; border-top: 1px solid #555; border-left: 0; }
 
 @media (max-width: 20rem) {
-  .lab-header { gap: .5rem; }
-  .lab-header strong { font-size: .65rem; }
-  .lab-header nav { width: 100%; }
-  .review-controls { gap: .5rem; }
-  .review-controls label { display: grid; gap: .25rem; }
-  .review-controls select { margin: 0; }
   .lab-filters fieldset { grid-template-columns: minmax(0, 1fr); }
 }
 

@@ -9,7 +9,7 @@ An independent, open-source map of the infrastructure of animal exploitation.
 ## V2
 
 V2 uses Svelte/TypeScript and MapLibre, served by a Rust/Axum API backed by
-PostgreSQL/PostGIS. It provides a map, database search, facility pages,
+PostgreSQL/PostGIS. It provides a searchable map, facility pages,
 source-backed and inferred connections, dated datasets, exports and contribution intake.
 
 The legacy vanilla-JavaScript/Leaflet application remains in `static/` during
@@ -18,6 +18,11 @@ Country coverage and launch readiness are recorded in the roadmap and source
 inventory, not inferred from the legacy datasets.
 
 ## Development
+
+- The [frontend shell](frontend/src/app/App.svelte) owns navigation and loads pages.
+  The [frontend guide](docs/frontend/README.md#implementation-and-references) traces the map and facility pages.
+- The [Rust entry point](src/main.rs) starts the API and serves the built frontend.
+- The [data pipeline](pipeline/ONBOARDING.md) prepares source data for published releases.
 
 Start with [AGENTS.md](AGENTS.md), [ETHICS.md](docs/ETHICS.md),
 [VISION.md](docs/VISION.md), then [the documentation hub](docs/README.md).

@@ -16,15 +16,19 @@ const wireRecord = {
   provenance_source_name: 'Synthetic source', provenance_source_url: 'https://example.test/source', provenance_retrieved_at: '2026-01-01T00:00:00Z',
 };
 async function mockMap(page: Page) {
-  const state = { generation: 1, unavailable: false, feedRequests: 0, manifestRequests: 0 };
+  const state = { generation: 1, unavailable: false, feedRequests: 0, manifestRequests: 0, requestedReleaseIds: new Set<string>() };
   await page.route('https://tile.openstreetmap.org/**', route => route.abort());
   await page.route('https://server.arcgisonline.com/**', route => route.abort());
   await page.route('**/api/**', async route => {
-    const path = new URL(route.request().url()).pathname;
+    const url = new URL(route.request().url());
+    const path = url.pathname;
     if (!path.startsWith('/api/')) return route.fallback();
     const identity = { profile: 'official', release_id: releaseId, manifest_sha256: 'a'.repeat(64), suppression_generation: state.generation };
     if (path === '/api/v2/releases/manifest') {
       state.manifestRequests++;
+      const requested = url.searchParams.get('release_id');
+      if (requested) state.requestedReleaseIds.add(requested);
+      if (requested && requested !== releaseId) return route.fulfill({ status: 404, body: '{}' });
       if (state.unavailable) return route.fulfill({ status: 503, body: '{}' });
       return route.fulfill({ json: { api_version: 'v2', data: { ...identity, manifest: {} } } });
     }
@@ -62,6 +66,7 @@ test('retains the filtered public map and built source on a validated warm retur
   expect(await page.evaluate(before => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getSource('locations') === before, source)).toBe(true);
   expect(fixture.feedRequests).toBe(1);
   expect(fixture.manifestRequests).toBeGreaterThan(checked);
+  expect([...fixture.requestedReleaseIds].filter(id => id !== releaseId)).toEqual([]);
 });
 
 test('replaces the retained projection when current restrictions change while away', async ({ page }) => {

@@ -29,6 +29,8 @@ test('the legacy Help route opens its section within About', async ({ page }) =>
 test('Swagger is local and lazy, renders real GET operations and executes only on request', async ({ page, baseURL }) => {
   await isolatedPage(page);
   let writes = 0; let locationReads = 0; let swaggerAssets = 0;
+  const requestedReleaseIds = new Set<string>();
+  const historicalRelease = 'synthetic-historical-release';
   const external: string[] = [];
   const allowedOrigin = new URL(baseURL ?? 'http://127.0.0.1:4173/v2-preview/').origin;
   page.on('request', request => {
@@ -39,10 +41,11 @@ test('Swagger is local and lazy, renders real GET operations and executes only o
   await page.route('**/api/v2/releases/manifest?**', async route => {
     const url = new URL(route.request().url());
     const requested = url.searchParams.get('release_id');
-    if (url.searchParams.get('profile') === 'community' || (requested && requested !== 'synthetic-release')) {
+    if (requested) requestedReleaseIds.add(requested);
+    if (url.searchParams.get('profile') === 'community' || (requested && requested !== historicalRelease && requested !== 'synthetic-release')) {
       await route.fulfill({ status: 404, contentType: 'application/json', body: '{}' }); return;
     }
-    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ api_version: 'v2', data: { profile: 'official', release_id: 'synthetic-release', manifest: {}, manifest_sha256: 'a'.repeat(64), suppression_generation: 0 } }) });
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ api_version: 'v2', data: { profile: 'official', release_id: requested ?? 'synthetic-release', manifest: {}, manifest_sha256: 'a'.repeat(64), suppression_generation: 0 } }) });
   });
   await page.route('**/api/**', async route => {
     if (!new URL(route.request().url()).pathname.startsWith('/api/')) { await route.fallback(); return; }
@@ -67,7 +70,13 @@ test('Swagger is local and lazy, renders real GET operations and executes only o
   await expect(list.locator('.responses-inner')).toContainText('200');
   expect(locationReads).toBe(1); expect(writes).toBe(0); expect(external).toEqual([]);
   expect(new URL(page.url()).hash).toMatch(/^#\/(?:about|database)\/api$/);
-  await expect(page.getByRole('link', { name: 'Download complete CSV' })).toHaveAttribute('href', '/api/v2/locations.csv?profile=official&release_id=synthetic-release');
+  const download = page.getByRole('link', { name: 'Download complete CSV' });
+  await expect(download).toHaveAttribute('href', '/api/v2/locations.csv?profile=official&release_id=synthetic-release');
+  expect([...requestedReleaseIds].filter(id => id !== 'synthetic-release')).toEqual([]);
+
+  await page.goto('./#/database/api?map=' + encodeURIComponent('#/map?release_id=' + historicalRelease));
+  await expect(download).toHaveAttribute('href', '/api/v2/locations.csv?profile=official&release_id=' + historicalRelease);
+  expect(requestedReleaseIds.has(historicalRelease)).toBe(true);
 });
 
 test('a community warning precedes execution and remains with a displayed community response', async ({ page }) => {
