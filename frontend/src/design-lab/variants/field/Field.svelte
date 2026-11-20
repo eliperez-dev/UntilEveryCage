@@ -946,7 +946,7 @@
             {#if publicMap && searchDraft}<button class="mobile-clear-query" type="button" aria-label={tr('Clear search',$language)} onclick={clearSearchInput}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>{/if}
             </div>
           </form>
-          {#if shortQuery}<p class="search-autocomplete query-hint" id="search-query-hint" role="status">{tr('Enter at least 3 letters or numbers.', $language)}</p>
+          {#if shortQuery && !(phoneSearchOpen && $mobileFiltersOpen)}<p class="search-autocomplete query-hint" id="search-query-hint" role="status">{tr('Enter at least 3 letters or numbers.', $language)}</p>
           {:else if showSearchSuggestions}<div id="search-suggestions" class="search-autocomplete" role="listbox" aria-label={tr('Search suggestions', $language)}>
             {#each suggestions as suggestion, index (`${suggestion.kind}:${suggestion.kind === 'place' ? suggestion.id : suggestion.value}`)}
               <button id={`field-suggestion-${index}`} role="option" aria-selected={$suggestionIndex === index} tabindex="-1" type="button" onmousedown={(event) => event.preventDefault()} onclick={() => applySuggestion(suggestion)}><strong>{suggestion.label}</strong><small>{tr(suggestion.kind === 'country' ? 'Country' : suggestion.kind === 'state' ? 'State' : suggestion.kind === 'place' ? 'City' : suggestion.kind === 'category' ? 'Category' : 'Source', $language)}</small></button>
@@ -1095,7 +1095,7 @@
           <button class="phone-search-cancel" type="button" onmousedown={(event) => event.preventDefault()} onclick={cancelPhoneSearch}>{tr('Cancel', $language)}</button>
           {#if $mobileFiltersOpen}
             {@render publicFilters()}
-          {:else if !searchDraft.trim() || searchDraft.trim() === committedQuery}
+          {:else if !shortQuery && !showSearchSuggestions && (!searchDraft.trim() || searchDraft.trim() === committedQuery)}
             <section class="phone-search-results" aria-label={tr('Search records', $language)}>
               {@render publicFilterChips()}
               <div class="public-results-heading" role="status">{listRefreshing ? tr('Searching…', $language) : tr('{count} records', $language).replace('{count}', new Intl.NumberFormat($language).format(candidateTotalCount ?? resultCount))}</div>
@@ -1335,43 +1335,48 @@
       position: fixed;
       inset: var(--search-top, 0px) 0 auto;
       z-index: 10;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto;
+      grid-template-rows: auto minmax(0, 1fr);
       height: var(--search-height, 100dvh);
-      align-items: flex-start;
-      padding: max(.65rem, env(safe-area-inset-top)) max(.65rem, env(safe-area-inset-right)) 0 max(.65rem, env(safe-area-inset-left));
+      align-items: stretch;
+      padding: max(.65rem, env(safe-area-inset-top)) max(.65rem, env(safe-area-inset-right)) env(safe-area-inset-bottom) max(.65rem, env(safe-area-inset-left));
       border: 0;
       box-shadow: none;
     }
-    .phone-search .desktop-search { position: static; }
-    .public-map .phone-search .desktop-search .search:not(:has(input:focus-visible)) {
-      background: var(--panel-hover);
-    }
+    /* Keep the map out of the backdrop of translucent iOS browser controls. */
+    .phone-search::before { content: ''; position: fixed; inset: 0; z-index: -1; background: var(--panel); }
+    .phone-search .desktop-search { display: contents; }
     .public-map .phone-search .desktop-search .search {
-      border-radius: .25rem;
-      overflow: hidden;
+      grid-area: 1 / 1;
+      background: var(--panel-hover);
+      padding-right: 0;
     }
-    .public-map .phone-search .desktop-search .search-autocomplete {
-      inset: calc(max(.65rem, env(safe-area-inset-top)) + 3.25rem) max(.65rem, env(safe-area-inset-right)) env(safe-area-inset-bottom) max(.65rem, env(safe-area-inset-left));
+    .phone-search > .public-filter-button { grid-area: 1 / 2; }
+    .public-map .phone-search .desktop-search .search-autocomplete,
+    .public-map .phone-search .public-filter-panel,
+    .phone-search-results {
+      grid-area: 2 / 1 / 3 / -1;
+      position: static;
+      min-height: 0;
+      width: auto;
+      max-width: none;
       max-height: none;
+      margin: .5rem 0 0;
       padding: 0;
       border: 0;
+      border-top: 1px solid var(--line);
       box-shadow: none;
     }
-    .phone-search .public-filter-panel, .phone-search-results {
-      position: absolute;
-      inset: calc(max(.65rem, env(safe-area-inset-top)) + 3.25rem) max(.65rem, env(safe-area-inset-right)) env(safe-area-inset-bottom) max(.65rem, env(safe-area-inset-left));
-      width: auto;
-      max-height: none;
-      background: var(--panel);
-    }
-    .phone-search .public-filter-panel { border: 0; box-shadow: none; }
     .phone-search-results { overflow: auto; overscroll-behavior: contain; }
     .phone-search-results .filter-chips { padding: .35rem 0; }
+    .phone-search-results .public-results-heading { min-height: 36px; color: var(--muted); font-size: .8125rem; }
     .phone-search-results .load-more { margin: .6rem .8rem; }
     .public-map .phone-search .desktop-search .query-hint { padding: .6rem .7rem; }
     .phone-search .search-autocomplete button { min-height: 48px; border-bottom: 1px solid var(--line); }
     .phone-search .search-autocomplete strong { min-width: 0; font-size: .9375rem; overflow-wrap: anywhere; }
     .phone-search-cancel {
-      flex: 0 0 auto;
+      grid-area: 1 / 3;
       min-height: 44px;
       min-width: 44px;
       padding: 0 .6rem;

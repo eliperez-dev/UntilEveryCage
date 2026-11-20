@@ -160,6 +160,47 @@ test.describe('touch search', () => {
       .toEqual(['/api/v2/locations', '/api/v2/map/matches']);
     expect(calls.some(call => call.params.q)).toBe(false);
   });
+
+  test('filtered phone results scroll under the search row when the keyboard shrinks the viewport', async ({ page }) => {
+    await install(page);
+    await open(page);
+    const filters = page.getByRole('button', { name: /^Filters/ });
+    await filters.tap();
+    const panel = page.getByRole('region', { name: 'Filters', exact: true });
+    await panel.getByRole('checkbox', { name: 'Research', exact: true }).check();
+    await panel.getByRole('button', { name: 'Close', exact: true }).tap();
+
+    const input = page.getByRole('combobox', { name: 'Search across public release records' });
+    await input.tap();
+    const overlay = page.locator('.phone-search');
+    const results = overlay.getByRole('region', { name: 'Search records', exact: true });
+    await expect(results.getByRole('button', { name: 'Remove filter: Research' })).toBeVisible();
+
+    await page.evaluate(() => {
+      const viewport = window.visualViewport!;
+      Object.defineProperty(viewport, 'height', { configurable: true, value: 310 });
+      Object.defineProperty(viewport, 'offsetTop', { configurable: true, value: 75 });
+      viewport.dispatchEvent(new Event('resize'));
+    });
+    await expect.poll(() => overlay.boundingBox()).toMatchObject({ x: 0, y: 75, width: 390, height: 310 });
+    await expect(input).toBeFocused();
+    const frame = (await overlay.boundingBox())!;
+    const row = (await overlay.getByRole('search').boundingBox())!;
+    const list = (await results.boundingBox())!;
+    expect(list.y).toBeGreaterThanOrEqual(row.y + row.height);
+    expect(list.y + list.height).toBeLessThanOrEqual(frame.y + frame.height);
+    await expect.poll(() => results.evaluate(node => node.scrollHeight - node.clientHeight)).toBeGreaterThan(0);
+    await results.evaluate(node => { node.scrollTop = node.scrollHeight; });
+    expect(await results.evaluate(node => node.scrollTop)).toBeGreaterThan(0);
+    expect(await overlay.getByRole('search').boundingBox()).toEqual(row);
+    expect(await overlay.evaluate(node => {
+      const backdrop = getComputedStyle(node, '::before');
+      return { position: backdrop.position, top: backdrop.top, bottom: backdrop.bottom, matchesPanel: backdrop.backgroundColor === getComputedStyle(node).backgroundColor };
+    })).toEqual({ position: 'fixed', top: '0px', bottom: '0px', matchesPanel: true });
+    await overlay.getByRole('button', { name: 'Cancel' }).tap();
+    await expect(overlay).toHaveCount(0);
+    await expect(filters).toHaveAccessibleName(/Filters\s*1/);
+  });
 });
 
 test('filters apply immediately and use readable activity labels', async ({ page }) => {

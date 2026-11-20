@@ -292,6 +292,8 @@ API schemas own supported fields. They are not additional roadmaps.
   and do not create automatic search history. Filters wrap into multiple
   columns when space allows, with full readable source labels.
   Filters extend to the available viewport bottom and scroll within that space.
+  Focused phone search fills the visible viewport above the keyboard with a
+  fixed search row and one scrollable results, suggestions or filters panel.
   Applying Search this area, nearby searches, query changes and settings reruns all open
   results while retaining an expanded mobile sheet. Scope and category changes
   preserve unrelated query and filter dimensions.

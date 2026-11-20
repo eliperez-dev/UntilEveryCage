@@ -15,7 +15,7 @@ export const chineseStoryMessages: StoryMessages = {
   population: '选择动物群体',
   visualization: '选择展示方式',
   humanSinceOpened: "自你打开本页以来全球死亡的人数",
-  chickenSinceOpened: "自你打开本页以来美国一条屠宰线屠宰的鸡",
+  chickenSinceOpened: "自你打开本页以来美国一家屠宰场宰杀的鸡",
   landSinceOpened: "自你打开本页以来屠宰供肉用的陆生动物",
   fishSinceOpened: "自你打开本页以来被捕捞或屠宰的鱼（估计上限）",
   aboutPerSecond: "每秒约 {rate}",
