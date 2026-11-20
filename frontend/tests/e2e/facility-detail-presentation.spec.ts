@@ -57,6 +57,7 @@ for (const width of [1440, 375]) test(`direct evidence access and optional locat
   await page.setViewportSize({ width, height: 900 });
   await mockPublicRecord(page, { city: width === 375 ? null : row.city, display_precision: 'approximate', geometry_provenance: {
     origin: 'provider_derived', method: 'geoapify_rooftop', provider: 'Geoapify', confidence: '0.8', confidence_band: 'medium',
+    source_precision: 'provider_locality_approximate', coordinate_review_status: 'approximate_provider_locality_private_display',
   } });
   const panel = page.locator('.map-summary');
   if (width === 1440) {
@@ -76,13 +77,18 @@ for (const width of [1440, 375]) test(`direct evidence access and optional locat
   await expect(full.locator('.location-details')).toHaveAttribute('open', '');
   await expect(full.getByText('Geocoding provider', { exact: true })).toBeVisible();
   await expect(full.getByText('Geoapify', { exact: true })).toBeVisible();
-  await expect(full.locator('.location-details')).toContainText('provider score');
+  const locationDetails = full.locator('.location-details');
+  await expect(locationDetails).toContainText('provider score');
+  await expect(locationDetails.getByText('Source precision', { exact: true })).toHaveCount(0);
+  await expect(locationDetails.getByText('Coordinate review', { exact: true })).toHaveCount(0);
   await expect(full.getByRole('link', { name: 'Open in maps', exact: true })).toHaveCount(0);
   await expect(full.getByRole('link', { name: 'Open in Map', exact: true })).toHaveAttribute('href', new RegExp(`release_id=${release}`));
   const sourceFacts = full.locator('details').filter({ has: page.locator('summary', { hasText: /^Source facts$/ }) });
   const sourceReview = full.locator('details').filter({ has: page.locator('summary', { hasText: /^Source and review$/ }) });
   await expect(sourceFacts).toHaveAttribute('open', '');
   await expect(sourceReview).toHaveAttribute('open', '');
+  await expect(sourceReview.getByText(/^(Observed|Retrieved|Publication)\b/)).toHaveCount(0);
+  await expect(sourceReview.locator('time')).toHaveCount(0);
   await expect(full.getByText('Synthetic former name', { exact: true })).toBeVisible();
   await sourceFacts.locator('summary').click();
   await expect(full.getByText('Synthetic former name', { exact: true })).toBeHidden();

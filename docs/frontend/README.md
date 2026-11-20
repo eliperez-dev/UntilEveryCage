@@ -317,10 +317,8 @@ API schemas own supported fields. They are not additional roadmaps.
   classification, Source facts and Source and review open expanded under Details.
   The full page keeps released annual counts and dated inspection evidence in
   the Report details disclosure within APHIS reports.
-  A compact source/date line in Source and review links directly to the already
-  eligible HTTPS source-record URL when available, otherwise the source URL.
-  Public full pages use their available validated source URL. Missing links
-  stay plain text; complete Source and review and source filtering remain.
+  Source and review shows the source and its origin. The source name links to
+  the validated HTTPS source URL when available. Missing links stay plain text.
   The facility heading shows the name.
 - Public source-reported and exact facility points also offer `Open in maps`
   in Location. It sends only the public destination to the external map, never

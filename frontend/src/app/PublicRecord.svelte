@@ -5,7 +5,6 @@
   import type { DerivedSourceVolumeRange, Location } from '../domain/location';
   import { mapHrefFromParams, safeMapHref } from './routeState';
   import { precisionPresentation } from '../features/locations/precisionPresentation';
-  import { publicReleaseLabel } from '../features/locations/releasePresentation';
   import AphisReports from './AphisReports.svelte';
   import RecordConnections from './RecordConnections.svelte';
   import CategoryBadge from '../features/locations/CategoryBadge.svelte';
@@ -64,8 +63,6 @@
   }
   const precision = $derived(precisionPresentation(record?.evidence?.displayPrecision));
   const directSourceUrl = $derived(safeHttps(record?.evidence?.sourceUrl));
-  const sourceObserved = $derived(record?.observed && record.observed !== 'unknown' ? record.observed : null);
-  const sourceDate = $derived(sourceObserved ?? (record?.evidence?.retrievedAt || null));
   const humanLabel = (value: string) => value.replaceAll(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/\b(nrte|rte)\b/gi, acronym => acronym.toUpperCase()).replace(/^./, letter => letter.toLocaleUpperCase());
   const translatedGenerated = (value: string) => tr(humanLabel(value), $language);
   const geocodingConfidence = (location: Location) => {
@@ -78,8 +75,6 @@
     const method = location.evidence?.geometryProvenance?.method;
     return method && !/^(?:source[_ -])?(?:method[_ -])?unknown$/i.test(method) ? translatedGenerated(method) : null;
   };
-  const sourcePrecisionDetail = $derived(record?.evidence?.geometryProvenance?.source_precision && !['source-provided', 'source_reported', 'source_provided_unverified'].includes(record.evidence.geometryProvenance.source_precision) ? translatedGenerated(record.evidence.geometryProvenance.source_precision) : null);
-  const coordinateReviewDetail = $derived(record?.evidence?.geometryProvenance?.coordinate_review_status && record.evidence.geometryProvenance.coordinate_review_status !== 'source_confirmed' ? translatedGenerated(record.evidence.geometryProvenance.coordinate_review_status) : null);
   const externalMapHref = $derived(profile === 'official' ? externalMapLink({
     latitude: record?.lat, longitude: record?.lon, precision: record?.evidence?.displayPrecision,
     coordinatePrecision: record?.evidence?.geometryProvenance?.source_precision,
@@ -89,10 +84,6 @@
     if (!raw) return null;
     try { const url = new URL(raw); return url.protocol === 'https:' && !url.username && !url.password ? url.href : null; }
     catch { return null; }
-  }
-  function shortDate(raw: string): string {
-    const date = new Date(raw);
-    return Number.isNaN(date.getTime()) ? raw : new Intl.DateTimeFormat($language, { day:'numeric', month:'short', year:'numeric', timeZone:'UTC' }).format(date);
   }
   const sourceFlag = (value: string | boolean) => value === true ? tr('Yes', $language) : typeof value === 'string' ? translatedGenerated(value) : null;
   const sourceFlagLabel = (key: string) => translatedGenerated(key);
@@ -180,11 +171,9 @@
           <div><dt>{tr('Precision', $language)}</dt><dd>{tr(precision, $language)}</dd></div>
           {#if record.evidence?.sourceLocationRole === 'aphis_mailing_locality'}<div><dt>{tr('Location role', $language)}</dt><dd>{tr('APHIS mailing locality: approximate locality, not an operating-site location', $language)}</dd></div>{/if}
         </dl>
-        {#if record.lat !== null && record.lon !== null || sourcePrecisionDetail || coordinateReviewDetail || locationMethod(record) || record.evidence?.geometryProvenance?.provider || geocodingConfidence(record) !== null || record.evidence?.geometryProvenance?.confidence_band}
+        {#if record.lat !== null && record.lon !== null || locationMethod(record) || record.evidence?.geometryProvenance?.provider || geocodingConfidence(record) !== null || record.evidence?.geometryProvenance?.confidence_band}
           <details class="location-details" open><summary>{tr('Location details', $language)}</summary><dl>
             {#if record.lat !== null && record.lon !== null}<div><dt>{tr('Coordinates', $language)}</dt><dd>{coordinate(record.lat)}, {coordinate(record.lon)}</dd></div>{/if}
-            {#if sourcePrecisionDetail}<div><dt>{tr('Source precision', $language)}</dt><dd>{sourcePrecisionDetail}</dd></div>{/if}
-            {#if coordinateReviewDetail}<div><dt>{tr('Coordinate review', $language)}</dt><dd>{coordinateReviewDetail}</dd></div>{/if}
             {#if locationMethod(record)}<div><dt>{tr('Location method', $language)}</dt><dd>{locationMethod(record)}</dd></div>{/if}
             {#if record.evidence?.geometryProvenance?.provider}<div><dt>{tr('Geocoding provider', $language)}</dt><dd>{record.evidence.geometryProvenance.provider}</dd></div>{/if}
             {#if geocodingConfidence(record) !== null || record.evidence?.geometryProvenance?.confidence_band}<div><dt>{tr('Geocoding confidence', $language)}</dt><dd>{#if geocodingConfidence(record) !== null}{geocodingConfidence(record)} ({tr('provider score', $language)}){/if}{#if record.evidence?.geometryProvenance?.confidence_band}{geocodingConfidence(record) !== null ? ' · ' : ''}{translatedGenerated(record.evidence.geometryProvenance.confidence_band)}{/if}</dd></div>{/if}
@@ -213,8 +202,11 @@
       {/if}
       <details class="source-disclosure" open>
         <summary>{tr('Source and review', $language)}</summary>
-        {#if record.source || directSourceUrl || sourceDate}<p class="compact-source">{#if directSourceUrl}<a class="direct-source" href={directSourceUrl} target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer"><span>{record.source || tr('Source', $language)}</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6m0-6L10 14M10 4H4v16h16v-6"/></svg><span class="sr-only"> ({tr('opens in a new tab', $language)})</span></a>{:else if record.source}<span>{record.source}</span>{/if}{#if sourceDate}<span>{record.source || directSourceUrl ? ' · ' : ''}{tr(sourceObserved ? 'Observed' : 'Retrieved', $language)} <time datetime={sourceDate} title={sourceDate}>{shortDate(sourceDate)}</time></span>{/if}</p>{/if}
-        <dl><div><dt>{tr('Source', $language)}</dt><dd>{record.source} {#if directSourceUrl}<a href={directSourceUrl} target="_blank" rel="noopener noreferrer">{tr('Open source', $language)}</a>{/if}</dd></div><div><dt>{tr('Source origin', $language)}</dt><dd>{record.evidence?.sourceType === 'user_submitted' ? tr('Community-submitted', $language) : record.evidence?.sourceType === 'secondary' ? tr('Secondary source', $language) : tr('Government-sourced', $language)}</dd></div>{#if record.observed !== 'unknown'}<div><dt>{tr('Observed', $language)}</dt><dd>{record.observed}</dd></div>{/if}{#if record.evidence?.retrievedAt}<div><dt>{tr('Retrieved', $language)}</dt><dd>{record.evidence.retrievedAt}</dd></div>{/if}<div><dt>{tr('Publication', $language)}</dt><dd>{tr(profile === 'official' ? 'Curated records' : profile === 'community' ? 'Community submissions' : 'Secondary sources', $language)} · {publicReleaseLabel(currentRelease)}</dd></div></dl>
+        {#if record.source || directSourceUrl}<p class="compact-source">{#if directSourceUrl}<a class="direct-source" href={directSourceUrl} target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer"><span>{record.source || tr('Source', $language)}</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6m0-6L10 14M10 4H4v16h16v-6"/></svg><span class="sr-only"> ({tr('opens in a new tab', $language)})</span></a>{:else if record.source}<span>{record.source}</span>{/if}</p>{/if}
+        <dl>
+          <div><dt>{tr('Source', $language)}</dt><dd>{record.source} {#if directSourceUrl}<a href={directSourceUrl} target="_blank" rel="noopener noreferrer">{tr('Open source', $language)}</a>{/if}</dd></div>
+          <div><dt>{tr('Source origin', $language)}</dt><dd>{record.evidence?.sourceType === 'user_submitted' ? tr('Community-submitted', $language) : record.evidence?.sourceType === 'secondary' ? tr('Secondary source', $language) : tr('Government-sourced', $language)}</dd></div>
+        </dl>
       </details>
     </div>
     <nav aria-label={tr('Record contribution actions', $language)}>{#each [['evidence','Add evidence'],['correction','Suggest a correction'],['privacy-removal','Privacy or removal']] as [type,label]}<a href={`#/contribute/${type}?target=${encodeURIComponent(record.id)}`}>{tr(label ?? '', $language)}</a>{/each}</nav>
