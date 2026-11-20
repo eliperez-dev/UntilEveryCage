@@ -449,7 +449,7 @@
 <style>
   .slaughter-estimate { margin:.8rem 0 .3rem;padding:.65rem 0 .65rem .8rem;border-left:2px solid var(--line); }
   .slaughter-estimate p { margin:0 0 .35rem;color:var(--muted);font-size:.75rem;line-height:1.4; }
-  .slaughter-estimate strong { display:block;font:400 1.3rem/1.3 Georgia,serif;color:var(--ink); }
+  .slaughter-estimate strong { display:block;font:400 1.3rem/1.3 var(--ui-font);color:var(--ink); }
   .slaughter-estimate a { display:inline-flex;align-items:center;min-height:36px;font-size:.6875rem;text-underline-offset:3px; }
   .location-actions { display:flex;align-items:center;flex-wrap:wrap;gap:.25rem 1.4rem; }
   .open-in-maps { display:inline-flex;align-items:center;gap:.4rem;min-height:44px;margin-top:.45rem;color:var(--ink);font-size:.75rem;text-underline-offset:3px; }
@@ -482,7 +482,7 @@
     padding: 0.8rem;
     color: var(--ink);
     background: #171a18;
-    font: 0.76rem/1.42 system-ui, -apple-system, "Segoe UI", sans-serif;
+    font: 0.76rem/1.42 var(--ui-font);
   }
 
   .detail * {
@@ -491,7 +491,7 @@
 
   .detail h1 {
     margin: 0.25rem 2rem 0.3rem 0;
-    font: 500 1.3rem/1.2 Georgia, serif;
+    font: 500 1.3rem/1.2 var(--ui-font);
   }
 
   .share {
@@ -522,7 +522,7 @@
     margin: 0;
     padding: 0.4rem 0;
     border-bottom: 1px solid var(--line);
-    font: 600 0.9rem/1.3 system-ui, sans-serif;
+    font: 600 0.9rem/1.3 var(--ui-font);
   }
 
   dl {
@@ -572,7 +572,7 @@
   .record-id {
     overflow-wrap: anywhere;
     color: var(--muted);
-    font: 0.65rem ui-monospace, monospace;
+    font: 0.65rem var(--ui-font);
   }
 
   button {
@@ -623,12 +623,12 @@
     --line: var(--ui-line);
     padding: 1.1rem 1.25rem;
     background: var(--ui-raised);
-    font: .8125rem/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+    font: .8125rem/1.55 var(--ui-font);
   }
 
   .detail:not(.page) h1 {
     margin: 0 0 .85rem;
-    font: 500 1.5rem/1.15 system-ui, -apple-system, "Segoe UI", sans-serif;
+    font: 500 1.5rem/1.15 var(--ui-font);
     letter-spacing: -.035em;
     overflow-wrap: anywhere;
   }
@@ -652,7 +652,7 @@
     margin: 0 0 .4rem;
     padding: 0;
     border: 0;
-    font: 500 .875rem/1.4 system-ui, sans-serif;
+    font: 500 .875rem/1.4 var(--ui-font);
     letter-spacing: -.015em;
   }
   .detail:not(.page) dl { margin: 0; }
@@ -668,7 +668,7 @@
   .detail:not(.page) a { color: var(--ink); text-underline-offset: .25rem; }
   .detail:not(.page) section > p, .detail:not(.page) .evidence { color: var(--muted); font-size: .8125rem; }
   .detail:not(.page) footer { margin-top: 1rem; padding-top: .7rem; }
-  .detail:not(.page) .record-id { font: .6875rem/1.5 system-ui, sans-serif; }
+  .detail:not(.page) .record-id { font: .6875rem/1.5 var(--ui-font); }
   .detail:not(.page) button { border-color: var(--line); color: var(--ink); background: var(--ui-raised); }
   .detail:not(.page) button:hover { background: var(--ui-hover); }
   .detail:not(.page) button:focus-visible, .detail:not(.page) a:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }

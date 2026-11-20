@@ -12,7 +12,7 @@
 {/if}
 
 <style>
-  .category-badge { display: inline-flex; align-items: center; gap: .5rem; max-width: 100%; min-width: 0; color: inherit; font: 500 calc(.75rem * var(--result-type-scale, 1))/1.4 system-ui, sans-serif; }
+  .category-badge { display: inline-flex; align-items: center; gap: .5rem; max-width: 100%; min-width: 0; color: inherit; font: 500 calc(.75rem * var(--result-type-scale, 1))/1.4 var(--ui-font); }
   .category-badge img { flex: none; width: 14px; height: 23px; object-fit: contain; }
   .category-badge span { overflow-wrap: anywhere; }
   button.category-badge { min-height: 2.75rem; padding: 0; border: 0; background: transparent; text-align: left; cursor: pointer; }

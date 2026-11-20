@@ -83,11 +83,11 @@
 <style>
   .mobile-sheet-handle { display:none; }
   @media(max-width:40rem) {
-    .mobile-sheet-handle { --sheet-safe-bottom:env(safe-area-inset-bottom);position:relative;display:flex;flex:0 0 auto;align-items:center;justify-content:space-between;gap:.75rem;width:100%;height:calc(56px + env(safe-area-inset-bottom));min-height:56px;padding:12px 1rem max(0px,env(safe-area-inset-bottom));border:0;background:var(--panel);color:var(--ink);font:500 .8125rem/1.3 system-ui,sans-serif;touch-action:none;cursor:ns-resize;user-select:none; }
+    .mobile-sheet-handle { --sheet-safe-bottom:env(safe-area-inset-bottom);position:relative;display:flex;flex:0 0 auto;align-items:center;justify-content:space-between;gap:.75rem;width:100%;height:calc(56px + env(safe-area-inset-bottom));min-height:56px;padding:12px 1rem max(0px,env(safe-area-inset-bottom));border:0;background:var(--panel);color:var(--ink);font:500 .8125rem/1.3 var(--ui-font);touch-action:none;cursor:ns-resize;user-select:none; }
     .grip { position:absolute;top:7px;left:calc(50% - 18px);height:3px;width:36px;background:var(--muted);opacity:.65;border-radius:2px; }
     svg { width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6; }
     .mobile-sheet-handle:not(.collapsed) { height:44px;min-height:44px;padding-top:10px;padding-bottom:0;font-size:.75rem;color:var(--muted); }
-    .handle-copy{display:flex;flex:1;min-width:0;flex-direction:column;gap:2px;text-align:left}.handle-label,.handle-context{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.handle-context{font:400 .65625rem/1.3 system-ui,sans-serif;color:var(--muted)}.mobile-sheet-handle.compact:not(.collapsed) .handle-copy{visibility:hidden}svg{flex:none;width:16px;height:16px}
+    .handle-copy{display:flex;flex:1;min-width:0;flex-direction:column;gap:2px;text-align:left}.handle-label,.handle-context{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.handle-context{font:400 .65625rem/1.3 var(--ui-font);color:var(--muted)}.mobile-sheet-handle.compact:not(.collapsed) .handle-copy{visibility:hidden}svg{flex:none;width:16px;height:16px}
     .mobile-sheet-handle:focus-visible { outline:2px solid var(--focus,var(--ink));outline-offset:-3px; }
     .dragging { cursor:grabbing; }
   }

@@ -109,8 +109,8 @@
 
 <style>
   .aphis-reports { padding-block: .9rem; border-top: 1px solid var(--line); color: var(--ink); }
-  h2 { margin: 0 0 .65rem; font: 650 1.0625rem/1.4 system-ui, sans-serif; }
-  h3 { margin: .65rem 0 .25rem; font: 600 .9375rem/1.4 system-ui, sans-serif; }
+  h2 { margin: 0 0 .65rem; font: 650 1.0625rem/1.4 var(--ui-font); }
+  h3 { margin: .65rem 0 .25rem; font: 600 .9375rem/1.4 var(--ui-font); }
   p { margin: .3rem 0; color: var(--ink-secondary); }
   ul { list-style: none; margin: 0; padding: 0; }
   li { display: flex; flex-wrap: wrap; align-items: baseline; gap: .25rem .8rem; padding: .45rem 0; border-bottom: 1px solid var(--line); }

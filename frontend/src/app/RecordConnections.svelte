@@ -173,8 +173,8 @@
     .row-heading { align-items: flex-start; flex-direction: column; gap: .1rem; }
     .connections dl div { grid-template-columns: 1fr; gap: 0; }
   }
-  .connections.rail { margin-top: .95rem; padding-top: .8rem; border-color: var(--ui-line); color: var(--ui-ink); font: .8125rem/1.55 system-ui, sans-serif; }
-  .rail h2 { margin: 0 0 .4rem; font: 500 .875rem/1.4 system-ui, sans-serif; letter-spacing: -.015em; }
+  .connections.rail { margin-top: .95rem; padding-top: .8rem; border-color: var(--ui-line); color: var(--ui-ink); font: .8125rem/1.55 var(--ui-font); }
+  .rail h2 { margin: 0 0 .4rem; font: 500 .875rem/1.4 var(--ui-font); letter-spacing: -.015em; }
   .rail .empty, .rail .controls label, .rail .meta, .rail .relationship, .rail summary, .rail dt { color: var(--ui-muted); }
   .rail .controls { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: .6rem; margin: .5rem 0; }
   .rail .controls label { display: grid; align-items: start; gap: .3rem; font-size: .6875rem; }

@@ -52,7 +52,7 @@ API schemas own supported fields. They are not additional roadmaps.
   targets; long translations grow naturally without clipping.
   The hero keeps only the map and nearby actions; there is no `See the scale`
   button. Story and release statistics use spacing rather than repeated horizontal
-  separators. Use system sans-serif across the landing page. The comparison
+  separators. Use the shared system sans-serif across the public site. The comparison
   opens with the U.S. slaughter-line claim and two bold running totals.
   Every counter shows its total, a label saying what was counted since opening
   the page, and a smaller per-second estimate written with “about.” The dots
@@ -68,7 +68,7 @@ API schemas own supported fields. They are not additional roadmaps.
   the sources are in the shared methods disclosure.
   Show full locale-formatted integers without compact K/M abbreviations.
   The counters use the existing dated rates and one document clock,
-  update once per second, retain elapsed time across SPA
+  update at 30 Hz, retain elapsed time across SPA
   navigation, and reset on document refresh. Hidden tabs stop rendering updates
   and catch up on return. These estimates do not use the animation's active clock
   or combine the separately dated land/fish populations.

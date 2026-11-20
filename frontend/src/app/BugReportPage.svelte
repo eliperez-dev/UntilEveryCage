@@ -14,5 +14,5 @@
   <p class="issue-link"><a href="https://github.com/eliperez-dev/UntilEveryCage/issues/new" target="_blank" rel="noreferrer">{tr('Report a public issue on GitHub ↗', $language)}</a></p>
 </section>
 <style>
-  .bug-page{width:min(100% - 3rem,48rem);margin:0 auto;padding:1.5rem 0 2.5rem;color:var(--ink);font:.9rem/1.5 system-ui,sans-serif}.bug-page.embedded{width:100%;margin:0;padding:0}.issue-link{margin-top:1.5rem;font-size:.8rem}.issue-link a{color:var(--ink);text-underline-offset:.25em;display:inline-flex;align-items:center;min-height:2.75rem}.issue-link a:focus-visible{outline:3px solid var(--focus);outline-offset:3px}
+  .bug-page{width:min(100% - 3rem,48rem);margin:0 auto;padding:1.5rem 0 2.5rem;color:var(--ink);font:.9rem/1.5 var(--ui-font)}.bug-page.embedded{width:100%;margin:0;padding:0}.issue-link{margin-top:1.5rem;font-size:.8rem}.issue-link a{color:var(--ink);text-underline-offset:.25em;display:inline-flex;align-items:center;min-height:2.75rem}.issue-link a:focus-visible{outline:3px solid var(--focus);outline-offset:3px}
 </style>

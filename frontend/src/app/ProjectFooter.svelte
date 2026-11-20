@@ -13,9 +13,8 @@
 </footer>
 
 <style>
-  .project-footer{width:min(100% - 3rem,72rem);margin:0 auto;padding:1rem 0 1.25rem;border-top:1px solid #3d4740;color:#b8c4b7;font:.85rem/1.5 system-ui,sans-serif}
+  .project-footer{width:min(100% - 3rem,72rem);margin:0 auto;padding:1rem 0 1.25rem;border-top:1px solid var(--line);color:var(--ink-muted);font:.85rem/1.5 var(--ui-font)}
   p{margin:0}p+p{margin-top:.45rem}.credits{font-size:.82rem}.application-version-slot{min-height:0}
-  a{color:#dce8d9;text-underline-offset:.2em}a:hover{color:#f1efe8}
-  a:focus-visible{outline:2px solid #eee7d6;outline-offset:3px}
+  a{text-underline-offset:.2em}
   @media(max-width:40rem){.project-footer{width:calc(100% - 2rem)}}
 </style>

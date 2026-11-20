@@ -78,10 +78,10 @@
 </section>
 
 <style>
-  .location-preview{position:relative;height:13rem;margin:1rem 0;border:1px solid #414843;background:#202421}.map{width:100%;height:100%}.approx,.map-error{position:absolute;left:.5rem;top:.5rem;margin:0;padding:.25rem .45rem;background:#171a18;color:#f1efe8;font:.75rem system-ui,sans-serif}.map-error{top:auto;bottom:.5rem}
+  .location-preview{position:relative;height:13rem;margin:1rem 0;border:1px solid #414843;background:#202421}.map{width:100%;height:100%}.approx,.map-error{position:absolute;left:.5rem;top:.5rem;margin:0;padding:.25rem .45rem;background:#171a18;color:#f1efe8;font:.75rem var(--ui-font)}.map-error{top:auto;bottom:.5rem}
   .linked { height: clamp(9rem, 27vw, 12rem); border-color: var(--line); }
   .preview-link { position: absolute; inset: 0; display: flex; align-items: flex-start; justify-content: flex-end; padding: .5rem; color: var(--ink); }
-  .preview-link > span { padding: .35rem .55rem; background: var(--panel); border: 1px solid var(--line); font: 500 .8125rem/1.4 system-ui, sans-serif; text-decoration: underline; text-underline-offset: .17em; }
+  .preview-link > span { padding: .35rem .55rem; background: var(--panel); border: 1px solid var(--line); font: 500 .8125rem/1.4 var(--ui-font); text-decoration: underline; text-underline-offset: .17em; }
   .preview-link:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
   .preview-link:hover > span { background: var(--panel-hover); }
   .linked :global(.maplibregl-ctrl-bottom-right) { z-index: 2; }

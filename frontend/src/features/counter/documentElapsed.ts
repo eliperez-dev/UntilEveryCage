@@ -10,7 +10,7 @@ export const documentElapsedMilliseconds = readable(0, set => {
     stop();
     if (document.hidden) return;
     update();
-    timer = window.setInterval(update, 1000);
+    timer = window.setInterval(update, 1000 / 30);
   };
   document.addEventListener('visibilitychange', sync);
   sync();

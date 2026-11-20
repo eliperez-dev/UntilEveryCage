@@ -34,7 +34,7 @@
   summary:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
   dl { margin: 0 0 .5rem; }
   dl div { display: grid; grid-template-columns: minmax(5rem, 30%) minmax(0, 1fr); gap: .6rem; padding: .3rem 0; }
-  dt { color: var(--ui-muted, var(--ink-muted, #aeb0b0)); font: 400 .75rem/1.5 system-ui, sans-serif; }
+  dt { color: var(--ui-muted, var(--ink-muted, #aeb0b0)); font: 400 .75rem/1.5 var(--ui-font); }
   dd { margin: 0; font: inherit; line-height: 1.5; overflow-wrap: anywhere; }
   @media (max-width: 25rem) { dl div { grid-template-columns: 1fr; gap: .15rem; } }
 </style>

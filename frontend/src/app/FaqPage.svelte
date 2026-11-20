@@ -29,6 +29,6 @@
   </section>
 </section>
 <style>
-  .faq-page.embedded{width:100%;margin:2rem 0 0;padding:2rem 0 0;border-top:1px solid var(--ui-line)}.faq-heading{margin:0 0 1.2rem;font:500 1.7rem/1.2 Georgia,serif;letter-spacing:-.02em}
-  .faq-page{width:min(100% - 3rem,48rem);margin:auto;padding:1.5rem 0 2.5rem;color:var(--ink);font:.9rem/1.55 system-ui,sans-serif}section{scroll-margin-top:1rem;margin:0 0 1.6rem}h1{margin:0 0 1.2rem;font:500 2rem/1.2 Georgia,serif;letter-spacing:-.02em}h2{margin:0 0 .55rem;font:600 1.12rem/1.35 system-ui,sans-serif}p{margin:0 0 .7rem;color:var(--ink-muted)}a{color:var(--link);text-underline-offset:.2em;overflow-wrap:anywhere}@media(max-width:40rem){.faq-page{width:calc(100% - 2rem);padding-top:1.2rem}h1{font-size:1.7rem}}
+  .faq-page.embedded{width:100%;margin:2rem 0 0;padding:2rem 0 0;border-top:1px solid var(--ui-line)}.faq-heading{margin:0 0 1.2rem;font:500 1.7rem/1.2 var(--ui-font);letter-spacing:-.02em}
+  .faq-page{width:min(100% - 3rem,48rem);margin:auto;padding:1.5rem 0 2.5rem}section{scroll-margin-top:1rem;margin:0 0 1.6rem}h1{margin:0 0 1.2rem}h2{margin:0 0 .55rem}p{margin:0 0 .7rem;color:var(--ink-muted)}a{color:var(--link);text-underline-offset:.2em;overflow-wrap:anywhere}@media(max-width:40rem){.faq-page{width:calc(100% - 2rem);padding-top:1.2rem}}
 </style>

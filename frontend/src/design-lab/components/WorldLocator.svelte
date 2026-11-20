@@ -69,7 +69,7 @@
     background: #171918eb;
     box-shadow: 0 2px 12px #0004;
     color: #e9eee8;
-    font-family: system-ui, sans-serif;
+    font-family: var(--ui-font);
     pointer-events: auto;
   }
 
@@ -83,14 +83,14 @@
     font-weight: 700;
     letter-spacing: 0.08em;
   }
-  .lens-toggle { display:flex; align-items:center; justify-content:space-between; gap:1rem; padding:0; border:0; background:none; color:#e9eee8; cursor:pointer; font:700 .66rem system-ui; letter-spacing:.02em; }
+  .lens-toggle { display:flex; align-items:center; justify-content:space-between; gap:1rem; padding:0; border:0; background:none; color:#e9eee8; cursor:pointer; font:700 .66rem var(--ui-font); letter-spacing:.02em; }
   .lens-toggle span { font-size:1rem; font-weight:400; }
   .lens-toggle:focus-visible, .view-options button:focus-visible { outline:2px solid #e9eee8; outline-offset:2px; }
   .lens-options { margin-top:.5rem; padding-top:.5rem; border-top:1px solid #48504b; }
   .lens-options[hidden] { display:none; }
   .option-label { color:#c3c9c5; font-size:.55rem; font-weight:700; letter-spacing:.08em; }
   .view-options { display:grid; grid-template-columns:repeat(2,1fr); gap:.2rem; margin-top:.35rem; }
-  .view-options button { min-width:0; padding:.3rem .1rem; border:1px solid #5a625c; background:#202421; color:#e9eee8; cursor:pointer; font:.57rem system-ui; }
+  .view-options button { min-width:0; padding:.3rem .1rem; border:1px solid #5a625c; background:#202421; color:#e9eee8; cursor:pointer; font:.57rem var(--ui-font); }
   .view-options button[aria-pressed="true"] { background:#e6e8e6; color:#171a18; }
 
   .mode-switch {

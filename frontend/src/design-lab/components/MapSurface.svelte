@@ -2589,7 +2589,7 @@
     border: 1px solid #69716a;
     color: #f1efe8;
     background: #171a18e8;
-    font: 0.65rem system-ui;
+    font: 0.65rem var(--ui-font);
     cursor: pointer;
   }
   .diagnostics-toggle {
@@ -2622,7 +2622,7 @@
     border: 1px solid #69716a;
     background: #171a18f2;
     color: #f1efe8;
-    font: 0.65rem system-ui;
+    font: 0.65rem var(--ui-font);
   }
   .accessible-map-features header {
     display: flex;
@@ -2654,7 +2654,7 @@
     border: 1px solid #48504b;
     background: #171a18e8;
     color: #f1efe8;
-    font: 0.65rem system-ui;
+    font: 0.65rem var(--ui-font);
     transform: translateX(-50%);
   }
   .startup-status { top: auto; bottom: 2.2rem; width: min(19rem, 72vw); display: grid; gap: 0.45rem; }
@@ -2671,7 +2671,7 @@
     border: 1px solid #48504b;
     background: #171a18ed;
     color: #d9ded5;
-    font: 0.59rem/1.3 system-ui;
+    font: 0.59rem/1.3 var(--ui-font);
   }
   .map-surface :global(.maplibregl-ctrl-attrib a) { color: #c1d4cf; }
   .map-surface :global(.maplibregl-ctrl-attrib-button) { filter: invert(1); }

@@ -45,7 +45,7 @@
     border: 1px solid #48504b;
     background: #171a18e8;
     color: #f1efe8;
-    font: 0.65rem system-ui;
+    font: 0.65rem var(--ui-font);
   }
   .precision-legend strong {
     font-size: 0.65rem;
@@ -167,7 +167,7 @@
       border: 0;
       color: #f1efe8;
       background: none;
-      font: 600 0.68rem system-ui;
+      font: 600 0.68rem var(--ui-font);
       text-align: left;
       cursor: pointer;
     }

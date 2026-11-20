@@ -222,7 +222,7 @@
 </section>
 <style>
   .slaughter-estimate { margin: .3rem 0 .5rem; line-height: 1.55; }
-  .public-record { width: min(100% - 3rem, 46rem); margin: auto; padding: .65rem 0 2rem; color: var(--ink); font: .9375rem/1.5 system-ui, sans-serif; }
+  .public-record { width: min(100% - 3rem, 46rem); margin: auto; padding: .65rem 0 2rem; color: var(--ink); font: .9375rem/1.5 var(--ui-font); }
   .back-to-map { display: inline-flex; align-items: center; min-height: 2.75rem; gap: .45rem; margin-bottom: .35rem; font-size: .875rem; }
   .back-to-map span { text-decoration: none; }
   h1 { margin: 0 0 .25rem; font-size: clamp(1.5rem, 4vw, 1.875rem); font-weight: 650; line-height: 1.2; overflow-wrap: anywhere; }

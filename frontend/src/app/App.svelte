@@ -192,7 +192,7 @@
 
 <style>
   .retained-public-map[hidden] { display: none; }
-  .review-loading{display:grid;place-content:center;min-height:100dvh;padding:2rem;background:#171a18;color:#f1efe8;font:1rem system-ui;text-align:center}
+  .review-loading{display:grid;place-content:center;min-height:100dvh;padding:2rem;background:#171a18;color:#f1efe8;font:1rem var(--ui-font);text-align:center}
   .review-loading small{margin-top:.55rem;color:#b9c1b7;font-size:.76rem}
   .shell{max-width:none;padding:0}.shell-content{padding:0}.shell-content > :global(section:not(.contribute-page):not(.about-page):not(.community-page):not(.help-page):not(.api-page):not(.downloads-page):not(.faq-page):not(.public-database):not(.public-record)){padding:1.5rem}
 </style>

@@ -51,7 +51,7 @@
 </div>
 
 <style>
-  .record-page{min-height:100dvh;background:#171a18;color:#f1efe8;font-family:system-ui,sans-serif}
+  .record-page{min-height:100dvh;background:#171a18;color:#f1efe8}
   .state a{color:#ded8c9;text-underline-offset:.2em}
-  .state{max-width:50rem;margin:4rem auto;padding:1rem}.state h1{font:500 1.8rem Georgia,serif}
+  .state{max-width:50rem;margin:4rem auto;padding:1rem}.state h1{font:500 1.8rem var(--ui-font)}
 </style>

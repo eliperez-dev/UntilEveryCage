@@ -187,7 +187,9 @@ test('direct opening and funnel chapters translate in every supported language a
     ].map(rate => text.aboutPerSecond.replace('{rate}', rate)));
     const families = await page.locator('.wordmark, .hero h1, .scale-story h3, .story-total, .story-label, .story-rate, .discovery h2, .release-totals dd, .landing-footer > span')
       .evaluateAll(elements => elements.map(node => getComputedStyle(node).fontFamily.replaceAll(' ', '')));
-    expect(new Set(families)).toEqual(new Set(['system-ui,sans-serif']));
+    const siteFont = await page.evaluate(() => getComputedStyle(document.body).fontFamily.replaceAll(' ', ''));
+    expect(siteFont.startsWith('system-ui,')).toBe(true);
+    expect(new Set(families)).toEqual(new Set([siteFont]));
     const counters = await page.locator('.story-total').evaluateAll(totals => totals.map(total => {
       const label = total.nextElementSibling!;
       const rate = label.nextElementSibling!;

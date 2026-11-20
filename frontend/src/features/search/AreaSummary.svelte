@@ -37,13 +37,13 @@
   .area-summary { position:relative;flex:none;padding:.45rem 1rem .25rem;border-bottom:1px solid var(--line); }
   .area-heading { display:flex;align-items:center;justify-content:space-between;gap:.5rem;min-height:32px; }
   .scope-context { display:flex;align-items:baseline;flex-wrap:wrap;gap:.15rem .5rem;min-width:0; }
-  h2 { margin:0;font:400 1.15rem/1.2 Georgia,serif;letter-spacing:-.025em; }
+  h2 { margin:0;font:400 1.15rem/1.2 var(--ui-font);letter-spacing:-.025em; }
   .scope-radius { color:var(--ui-muted,var(--muted));font-size:.6875rem;white-space:nowrap; }
   button { color:var(--ink);background:transparent;border:0;font:inherit;cursor:pointer; }
   button:focus-visible,summary:focus-visible { outline:2px solid var(--ink);outline-offset:2px; }
   svg { width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.5;flex:none; }
   .area-total { display:flex;align-items:baseline;gap:.4rem;margin:0;min-height:27px;padding-right:8rem; }
-  .area-total strong { font:400 1.5rem/1 Georgia,serif;letter-spacing:-.04em; }
+  .area-total strong { font:400 1.5rem/1 var(--ui-font);letter-spacing:-.04em; }
   .area-total span { color:var(--ui-muted,var(--muted));font-size:.6875rem; }
   .area-details > summary { display:flex;align-items:center;gap:.4rem;min-height:44px;width:fit-content;max-width:9rem;margin:-36px 0 0 auto;font-size:.6875rem;cursor:pointer;list-style:none; }
   .area-details > summary::-webkit-details-marker { display:none; }

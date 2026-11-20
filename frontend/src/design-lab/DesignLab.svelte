@@ -640,7 +640,7 @@
     border: 1px solid #48504b;
     background: #171a18f2;
     color: #d9ded5;
-    font: 500 .7rem/1.3 system-ui;
+    font: 500 .7rem/1.3 var(--ui-font);
     font-variant-numeric: tabular-nums;
     transform: translateX(-50%);
   }

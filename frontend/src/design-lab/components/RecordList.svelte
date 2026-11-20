@@ -10,7 +10,7 @@
   {#if records.length > 0}<ol>{#each records as record (record.id)}<li><button data-record-id={record.id} class:active={record.id===selectedId} onclick={() => onselect(record.id)}><strong>{recordNamePresentation(record, label => tr(label, $language))}</strong><span class="record-category"><CategoryBadge {record} /></span><small>{[record.locality, record.country].filter(Boolean).join(', ')}{record.locality || record.country ? ' · ' : ''}{tr(precisionLabel(record), $language)}</small>{#if record.sourceName}<small class="source-meta">{record.sourceName}</small>{/if}</button></li>{/each}</ol>{/if}
 </section>
 <style>
-  .record-list h2 { margin:0; padding:.45rem .65rem; border-bottom:1px solid #343a36; font:650 .68rem system-ui; }
+  .record-list h2 { margin:0; padding:.45rem .65rem; border-bottom:1px solid #343a36; font:650 .68rem var(--ui-font); }
   .record-list h2 span { color:#aab0aa; font-weight:500; }
   .record-list ol { margin:0; padding:0; list-style:none; }
   .record-list button { width:100%; min-height:44px; padding:var(--result-row-padding, .45rem) .65rem; border:0; border-bottom:1px solid var(--line,#383838); background:var(--panel,#1c1c1c); color:var(--ink,#f0efeb); text-align:left; cursor:pointer; }
@@ -19,6 +19,6 @@
   .record-category { display: block; margin: .3rem 0 .1rem; color: inherit; }
   .record-list small.source-meta { margin-top:.2rem; }
   .record-list strong, .record-list small { display:block; }
-  .record-list strong { font:650 calc(.72rem * var(--result-type-scale, 1))/1.25 system-ui; }
-  .record-list small { margin-top:.12rem; color:#aab0aa; font:500 calc(.61rem * var(--result-type-scale, 1))/1.35 system-ui; }
+  .record-list strong { font:650 calc(.72rem * var(--result-type-scale, 1))/1.25 var(--ui-font); }
+  .record-list small { margin-top:.12rem; color:#aab0aa; font:500 calc(.61rem * var(--result-type-scale, 1))/1.35 var(--ui-font); }
 </style>

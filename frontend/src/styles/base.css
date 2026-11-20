@@ -1,4 +1,5 @@
 :root {
+  --ui-font: system-ui, sans-serif;
   --page: #141414;
   --page-raised: #1c1c1c;
   --page-sunken: #111111;
@@ -13,11 +14,11 @@
   --line-strong: #666666;
   --link: #f0efeb;
   --focus: #d49a62;
-  --api-ink: #f0efeb;
-  --api-background: #1c1c1c;
-  --api-section: #262626;
-  --api-input: #1c1c1c;
-  --api-link: #f0efeb;
+  --api-ink: var(--ink);
+  --api-background: var(--page-raised);
+  --api-section: var(--panel-hover);
+  --api-input: var(--page-raised);
+  --api-link: var(--link);
   --ui-surface: var(--page);
   --ui-raised: var(--page-raised);
   --ui-ink: var(--ink);
@@ -29,7 +30,7 @@
   color: var(--ink);
   background: var(--page);
   color-scheme: dark;
-  font: 16px/1.5 system-ui, sans-serif;
+  font: 16px/1.5 var(--ui-font);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 }
@@ -49,11 +50,6 @@
   --line-strong: #929b8e;
   --link: #253a2b;
   --focus: #89531e;
-  --api-ink: #19221a;
-  --api-background: #faf8f1;
-  --api-section: #e7e9df;
-  --api-input: #faf8f1;
-  --api-link: #253a2b;
   --uec-color-scheme: light;
 }
 
@@ -63,11 +59,8 @@ html, body, #app { min-height: 100%; }
 body { margin: 0; background: var(--page); color: var(--ink); }
 
 html:lang(zh-Hans) {
-  font-family: system-ui, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  --ui-font: system-ui, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
   line-break: strict;
-}
-html:lang(zh-Hans) :is(.about-page, .public-record, .api-page, .contribute-page) :is(h1, h2, h3) {
-  font-family: "Songti SC", "Noto Serif CJK SC", "SimSun", serif;
 }
 html:lang(zh-Hans) :is(.landing-page, .about-page, .public-record, .api-page, .contribute-page) :is(h1, h2, h3) {
   letter-spacing: normal;
@@ -75,6 +68,7 @@ html:lang(zh-Hans) :is(.landing-page, .about-page, .public-record, .api-page, .c
 }
 
 a { color: var(--link); }
+:where(button, input, select, textarea) { font-family: inherit; }
 
 a:focus-visible,
 button:focus-visible {
@@ -83,16 +77,6 @@ button:focus-visible {
 }
 
 .shell { max-width: 72rem; margin: 0 auto; padding: 0 1.5rem; }
-
-.site-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 2rem;
-  min-height: 4.5rem;
-  border-bottom: 1px solid #3d4740;
-  color: #f1efe8;
-}
 
 .wordmark { color: inherit; font-weight: 700; text-decoration: none; }
 
@@ -104,6 +88,19 @@ main { min-height: 65vh; padding: 3rem 0; }
 
 h1 { margin: 0 0 1rem; font-size: clamp(2rem, 5vw, 3rem); line-height: 1.1; }
 
+:where(.about-page, .faq-page, .api-page, .contribute-page) { font-size: .9rem; }
+:where(.about-page, .faq-page, .api-page, .contribute-page) h1 {
+  font-size: clamp(1.7rem, 4vw, 2rem);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -.02em;
+}
+:where(.about-page, .faq-page, .api-page) h2 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
 .state { max-width: 42rem; padding: 1.5rem; border: 1px solid #46514a; color: #eee9df; }
 
 .record-id { overflow-wrap: anywhere; }
@@ -112,25 +109,19 @@ button { min-height: 2.75rem; padding: .5rem 1rem; color: inherit; background: v
 
 /* Light mode for the existing application surfaces. Map canvases and raster pins remain untouched. */
 :root[data-theme="light"] .about-page,
-:root[data-theme="light"] .api-page,
 :root[data-theme="light"] .public-record,
 :root[data-theme="light"] .public-database,
 :root[data-theme="light"] .contribute-page,
 :root[data-theme="light"] .faq-page { color: var(--ink); }
 :root[data-theme="light"] .about-page p,
 :root[data-theme="light"] .about-page li,
-:root[data-theme="light"] .api-page p,
 :root[data-theme="light"] .public-record p,
 :root[data-theme="light"] .public-record dd,
 :root[data-theme="light"] .public-record .aphis-reports a,
 :root[data-theme="light"] .public-database .intro,
 :root[data-theme="light"] .faq-page p,
 :root[data-theme="light"] .contribute-page p { color: var(--ink-secondary); }
-:root[data-theme="light"] .api-page .release-access,
 :root[data-theme="light"] .public-record .warning { background: #f0eee7; color: #443d2d; border-color: #b7ad91; }
-:root[data-theme="light"] .api-page .release-label,
-:root[data-theme="light"] .api-page .release-id code { color: var(--ink); }
-:root[data-theme="light"] .api-page select,
 :root[data-theme="light"] .public-database input,
 :root[data-theme="light"] .public-database select,
 :root[data-theme="light"] .contribute-page input,
@@ -138,13 +129,11 @@ button { min-height: 2.75rem; padding: .5rem 1rem; color: inherit; background: v
 :root[data-theme="light"] .contribute-page textarea { background: var(--page-raised); color: var(--ink); border-color: var(--line-strong); }
 :root[data-theme="light"] .public-database button,
 :root[data-theme="light"] .public-record button,
-:root[data-theme="light"] .api-page button,
 :root[data-theme="light"] .contribute-page button { background: var(--panel-hover); color: var(--ink); border-color: var(--line-strong); }
 :root[data-theme="light"] .public-database .browse-layout,
 :root[data-theme="light"] .public-database .filters,
 :root[data-theme="light"] .public-database .result-count,
 :root[data-theme="light"] .public-record dl div,
-:root[data-theme="light"] .api-page .reuse,
 :root[data-theme="light"] .contribute-page fieldset,
 :root[data-theme="light"] .faq-page section { border-color: var(--line); }
 :root[data-theme="light"] .record-page,
@@ -162,34 +151,14 @@ button { min-height: 2.75rem; padding: .5rem 1rem; color: inherit; background: v
 :root[data-theme="light"] .database-research .quiet,
 :root[data-theme="light"] .database-research .intro,
 :root[data-theme="light"] .record-page .state { color: var(--ink-secondary); }
-:root[data-theme="light"] .public-database table { color: var(--ink); }
-:root[data-theme="light"] .public-database table th,
-:root[data-theme="light"] .public-database table td,
-:root[data-theme="light"] .public-database table tr { border-color: var(--line); }
-:root[data-theme="light"] .public-database table th { color: var(--ink); }
 :root[data-theme="light"] .public-database table td:first-child :is(a, button) { color: var(--ink); }
-:root[data-theme="light"] .public-database table tr.selected { background: #dce8d9; }
 :root[data-theme="light"] .public-database table tr:hover { background: var(--panel-hover); }
 :root[data-theme="light"] .bug-page { color: var(--ink); }
-:root[data-theme="light"] .bug-page .intro,
-:root[data-theme="light"] .bug-page .issue-link,
-:root[data-theme="light"] .bug-page .bug-form label { color: var(--ink-secondary); }
-:root[data-theme="light"] .bug-page input,
-:root[data-theme="light"] .bug-page textarea { background: var(--page-raised); color: var(--ink); border-color: var(--line-strong); }
-:root[data-theme="light"] .bug-page .draft-link a { background: var(--panel); }
 :root[data-theme="light"] .contribute-page .task-nav a { color: var(--ink-muted); text-decoration-color: var(--line-strong); }
 :root[data-theme="light"] .contribute-page .task-nav a[aria-current] { color: var(--ink); }
-:root[data-theme="light"] .project-footer { color: var(--ink-muted); border-color: var(--line); }
-:root[data-theme="light"] .project-footer a { color: var(--link); }
 
 :root[data-theme="light"] .location-preview .approx,
 :root[data-theme="light"] .location-preview .map-error { background: #fff; color: #202820; }
-
-.theme-control { display: grid; gap: .35rem; color: inherit; }
-.theme-control-label { margin: 0; font-size: .7rem; font-weight: 650; }
-.theme-control-options { display: grid; grid-template-columns: 1fr 1fr; gap: .3rem; }
-.theme-control button { min-height: 2rem; padding: .3rem .5rem; border: 1px solid var(--line-strong); background: var(--panel); color: inherit; font: 600 .72rem system-ui, sans-serif; cursor: pointer; }
-.theme-control button[aria-pressed="true"] { border-color: var(--focus); background: var(--panel-hover); box-shadow: inset 0 -2px var(--focus); }
 
 :root[data-theme="light"] :is(input,select,textarea)::placeholder { color:var(--ink-muted); opacity:1; }
 :root[data-theme="light"] :is(button,input,select,textarea):disabled { color:var(--ink-muted); opacity:.72; }
@@ -209,12 +178,8 @@ button { min-height: 2.75rem; padding: .5rem 1rem; color: inherit; background: v
 :root[data-theme="light"] .connections li,
 :root[data-theme="light"] .connections dl div { border-color:var(--line); }
 :root[data-theme="light"] .connections select { background:var(--page-raised); color:var(--ink); border-color:var(--line-strong); }
-:root[data-theme="light"] .public-database .filters input::placeholder,
-:root[data-theme="light"] .database-research input::placeholder,
-:root[data-theme="light"] .bug-page input::placeholder,
-:root[data-theme="light"] .bug-page textarea::placeholder { color:var(--ink-muted); opacity:1; }
 :root[data-theme="light"] .community-page { color:var(--ink); }
-:root[data-theme="light"] .community-page :is(.eyebrow,.lede,.quiet-note,.quiet-note,.queue-heading p,.contribution-form label,.location-picker legend,.coordinate-inputs label) { color:var(--ink-secondary); }
+:root[data-theme="light"] .community-page :is(.eyebrow,.lede,.quiet-note,.queue-heading p,.contribution-form label,.location-picker legend,.coordinate-inputs label) { color:var(--ink-secondary); }
 :root[data-theme="light"] .community-page a { color:var(--link); }
 :root[data-theme="light"] .community-page :is(input,select,textarea) { background:var(--page-raised); color:var(--ink); border-color:var(--line-strong); }
 :root[data-theme="light"] .community-page :is(.receipt,.status-result,.claim-detail,.claim-row,.queue-item,.link-community,.location-picker) { background:var(--panel); color:var(--ink); border-color:var(--line); }
@@ -224,14 +189,6 @@ button { min-height: 2.75rem; padding: .5rem 1rem; color: inherit; background: v
 :root[data-theme="light"] .community-page :is(button:not(.primary-action),.button-link):not(.claim-row) { background:var(--panel-hover); color:var(--ink); border-color:var(--line-strong); }
 :root[data-theme="light"] .community-page button:disabled { opacity:.6; }
 :root[data-theme="light"] .community-page :focus-visible { outline-color:var(--focus); }
-:root[data-theme="light"] .explorer .swagger-ui { color:var(--api-ink); }
-:root[data-theme="light"] .explorer .swagger-ui :is(.opblock-tag,.opblock-summary-path,.opblock-summary-path a,.opblock-summary-description,.opblock-description-wrapper p,.opblock-title_normal,.opblock-title,.response-col_status,.response-col_description,.parameter__name,.parameter__type,.parameter__in,.parameter__deprecated,.prop-type,.prop-format,.model,label,.info p,.info li,.renderedMarkdown,.servers-title,.opblock .opblock-section-header h4,.tab li,.table thead th,.table thead td) { color:var(--api-ink); }
-:root[data-theme="light"] .explorer .swagger-ui :is(.opblock,.opblock.opblock-get,.opblock-section-header,.model-box,.model-container,.highlight-code,.opblock-body pre.microlight) { background:var(--api-background); color:var(--api-ink); border-color:var(--line-strong); }
-:root[data-theme="light"] .explorer .swagger-ui .opblock-section-header { background:var(--api-section); }
-:root[data-theme="light"] .explorer .swagger-ui :is(input[type=text],textarea,select) { background:var(--api-input); color:var(--ink); border-color:var(--line-strong); }
-:root[data-theme="light"] .explorer .swagger-ui select option { background:var(--api-input); color:var(--ink); }
-:root[data-theme="light"] .explorer .swagger-ui a { color:var(--api-link); }
-:root[data-theme="light"] .explorer .swagger-ui :focus-visible { outline-color:var(--focus); }
 :root[data-theme="light"] :is(.public-record,.record-page) .detail { --ink:var(--ink); --muted:var(--ink-muted); --line:var(--line); color:var(--ink); background:var(--page); }
 :root[data-theme="light"] :is(.public-record,.record-page) .detail :is(h1,h2,h3,dt,dd,p,li,small,summary) { color:var(--ink-secondary); }
 :root[data-theme="light"] :is(.public-record,.record-page) .detail :is(h1,h2,h3,dt) { color:var(--ink); }
@@ -249,7 +206,6 @@ button { min-height: 2.75rem; padding: .5rem 1rem; color: inherit; background: v
 :root[data-theme="light"] .bug-page :is(input,textarea) { background:var(--page-raised); color:var(--ink); border-color:var(--line-strong); }
 :root[data-theme="light"] .bug-page .draft-link a { background:var(--panel); color:var(--link); }
 :root[data-theme="light"] .bug-page .bug-form button { background:#70412f; color:#fff; border-color:#70412f; }
-:root[data-theme="light"] .api-page .community-warning { background:#f7eee6; color:#513a2d; border-color:#a66d48; }
 :root[data-theme="light"] :is(.public-record,.record-page,.public-database,.database-research,.contribute-page,.bug-page,.api-page,.faq-page,.about-page,.community-page) :focus-visible { outline-color:var(--focus); }
 :root[data-theme="light"] .shell-content .state,
 :root[data-theme="light"] .review-loading { background:var(--page-raised); color:var(--ink); border-color:var(--line-strong); }
@@ -353,6 +309,5 @@ button { min-height: 2.75rem; padding: .5rem 1rem; color: inherit; background: v
 
 @media (max-width: 36rem) {
   .shell { padding: 0 1rem; }
-  .site-header { align-items: flex-start; flex-direction: column; justify-content: center; gap: .5rem; padding: .75rem 0; }
   main { padding: 2rem 0; }
 }

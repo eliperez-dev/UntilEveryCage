@@ -36,5 +36,5 @@
 </section>
 
 <style>
-  .estimate{margin-top:1.2rem;padding:1rem 1.1rem;border:1px solid var(--line-strong);background:var(--panel)}.estimate h2{margin:0 0 .35rem;font:600 1rem/1.35 system-ui,sans-serif;color:var(--ink)}.estimate-list{display:grid;grid-template-columns:1fr;gap:.2rem;margin:0;padding:0;list-style:none}.estimate-list li{display:flex;justify-content:space-between;gap:.65rem;padding:.16rem 0;border-bottom:1px solid var(--line)}.estimate-number{font-variant-numeric:tabular-nums;color:var(--ink)}@media(max-width:34rem){.estimate{padding:.8rem}}
+  .estimate{margin-top:1.2rem;padding:1rem 1.1rem;border:1px solid var(--line-strong);background:var(--panel)}.estimate h2{margin:0 0 .35rem;font:600 1rem/1.35 var(--ui-font);color:var(--ink)}.estimate-list{display:grid;grid-template-columns:1fr;gap:.2rem;margin:0;padding:0;list-style:none}.estimate-list li{display:flex;justify-content:space-between;gap:.65rem;padding:.16rem 0;border-bottom:1px solid var(--line)}.estimate-number{font-variant-numeric:tabular-nums;color:var(--ink)}@media(max-width:34rem){.estimate{padding:.8rem}}
 </style>
