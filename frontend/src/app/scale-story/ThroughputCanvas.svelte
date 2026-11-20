@@ -2,13 +2,11 @@
   import { onMount } from 'svelte';
   import { language } from '../language';
   import { storyMessages } from './messages';
-  import { documentElapsedMilliseconds, estimateSinceDocumentOpen } from '../../features/counter/documentElapsed';
   import { createFunnelOutflowPhysics } from './funnelPhysics';
   import { ActiveStoryClock, funnelLayout, funnelParticles, STORY_RATES, type FunnelLayout, type StoryPopulation } from './engine';
+  import StoryCounter from './StoryCounter.svelte';
   let { population, mapHref }: { population: StoryPopulation; mapHref: string } = $props();
   const text = $derived(storyMessages($language));
-  const counterFormat = $derived(new Intl.NumberFormat($language, { maximumFractionDigits: 0 }));
-  const sinceOpenTotal = $derived(estimateSinceDocumentOpen(STORY_RATES[population], $documentElapsedMilliseconds));
   let reduced = $state(true);
   let canvas: HTMLCanvasElement;
 
@@ -120,31 +118,29 @@
 </script>
 
 <div class="throughput" data-population={population}>
-  {#if population === 'fish'}
-    <p class="story-since-open">{text.fishSinceOpened}</p>
-    <strong class="story-total" data-counter="fish" data-total={sinceOpenTotal}>≈ {counterFormat.format(sinceOpenTotal)}</strong>
-    <p class="story-rate">{text.fishPerSecond.replace('{rate}', `${counterFormat.format(33_500)}–${counterFormat.format(65_700)}`)}</p>
-  {:else}
-    <div class="rate-row">
-      <p class="rate">2,779<span>{text.animalsPerSecond}</span></p>
-      <p class="since-open" data-counter="land" data-total={sinceOpenTotal}>≈ {counterFormat.format(sinceOpenTotal)} {text.killedSinceOpened}</p>
-      <p class="date">{text.landDate}</p>
-    </div>
-    <p class="unit">{text.oneDotAnimal}</p>
-  {/if}
-  <div class="canvas-wrap" data-mode="funnel" role={population === 'land' ? 'img' : undefined} aria-label={population === 'land' ? text.landCanvas : undefined} aria-hidden={population === 'fish' ? 'true' : undefined}><canvas bind:this={canvas} aria-hidden="true"></canvas></div>
+  <StoryCounter
+    {population}
+    rate={STORY_RATES[population]}
+    label={population === 'fish' ? text.fishSinceOpened : text.landSinceOpened}
+    range={population === 'fish' ? [33_500, 65_700] : undefined}
+  />
+  <div class="canvas-wrap" data-mode="funnel" aria-hidden="true"><canvas bind:this={canvas}></canvas></div>
   {#if population === 'land'}
     <div class="controls">
-      {#if reduced}<span class="static-label">{text.staticView}</span>{/if}
       <a class="map-link" href={mapHref}>{text.openMap}<span aria-hidden="true">↗</span></a>
     </div>
   {/if}
 </div>
 
 <style>
-  .since-open{margin:8px 0 0;font-size:12px;line-height:1.5;color:var(--story-muted);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
-  .throughput{margin-top:20px}.rate-row{padding-top:16px}.rate{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 20px;font:400 48px/1.15 Georgia,serif;letter-spacing:-.025em;margin:0}.rate span{font:20px/1.5 system-ui,sans-serif;letter-spacing:0}.date{font-size:12px;color:var(--story-muted);line-height:1.6;margin:10px 0 14px}.canvas-wrap{height:500px;background:#141414;overflow:hidden}canvas{display:block;width:100%;height:100%}.controls{display:flex;align-items:center;flex-wrap:wrap;gap:6px 23px;padding:6px 0;font-size:12px}.unit{margin:0 0 8px;color:var(--story-muted);font-size:12px;line-height:1.5}a{font:inherit;color:inherit}.map-link{display:inline-flex;align-items:center;gap:22px;min-height:44px;margin-left:auto;border-bottom:1px solid var(--story-muted);text-decoration:none}.map-link:hover{text-decoration:underline}.static-label{color:var(--story-muted)}a:focus-visible{outline:2px solid #d74749;outline-offset:3px}
-  .throughput[data-population="fish"] { margin-top: 0; }
-  [data-population="fish"] .canvas-wrap { margin-top: 8px; }
-  @media(max-width:700px){.throughput{margin-top:18px}.rate{font-size:32px;gap:6px 16px}.rate span{font-size:16px;flex-basis:100%}.date{max-width:34ch}.canvas-wrap{height:430px}.controls{gap:3px 15px}.map-link{gap:10px}.static-label{font-size:11px}.controls>.static-label{max-width:110px}}
+  .canvas-wrap { height: 500px; margin-top: 8px; background: #141414; overflow: hidden; }
+  canvas { display: block; width: 100%; height: 100%; }
+  .controls { display: flex; justify-content: flex-end; padding: 6px 0; font-size: 12px; }
+  .map-link { display: inline-flex; align-items: center; gap: 22px; min-height: 44px; color: inherit; border-bottom: 1px solid var(--story-muted); text-decoration: none; }
+  .map-link:hover { text-decoration: underline; }
+  .map-link:focus-visible { outline: 2px solid #d74749; outline-offset: 3px; }
+  @media (max-width: 700px) {
+    .canvas-wrap { height: 430px; }
+    .map-link { gap: 10px; }
+  }
 </style>

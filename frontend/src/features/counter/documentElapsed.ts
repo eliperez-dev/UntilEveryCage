@@ -3,7 +3,6 @@ import { readable } from 'svelte/store';
 /** One document clock, shared across mounted counters and SPA route changes. */
 export const documentElapsedMilliseconds = readable(0, set => {
   if (typeof window === 'undefined') return;
-  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   let timer: number | undefined;
   const update = () => set(Math.max(0, performance.now()));
   const stop = () => { if (timer !== undefined) window.clearInterval(timer); timer = undefined; };
@@ -11,15 +10,13 @@ export const documentElapsedMilliseconds = readable(0, set => {
     stop();
     if (document.hidden) return;
     update();
-    timer = window.setInterval(update, reducedMotion.matches ? 1000 : 1000 / 30);
+    timer = window.setInterval(update, 1000);
   };
   document.addEventListener('visibilitychange', sync);
-  reducedMotion.addEventListener('change', sync);
   sync();
   return () => {
     stop();
     document.removeEventListener('visibilitychange', sync);
-    reducedMotion.removeEventListener('change', sync);
   };
 });
 

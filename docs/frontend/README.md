@@ -52,24 +52,23 @@ API schemas own supported fields. They are not additional roadmaps.
   targets; long translations grow naturally without clipping.
   The hero keeps only the map and nearby actions; there is no `See the scale`
   button. Story and release statistics use spacing rather than repeated horizontal
-  separators. The comparison opens with the U.S. slaughter-line claim, a
-  since-open label, and two bold running totals. Under each total, show the
-  rounded rate and its scope in smaller copy. The dots illustrate worldwide all-cause human mortality
+  separators. Use system sans-serif across the landing page. The comparison
+  opens with the U.S. slaughter-line claim and two bold running totals.
+  Every counter shows its total, a label saying what was counted since opening
+  the page, and a smaller per-second estimate written with “about.” The dots
+  illustrate worldwide all-cause human mortality
   and one chicken slaughter line. Source details and the 140-chickens-per-minute
   calculation are in the shared methods disclosure. The comparison leads into
   the land and fish funnels, then documented map coverage.
   Land-animal slaughter (2024), estimated finfish capture/slaughter (2019) and
   the human mortality benchmark (January 2025) retain their distinct scopes and
   dates. They are not a single contemporary total, release totals or counts
-  attributed to mapped facilities. Restrained
-  funnel chapter headings preserve the approved A visual direction. Fish
-  uses the same counter typography as the opening comparison, with the upper
-  since-open estimate in large type and the estimated per-second range beneath it.
-  The fish sources and explanation are in the shared methods disclosure.
-  Approximate since-open totals lead the human, chicken and fish counters and
-  accompany the land funnel. Show full locale-formatted integers, without compact K/M
-  abbreviations. They use the existing dated rates and one document clock,
-  update at 30 Hz (1 Hz with reduced motion), retain elapsed time across SPA
+  attributed to mapped facilities. The fish counter labels its upper estimate,
+  with the estimated per-second range beneath it. The land annual figure and
+  the sources are in the shared methods disclosure.
+  Show full locale-formatted integers without compact K/M abbreviations.
+  The counters use the existing dated rates and one document clock,
+  update once per second, retain elapsed time across SPA
   navigation, and reset on document refresh. Hidden tabs stop rendering updates
   and catch up on return. These estimates do not use the animation's active clock
   or combine the separately dated land/fish populations.

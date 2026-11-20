@@ -66,9 +66,10 @@ html:lang(zh-Hans) {
   font-family: system-ui, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
   line-break: strict;
 }
-html:lang(zh-Hans) .landing-page :is(h1, h2, h3),
 html:lang(zh-Hans) :is(.about-page, .public-record, .api-page, .contribute-page) :is(h1, h2, h3) {
   font-family: "Songti SC", "Noto Serif CJK SC", "SimSun", serif;
+}
+html:lang(zh-Hans) :is(.landing-page, .about-page, .public-record, .api-page, .contribute-page) :is(h1, h2, h3) {
   letter-spacing: normal;
   line-height: 1.25;
 }

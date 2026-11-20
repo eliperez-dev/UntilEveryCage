@@ -2,12 +2,9 @@
   import { onMount } from 'svelte';
   import { language } from '../language';
   import { storyMessages } from './messages';
-  import { documentElapsedMilliseconds, estimateSinceDocumentOpen } from '../../features/counter/documentElapsed';
   import { ActiveStoryClock, CHICKEN_LINE_RATE, lineParticles } from './engine';
+  import StoryCounter from './StoryCounter.svelte';
   const text = $derived(storyMessages($language));
-  const counterFormat = $derived(new Intl.NumberFormat($language, { maximumFractionDigits: 0 }));
-  const humanTotal = $derived(estimateSinceDocumentOpen(2, $documentElapsedMilliseconds));
-  const chickenTotal = $derived(estimateSinceDocumentOpen(CHICKEN_LINE_RATE, $documentElapsedMilliseconds));
   let reduced = $state(true), canvas: HTMLCanvasElement;
   onMount(() => {
     let ctx: CanvasRenderingContext2D | null = null;
@@ -49,14 +46,8 @@
 
 <div class="mortality-comparison">
   <div class="lane-headings">
-    <div>
-      <strong class="story-total" data-counter="human" data-total={humanTotal}>≈ {counterFormat.format(humanTotal)}</strong>
-      <p class="story-rate">{text.deathsPerSecond.replace('{rate}', counterFormat.format(2))}</p>
-    </div>
-    <div>
-      <strong class="story-total" data-counter="chicken" data-total={chickenTotal}>≈ {counterFormat.format(chickenTotal)}</strong>
-      <p class="story-rate">{text.chickensPerSecond.replace('{rate}', counterFormat.format(CHICKEN_LINE_RATE))}</p>
-    </div>
+    <StoryCounter population="human" rate={2} label={text.humanSinceOpened} />
+    <StoryCounter population="chicken" rate={CHICKEN_LINE_RATE} label={text.chickenSinceOpened} />
   </div>
   <div class="line-field" aria-hidden="true"><canvas bind:this={canvas}></canvas></div>
 </div>

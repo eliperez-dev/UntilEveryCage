@@ -13,11 +13,8 @@ describe('since-document-open estimates', () => {
 
   it('shares one timer, suspends hidden updates and retains document time across remounts', () => {
     vi.useFakeTimers();
-    const oldMedia = Object.getOwnPropertyDescriptor(window, 'matchMedia');
     const oldHidden = Object.getOwnPropertyDescriptor(document, 'hidden');
     let now = 0, hidden = false;
-    const media = Object.assign(new EventTarget(), { matches: false });
-    Object.defineProperty(window, 'matchMedia', { configurable: true, value: () => media });
     Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
     vi.spyOn(performance, 'now').mockImplementation(() => now);
     const interval = vi.spyOn(window, 'setInterval');
@@ -28,11 +25,12 @@ describe('since-document-open estimates', () => {
       stop.push(documentElapsedMilliseconds.subscribe(() => {}));
       expect(latest).toBe(0);
       expect(vi.getTimerCount()).toBe(1);
-      expect(interval.mock.calls[0]?.[1]).toBeCloseTo(1000 / 30);
-      now = 1000; vi.advanceTimersByTime(34); expect(latest).toBe(1000);
+      expect(interval.mock.calls[0]?.[1]).toBe(1000);
+      now = 999; vi.advanceTimersByTime(999); expect(latest).toBe(0);
+      now = 1000; vi.advanceTimersByTime(1); expect(latest).toBe(1000);
       hidden = true; document.dispatchEvent(new Event('visibilitychange'));
       expect(vi.getTimerCount()).toBe(0);
-      now = 12000; media.matches = true; media.dispatchEvent(new Event('change'));
+      now = 12000; vi.advanceTimersByTime(11000);
       expect(latest).toBe(1000);
       hidden = false; document.dispatchEvent(new Event('visibilitychange'));
       expect(latest).toBe(12000);
@@ -44,7 +42,6 @@ describe('since-document-open estimates', () => {
     } finally {
       stop.forEach(unsubscribe => unsubscribe());
       vi.restoreAllMocks(); vi.useRealTimers();
-      if (oldMedia) Object.defineProperty(window, 'matchMedia', oldMedia); else delete (window as any).matchMedia;
       if (oldHidden) Object.defineProperty(document, 'hidden', oldHidden); else delete (document as any).hidden;
     }
   });
