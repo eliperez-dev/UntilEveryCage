@@ -19,7 +19,6 @@ test('landing stays separate from the map with unobstructed background media', a
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('HIDDEN INPLAIN SIGHT.');
   await expect(page.getByRole('navigation', { name: 'Primary' }).getByRole('link')).toHaveText(['Map', 'Data', 'Contribute', 'About']);
   await expect(page.locator('.masthead nav [aria-current]')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Dark theme', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'More tools', exact: true })).toBeVisible();
   await expect(page.locator('.hero-photo')).toHaveCount(2);
   await expect.poll(() => page.locator('.hero-photo').evaluateAll(images => images.every(image => (image as HTMLImageElement).complete && (image as HTMLImageElement).naturalWidth > 0))).toBe(true);
@@ -63,7 +62,11 @@ test('saved Spanish choice applies to the landing and shared header in both them
   const nav = page.getByRole('navigation', { name: 'Navegación principal' });
   await expect(nav.getByRole('link')).toHaveText(['Mapa', 'Datos', 'Contribuir', 'Acerca de']);
   for (const theme of ['dark', 'light'] as const) {
-    if (theme === 'light') await page.locator('.masthead .theme-toggle').click();
+    if (theme === 'light') {
+      await page.getByRole('button', { name: 'Más herramientas', exact: true }).click();
+      await page.getByRole('combobox', { name: 'Tema', exact: true }).selectOption('light');
+      await page.keyboard.press('Escape');
+    }
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     for (const link of await nav.getByRole('link').all()) {
@@ -79,7 +82,7 @@ test('saved Spanish choice applies to the landing and shared header in both them
     await page.keyboard.press('Escape');
     await expect(page.getByRole('button', { name: 'Idioma', exact: true })).toBeFocused();
     await page.getByRole('button', { name: 'Más herramientas', exact: true }).click();
-    await expect(page.getByRole('combobox', { name: 'Versión actual', exact: true })).toBeDisabled();
+    await expect(page.getByRole('combobox', { name: 'Tema', exact: true })).toHaveValue(theme);
     await page.keyboard.press('Escape');
     await expect(page.getByRole('button', { name: 'Más herramientas', exact: true })).toBeFocused();
   }

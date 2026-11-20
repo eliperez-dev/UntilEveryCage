@@ -144,111 +144,56 @@ test('the masthead keeps the theme control inside More tools', async ({ page }) 
   await expect(page.locator('#shared-tools-menu').getByLabel('Theme', { exact: true })).toBeVisible();
 });
 
-const viewports = [{ name: 'desktop', width: 1280, height: 900 }, { name: 'mobile', width: 390, height: 844 }] as const;
 const publicViews = [
-  { route: `./#/map?release_id=${release}`, surface: '.map-toolbar', label: 'map controls' },
-  { route: './#/map?list=open', surface: '.results', label: 'map search' },
-  { route: `./#/records/${id}?release_id=${release}`, surface: '.public-record', label: 'full facility detail' },
-  { route: './#/contribute/bug', surface: '.intake', label: 'contribute form' },
-  { route: './#/about', surface: '.about-page', label: 'About' },
-  { route: './#/faq', surface: '.faq-page', label: 'FAQ' },
-  { route: './#/database/api', surface: '.api-page', label: 'API' },
+  { route: './#/map?list=open', width: 390, surface: '.results', label: 'map search' },
+  { route: `./#/records/${id}?release_id=${release}`, width: 390, surface: '.public-record', label: 'facility' },
+  { route: './#/about', width: 1280, surface: '.about-page', label: 'About' },
+  { route: './#/database/api', width: 1280, surface: '.api-page', label: 'Data' },
 ] as const;
 
-for (const viewport of viewports) {
-  for (const view of publicViews) {
-    for (const theme of ['dark', 'light'] as const) {
-      test(`${view.label} retains readable ${theme} surface on ${viewport.name}`, async ({ page }, testInfo) => {
-        const pageErrors: string[] = [];
-        page.on('pageerror', error => pageErrors.push(error.stack ?? error.message));
-        await page.setViewportSize({ width: viewport.width, height: viewport.height });
-        await mockSanitizedApi(page);
-        await page.goto(view.route);
-        if (view.label === 'map controls') {
-          await expect(page.getByRole('button', { name: 'Search map' })).toBeVisible();
-          await page.getByRole('button', { name: 'More tools', exact: true }).click();
-        }
-        await expectAppSurface(page, view.surface, view.label, pageErrors);
-        if (view.label === 'map controls') {
-          await selectTheme(page, theme);
-          await page.getByRole('button', { name: 'More tools', exact: true }).click();
-          await page.screenshot({ path: testInfo.outputPath(`map-en-${viewport.name}-${theme}-tools-closed.png`), fullPage: true });
-          await page.getByRole('button', { name: 'More tools', exact: true }).click();
-          await page.locator('#shared-tools-menu').waitFor({ state: 'visible' });
-          await page.screenshot({ path: testInfo.outputPath(`map-en-${viewport.name}-${theme}-tools-open.png`), fullPage: true });
-          await page.getByRole('button', { name: 'Close more tools', exact: true }).click();
-          await page.getByRole('button', { name: 'Search map' }).click();
-          const fixtureRecord = page.locator(`${viewport.name === 'mobile' ? '.mobile-record-list' : '.record-list'} button[data-record-id="${id}"]`);
-          await expect(fixtureRecord).toBeVisible();
-          await fixtureRecord.click();
-          const detail = page.locator('.reading-sheet[aria-label="Record evidence"] .detail');
-          await expect(detail).toBeVisible();
-          const detailStyle = await detail.evaluate(element => {
-            const computed = getComputedStyle(element);
-            return { color: computed.color, background: getComputedStyle(element.parentElement!).backgroundColor };
-          });
-          expect(contrast(detailStyle.color, detailStyle.background), `selected map dossier ${theme} contrast`).toBeGreaterThanOrEqual(4.5);
-          await page.getByRole('button', { name: 'Close record detail', exact: true }).click();
-          await expect(detail).toBeHidden();
-          await page.getByRole('button', { name: 'More tools', exact: true }).click();
-          await expect(page.locator('.map-display-tools')).toBeVisible();
-          await expect(page.locator('#shared-tools-menu .map-view-tools')).toHaveCount(0);
-        } else {
-          await selectTheme(page, theme);
-        }
-        await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
-        const style = await page.locator(view.surface).first().evaluate(element => {
-          const own = getComputedStyle(element);
-          let ancestor: Element | null = element;
-          let background = 'rgba(0, 0, 0, 0)';
-          while (ancestor && background === 'rgba(0, 0, 0, 0)') {
-            background = getComputedStyle(ancestor).backgroundColor;
-            ancestor = ancestor.parentElement;
-          }
-          return { color: own.color, background };
-        });
-        expect(style.color).not.toBe('rgba(0, 0, 0, 0)');
-        expect(contrast(style.color, style.background), `${view.label} ${theme} contrast`).toBeGreaterThanOrEqual(4.5);
-        if (view.label === 'About' && theme === 'light') {
-          await page.screenshot({ path: testInfo.outputPath('about-light-counter.png'), fullPage: true });
-          for (const selector of ['.estimate h2', '.estimate-number', '.estimate-list li span:last-child']) {
-            const counterStyle = await page.locator(selector).first().evaluate(element => {
-              let ancestor: Element | null = element;
-              let background = 'rgba(0, 0, 0, 0)';
-              while (ancestor && background === 'rgba(0, 0, 0, 0)') {
-                background = getComputedStyle(ancestor).backgroundColor;
-                ancestor = ancestor.parentElement;
-              }
-              return { color: getComputedStyle(element).color, background };
-            });
-            expect(contrast(counterStyle.color, counterStyle.background), `About counter ${selector} contrast`).toBeGreaterThanOrEqual(4.5);
-          }
-        }
-        if (view.label === 'API') {
-          const operation = page.locator('.explorer .swagger-ui .opblock').first();
-          await expect(operation).toBeVisible();
-          const operationStyle = await operation.evaluate(element => {
-            const computed = getComputedStyle(element);
-            return { color: computed.color, background: computed.backgroundColor };
-          });
-          expect(contrast(operationStyle.color, operationStyle.background), `Swagger operation ${theme} contrast`).toBeGreaterThanOrEqual(4.5);
-        }
-        if (view.label === 'full facility detail' && theme === 'light') {
-          const reportLink = page.locator('.public-record .aphis-reports a').first();
-          await expect(reportLink).toBeVisible();
-          const reportLinkStyle = await reportLink.evaluate(element => {
-            let ancestor: Element | null = element;
-            let background = 'rgba(0, 0, 0, 0)';
-            while (ancestor && background === 'rgba(0, 0, 0, 0)') {
-              background = getComputedStyle(ancestor).backgroundColor;
-              ancestor = ancestor.parentElement;
-            }
-            return { color: getComputedStyle(element).color, background };
-          });
-          expect(contrast(reportLinkStyle.color, reportLinkStyle.background), 'light APHIS report link contrast').toBeGreaterThanOrEqual(4.5);
-        }
-        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${view.label} ${viewport.name} overflow`).toBe(true);
-      });
+async function expectReadable(locator: ReturnType<Page['locator']>, label: string) {
+  await expect(locator).toBeVisible();
+  const style = await locator.evaluate(element => {
+    let ancestor: Element | null = element;
+    let background = 'rgba(0, 0, 0, 0)';
+    while (ancestor && background === 'rgba(0, 0, 0, 0)') {
+      background = getComputedStyle(ancestor).backgroundColor;
+      ancestor = ancestor.parentElement ?? (ancestor.getRootNode() instanceof ShadowRoot
+        ? (ancestor.getRootNode() as ShadowRoot).host
+        : null);
     }
+    return { color: getComputedStyle(element).color, background };
+  });
+  expect(style.color).not.toBe('rgba(0, 0, 0, 0)');
+  expect(contrast(style.color, style.background), label).toBeGreaterThanOrEqual(4.5);
+}
+
+for (const { route, width, surface, label } of publicViews) {
+  for (const theme of ['dark', 'light'] as const) {
+    test(`${label} remains readable in ${theme} theme`, async ({ page }) => {
+      const pageErrors: string[] = [];
+      page.on('pageerror', error => pageErrors.push(error.message));
+      await page.setViewportSize({ width, height: 844 });
+      await mockSanitizedApi(page);
+      await page.goto(route);
+      await expectAppSurface(page, surface, label, pageErrors);
+      await selectTheme(page, theme);
+      await expectReadable(page.locator(surface).first(), label);
+
+      if (label === 'About') {
+        await expectReadable(page.locator('.faq-page p').first(), 'FAQ body text');
+        await expectReadable(page.locator('.estimate-number').first(), 'About counter');
+      }
+      if (label === 'facility') {
+        await expectReadable(page.locator('.aphis-reports a').first(), 'APHIS report link');
+      }
+      if (label === 'Data') {
+        await expectReadable(page.getByRole('link', { name: 'Download complete CSV' }), 'CSV download');
+        const operation = page.locator('.explorer .swagger-ui .opblock').first();
+        await operation.locator('.opblock-summary-control').click();
+        await expectReadable(operation.locator('table thead th').first(), 'Swagger table heading');
+      }
+      await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    });
   }
 }

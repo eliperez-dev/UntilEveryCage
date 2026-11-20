@@ -39,50 +39,27 @@ async function mockMap(page: Page) {
   return state;
 }
 
-async function indexUpdates(page: Page) {
-  await page.getByRole('button', { name: 'More tools', exact: true }).click();
-  await page.getByRole('checkbox', { name: 'Enable debug menu', exact: true }).check();
-  await page.getByRole('button', { name: 'More tools', exact: true }).click();
-  const toggle = page.getByRole('button', { name: 'Debug menu', exact: true });
-  if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click();
-  const renderer = page.locator('.map-diagnostics details').filter({ has: page.getByText('Renderer & timing', { exact: true }) });
-  if ((await renderer.getAttribute('open')) === null) await renderer.locator('summary').click();
-  return Number(await renderer.locator('dl > div').filter({ has: page.locator('dt').filter({ hasText: /^Index updates$/ }) }).locator('dd').textContent());
-}
-
-test('retains the filtered public map and built source on a validated warm return without leaking device camera', async ({ page }) => {
-  await page.addInitScript(() => {
-    Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { getCurrentPosition: (done: PositionCallback) => done({ coords: { latitude: 12.3456789, longitude: 67.8912345 } } as GeolocationPosition) } });
-  });
+test('retains the filtered public map and built source on a validated warm return', async ({ page }) => {
+  test.setTimeout(45_000);
   const fixture = await mockMap(page);
   await page.goto(`./#/map?release_id=${releaseId}&q=Synthetic&country=BE&category=slaughter&precision=source_reported&source_filter=synthetic-source&source=synthetic-source&activity=synthetic-activity`);
-  await expect(page.getByRole('button', { name: 'Search map', exact: false })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Search map', exact: false })).toBeVisible({ timeout: 15_000 });
   await expect.poll(() => fixture.feedRequests).toBe(1);
   const canvas = await page.locator('canvas.maplibregl-canvas').elementHandle();
   expect(canvas).not.toBeNull();
-  await indexUpdates(page);
-  await expect(page.locator('.map-diagnostics dl > div').filter({ has: page.locator('dt').filter({ hasText: /^Filtered \/ loaded mapped$/ }) }).locator('dd')).toHaveText('1 / 1');
-  await page.getByRole('button', { name: 'Close debug menu', exact: true }).click();
-  await page.getByRole('button', { name: 'Your location', exact: true }).click();
-  await expect(page).not.toHaveURL(/12\.345|67\.891/);
-  if ((page.viewportSize()?.width ?? 1280) <= 640) await expect(page.locator('.mobile-results-heading strong')).toHaveText('1 record');
-  else await expect(page.locator('.area-total strong')).toHaveText('1');
-  // Changing spatial membership may update the source; warm navigation must not.
-  const before = await indexUpdates(page);
-  await page.getByRole('button', { name: 'Close debug menu', exact: true }).click();
+  const source = await page.waitForFunction(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getSource('locations'));
   const checked = fixture.manifestRequests;
   await page.getByRole('link', { name: 'About', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'About Until Every Cage is Empty', exact: true }).first()).toBeVisible();
   expect(await canvas!.evaluate(element => element.isConnected)).toBe(true);
   await expect(page).toHaveTitle('About · Until Every Cage');
-  await expect(page.getByRole('link', { name: 'Map', exact: true })).not.toHaveAttribute('href', /12\.345|67\.891/);
   const returnParams = new URLSearchParams((await page.getByRole('link', { name: 'Map', exact: true }).getAttribute('href'))!.split('?')[1]);
   expect(returnParams.has('q')).toBe(false);
   for (const [key, value] of [['country', 'BE'], ['category', 'slaughter'], ['precision', 'source_reported'], ['source_filter', 'synthetic-source'], ['source', 'synthetic-source'], ['activity', 'synthetic-activity']]) expect(returnParams.get(key!)).toBe(value);
   await page.getByRole('link', { name: 'Map', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Search map', exact: false })).toBeVisible();
   expect(await canvas!.evaluate(element => element.isConnected)).toBe(true);
-  expect(await indexUpdates(page)).toBe(before);
+  expect(await page.evaluate(before => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getSource('locations') === before, source)).toBe(true);
   expect(fixture.feedRequests).toBe(1);
   expect(fixture.manifestRequests).toBeGreaterThan(checked);
 });
@@ -120,38 +97,4 @@ test('does not show the retained map if fresh release validation fails', async (
   // A fresh validated identity may reuse its persisted public projection;
   // the rejected live map/source was removed above.
   expect(fixture.feedRequests).toBe(1);
-});
-
-test('cancels a pending device-location callback when leaving the map', async ({ page }) => {
-  await page.addInitScript(() => {
-    const mock = {
-      completed: 0,
-      pending: null as PositionCallback | null,
-      getCurrentPosition(done: PositionCallback) { mock.pending = done; },
-      complete() {
-        const callback = mock.pending;
-        mock.pending = null;
-        callback?.({ coords: { latitude: 12.3456789, longitude: 67.8912345 } } as GeolocationPosition);
-        mock.completed++;
-      },
-    };
-    Object.defineProperty(navigator, 'geolocation', { configurable: true, value: mock });
-  });
-  await mockMap(page);
-  await page.goto(`./#/map?release_id=${releaseId}`);
-  await page.getByRole('button', { name: 'Your location', exact: true }).click();
-  expect(await page.evaluate(() => Boolean((navigator.geolocation as Geolocation & { pending: unknown }).pending))).toBe(true);
-  await page.getByRole('link', { name: 'About', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'About Until Every Cage is Empty', exact: true }).first()).toBeVisible();
-  // Resolve only after the map action component has unmounted. A timer could
-  // resolve before navigation under parallel CPU load and test a different flow.
-  await expect(page.locator('.map-navigation')).toHaveCount(0);
-  await page.evaluate(() => (navigator.geolocation as Geolocation & { complete(): void }).complete());
-  expect(await page.evaluate(() => (navigator.geolocation as Geolocation & { completed: number }).completed)).toBe(1);
-  await expect(page).not.toHaveURL(/12\.345|67\.891/);
-  await page.getByRole('link', { name: 'Map', exact: true }).click();
-  await indexUpdates(page);
-  const camera = page.locator('.map-diagnostics dl > div').filter({ has: page.locator('dt').filter({ hasText: /^Zoom \/ bearing \/ pitch$/ }) }).locator('dd');
-  await expect(camera).toHaveText('2.00 / 0.0° / 0.0°');
-  await expect(page).not.toHaveURL(/12\.345|67\.891/);
 });

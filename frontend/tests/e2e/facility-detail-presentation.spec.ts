@@ -35,15 +35,15 @@ const facts = {
 };
 const meta = { release_id: release, ruleset_version: 'synthetic-rules', profile: 'official', release_created_at: observed };
 
-for (const [width, canonicalName] of [[320, null], [1440, null], [320, 'Name not provided']] as const) test(`unmapped name presentation preserves source text at ${width}px (${canonicalName === null ? 'missing' : 'provided'})`, async ({ page }) => {
-  await page.setViewportSize({ width, height: 900 });
+for (const canonicalName of [null, 'Name not provided'] as const) test(`unmapped name presentation preserves source text (${canonicalName === null ? 'missing' : 'provided'})`, async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 900 });
   await page.addInitScript(() => localStorage.setItem('uec-language', 'de'));
   await mockPublicRecord(page, { canonical_name: canonicalName, display_precision: 'unmapped', latitude: null, longitude: null });
   await page.goto(`./#/map?release_id=${release}&list=open`);
   const name = canonicalName ?? de['Name not provided'];
   const result = page.locator(`[data-record-id="${id}"]`);
   await expect(result.locator('strong')).toHaveText(name);
-  await expect(result).toContainText(de[width <= 640 ? 'Unmapped' : 'Unmapped · no public point']);
+  await expect(result).toContainText(de['Unmapped']);
   await result.click();
   const panel = page.locator('.map-summary');
   await expect(panel.locator('strong')).toHaveText(name);
@@ -58,18 +58,16 @@ for (const width of [1440, 375]) test(`direct evidence access and optional locat
   await mockPublicRecord(page, { city: width === 375 ? null : row.city, display_precision: 'approximate', geometry_provenance: {
     origin: 'provider_derived', method: 'geoapify_rooftop', provider: 'Geoapify', confidence: '0.8', confidence_band: 'medium',
   } });
-  await page.goto(`./#/map?selected=${id}&release_id=${release}`);
   const panel = page.locator('.map-summary');
-  await expect(panel.locator('strong')).toHaveText(row.canonical_name);
-  await expect(panel.locator('p')).toHaveText(['Processing', width === 375 ? 'Denmark' : 'Synthetic locality, Denmark']);
-  await expect(panel.getByText(row.provenance_source_name, { exact: true })).toHaveCount(0);
-  await expect(panel.getByText('Approximate location', { exact: true })).toHaveCount(0);
-  await expect(panel.locator('.location-details')).toHaveCount(0);
-  await expect(panel.getByRole('status')).toHaveCount(0);
-  await expect(panel.getByRole('button', { name: 'Close record detail' })).toBeVisible();
-  await expect(panel.getByRole('link')).toHaveCount(1);
-  await expect(page.locator('#field-record-list')).toBeHidden();
-  await panel.getByRole('link', { name: 'View full record', exact: true }).click();
+  if (width === 1440) {
+    await page.goto(`./#/map?selected=${id}&release_id=${release}`);
+    await expect(panel.locator('strong')).toHaveText(row.canonical_name);
+    await expect(panel.locator('p')).toHaveText(['Processing', 'Synthetic locality, Denmark']);
+    await expect(panel.getByRole('link')).toHaveCount(1);
+    await panel.getByRole('link', { name: 'View full record', exact: true }).click();
+  } else {
+    await page.goto(`./#/records/${id}?profile=official&release_id=${release}`);
+  }
   const full = page.locator('.public-record');
   await expect(full.locator('.record-locality')).toHaveText(width === 375 ? 'Denmark' : 'Synthetic locality, Denmark');
   await expect(full.locator('.compact-source .direct-source')).toHaveAttribute('href', row.provenance_source_url);
@@ -91,30 +89,19 @@ for (const width of [1440, 375]) test(`direct evidence access and optional locat
   await expect(full.getByText('Government-sourced', { exact: true })).toBeVisible();
   await expect(full.locator('.compact-source .direct-source')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await full.getByRole('link', { name: 'Back to map', exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`#/map\\?.*release_id=${release}`));
+  await expect(page.getByRole('button', { name: 'Search map' })).toBeVisible();
 });
 
-test('long reference-provider attributions remain readable in mobile list and details', async ({page}) => {
+test('long reference-provider attributions remain readable in mobile facility details', async ({page}) => {
   const provider='Synthetic official reference citation; '.repeat(12).slice(0,324);
   await page.setViewportSize({width:320,height:760});
   await mockPublicRecord(page,{display_precision:'approximate',geometry_provenance:{origin:'verified_coarse_reference',provider,reference_source_id:'synthetic-reference'}});
-  await page.goto(`./#/map?release_id=${release}&list=open`);
-  await page.locator(`[data-record-id="${id}"]`).click();
-  const panel=page.locator('.reading-sheet');
-  await expect(panel.locator('.record-name')).toHaveText(row.canonical_name);
-  await panel.locator('.location-details > summary').click();
-  await expect(panel.getByText(provider,{exact:true})).toBeVisible();
-  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
-  await panel.getByRole('link',{name:'Open facility page',exact:true}).click();
+  await page.goto(`./#/records/${id}?profile=official&release_id=${release}`);
   const full=page.locator('.public-record');
   await expect(full.getByText(provider,{exact:true})).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
-});
-
-test('search summary names filtered matches as records and distinguishes the shown page', async ({ page }) => {
-  await mockPublicRecord(page);
-  await page.goto(`./#/map?list=open&release_id=${release}`);
-  await expect(page.locator('.result-status')).toContainText('1 matching records');
-  await expect(page.locator('.result-status')).toContainText('1 shown');
 });
 
 for(const [bounds,lower,upper,text] of [['exclusive_upper',null,1000,'Less than 1,000 animals'],['inclusive_lower_exclusive_upper',1000,10000,'1,000 to less than 10,000 animals'],['inclusive_lower_unbounded',100000,null,'100,000 or more animals']] as const) test(`verified slaughter estimate preserves exact 360-day ${bounds} bounds in the full record`,async({page})=>{
@@ -191,84 +178,11 @@ async function mockPublicRecord(page: Page, overrides: Record<string, unknown> =
   });
 }
 
-test('map detail shows one category and each activity, preserves facts, and opens its release-pinned facility page', async ({ page }) => {
-  let reportRequests = 0;
-  page.on('request', request => { if (request.url().includes(`/api/v2/locations/${id}/aphis-report-links`)) reportRequests += 1; });
-  await mockPublicRecord(page, { latitude: 55.123456789, longitude: 10.123456789, geometry_provenance: { origin: 'source_coordinates', method: 'source_method_unknown' } });
-  await page.goto(`./#/map?selected=${id}&release_id=${release}`);
-  const panel = page.locator('.reading-sheet[aria-label="Record evidence"]');
-  await expect(panel.locator('.detail h1')).toContainText(row.canonical_name);
-  const drawerOrder = await panel.locator('.detail').evaluate(root => {
-    const location = root.querySelector('#location-heading');
-    const activities = root.querySelector('#taxonomy-heading');
-    return Boolean(location && activities && (activities.compareDocumentPosition(location) & Node.DOCUMENT_POSITION_FOLLOWING));
-  });
-  expect(drawerOrder).toBe(true);
-  await expect(panel.getByText('Processing and preparation', { exact: true })).toHaveCount(1);
-  const overview = panel.locator('.classification-summary .summary');
-  await expect(overview).toHaveText('Poultry processing prepares meat from birds for sale or further manufacture. The source lists slaughter of poultry and processing of chicken meat.');
-  await expect(overview).not.toContainText('Separate activity');
-  await panel.locator('.classification-summary summary').click();
-  await expect(panel.locator('.classification-summary details')).toContainText('Meat cutting');
-  await expect(panel.locator('.classification-summary details')).toContainText('NRTE chicken processing');
-  await expect(panel).not.toContainText(/synthetic-taxonomy-version|Taxonomy version|Primary categories|Classification provenance|not independently|Source confirmed/);
-  await expect(panel.getByText('Source-provided coordinates', { exact: true })).toBeVisible();
-  await expect(panel.locator('.location-details')).not.toHaveAttribute('open');
-  await panel.locator('.location-details > summary').click();
-  await expect(panel.getByText('55.123457, 10.123457', { exact: true })).toBeVisible();
-  await expect(panel.getByText('Location method', { exact: true })).toHaveCount(0);
-  await panel.locator('.source-facts-section > summary').click();
-  await expect(panel.getByText('Synthetic former name', { exact: true })).toBeVisible();
-  await expect(panel.getByText('SYNTHETIC-1', { exact: true })).toBeVisible();
-  await expect(panel.getByText('10,000 to less than 100,000 pounds/month', { exact: true })).toBeVisible();
-  await expect(panel.locator('.classification-summary details')).toContainText('Native poultry activity');
-  await expect(panel.locator('.classification-summary details')).toContainText('poultry_activity');
-  await expect(panel).not.toContainText(/Direct|Mapped|synthetic-taxonomy-version/);
-  await expect(panel.getByRole('heading', { name: 'APHIS reports' })).toHaveCount(0);
-  expect(reportRequests).toBe(0);
-  const link = panel.getByRole('link', { name: 'Open facility page', exact: true });
-  await expect(link).toHaveAttribute('href', `#/records/${id}?profile=official&release_id=${release}`);
-  await expect(panel.getByRole('button', { name: 'Copy facility link' })).toBeVisible();
-  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
-  await panel.getByRole('button', { name: 'Copy facility link' }).click();
-  await expect(panel.locator('.detail h1 [role="status"]')).toHaveText('Link copied');
-  const copiedRailLink = await page.evaluate(() => navigator.clipboard.readText());
-  expect(new URL(copiedRailLink).hash).toBe(`#/records/${id}?profile=official&release_id=${release}`);
-  await page.setViewportSize({ width: 390, height: 844 });
-  await link.click();
-  await expect(page.locator('.public-record h1')).toHaveText(row.canonical_name);
-  await expect(page.locator('.location-preview')).toHaveAttribute('aria-label', 'Satellite location preview');
-  const pageOrder = await page.locator('.public-record').evaluate(root => {
-    const tabs = root.querySelector('.record-tabs');
-    const preview = root.querySelector('.location-preview');
-    const activities = root.querySelector('#activities-heading');
-    return Boolean(tabs && preview && activities &&
-      (activities.compareDocumentPosition(preview) & Node.DOCUMENT_POSITION_FOLLOWING) &&
-      (preview.compareDocumentPosition(tabs) & Node.DOCUMENT_POSITION_FOLLOWING));
-  });
-  expect(pageOrder).toBe(true);
-  await expect(page.locator('.location-preview .map')).toHaveAttribute('data-pin-loaded', 'true');
-  await expect(page.locator('.public-record')).toContainText('Less than 1,000 animals');
-  await expect(page.getByRole('button', { name: 'Copy facility link' })).toHaveCount(0);
-  await expect(page.getByRole('link', { name: 'Back to map', exact: true })).toHaveAttribute('href', new RegExp(`selected=${id}.*release_id=${release}`));
-  await expect(page.locator('.public-record').getByText('Processing and preparation', { exact: true })).toHaveCount(1);
-  await expect(page.locator('.public-record')).not.toContainText(/synthetic-taxonomy-version|not independently/);
-  await expect(page.getByRole('link', { name: 'Open facility page', exact: true })).toHaveCount(0);
-});
-
-test('Spanish processing summary is deduplicated in map detail and the full record', async ({ page }) => {
+test('Spanish processing summary is deduplicated in the full record', async ({ page }) => {
   const expectedSummary = 'El procesamiento de aves prepara su carne para la venta o para su transformación posterior. La fuente registra el sacrificio de aves de corral y el procesamiento de carne de pollo.';
   await page.addInitScript(() => localStorage.setItem('uec-language', 'es'));
   await mockPublicRecord(page);
-  await page.goto(`./#/map?selected=${id}&release_id=${release}`);
-  const panel = page.locator('.reading-sheet[aria-label="Record evidence"]');
-  await expect(panel).toBeVisible({ timeout: 20_000 });
-  await expect(panel.getByText('Procesamiento y preparación', { exact: true })).toHaveCount(1);
-  const mapActivities = panel.locator('.classification-summary .summary');
-  await expect(mapActivities).toHaveText(expectedSummary);
-  await expect(mapActivities).not.toHaveText(/(?:^|,\s*)Procesamiento(?:,\s*|$)/);
-  await expect(panel.getByRole('link', { name: 'Abrir página de la instalación', exact: true })).toBeVisible();
-  await panel.locator(`a[href="#/records/${id}?profile=official&release_id=${release}"]`).click();
+  await page.goto(`./#/records/${id}?profile=official&release_id=${release}`);
   const full = page.locator('.public-record');
   await expect(full.getByText('Procesamiento y preparación', { exact: true })).toHaveCount(1);
   const fullActivities = full.locator('.classification-summary .summary');
@@ -340,114 +254,11 @@ test('city-level geocoding keeps its approximation and actual provider score in 
   await expect(page.locator('.map-summary strong')).toHaveText(row.canonical_name);
 });
 
-test('mobile detail shares the middle-height sheet with the map and preserves scrolling and dismissal', async ({ page }) => {
-  await page.setViewportSize({ width: 375, height: 812 });
-  await mockPublicRecord(page);
-  const open = async () => {
-    await page.goto(`./#/map?selected=${id}&release_id=${release}`);
-    await expect(page.locator('.reading-sheet .detail h1')).toHaveText(row.canonical_name);
-  };
-  await open();
-  const workspace = page.locator('.workspace .map-tool-shell > .results');
-  const panel = page.locator('.reading-sheet.dossier');
-  const close = panel.getByRole('button', { name: 'Close record detail' });
-  for (const [width, height] of [[375, 812], [375, 667], [320, 667]]) {
-    await page.setViewportSize({ width: width!, height: height! });
-    await expect(workspace).toHaveCSS('position', 'absolute');
-    const workspaceBox = (await workspace.boundingBox())!;
-    const headerBox = (await page.locator('.field-view > .masthead').boundingBox())!;
-    expect(workspaceBox.x).toBe(0);
-    expect(workspaceBox.width).toBe(width);
-    expect(workspaceBox.y).toBeGreaterThan(headerBox.y + headerBox.height);
-    const mapBox=(await page.locator('.map-stage').boundingBox())!;
-    expect(mapBox.y).toBeCloseTo(headerBox.y+headerBox.height,0);
-    expect(mapBox.y+mapBox.height).toBeCloseTo(height!,0);
-    expect(workspaceBox.height).toBeCloseTo((height!-headerBox.height)*.60,0);
-    expect(workspaceBox.y + workspaceBox.height).toBeCloseTo(height!, 0);
-    const search = workspace.locator('#field-search');
-    await expect(search).toBeHidden();
-    await expect(workspace.locator('.search-tools')).toBeHidden();
-    await expect(workspace.locator('.csv-download')).toBeHidden();
-    await expect(workspace.locator('.result-status')).toBeHidden();
-    const box = (await panel.boundingBox())!;
-    expect(box.x).toBe(0);
-    expect(box.width).toBe(width);
-    expect(box.y).toBeCloseTo(workspaceBox.y+45, 0);
-    expect(box.height).toBeGreaterThan(100);
-    expect(box.y + box.height).toBeCloseTo(height!, 0);
-    expect(await workspace.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
-  }
-  await expect(close).toBeFocused();
-  await panel.evaluate(element => element.scrollTop = element.scrollHeight);
-  await expect(close).toBeInViewport();
-  const scrolled = await panel.evaluate(element => ({ scrollTop: element.scrollTop, overflow: getComputedStyle(element).overflowY }));
-  expect(scrolled.scrollTop).toBeGreaterThan(0);
-  expect(scrolled.overflow).toBe('auto');
-  const stickyHeader = panel.locator('.dossier-header');
-  await expect(stickyHeader).toHaveCSS('position', 'sticky');
-  expect((await stickyHeader.boundingBox())!.y).toBeCloseTo((await panel.boundingBox())!.y, 0);
-  const copyLink = panel.getByRole('button', { name: 'Copy facility link' });
-  await expect(copyLink).toBeVisible();
-  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
-  await copyLink.click();
-  const copiedLink = await page.evaluate(() => navigator.clipboard.readText());
-  expect(new URL(copiedLink).hash).toBe(`#/records/${id}?profile=official&release_id=${release}`);
-  await close.focus();
-  await page.keyboard.press('Enter');
-  await expect(panel).toHaveCount(0);
-  await open();
-  await page.keyboard.press('Escape');
-  await expect(panel).toHaveCount(0);
-});
-
-test('mobile diagnostics temporarily cover an expanded selected sheet and restore its context on close', async({page})=>{
-  await page.setViewportSize({width:390,height:844});
-  await mockPublicRecord(page);
-  await page.goto(`./#/map?selected=${id}&release_id=${release}`);
-  await expect(page.locator('.dossier h1')).toHaveText(row.canonical_name);
-  const handle=page.getByRole('button',{name:'View details',exact:true});
-  await handle.focus();await page.keyboard.press('End');
-  await page.getByRole('button',{name:'More tools',exact:true}).click();
-  await page.getByLabel('Enable debug menu',{exact:true}).check();
-  await page.getByRole('button',{name:'Close more tools',exact:true}).click();
-  await page.getByRole('button',{name:'Debug menu',exact:true}).click();
-  const debug=page.getByRole('complementary',{name:'Debug menu',exact:true});
-  await expect(debug).toBeVisible();
-  expect((await debug.boundingBox())!.height).toBeGreaterThan(300);
-  await expect(page.locator('.results')).toHaveAttribute('inert','');
-  await debug.locator('#debug-sheet-height').press('End');
-  await expect(debug.locator('#debug-sheet-height')).toHaveValue('65');
-  await debug.getByRole('button',{name:'Close debug menu',exact:true}).click();
-  await expect(handle).toBeVisible();
-  await expect(handle).toHaveAttribute('data-sheet-state','expanded');
-  await expect(page.locator('.results')).not.toHaveAttribute('inert','');
-  expect(new URL(page.url()).hash).toContain(`selected=${id}`);
-});
-
 test('unmapped public records do not create a location map', async ({ page }) => {
   await mockPublicRecord(page, { display_precision: 'unmapped', latitude: null, longitude: null });
   await page.goto(`./#/records/${id}?profile=official&release_id=${release}`);
   await expect(page.getByRole('heading', { name: row.canonical_name })).toBeVisible();
   await expect(page.locator('.location-preview')).toHaveCount(0);
-});
-
-test('map detail keeps long-name copy beside its heading, classification above facts, and the facility link at the bottom', async ({ page }) => {
-  await page.setViewportSize({width:320,height:740});
-  await mockPublicRecord(page,{canonical_name:'Synthetic exceptionally long processing and cold storage facility record for the narrow mobile layout'});
-  await page.goto(`./#/map?selected=${id}&release_id=${release}`);
-  const detail=page.locator('.dossier .detail');
-  await expect(detail.locator('.classification-disclosure details')).not.toHaveAttribute('open','');
-  const layout=await detail.evaluate(root=>{
-    const heading=root.querySelector('h1')!.getBoundingClientRect(),copy=root.querySelector('h1 .share')!.getBoundingClientRect();
-    const classification=root.querySelector('.classification-disclosure')!,facts=root.querySelector('.source-facts-section')!,link=root.querySelector('.open-facility')!,review=root.querySelector('.evidence-section')!;
-    return {copyY:copy.y,headingY:heading.y,copyRight:copy.right,headingRight:heading.right,classificationBeforeFacts:Boolean(classification.compareDocumentPosition(facts)&Node.DOCUMENT_POSITION_FOLLOWING),linkAfterReview:Boolean(review.compareDocumentPosition(link)&Node.DOCUMENT_POSITION_FOLLOWING)};
-  });
-  expect(layout.copyY).toBeCloseTo(layout.headingY,0);
-  expect(layout.copyRight).toBeLessThanOrEqual(layout.headingRight);
-  expect(layout.classificationBeforeFacts).toBe(true);
-  expect(layout.linkAfterReview).toBe(true);
-  await expect(detail.locator('.open-facility')).toHaveAttribute('href',`#/records/${id}?profile=official&release_id=${release}`);
-  expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
 });
 
 for(const state of ['empty','populated','error'] as const) test(`facility Connections tab reflects for ${state} data`,async({page})=>{

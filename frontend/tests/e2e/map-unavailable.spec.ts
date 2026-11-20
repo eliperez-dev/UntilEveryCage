@@ -35,10 +35,12 @@ test('GPU failure leaves public search, records and navigation usable', async ({
   await expect(search).toBeVisible();
   const response = page.waitForResponse(response => new URL(response.url()).pathname === '/api/v2/locations' && new URL(response.url()).searchParams.get('q') === 'synthetic');
   await search.fill('synthetic');
+  await search.press('Enter');
   expect((await response).ok()).toBe(true);
-  await page.locator('.record-list button[data-record-id]').first().click();
-  await expect(page.locator('.dossier')).toContainText('Synthetic GPU-independent record');
-  await page.getByRole('link', { name: 'Open facility page', exact: true }).click();
+  await page.getByRole('region', { name: 'Records', exact: true }).getByRole('button', { name: /Synthetic GPU-independent record/ }).click();
+  const selected = page.locator('.map-summary');
+  await expect(selected).toContainText(row.canonical_name);
+  await selected.getByRole('link', { name: 'View full record', exact: true }).click();
   await expect(page.locator('.public-record h1')).toHaveText(row.canonical_name);
   await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'About', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'About Until Every Cage is Empty' })).toBeVisible();
