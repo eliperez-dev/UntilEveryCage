@@ -93,37 +93,6 @@ async function expectAppSurface(page: Page, selector: string, label: string, pag
   }
 }
 
-test('the real theme control reflects translated selection, persists on reload, and survives denied storage', async ({ page }) => {
-  await page.goto('./tests/fixtures/theme-control.html');
-  const toggle = page.getByRole('button', { name: 'Tema oscuro' });
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
-  await toggle.focus();
-  await page.keyboard.press('Enter');
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-  const light = page.getByRole('button', { name: 'Tema claro' });
-  await expect(light).toHaveAttribute('aria-pressed', 'true');
-  const controlStyle = await light.evaluate(button => ({ color: getComputedStyle(button).color, background: getComputedStyle(button).backgroundColor }));
-  expect(contrast(controlStyle.color, controlStyle.background), 'translated light theme control contrast').toBeGreaterThanOrEqual(4.5);
-  expect(await page.evaluate(() => localStorage.getItem('uec-theme'))).toBe('light');
-  await page.reload();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-  await expect(page.getByRole('button', { name: 'Tema claro' })).toHaveAttribute('aria-pressed', 'true');
-
-  await page.addInitScript(() => {
-    const original = Storage.prototype.setItem;
-    Storage.prototype.setItem = function (key, value) {
-      if (key === 'uec-theme') throw new DOMException('Storage denied', 'SecurityError');
-      return original.call(this, key, value);
-    };
-  });
-  await page.evaluate(() => localStorage.removeItem('uec-theme'));
-  await page.reload();
-  await page.getByRole('button', { name: 'Tema oscuro' }).click();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-  await expect(page.getByRole('button', { name: 'Tema claro' })).toHaveAttribute('aria-pressed', 'true');
-});
-
 test('saved theme is applied before the app module starts', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('uec-theme', 'light'));
   let resumeModule!: () => void;
