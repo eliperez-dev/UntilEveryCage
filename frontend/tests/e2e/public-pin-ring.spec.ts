@@ -3,12 +3,15 @@ import { expect, test, type Page } from '@playwright/test';
 const point: [number, number] = [5, 45];
 const id = (i: number) => `550e8400-e29b-41d4-a716-${i.toString(16).padStart(12, '0')}`;
 const categories = ['slaughter', 'processing_and_preparation', 'research_and_animal_use'];
-async function install(page: Page, count: number, labelDelay = 0, spacing = 0) {
+async function install(page: Page, count: number, labelDelay = 0, coordinates: (index: number) => [number, number] = () => point) {
   const release = `synthetic-overlap-${count}`;
   page.on('pageerror', error => console.log('Synthetic ring page error:', error.message));
   const state = { feeds: 0, privateRequests: 0, detailRequests: 0, onlyFirst: false };
   const meta = { profile: 'official', release_id: release, ruleset_version: 'synthetic-rules', release_created_at: '2026-01-01T00:00:00Z' };
-  const rows = Array.from({ length: count }, (_, i) => ({ facility_id: id(i + 1), canonical_name: `Synthetic facility ${i + 1}`, country_code: 'BE', city: 'Synthetic city', category: categories[i % 3], taxonomy_display_category: categories[i % 3], taxonomy_primary_categories: [categories[i % 3]], publication_profile: 'official', factual_review_status: 'reviewed', privacy_screening_status: 'passed', project_approval: 'approved', reviewer_role: null, publication_warning: null, display_precision: i % 2 ? 'approximate' : 'source_reported', latitude: point[1], longitude: point[0] + i * spacing, first_observed_at: null, last_observed_at: null, observation_count: 1, lifecycle_status: 'status_unknown', source_type: 'official', source_rights_status: 'cleared', provenance_source: null, release_id: release, release_ruleset_version: 'synthetic-rules', provenance_source_id: 'synthetic-source', provenance_source_name: 'Synthetic source', provenance_source_url: 'https://example.test/source', provenance_retrieved_at: '2026-01-01T00:00:00Z' }));
+  const rows = Array.from({ length: count }, (_, i) => {
+    const [longitude, latitude] = coordinates(i);
+    return { facility_id: id(i + 1), canonical_name: `Synthetic facility ${i + 1}`, country_code: 'BE', city: 'Synthetic city', category: categories[i % 3], taxonomy_display_category: categories[i % 3], taxonomy_primary_categories: [categories[i % 3]], publication_profile: 'official', factual_review_status: 'reviewed', privacy_screening_status: 'passed', project_approval: 'approved', reviewer_role: null, publication_warning: null, display_precision: i % 2 ? 'approximate' : 'source_reported', latitude, longitude, first_observed_at: null, last_observed_at: null, observation_count: 1, lifecycle_status: 'status_unknown', source_type: 'official', source_rights_status: 'cleared', provenance_source: null, release_id: release, release_ruleset_version: 'synthetic-rules', provenance_source_id: 'synthetic-source', provenance_source_name: 'Synthetic source', provenance_source_url: 'https://example.test/source', provenance_retrieved_at: '2026-01-01T00:00:00Z' };
+  });
   await page.route('https://**/*', route => route.abort());
   await page.route('**/api/private/**', route => { state.privateRequests++; return route.fulfill({ status: 404, json: {} }); });
   await page.route('**/api/v2/**', async route => {
@@ -48,7 +51,7 @@ const marker = (page: Page) => page.locator('.overlap-keyboard-marker');
 async function waitForMarker(page: Page, count: number) {
   await expect.poll(() => page.evaluate(expected => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
-    return map.hasImage('v1-pin-shared-point')
+    return map.hasImage('v1-pin-shared-point-' + expected)
       && map.getLayer('public-pin-stack-count')
       && map.queryRenderedFeatures({ layers: ['public-pin-stack-count'] }).some((feature: any) => feature.properties.count === expected);
   }, count)).toBe(true);
@@ -59,6 +62,31 @@ async function waitForMarker(page: Page, count: number) {
   });
   expect(originalPins).toBe(0);
 }
+
+for (const width of [1440, 390]) test("a foreground pin covers the rear count at " + width + "px", async ({ page }) => {
+  await page.setViewportSize({ width, height: 900 });
+  await install(page, 4, 0, i => [point[0], point[1] - Math.floor(i / 2) * 0.00085]);
+  await expect(marker(page)).toHaveCount(2);
+  const clip = await page.evaluate(coordinates => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    const canvas = map.getCanvas().getBoundingClientRect();
+    const rear = map.project(coordinates);
+    return { x: Math.round(canvas.left + rear.x) - 2, y: Math.round(canvas.top + rear.y - 22) - 2, width: 4, height: 4 };
+  }, point);
+
+  // The rear count lands inside the solid head of the marker in front.
+  const occluded = await page.screenshot({ clip, scale: 'css' });
+  await page.evaluate(front => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    map.setFilter('public-pin-stack-count', ['==', ['get', 'key'], front]);
+  }, id(3));
+  await expect.poll(() => page.evaluate(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    return [...new Set(map.queryRenderedFeatures({ layers: ['public-pin-stack-count'] }).map((feature: any) => feature.properties.key))];
+  })).toEqual([id(3)]);
+  const frontOnly = await page.screenshot({ clip, scale: 'css' });
+  expect(occluded.equals(frontOnly)).toBe(true);
+});
 
 for (const mobile of [false, true]) test(`overlap marker opens its records with a fixed camera on ${mobile ? 'phone' : 'desktop'}`, async ({ page }, info) => {
   await page.setViewportSize(mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 });
@@ -130,7 +158,7 @@ for (const count of [214, 614]) test(`${count} records stay keyboard reachable w
 });
 
 test('nearby pins at distinct coordinates stay separate', async ({ page }) => {
-  await install(page, 2, 0, 0.00001);
+  await install(page, 2, 0, i => [point[0] + i * 0.00001, point[1]]);
   await expect(marker(page)).toHaveCount(0);
   await clickPoint(page);
   await expect(overlap(page)).toHaveCount(0);

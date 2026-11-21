@@ -6,6 +6,25 @@ export type ScreenPoint = Readonly<{ x: number; y: number }>;
 export type OverlapBounds = Readonly<{ left: number; top: number; right: number; bottom: number }>;
 export const OVERLAP_BADGE_SOURCE = 'public-pin-stacks';
 export const OVERLAP_BADGE_LAYER = 'public-pin-stack-count';
+export const SHARED_POINT_PIN_IMAGE_PREFIX = 'v1-pin-shared-point-';
+export const SHARED_POINT_PIN_SCALE = .4;
+
+// MapLibre paints symbol text above every icon in its layer. Put the count
+// in the icon so a pin in front can cover both the rear pin and its count.
+export function sharedPointPinImage(image: HTMLImageElement | ImageBitmap, count: number): ImageData {
+  const canvas = document.createElement('canvas');
+  canvas.width = image.width;
+  canvas.height = image.height;
+  const context = canvas.getContext('2d')!;
+  context.drawImage(image, 0, 0);
+  const fontSize = count < 100 ? 10 : count < 1000 ? 8 : 7;
+  context.font = `700 ${fontSize / SHARED_POINT_PIN_SCALE}px Arial, sans-serif`;
+  context.fillStyle = '#fff';
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  context.fillText(String(count), canvas.width / 2, canvas.height - 22 / SHARED_POINT_PIN_SCALE);
+  return context.getImageData(0, 0, canvas.width, canvas.height);
+}
 
 export function publicOverlapMember(feature: any, allowWrapped = false): OverlapMember | null {
   const properties = feature?.properties;

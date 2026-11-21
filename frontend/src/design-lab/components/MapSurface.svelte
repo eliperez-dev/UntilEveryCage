@@ -82,7 +82,7 @@
   import { canSearchRecords, publicSearchFilters } from '../../features/search/powerSearch';
   import { nearbyCameraBounds } from '../../features/search/nearbySearch';
   import PublicOverlapList from './PublicOverlapList.svelte';
-  import { createPublicOverlapIndex, OVERLAP_BADGE_LAYER, OVERLAP_BADGE_SOURCE, publicOverlapMember, type OverlapMember, type PublicOverlapIndex, type OverlapBounds, type ScreenPoint } from './publicPinOverlap';
+  import { createPublicOverlapIndex, OVERLAP_BADGE_LAYER, OVERLAP_BADGE_SOURCE, publicOverlapMember, sharedPointPinImage, SHARED_POINT_PIN_IMAGE_PREFIX, SHARED_POINT_PIN_SCALE, type OverlapMember, type PublicOverlapIndex, type OverlapBounds, type ScreenPoint } from './publicPinOverlap';
 
   let {
     active = true,
@@ -390,19 +390,17 @@
   $effect(() => {
     if (active && restoreOverlapId) void tick().then(restoreOverlapList);
   });
-  let sharedPointPinLoad: Promise<Awaited<ReturnType<MapLibreMap['loadImage']>>['data'] | null> | undefined;
+  let sharedPointPin: HTMLImageElement | ImageBitmap | undefined;
+  let sharedPointPinLoad: Promise<void> | undefined;
   function refreshOverlapBadges(instance: MapLibreMap) {
     if (mode !== 'public-release' || !active || !instance.getSource('locations')) return;
     const index = currentOverlapIndex();
     if (!index) return;
-    if (!instance.hasImage('v1-pin-shared-point')) {
-      if (!sharedPointPinLoad) sharedPointPinLoad = instance.loadImage(`${import.meta.env.BASE_URL}v1-pins/marker-icon-2x-shared-point.png`)
-        .then(({ data }) => data, () => null);
-      void sharedPointPinLoad.then(data => {
-        if (!data || instance !== map || !instance.getSource('locations') || instance.hasImage('v1-pin-shared-point')) return;
-        instance.addImage('v1-pin-shared-point', data);
-        refreshOverlapBadges(instance);
-      });
+    if (!sharedPointPin) {
+      sharedPointPinLoad ??= instance.loadImage(`${import.meta.env.BASE_URL}v1-pins/marker-icon-2x-shared-point.png`).then(({ data }) => {
+        sharedPointPin = data;
+        if (map) refreshOverlapBadges(map);
+      }, () => {});
       return;
     }
     const minzoom = appliedNativeClustering
@@ -415,13 +413,10 @@
     if (!instance.getLayer(OVERLAP_BADGE_LAYER)) instance.addLayer({
       id: OVERLAP_BADGE_LAYER, type: 'symbol', source: OVERLAP_BADGE_SOURCE,
       layout: {
-        'icon-image': 'v1-pin-shared-point', 'icon-size': .4, 'icon-anchor': 'bottom',
+        'icon-image': ['concat', SHARED_POINT_PIN_IMAGE_PREFIX, ['to-string', ['get', 'count']]],
+        'icon-size': SHARED_POINT_PIN_SCALE, 'icon-anchor': 'bottom', 'symbol-z-order': 'viewport-y',
         'icon-allow-overlap': true, 'icon-ignore-placement': true,
-        'text-field': ['to-string', ['get', 'count']], 'text-font': ['Open Sans Bold'],
-        'text-size': ['step', ['get', 'count'], 10, 100, 8, 1000, 7],
-        'text-allow-overlap': true, 'text-ignore-placement': true,
       },
-      paint: { 'text-color': '#fff', 'text-translate': [0, -22], 'text-translate-anchor': 'viewport' },
     });
     if (signature !== overlapBadgeSignature) {
       overlapBadgeSignature = signature;
@@ -434,6 +429,10 @@
     overlapKeyboardNeedsRefresh = true;
     // Native viewport culling handles the count markers throughout movement.
     const groups = index.sharedGroups();
+    for (const { length: count } of groups) {
+      const image = SHARED_POINT_PIN_IMAGE_PREFIX + count;
+      if (!instance.hasImage(image)) instance.addImage(image, sharedPointPinImage(sharedPointPin, count));
+    }
     hideSharedPointPins(instance, groups);
     (instance.getSource(OVERLAP_BADGE_SOURCE) as GeoJSONSource).setData({
       type: 'FeatureCollection',
