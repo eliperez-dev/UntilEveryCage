@@ -23,6 +23,7 @@ export type ContributionDraft = Readonly<{
   reproduction_steps?: string;
   page_url?: string;
   contact_email?: string;
+  email_updates?: true;
   consent: true;
 }>;
 export type Receipt = Readonly<{ submission_id: string; receipt_secret: string; status: 'received' }>;
@@ -35,6 +36,7 @@ export type ReviewRow = Readonly<{
   location_input_method?: 'manual_pin' | 'text' | 'unknown';
   source_url?: string; observed_on?: string; description?: string;
   expected_behavior?: string; reproduction_steps?: string; page_url?: string;
+  email_reply_available?: true;
 }>;
 export type ReviewQueue = Readonly<{ submissions: readonly ReviewRow[]; pending_count: number }>;
 export type ReviewQueueFilter = 'pending' | ContributionStatus;
@@ -60,7 +62,8 @@ export class CommunityError extends Error {
   constructor(readonly category: 'unavailable' | 'invalid' | 'network' | 'unauthorized', message: string) { super(message); }
 }
 export type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
-export type CommunityCapabilities = Readonly<{ enabled: boolean; types: readonly ContributionKind[] }>;
+export type CommunityCapabilities = Readonly<{ enabled: boolean; types: readonly ContributionKind[]; emailUpdatesEnabled?: true }>;
+
 let capabilitiesRequest: Promise<CommunityCapabilities> | undefined;
 
 /** Public, deliberately small runtime switch for a locked static build. */
@@ -72,7 +75,8 @@ export function communityCapabilities(fetcher: FetchLike = fetch, refresh = fals
       if (!response.ok) return { enabled: false, types: [] };
       const value = record(await response.json());
       if (value.enabled !== true || !Array.isArray(value.types) || value.types.length !== KINDS.size || value.types.some(type => typeof type !== 'string' || !KINDS.has(type as ContributionKind))) return { enabled: false, types: [] };
-      return { enabled: true, types: value.types as ContributionKind[] };
+      return { enabled: true, types: value.types as ContributionKind[],
+        ...(value.email_updates_enabled === true ? { emailUpdatesEnabled: true as const } : {}) };
     } catch { return { enabled: false, types: [] }; }
   })();
   if (fetcher === fetch) capabilitiesRequest = request;
@@ -166,6 +170,7 @@ function parseReviewRow(value: unknown): ReviewRow {
     ...(row.expected_behavior ? { expected_behavior: string(row, 'expected_behavior', 1000)! } : {}),
     ...(row.reproduction_steps ? { reproduction_steps: string(row, 'reproduction_steps', 2000)! } : {}),
     ...(row.page_url ? { page_url: safeHttpUrl(row.page_url, 1000) } : {}),
+    ...(row.email_reply_available === true ? { email_reply_available: true } : {}),
   };
 }
 async function request<T>(fetcher: FetchLike, path: string, init: RequestInit, parse: (body: unknown) => T): Promise<T> {
@@ -208,6 +213,7 @@ export function validateContributionDraft(draft: ContributionDraft): void {
   if (draft.kind === 'bug' && (!draft.description?.trim() || !draft.reproduction_steps?.trim())) throw new CommunityError('invalid', 'Describe the issue and how to reproduce it.');
   if (draft.kind !== 'bug' && (draft.expected_behavior !== undefined || draft.reproduction_steps !== undefined || draft.page_url !== undefined)) throw new CommunityError('invalid', 'Bug report fields require a bug report.');
   if (draft.page_url) safeHttpUrl(draft.page_url, 1000);
+  if (draft.email_updates && !draft.contact_email) throw new CommunityError('invalid', 'Enter an email address for updates.');
   if (draft.contact_email !== undefined && (draft.contact_email.length > 254 || !/^[^\s@]+@[^\s@]+$/.test(draft.contact_email))) throw new CommunityError('invalid', 'Enter a valid email address or leave it blank.');
   if (draft.target_record_id && !UUID.test(draft.target_record_id)) throw new CommunityError('invalid', 'Enter a valid record identifier.');
   if (draft.duplicate_record_id && !UUID.test(draft.duplicate_record_id)) throw new CommunityError('invalid', 'Enter a valid duplicate record identifier.');
@@ -263,6 +269,14 @@ export function createCommunityRepository(fetcher: FetchLike = fetch) {
         if (envelope.api_version !== 'v2' || data.profile !== 'community' || !/^[A-Za-z0-9._-]{1,160}$/.test(releaseId)) throw new CommunityError('invalid', 'The current community release is unavailable.');
         return releaseId;
       });
+    },
+    reply(token: string, id: string, requestId: string, message: string) {
+      if (!token || !UUID.test(id) || !UUID.test(requestId)) throw new CommunityError('invalid', 'Select a valid queue item.');
+      if (!message.trim() || new TextEncoder().encode(message.trim()).length > 2000) throw new CommunityError('invalid', 'Enter a reply of up to 2,000 bytes.');
+      return request(fetcher, '/api/private/community/submissions/' + encodeURIComponent(id) + '/reply',
+        { method: 'POST', headers: { Authorization: 'Bearer ' + token }, body: JSON.stringify({request_id: requestId, message: message.trim()}) }, body => {
+          if (record(body).queued !== true) throw new CommunityError('invalid', 'The reply could not be queued.');
+        });
     },
     disposition(token: string, id: string, decision: Disposition) {
       if (!token || !UUID.test(id) || !['hold','screen','reject','restrict','remove','link_community'].includes(decision.action)

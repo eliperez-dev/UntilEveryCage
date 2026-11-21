@@ -1,6 +1,7 @@
 //! Account-free community intake. Submitted material stays restricted; the
 //! public endpoints can only expose operator-linked rows in the live release
 //! projection, which rechecks the current privacy and publication gates.
+mod email;
 mod secure;
 
 use crate::{v2_error, ApiState};
@@ -34,6 +35,7 @@ pub struct CommunityConfig {
     pub pending_cap: i64,
     operator_token: Option<String>,
     secure: secure::Config,
+    email: Option<email::Config>,
 }
 
 impl CommunityConfig {
@@ -48,6 +50,7 @@ impl CommunityConfig {
             pending_cap: 0,
             operator_token: None,
             secure: secure::Config::disabled(),
+            email: None,
         }
     }
 
@@ -93,6 +96,7 @@ impl CommunityConfig {
             pending_cap,
             operator_token: Some(operator_token),
             secure: secure::Config::disabled(),
+            email: None,
         })
     }
 
@@ -124,7 +128,11 @@ impl CommunityConfig {
         }
         let enabled = bool_env("UEC_COMMUNITY_ENABLED", false)?;
         let public_enabled = bool_env("UEC_COMMUNITY_PUBLIC_ENABLED", false)?;
+        let email_enabled = bool_env("UEC_COMMUNITY_EMAIL_ENABLED", false)?;
         if !enabled {
+            if email_enabled {
+                return Err("community email requires enabled community intake".into());
+            }
             if std::env::var("UEC_COMMUNITY_SECURE_ENABLED").is_ok_and(|value| value != "false") {
                 return Err("encrypted inbox requires enabled community intake".into());
             }
@@ -151,7 +159,27 @@ impl CommunityConfig {
             token,
         )?;
         config.secure = secure::Config::from_env(mode)?;
+        if email_enabled {
+            config.email = Some(email::Config::from_env()?);
+        }
         Ok(config)
+    }
+
+    pub async fn validate_email_schema(&self, pool: Option<&deadpool_postgres::Pool>) -> Result<(), &'static str> {
+        if self.email.is_none() { return Ok(()); }
+        let client = pool.ok_or("community_email_pool_missing")?.get().await.map_err(|_| "community_email_pool_unavailable")?;
+        client.query("SELECT c.email_updates, o.id FROM uec.community_submission_contacts c CROSS JOIN uec.community_email_outbox o LIMIT 0", &[])
+            .await.map_err(|_| "community_email_migration_missing")?;
+        let writes: bool = client.query_one("SELECT has_table_privilege('uec.community_email_outbox', 'INSERT') AND has_table_privilege('uec.community_email_outbox', 'UPDATE') AND has_table_privilege('uec.community_email_outbox', 'DELETE')", &[])
+            .await.map_err(|_| "community_email_outbox_permissions")?.get(0);
+        if !writes { return Err("community_email_outbox_permissions"); }
+        Ok(())
+    }
+
+    pub fn start_email_worker(&self, pool: Option<&deadpool_postgres::Pool>) {
+        if let (Some(config), Some(pool)) = (&self.email, pool) {
+            tokio::spawn(email::run(pool.clone(), config.clone()));
+        }
     }
 }
 
@@ -166,6 +194,7 @@ pub fn routes(config: CommunityConfig) -> Router<ApiState> {
             "/api/private/community/submissions/{submission_id}/disposition",
             post(disposition),
         )
+        .route("/api/private/community/submissions/{submission_id}/reply", post(email::reply))
         .route("/api/private/community/maintenance", post(maintenance))
         .route("/api/community/claims", get(public_claims))
         .route("/api/community/claims/{submission_id}", get(public_claim))
@@ -213,6 +242,8 @@ pub struct SubmissionInput {
     pub reproduction_steps: Option<String>,
     pub page_url: Option<String>,
     pub contact_email: Option<String>,
+    #[serde(default)]
+    pub email_updates: bool,
     pub consent: bool,
 }
 
@@ -249,6 +280,9 @@ fn valid_email(value: &str) -> bool {
         })
 }
 fn validate(input: &SubmissionInput) -> Result<(), &'static str> {
+    if input.email_updates && input.contact_email.is_none() {
+        return Err("email_updates requires contact_email");
+    }
     if ![
         "facility",
         "evidence",
@@ -383,7 +417,7 @@ fn validate(input: &SubmissionInput) -> Result<(), &'static str> {
 fn restricted_claim(input: &SubmissionInput) -> Result<Value, serde_json::Error> {
     let mut claim = serde_json::to_value(input)?;
     if let Some(fields) = claim.as_object_mut() {
-        fields.retain(|name, value| name != "contact_email" && !value.is_null());
+        fields.retain(|name, value| !matches!(name.as_str(), "contact_email" | "email_updates") && !value.is_null());
         if fields.get("country_code").and_then(Value::as_str) == Some("unknown") {
             fields.remove("country_code");
         }
@@ -497,12 +531,15 @@ async fn capabilities(Extension(cs): Extension<CommunityState>) -> Response {
     if !cs.config.enabled {
         return disabled();
     }
-    Json(json!({
+    let mut capabilities = json!({
         "enabled": true,
         "bug_reports_enabled": true,
         "types": ["facility", "evidence", "correction", "duplicate", "privacy_removal"]
-    }))
-    .into_response()
+    });
+    if cs.config.email.is_some() {
+        capabilities["email_updates_enabled"] = json!(true);
+    }
+    Json(capabilities).into_response()
 }
 
 async fn create_submission(
@@ -571,8 +608,16 @@ async fn create_submission(
     if insert.is_err() {
         return unavailable();
     }
-    if let Some(email) = input.contact_email.as_deref() {
-        if tx.execute("INSERT INTO uec.community_submission_contacts(submission_id,email,expires_at) VALUES($1,$2,now()+($3::bigint*interval '1 day'))", &[&submission_id,&email,&cs.config.contact_retention_days]).await.is_err() { return unavailable(); }
+    if let Some(address) = input.contact_email.as_deref() {
+        let stored = if cs.config.email.is_some() {
+            tx.execute("INSERT INTO uec.community_submission_contacts(submission_id,email,expires_at,email_updates) VALUES($1,$2,now()+($3::bigint*interval '1 day'),$4)", &[&submission_id,&address,&cs.config.contact_retention_days,&input.email_updates]).await
+        } else {
+            tx.execute("INSERT INTO uec.community_submission_contacts(submission_id,email,expires_at) VALUES($1,$2,now()+($3::bigint*interval '1 day'))", &[&submission_id,&address,&cs.config.contact_retention_days]).await
+        };
+        if stored.is_err() { return unavailable(); }
+    }
+    if cs.config.email.is_some() && email::enqueue(&tx, Uuid::new_v4(), submission_id, "reviewer_alert", None).await.is_err() {
+        return unavailable();
     }
     if tx.execute("INSERT INTO uec.community_submission_events(submission_id,action,reason_code,actor_role) VALUES($1,'received','intake_received','system')", &[&submission_id]).await.is_err() || tx.commit().await.is_err() { return unavailable(); }
     (
@@ -681,7 +726,16 @@ async fn queue(
     let Ok(client) = pool(&api).await else {
         return unavailable();
     };
-    let rows=client.query("SELECT submission_id,kind,status,claim::text,created_at,updated_at FROM uec.community_submissions WHERE (($1::text IS NOT NULL AND status=$1) OR ($1::text IS NULL AND status IN ('received','held'))) ORDER BY created_at,submission_id LIMIT $2", &[&q.status,&limit]).await;
+    let contact_available = if cs.config.email.is_some() {
+        "s.status NOT IN ('restricted','removed') AND s.claim <> '{}'::jsonb AND EXISTS (
+            SELECT 1 FROM uec.community_submission_contacts c
+            WHERE c.submission_id=s.submission_id AND c.email_updates AND c.expires_at > now())"
+    } else { "false" };
+    let rows = client.query(&format!(
+        "SELECT submission_id,kind,status,claim::text,created_at,updated_at,{contact_available}
+         FROM uec.community_submissions s WHERE (($1::text IS NOT NULL AND status=$1)
+         OR ($1::text IS NULL AND status IN ('received','held'))) ORDER BY created_at,submission_id LIMIT $2"
+    ), &[&q.status,&limit]).await;
     let Ok(rows) = rows else { return unavailable() };
     let pending: i64 = client
         .query_one(
@@ -691,7 +745,7 @@ async fn queue(
         .await
         .map(|r| r.get(0))
         .unwrap_or(0);
-    let submissions:Vec<Value>=rows.iter().map(|r|{let text:String=r.get(3);let claim:Value=serde_json::from_str(&text).unwrap_or_else(|_|json!({}));let mut item=json!({"submission_id":r.get::<_,Uuid>(0),"kind":r.get::<_,String>(1),"status":r.get::<_,String>(2),"created_at":r.get::<_,chrono::DateTime<Utc>>(4),"updated_at":r.get::<_,chrono::DateTime<Utc>>(5)});if let (Some(fields),Value::Object(claim_fields))=(item.as_object_mut(),claim){fields.extend(claim_fields);}item}).collect();
+    let submissions:Vec<Value>=rows.iter().map(|r|{let text:String=r.get(3);let claim:Value=serde_json::from_str(&text).unwrap_or_else(|_|json!({}));let mut item=json!({"submission_id":r.get::<_,Uuid>(0),"kind":r.get::<_,String>(1),"status":r.get::<_,String>(2),"created_at":r.get::<_,chrono::DateTime<Utc>>(4),"updated_at":r.get::<_,chrono::DateTime<Utc>>(5)});if let (Some(fields),Value::Object(claim_fields))=(item.as_object_mut(),claim){fields.extend(claim_fields);}if r.get::<_,bool>(6) { item["email_reply_available"] = json!(true); }item}).collect();
     Json(json!({"submissions":submissions,"pending_count":pending})).into_response()
 }
 
@@ -817,6 +871,13 @@ async fn disposition(
             // action explicitly deletes sensitive claim/contact data.
             if tx.execute("UPDATE uec.community_submissions SET status=$2,updated_at=now(),claim='{}'::jsonb,receipt_secret_sha256=NULL,linked_source_record_id=NULL,linked_release_id=NULL WHERE submission_id=$1",&[&id,&status]).await.is_err() || tx.execute("DELETE FROM uec.community_submission_contacts WHERE submission_id=$1",&[&id]).await.is_err(){return unavailable()}
         } else if tx.execute("UPDATE uec.community_submissions SET status=$2,updated_at=now() WHERE submission_id=$1",&[&id,&status]).await.is_err(){return unavailable()}
+    }
+    if cs.config.email.is_some() && old != status {
+        if let Some(message) = email::status_message(status) {
+            if email::enqueue(&tx, Uuid::new_v4(), id, "status_update", Some(message)).await.is_err() {
+                return unavailable();
+            }
+        }
     }
     if tx.execute("INSERT INTO uec.community_submission_events(submission_id,action,reason_code,actor_role,release_id,source_record_id) VALUES($1,$2,$3,'operator',$4,$5)",&[&id,&d.action,&d.reason_code,&d.release_id,&d.community_record_id]).await.is_err()||tx.commit().await.is_err(){return unavailable()}
     Json(json!({"submission_id":id,"status":status})).into_response()
@@ -1004,6 +1065,7 @@ mod tests {
             reproduction_steps: None,
             page_url: None,
             contact_email: None,
+            email_updates: false,
             consent: true,
         }
     }
@@ -1063,10 +1125,12 @@ mod tests {
         let mut x = sample("facility");
         x.claimed_precision = Some("unmapped".into());
         x.contact_email = Some("synthetic@example.org".into());
+        x.email_updates = true;
         let claim = restricted_claim(&x).expect("serializes claim");
         let fields = claim.as_object().expect("claim object");
         assert!(!fields.contains_key("label"));
         assert!(!fields.contains_key("contact_email"));
+        assert!(!fields.contains_key("email_updates"));
         assert_eq!(
             fields.get("claimed_precision").and_then(Value::as_str),
             Some("unmapped")
@@ -1229,6 +1293,7 @@ mod tests {
             pending_cap: 25,
             operator_token: Some("operator-secret-which-is-not-a-receipt".into()),
             secure: secure::Config::disabled(),
+            email: None,
         };
         let mut headers = HeaderMap::new();
         headers.insert(

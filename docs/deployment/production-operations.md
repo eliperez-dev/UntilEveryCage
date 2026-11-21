@@ -58,6 +58,35 @@ reject a community URL authenticated as the serving role.
 
 ### Restricted community runtime role
 
+### Optional contribution email
+
+Keep UEC_COMMUNITY_EMAIL_ENABLED=false until the sender and delivery tests
+are ready. Apply migration 122_community_email_outbox.sql on the restricted
+intake database and grant its runtime role SELECT, INSERT, UPDATE and DELETE
+on uec.community_email_outbox. The public serving role has no access.
+
+Set the following server-side Render environment values to enable delivery.
+
+| Variable | Value |
+| --- | --- |
+| UEC_COMMUNITY_EMAIL_ENABLED | true |
+| UEC_COMMUNITY_EMAIL_API_KEY | Send-only Resend API key |
+| UEC_COMMUNITY_EMAIL_FROM | Mailbox address on a verified project sending domain |
+| UEC_COMMUNITY_EMAIL_INBOX | Shared reviewer mailbox that receives alerts and replies |
+| UEC_COMMUNITY_EMAIL_SITE_URL | HTTPS origin used in reviewer links |
+
+The API writes delivery jobs with accepted intake and decisions. A bounded
+background task in the existing service sends through Resend over HTTPS.
+Resend receives the recipient, subject and message needed for delivery.
+Send retries reuse a job key and stop inside the 24-hour queue window.
+The worker clears completed bodies and logs only kind and result. Contact
+expiry or deletion removes associated pending replies and status jobs.
+
+Test on the preview with approved test addresses. Confirm an alert, a
+contributor status update and a reviewer reply, then confirm that replying
+lands in the shared inbox. Check the opt-out path and provider failure.
+Keep the provider key and receipt secrets out of the test transcript.
+
 The encrypted inbox is a separate, default-off **local experiment**. Do not set
 `UEC_COMMUNITY_SECURE_ENABLED=true` on Render: production startup rejects it.
 Migration `099_community_encrypted_inbox.sql` adds restricted tables only and

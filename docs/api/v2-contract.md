@@ -115,10 +115,11 @@ role separation, retention and deployment settings.
 
 | Route | Access and response |
 | --- | --- |
-| `POST /api/community/submissions` | Bounded JSON, five record-contribution kinds plus separate bug-report intake; returns ID, one-time receipt secret and `received`. Contact stored separately; no fetching or automatic publication. |
+| `POST /api/community/submissions` | Bounded JSON, five record-contribution kinds plus separate bug-report intake; returns ID, one-time receipt secret and `received`. Contact and optional boolean email_updates opt-in stored separately. No source-URL fetching or automatic publication. |
 | `POST /api/community/status` | ID and secret in JSON body only; returns processing status and, when currently eligible, a community record link. Invalid/expired/revoked credentials use generic 404. |
-| `GET /api/private/community/submissions` | Distinct bearer operator credential; pending by default, optional status filter, limit 1–50. Restricted claim fields, no contact/hash/secret. |
+| `GET /api/private/community/submissions` | Distinct bearer operator credential; pending by default, optional status filter, limit 1–50. Restricted claim fields with email_reply_available when an opted-in contact can receive mail. Omits address, receipt hash and receipt secret. |
 | `POST /api/private/community/submissions/{id}/disposition` | Operator actions `hold`, `screen`, `reject`, `restrict`, `remove`, `link_community`; fixed reason categories. Screen is privacy screening, never factual endorsement. |
+| `POST /api/private/community/submissions/{id}/reply` | Operator bearer, valid opted-in contact and enabled email delivery. Bounded JSON with request_id UUID and message up to 2,000 UTF-8 bytes. Returns 202 if queued, with deduplication by request ID for the delivery window. |
 | `POST /api/private/community/maintenance` | Operator-only aggregate expiry counts. Clears expired contact/claims and hashes; preserves decision tombstones/events. Requires an external maintenance schedule. |
 | `GET /api/community/claims` and `GET /api/community/claims/{id}` | Separately enabled, explicit `profile=community` and release ID. Live eligible release links only; persistent warning, unreviewed/not-approved metadata, separate linked-claim count. List fails closed above 500 linked candidates. |
 

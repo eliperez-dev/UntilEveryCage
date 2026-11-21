@@ -315,6 +315,8 @@ export const es = {
   'Record link ready. Public details are unavailable.': 'Enlace del registro listo. Los detalles públicos no están disponibles.',
   '* Required': '* Obligatorio',
   'A record link works even when public details are unavailable.': 'El enlace del registro sirve aunque sus detalles públicos no estén disponibles.',
+  'Email me about this submission.': 'Envíenme noticias sobre este envío por correo.',
+  'Enter an email address for updates.': 'Ingresa un correo electrónico para recibir novedades.',
   'Add follow-up contact (optional)': 'Añadir contacto de seguimiento (opcional)',
   'Add location details (optional)': 'Añadir detalles de ubicación (opcional)',
   'Additional details (optional)': 'Detalles adicionales (opcional)',

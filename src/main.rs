@@ -1031,6 +1031,10 @@ async fn main() {
             std::process::exit(2);
         }
     }
+    if let Err(reason) = community.validate_email_schema(community_database.as_ref()).await {
+        eprintln!("{}", serde_json::json!({"event":"configuration_error","reason":reason}));
+        std::process::exit(2);
+    }
     let addr = format!("{}:{}", bind_host, port);
     println!(
         "{{\"event\":\"server_starting\",\"service\":\"uec-api\",\"mode\":\"{}\",\"port\":{},\"restriction_ledger\":\"{}\",\"release_manifest\":\"{}\"}}",
@@ -1095,6 +1099,7 @@ async fn main() {
             std::process::exit(1);
         }
     };
+    community.start_email_worker(state.community_database.as_ref());
     let warm_state = state.clone();
     let warm_development_facets = mode == "development";
     tokio::spawn(async move {

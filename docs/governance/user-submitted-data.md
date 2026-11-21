@@ -18,7 +18,7 @@ secrets, caps and retention; [API contract](../api/v2-contract.md) owns routes.
 
 Bug reports use the same restricted intake infrastructure as a separate kind;
 they are not facility claims and must be saved, not composed as email drafts.
-No uploads, accounts, automated email, password recovery or arbitrary source-URL
+No uploads, accounts, password recovery or arbitrary source-URL
 fetching are part of this implementation.
 
 Contributors receive a Track submission link. Its secret capability belongs in
@@ -26,7 +26,11 @@ the fragment; the client sends credentials in a POST body for status lookup.
 Status returns processing state and an eligible link, not raw intake, contact,
 operator notes or another person's submission. Do not log tokens or include
 them in URL queries. Optional email is separately stored private contact, not
-a subscription or authentication.
+authentication. When delivery is enabled, contributors explicitly opt in to
+status email and reviewer replies. The private queue shows reply availability
+without revealing the address. Reviewer alerts contain the reference and queue
+URL. Contributor mail uses the reference only and directs replies to the
+project inbox. Email never includes the private receipt secret.
 
 ## Data and access boundaries
 
@@ -62,7 +66,7 @@ origin when evidence is reviewed or promoted.
 - Test all five kinds, bug persistence, target links, status isolation/revocation,
   malformed inputs, admission limits and no automatic curated-data mutation.
 
-Accounts, contributor history, email delivery and screened community publication
+Accounts, contributor history and screened community publication
 may be considered later through [the sole roadmap](../PRODUCT-READINESS.md).
 Do not reintroduce an accounts-provider proposal or a separate feature roadmap.
 

@@ -1,4 +1,6 @@
 {
+  "Email me about this submission.": "通过电子邮件接收这份提交的更新。",
+  "Enter an email address for updates.": "请输入接收更新的电子邮件地址。",
   "Name not provided": "未提供名称",
   "Explore documented facilities and related businesses in the countries our sources cover.": "探索我们的来源所覆盖国家中有记录的设施及相关企业。",
   "{count} matching records · {shown} shown": "{count} 条匹配记录 · 已显示 {shown} 条",

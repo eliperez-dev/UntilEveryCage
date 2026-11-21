@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { createNavigationCommitGuard } from './navigationCommit';
+  import { clearMapBuildRecovery, recoverMapBuild } from './mapBuildRecovery';
   import { canonicalRouteHref, mapHrefFromHash, parseRoute, safeMapHref, type RouteState } from './routeState';
   import LandingPage from './LandingPage.svelte';
   import AboutPage from './AboutPage.svelte';
@@ -71,9 +72,17 @@
         void import('../design-lab/DesignLab.svelte').then(module => {
           if (generation !== routeGeneration) return;
           navigationCommit?.commit(() => {
-            if (generation === routeGeneration && window.location.hash.split('?')[0] === '#/map') DesignLab = module.default;
+            if (generation === routeGeneration && window.location.hash.split('?')[0] === '#/map') {
+              DesignLab = module.default;
+              clearMapBuildRecovery();
+            }
           });
-        }).catch(() => { if (generation === routeGeneration) loadError = 'The public map could not be opened.'; });
+        }).catch(async () => {
+          const stillOnMap = () => generation === routeGeneration && route.kind === 'map';
+          if (!stillOnMap()) return;
+          if (import.meta.env.PROD && await recoverMapBuild(stillOnMap)) return;
+          if (stillOnMap()) loadError = 'The public map could not be opened.';
+        });
       }
       if ((route.kind === 'api' || route.kind === 'downloads') && !ApiPage) {
         apiModule ??= import('./ApiPage.svelte');

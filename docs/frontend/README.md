@@ -394,7 +394,7 @@ Contribute opens Add a facility. Three main tasks are Add a facility, Update a
 record and Report a problem; Update groups correction, evidence and duplicate.
 Keep Privacy/removal directly accessible and Track submission near the page
 heading. On mobile and narrow tablets, use a compact labeled task chooser in place
-of the desktop task cards, with Privacy/removal included. Put the current form
+of the desktop task bar, with Privacy/removal included. Put the current form
 directly below it, retain the update subtype links, and keep inputs at 16px.
 Mobile forms use the normal page scroll; submit and receipt actions remain fully
 readable without nested frames or fixed overlays. Preserve older task URLs and
@@ -418,8 +418,10 @@ capability and verified transport before appearing in the public flow.
 Beside Copy tracking link, show: `Save this link. You cannot access your submission again without it.`
 
 Use one Track submission link, with its capability in the fragment and status
-credentials sent in a POST body. Accounts, uploads, automated email and receipt
-recovery are not implemented. Public community browsing is offered only for an
+credentials sent in a POST body. Accounts, uploads and receipt recovery are
+not implemented. With email delivery enabled, the optional follow-up contact
+section offers explicit opt-in to status email and reviewer replies. The
+private review queue offers Reply only for a currently opted-in contact. Public community browsing is offered only for an
 eligible published community release; intake never automatically changes the
 curated map, graph or counts. The [contribution contract](../governance/user-submitted-data.md)
 and [production runbook](../deployment/production-operations.md) own operational details.

@@ -44,6 +44,43 @@ async function mockCommunityApi(page: Page) {
   });
 }
 test.beforeEach(async({page})=>mockCommunityApi(page));
+test('opted-in email is explicit and an eligible reviewer can queue one reply', async ({page}) => {
+  await page.route('**/api/community/capabilities', route => route.fulfill({json:{enabled:true,
+    types:['facility','evidence','correction','duplicate','privacy_removal'],email_updates_enabled:true}}));
+  await page.goto('#/contribute');
+  await page.getByLabel('Facility name').fill('Synthetic email test');
+  await page.getByText('Add follow-up contact (optional)', {exact:true}).click();
+  const email = page.getByRole('checkbox',{name:'Email me about this submission.'});
+  await expect(email).not.toBeChecked();
+  await email.check();
+  await page.getByRole('checkbox',{name:'I have permission to share this information.'}).check();
+  await page.getByRole('button',{name:'Send for review',exact:true}).click();
+  await expect(page.getByText('Enter an email address for updates.')).toBeVisible();
+  await page.getByLabel('Email for follow-up (optional)').fill('synthetic@example.test');
+  const submitted = page.waitForRequest(request => request.url().endsWith('/api/community/submissions') && request.method()==='POST');
+  await submitAndTrack(page);
+  expect((await submitted).postDataJSON()).toMatchObject({contact_email:'synthetic@example.test',email_updates:true});
+  await page.route('**/api/private/community/submissions?**', route => route.fulfill({json:{pending_count:1,submissions:[{...rowDto,email_reply_available:true}]}}));
+  const replies: Array<{request_id:string;message:string}> = [];
+  await page.route('**/api/private/community/submissions/*/reply', async route => {
+    replies.push(route.request().postDataJSON());
+    await route.fulfill(replies.length===1 ? {status:503,json:{}} : {status:202,json:{queued:true}});
+  });
+  await page.goto('#/contribution-review');
+  await page.getByLabel('Local operator token').fill('synthetic-operator-token');
+  await page.getByRole('button',{name:'Open restricted queue'}).click();
+  await page.getByRole('button',{name:'Reply',exact:true}).click();
+  await page.getByLabel('Reply to contributor').fill('Synthetic reviewer reply.');
+  const send = page.getByRole('button',{name:'Send reply',exact:true});
+  await send.click();
+  await expect(page.getByRole('alert')).toBeVisible();
+  await send.click();
+  await expect(page.getByText('Reply queued for email delivery.')).toBeVisible();
+  expect(replies).toHaveLength(2);
+  expect(replies[1]).toEqual(replies[0]);
+  await expect(page.getByText(rowDto.contact_email,{exact:true})).toHaveCount(0);
+});
+
 const task=(page:Page,name:string)=>({click:async()=>{
   const chooser=page.locator('#contribution-task');
   if(await chooser.isVisible()){

@@ -8,7 +8,7 @@ export type IntakeDraft = {
   claimedActivity: string; locationText: string; latitude: number | undefined; longitude: number | undefined;
   precision: ClaimedPrecision; locationInputMethod: 'manual_pin' | 'text' | undefined;
   sourceUrl: string; observedOn: string; description: string; expectedBehavior: string;
-  reproductionSteps: string; pageUrl: string; contactEmail: string; consent: boolean;
+  reproductionSteps: string; pageUrl: string; contactEmail: string; emailUpdates: boolean; consent: boolean;
   detailsOpen: boolean; locationOpen: boolean; contactOpen: boolean;
 };
 export type IntakeErrors = Partial<Record<keyof IntakeDraft | 'form', string>>;
@@ -21,7 +21,7 @@ export function emptyIntakeDraft(): IntakeDraft {
   return { targetReference: '', duplicateReference: '', label: '', countryCode: '', locality: '', claimedActivity: '',
     locationText: '', latitude: undefined, longitude: undefined, precision: 'unknown', locationInputMethod: undefined,
     sourceUrl: '', observedOn: '', description: '', expectedBehavior: '', reproductionSteps: '', pageUrl: '',
-    contactEmail: '', consent: false, detailsOpen: false, locationOpen: false, contactOpen: false };
+    contactEmail: '', emailUpdates: false, consent: false, detailsOpen: false, locationOpen: false, contactOpen: false };
 }
 export function createIntakeDrafts(): Record<SubmissionKind, IntakeDraft> {
   return Object.fromEntries(intakeKinds.map(kind => [kind, emptyIntakeDraft()])) as Record<SubmissionKind, IntakeDraft>;
@@ -30,7 +30,7 @@ const httpUrl = (value: string): boolean => {
   try { const url = new URL(value); return ['https:', 'http:'].includes(url.protocol) && !url.username && !url.password; }
   catch { return false; }
 };
-export function validateIntakeDraft(kind: SubmissionKind, draft: IntakeDraft): IntakeErrors {
+export function validateIntakeDraft(kind: SubmissionKind, draft: IntakeDraft, emailUpdatesEnabled = false): IntakeErrors {
   const errors: IntakeErrors = {};
   const target = parseRecordReference(draft.targetReference);
   const duplicate = parseRecordReference(draft.duplicateReference);
@@ -42,6 +42,7 @@ export function validateIntakeDraft(kind: SubmissionKind, draft: IntakeDraft): I
   if (kind === 'bug' && !draft.reproductionSteps.trim()) errors.reproductionSteps = 'Describe how to reproduce the issue.';
   if (draft.sourceUrl.trim() && !httpUrl(draft.sourceUrl.trim())) errors.sourceUrl = 'Use a complete web link without embedded sign-in details.';
   if (kind === 'bug' && draft.pageUrl.trim() && !httpUrl(draft.pageUrl.trim())) errors.pageUrl = 'Use a complete web link without embedded sign-in details.';
+  if (emailUpdatesEnabled && draft.emailUpdates && !draft.contactEmail.trim()) errors.contactEmail = 'Enter an email address for updates.';
   if (draft.contactEmail.trim() && !/^[^\s@]+@[^\s@]+$/.test(draft.contactEmail.trim())) errors.contactEmail = 'Enter a valid email address or leave it blank.';
   if (kind !== 'bug' && !draft.consent) errors.consent = 'Confirm you have permission to share this information.';
   if (kind === 'facility' || kind === 'correction') {
@@ -51,7 +52,7 @@ export function validateIntakeDraft(kind: SubmissionKind, draft: IntakeDraft): I
   }
   return errors;
 }
-export function buildIntakePayload(kind: SubmissionKind, draft: IntakeDraft): ContributionDraft {
+export function buildIntakePayload(kind: SubmissionKind, draft: IntakeDraft, emailUpdatesEnabled = false): ContributionDraft {
   if (kind !== 'bug' && !draft.consent) throw new CommunityError('invalid', 'Confirm you have permission to share this information.');
   const text = (value: string) => value.trim() || undefined;
   const target = parseRecordReference(draft.targetReference), duplicate = parseRecordReference(draft.duplicateReference);
@@ -73,6 +74,7 @@ export function buildIntakePayload(kind: SubmissionKind, draft: IntakeDraft): Co
     ...(['facility', 'evidence'].includes(kind) && text(draft.observedOn) ? { observed_on: draft.observedOn } : {}),
     ...(text(draft.description) ? { description: draft.description.trim() } : {}),
     ...(text(draft.contactEmail) ? { contact_email: draft.contactEmail.trim() } : {}),
+    ...(emailUpdatesEnabled && draft.emailUpdates ? { email_updates: true } : {}),
     ...(kind === 'bug' ? { reproduction_steps: draft.reproductionSteps.trim(),
       ...(text(draft.expectedBehavior) ? { expected_behavior: draft.expectedBehavior.trim() } : {}),
       ...(text(draft.pageUrl) ? { page_url: draft.pageUrl.trim() } : {}) } : {}),
