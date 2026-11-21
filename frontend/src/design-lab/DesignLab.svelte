@@ -17,6 +17,7 @@
   import type { Location } from '../domain/location';
   import { CATEGORY_PRESENTATIONS } from '../features/locations/categoryPresentation';
   import { publicReleaseLabel } from '../features/locations/releasePresentation';
+  import { sourceDisplayName } from '../features/locations/sourcePresentation';
   import type { PublicMapFeed } from '../api/PublicMapFeedRepository';
   import { PUBLIC_SEARCH_PAGE_SIZE, selectDesignLabDataMode, shouldScheduleListLoad } from './dataMode';
   import Field from './variants/field/Field.svelte';
@@ -186,7 +187,7 @@
       const countries = new Intl.DisplayNames(['en'], { type: 'region' });
       candidateFacets = {
         countries: (response.dimensions.country_code ?? []).map(facet => ({ ...facet, label: countries.of(facet.value) ?? facet.value })),
-        sources: (response.dimensions.source_id ?? []).map(facet => ({ ...facet, label: facet.label ?? facet.value })),
+        sources: (response.dimensions.source_id ?? []).map(facet => ({ ...facet, label: sourceDisplayName(facet.value, facet.label) })),
         categories: [], activities: [],
       };
       facetsStatus = 'ready';

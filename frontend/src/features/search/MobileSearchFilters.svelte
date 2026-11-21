@@ -2,6 +2,7 @@
   import type { LabFilters } from '../../design-lab/contract';
   import type { CandidateFacets } from '../../api/TestReleaseRepository';
   import { CATEGORY_PRESENTATIONS } from '../locations/categoryPresentation';
+  import { sourceDisplayName } from '../locations/sourcePresentation';
   import { language, tr } from '../../app/language';
   let { filters, sourceId, facets, facetsStatus, onchange, onclose }: {
     filters:LabFilters; sourceId:string|null; facets:CandidateFacets|null;
@@ -21,9 +22,9 @@
   const selectedSources = $derived([...new Set([...(sourceId ? [sourceId] : []), ...filters.sources])]);
   const sourceChoices = $derived([
     ...(facets?.sources ?? []),
-    ...selectedSources.filter(value => !facets?.sources.some(facet => facet.value === value)).map(value => ({ value, count: 0, label: value })),
+    ...selectedSources.filter(value => !facets?.sources.some(facet => facet.value === value)).map(value => ({ value, count: 0, label: sourceDisplayName(value) })),
   ]);
-  function sourceName(value: string) { return facets?.sources.find(facet => facet.value === value)?.label ?? value; }
+  function sourceName(value: string) { return sourceDisplayName(value, facets?.sources.find(facet => facet.value === value)?.label); }
   function clear() { onchange({filters: {categories:[],countries:[],sources:[],activities:[],precisions:[]}, sourceId: null}); }
 </script>
 <section class="mobile-filter-view" aria-labelledby="mobile-filter-title">
@@ -39,7 +40,7 @@
 <style>
   .mobile-filter-view{display:flex;flex:1;min-height:0;flex-direction:column;background:var(--panel);color:var(--ink)}
   header{display:flex;align-items:center;justify-content:space-between;min-height:44px;flex:none;padding:0 .85rem .35rem;border-bottom:1px solid var(--line)}h2{font:600 .875rem/1.4 var(--ui-font);margin:0}button{min-height:44px;border:0;background:none;color:var(--ink);font:inherit;font-size:.75rem;cursor:pointer}header button{width:44px;font-size:1.3rem;color:var(--muted)}
-  .mobile-filter-scroll{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:0 .85rem .6rem}fieldset{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 .65rem;margin:.55rem 0 .7rem;padding:0;border:0;min-width:0}legend{padding:.3rem 0;font-size:.9375rem;font-weight:600}label{display:flex;align-items:center;gap:.45rem;min-height:44px;font-size:.9375rem;line-height:1.35;overflow-wrap:anywhere;min-width:0}input{width:16px;height:16px;flex:none;margin:0;accent-color:var(--ink)}.swatch{width:6px;height:6px;border-radius:50%;flex:none}.one-column{grid-template-columns:minmax(0,1fr);margin:.2rem 0}.one-column small{margin-left:auto;color:var(--muted);font-variant-numeric:tabular-nums}
+  .mobile-filter-scroll{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:0 .85rem .6rem}fieldset{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 .65rem;margin:.55rem 0 .7rem;padding:0;border:0;min-width:0}legend{padding:.3rem 0;font-size:.9375rem;font-weight:600}label{display:flex;align-items:center;gap:.45rem;min-height:44px;font-size:.9375rem;line-height:1.35;overflow-wrap:anywhere;min-width:0}input{width:16px;height:16px;flex:none;margin:0;accent-color:var(--ink)}.swatch{width:6px;height:6px;border-radius:50%;flex:none}.one-column{grid-template-columns:minmax(0,1fr);margin:.2rem 0}.one-column small{flex:none;margin-left:auto;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
   details{border-top:1px solid var(--line)}summary{display:flex;align-items:center;justify-content:space-between;gap:.65rem;min-height:44px;font-size:.75rem;cursor:pointer;list-style:none}summary::after{content:'⌄';color:var(--muted);flex:none}summary>span{max-width:65%;min-width:0;margin-left:auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}summary::-webkit-details-marker{display:none}p{font-size:.75rem;line-height:1.5;color:var(--muted)}
   footer{flex:none;padding:0 .85rem env(safe-area-inset-bottom);border-top:1px solid var(--line)}footer button{padding:0 .55rem}button:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
 </style>

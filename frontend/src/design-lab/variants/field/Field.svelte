@@ -26,6 +26,7 @@
   import { encodeMapNavigationHash } from "../../state";
   import type { PlaceSuggestion } from "../../../features/placeSearch/placeSearch";
   import { publicReleaseLabel } from "../../../features/locations/releasePresentation";
+  import { sourceDisplayName } from '../../../features/locations/sourcePresentation';
   import { CATEGORY_PRESENTATIONS } from "../../../features/locations/categoryPresentation";
   import { classificationLabel } from "../../../features/locations/classificationSummary";
   import { language, tr } from '../../../app/language';
@@ -732,7 +733,7 @@
     (!publicMap || searchDraft.trim() !== committedQuery || $suggestionIndex >= 0));
   const countries = $derived(new Intl.DisplayNames([$language], { type: 'region' }));
   function countryName(value: string) { try { return countries.of(value) ?? value; } catch { return value; } }
-  function sourceName(value: string) { return candidateFacets?.sources.find(facet => facet.value === value)?.label ?? value; }
+  function sourceName(value: string) { return sourceDisplayName(value, candidateFacets?.sources.find(facet => facet.value === value)?.label); }
   const shortCategoryLabels: Readonly<Record<string,string>> = { animal_keeping_and_production:'Animal keeping', slaughter:'Slaughter', processing_and_preparation:'Processing', research_and_animal_use:'Research', other_regulated_premises:'Other premises', unclassified:'Unclassified' };
   function categoryName(value: string) { return tr(shortCategoryLabels[value] ?? (value in CATEGORY_PRESENTATIONS ? CATEGORY_PRESENTATIONS[value as keyof typeof CATEGORY_PRESENTATIONS].label : value), $language); }
   function removeFilter(field: keyof LabFilters, value: string) {

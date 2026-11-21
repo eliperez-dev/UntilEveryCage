@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 
 const release = 'synthetic-mobile-discovery';
 const stamp = '2026-10-18T00:00:00Z';
+const frenchSource = 'fr.georisques.icpe.animal';
 const categories = ['slaughter','animal_keeping_and_production','processing_and_preparation','research_and_animal_use','other_regulated_premises','unclassified'];
 const rows = Array.from({length:132}, (_, index) => ({
   facility_id:`550e8400-e29b-41d4-a716-${String(index).padStart(12,'0')}`,
@@ -46,7 +47,7 @@ async function install(page:Page, busyOnceFor?: string) {
     else if(path.startsWith('/api/v2/locations/')) body = {api_version:'v2',data:rows.find(row => row.facility_id === path.split('/').pop()),meta};
     else if(path === '/api/v2/map/feed') body = {api_version:'v2',data:{type:'FeatureCollection',features:rows.filter(row => row.latitude !== null).map(row => ({type:'Feature',id:row.facility_id,geometry:{type:'Point',coordinates:[row.longitude,row.latitude]},properties:{facility_id:row.facility_id,source_id:row.provenance_source_id,category_key:row.category,category_keys:[row.category],precision:row.display_precision,weight:1}}))},meta:{...identity,feature_count:130,public_record_count:132,unmapped_count:2,release_label:'Synthetic area fixture',dataset_version:'synthetic'}};
     else if(path === '/api/v2/map/matches') body = {api_version:'v2',data:{facility_ids:filtered.filter(row => row.latitude !== null).map(row => row.facility_id)},meta:{...identity,total_count:filtered.length,mapped_count:filtered.filter(row => row.latitude !== null).length}};
-    else if(path === '/api/v2/discovery/facets') body = {api_version:'v2',dimensions:{country_code:[{value:'US',count:132},{value:'FR',count:0}],source_id:[{value:'synthetic-source-0',label:'Example register A',count:66},{value:'synthetic-source-1',label:'Example register B',count:66}]},meta:{...meta,filters:{},coverage_scope:'Synthetic checks',count_semantics:'Matching synthetic records'}};
+    else if(path === '/api/v2/discovery/facets') body = {api_version:'v2',dimensions:{country_code:[{value:'US',count:132},{value:'FR',count:0}],source_id:[{value:'synthetic-source-0',label:'Example register A',count:66},{value:'synthetic-source-1',label:'Example register B',count:66},{value:frenchSource,label:frenchSource,count:12499}]},meta:{...meta,filters:{},coverage_scope:'Synthetic checks',count_semantics:'Matching synthetic records'}};
     else if(path.startsWith('/api/v2/graph/')) body = {api_version:'v2-graph-v1',data:[],meta:{...meta,limit:20,page_max:100,next_cursor:null,public_projection:true}};
     else return route.fulfill({status:404,json:{}});
     return route.fulfill({json:body});
@@ -203,7 +204,7 @@ test.describe('touch search', () => {
   });
 });
 
-test('filters apply immediately and use readable activity labels', async ({ page }) => {
+test('filters apply immediately and use readable activity and source labels', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 812 });
   const calls = await install(page);
   await open(page);
@@ -235,6 +236,15 @@ test('filters apply immediately and use readable activity labels', async ({ page
   await filters.click();
   await panel.getByRole('button', { name: 'Clear filters' }).click();
   await expect(slaughter).not.toBeChecked();
+  await panel.locator('summary').filter({ hasText: /^Source/ }).click();
+  const french = panel.getByRole('checkbox', { name: /^Géorisques ICPE — Animal facilities/ });
+  await expect(french).toBeVisible();
+  await expect(panel.getByText(frenchSource, { exact: true })).toHaveCount(0);
+  const frenchCount = french.locator('..').getByText('12,499', { exact: true });
+  await expect(frenchCount).toHaveCSS('white-space', 'nowrap');
+  await french.check();
+  await expect.poll(() => calls.some(call => call.params.source_id === frenchSource)).toBe(true);
+  await expect(panel.locator('summary').filter({ hasText: /^Source/ })).toContainText('Géorisques ICPE — Animal facilities');
 });
 
 test('a busy search retries the list before asking for map matches', async ({ page }) => {
