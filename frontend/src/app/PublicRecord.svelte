@@ -181,7 +181,7 @@
         {/if}
         {#if externalMapHref}<p class="map-action"><a href={externalMapHref} target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">{tr('Open in maps', $language)}</a></p>{/if}
       </details>
-      <div class="classification-disclosure"><ClassificationSummary {record} presentation="details" detailsOpen /></div>
+      <div class="classification-disclosure"><ClassificationSummary {record} presentation="details" detailsOpen showReferences={false} /></div>
       {#if hasSourceFactRows || slaughterCodebooks.length}
         <details class="source-disclosure source-facts" open>
           <summary>{tr('Source facts', $language)}</summary>

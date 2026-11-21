@@ -70,6 +70,8 @@ for (const width of [1440, 375]) test(`direct evidence access and optional locat
     await page.goto(`./#/records/${id}?profile=official&release_id=${release}`);
   }
   const full = page.locator('.public-record');
+  await expect(full.getByText('Activity classification', { exact: true })).toBeVisible();
+  await expect(full.getByText('Category definitions', { exact: true })).toHaveCount(0);
   await expect(full.locator('.record-locality')).toHaveText(width === 375 ? 'Denmark' : 'Synthetic locality, Denmark');
   await expect(full.locator('.compact-source .direct-source')).toHaveAttribute('href', row.provenance_source_url);
   await expect(full.locator('.compact-source .direct-source')).toBeVisible();
@@ -210,7 +212,7 @@ for (const width of [320,1440]) test(`APHIS carrier explanation is readable at $
   await detail.getByRole('tab', { name: 'Details', exact: true }).click();
   await expect(classificationDetails).toHaveAttribute('open','');
   await expect(classificationDetails).toContainText('Class T - Carrier');
-  await expect(detail.getByRole('link',{name:'APHIS classification guide',exact:true})).toHaveAttribute('href','https://www.aphis.usda.gov/animal_welfare/downloads/graybook.pdf');
+  await expect(detail.getByRole('link',{name:'APHIS classification guide',exact:true})).toHaveCount(0);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
 });
 

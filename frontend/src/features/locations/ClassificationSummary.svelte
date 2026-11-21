@@ -2,23 +2,30 @@
   import { language, tr } from '../../app/language';
   import { classificationSummary, type ClassificationRecord } from './classificationSummary';
   import { classificationExplanation } from './classificationExplanation';
-  let { record, presentation = 'all', detailsOpen = false }: { record: ClassificationRecord; presentation?: 'all' | 'summary' | 'details'; detailsOpen?: boolean } = $props();
+  let { record, presentation = 'all', detailsOpen = false, showReferences = true }: {
+    record: ClassificationRecord;
+    presentation?: 'all' | 'summary' | 'details';
+    detailsOpen?: boolean;
+    showReferences?: boolean;
+  } = $props();
   const classification = $derived(classificationSummary(record, label => tr(label, $language)));
   const explanation = $derived(classificationExplanation(record, label => tr(label, $language), $language));
+  const hasDetails = $derived(showReferences || classification.categories.length > 1
+    || classification.supportingActivities.length > 0 || classification.sourceLabels.length > 0);
 </script>
 
 <div class="classification-summary">
   {#if presentation !== 'details'}
     <p class="summary" data-classification-explanation>{explanation.text}</p>
   {/if}
-  {#if presentation !== 'summary'}
+  {#if presentation !== 'summary' && hasDetails}
     <details open={detailsOpen}>
       <summary>{tr('Classification details', $language)}</summary>
       <dl>
         {#if classification.categories.length > 1}<div><dt>{tr('Categories', $language)}</dt><dd>{classification.categories.join(', ')}</dd></div>{/if}
         {#if classification.supportingActivities.length}<div><dt>{tr('Activity classification', $language)}</dt><dd>{classification.supportingActivities.join(', ')}</dd></div>{/if}
         {#if classification.sourceLabels.length}<div><dt>{tr('Source classification', $language)}</dt><dd>{classification.sourceLabels.join(' · ')}</dd></div>{/if}
-        <div><dt>{tr('Category definitions', $language)}</dt><dd class="references">{#each explanation.references as reference}<a href={reference.href} target={reference.href.startsWith('https:') ? '_blank' : undefined} rel={reference.href.startsWith('https:') ? 'noopener noreferrer' : undefined}>{tr(reference.label, $language)}</a>{/each}</dd></div>
+        {#if showReferences}<div><dt>{tr('Category definitions', $language)}</dt><dd class="references">{#each explanation.references as reference}<a href={reference.href} target={reference.href.startsWith('https:') ? '_blank' : undefined} rel={reference.href.startsWith('https:') ? 'noopener noreferrer' : undefined}>{tr(reference.label, $language)}</a>{/each}</dd></div>{/if}
       </dl>
     </details>
   {/if}

@@ -354,7 +354,7 @@ API schemas own supported fields. They are not additional roadmaps.
   dated fact as a third sentence. Ambiguous reports and duplicate species aliases
   cannot supply a narrative total. Keep existing verified 360-day volume ranges
   separate; do not annualise them or duplicate them in the summary.
-  Definitions and source links remain available in collapsed Classification details.
+  Public Classification details shows category, activity and source classifications when available.
   Format underscores and
   technical activity labels; retain original values in data. Show all
   affirmative species/activities and supported slaughter/product estimates.
